@@ -1,0 +1,19 @@
+{
+  "name": "@documental/database",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "echo database ok"
+  },
+  "dependencies": {
+    "dotenv": "^17.4.2",
+    "drizzle-orm": "^0.45.2",
+    "postgres": "^3.4.9"
+  },
+  "devDependencies": {
+    "@nestjs/cli": "^11.0.21",
+    "@types/node": "^24.12.4",
+    "typescript": "^5.9.3"
+  }
+}
