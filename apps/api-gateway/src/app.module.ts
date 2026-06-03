@@ -7,6 +7,7 @@ import { AppService } from './app.service';
 import { RequestIdMiddleware } from './common/middleware/request-id.middleware';
 import { AuthModule } from './auth/auth.module';
 import { NatsModule } from './nats/nats.module';
+import { DocumentosGatewayModule } from './documentos/documentos.module';
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { NatsModule } from './nats/nats.module';
     }),
     NatsModule,
     AuthModule,
+    DocumentosGatewayModule,
   ],
   controllers: [AppController],
   providers: [AppService],

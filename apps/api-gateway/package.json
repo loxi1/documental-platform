@@ -28,6 +28,7 @@
     "@nestjs/microservices": "^11.1.24",
     "@nestjs/platform-express": "^11.0.1",
     "@nestjs/swagger": "^11.4.4",
+    "axios": "^1.16.1",
     "helmet": "^8.2.0",
     "nats": "^2.29.3",
     "pino": "^10.3.1",

@@ -25,6 +25,8 @@ export const baseEnvSchema = z.object({
   NATS_URL: z
     .string()
     .min(1, 'NATS_URL es obligatorio'),
+  
+  MS_DOCUMENTOS_URL: z.string().url().optional(),
 });
 
 export const servicePortSchema = z.coerce
