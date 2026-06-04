@@ -12,6 +12,7 @@ async def main():
     payload = {
         "documentoId": 1,
         "archivoId": 1,
+        "clienteAbreviatura": "BBTI",
         "storageProvider": "r2",
         "storageKey": "test/factura_comatpe.PDF",
         "tipoSolicitud": "clasificar_extraer",
