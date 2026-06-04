@@ -35,27 +35,46 @@ def map_tipo(tipo: str | None) -> str:
     return TIPO_MAP.get(key, key)
 
 
+def normalize_cliente_abreviatura(cliente: str) -> str:
+    value = str(cliente or "").strip().upper()
+
+    if not value:
+        raise ValueError("clienteAbreviatura es obligatorio para construir la clave documental")
+
+    return value
+
+
+def clean_key_part(value) -> str | None:
+    if value is None:
+        return None
+
+    cleaned = str(value).strip()
+    return cleaned or None
+
+
 def build_clave_documental(
     cliente: str,
     tipo_documental: str,
     metadata: dict,
 ) -> str | None:
-    ruc = metadata.get("ruc")
-    serie = metadata.get("serie")
-    numero = metadata.get("numero")
+    cliente_key = normalize_cliente_abreviatura(cliente)
+    tipo_key = clean_key_part(tipo_documental)
+    ruc = clean_key_part(metadata.get("ruc"))
+    serie = clean_key_part(metadata.get("serie"))
+    numero = clean_key_part(metadata.get("numero"))
 
-    if tipo_documental in [
+    if tipo_key in [
         "FACTURA",
         "GUIA_REMISION",
         "NOTA_CREDITO",
         "RECIBO_HONORARIO",
     ]:
         if ruc and serie and numero:
-            return f"{cliente}|{tipo_documental}|{ruc}|{serie}|{numero}"
+            return f"{cliente_key}|{tipo_key}|{ruc}|{serie}|{numero}"
 
-    if tipo_documental in ["OC", "OS", "NOTA_INGRESO"]:
+    if tipo_key in ["OC", "OS", "NOTA_INGRESO"]:
         if numero:
-            return f"{cliente}|{tipo_documental}|{numero}"
+            return f"{cliente_key}|{tipo_key}|{numero}"
 
     return None
 
@@ -100,7 +119,7 @@ async def process_file(payload: OcrProcesarArchivoPayload) -> dict:
         return resolved
 
     file_path: Path = resolved
-    cliente = payload.clienteAbreviatura or "SIN_CLIENTE"
+    cliente = normalize_cliente_abreviatura(payload.clienteAbreviatura)
 
     text = extract_text(file_path)
 

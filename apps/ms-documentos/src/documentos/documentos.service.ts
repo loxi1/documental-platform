@@ -1,5 +1,5 @@
 
-import { Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { ClientProxy } from '@nestjs/microservices';
 import { firstValueFrom } from 'rxjs';
 import { NatsSubjects } from '@documental/shared';
@@ -51,10 +51,18 @@ export class DocumentosService {
       throw new NotFoundException(`Archivo ${archivoId} no encontrado`);
     }
 
+    const clienteAbreviatura = String(archivo.cliente_abreviatura ?? '').trim().toUpperCase();
+
+    if (!clienteAbreviatura) {
+      throw new BadRequestException(
+        `El archivo ${archivoId} no tiene cliente_abreviatura. No se puede procesar OCR sin empresa destino.`,
+      );
+    }
+
     const payload = {
       documentoId: archivo.documento_id,
       archivoId: archivo.id,
-      clienteAbreviatura: archivo.cliente_abreviatura,
+      clienteAbreviatura,
       storageProvider: archivo.storage_provider ?? 'local',
       storageKey: archivo.storage_key ?? archivo.ruta_archivo,
       tipoSolicitud: 'clasificar_extraer',
@@ -77,7 +85,8 @@ export class DocumentosService {
 
       return {
         ...result,
-        ocrResultadoId: saved?.id,
+        ocrResultadoId: saved?.ya_existia ?? false,
+        ocrResultadoYaExistia: saved?.ya_existia ?? false,
         estado: 'pendiente_validacion',
         requiereValidacionUsuario: true,
       };

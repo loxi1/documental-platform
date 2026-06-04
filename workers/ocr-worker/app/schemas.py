@@ -9,4 +9,4 @@ class OcrProcesarArchivoPayload(BaseModel):
     storageKey: str = Field(..., min_length=1)
     tipoSolicitud: Literal["clasificar", "extraer", "clasificar_extraer"] = "clasificar_extraer"
     requestId: Optional[str] = None
-    clienteAbreviatura: Optional[str] = None
+    clienteAbreviatura: str = Field(..., min_length=1)

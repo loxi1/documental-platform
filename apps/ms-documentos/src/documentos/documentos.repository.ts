@@ -233,6 +233,24 @@ export class DocumentosRepository {
     claveDocumental: string | null;
     metadata: unknown;
   }) {
+    if (params.claveDocumental) {
+      const existing = await sql`
+        SELECT *
+        FROM documentos.ocr_resultados
+        WHERE clave_documental = ${params.claveDocumental}
+          AND estado IN ('pendiente_validacion', 'confirmado')
+        ORDER BY id DESC
+        LIMIT 1
+      `;
+
+      if (existing[0]) {
+        return {
+          ...existing[0],
+          ya_existia: true,
+        };
+      }
+    }
+
     const rows = await sql`
       INSERT INTO documentos.ocr_resultados (
         archivo_id,
@@ -255,6 +273,9 @@ export class DocumentosRepository {
       RETURNING *
     `;
 
-    return rows[0] ?? null;
+    return {
+      ...rows[0],
+      ya_existia: false,
+    };
   }
 }
