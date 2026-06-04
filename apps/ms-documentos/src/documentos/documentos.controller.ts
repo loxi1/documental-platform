@@ -1,4 +1,4 @@
-import { Controller, Get, Param, ParseIntPipe, Query } from '@nestjs/common';
+import { Controller, Get, Param, ParseIntPipe, Query, Post } from '@nestjs/common';
 import { ApiOperation, ApiQuery, ApiTags, ApiParam, } from '@nestjs/swagger';
 import { DocumentosService } from './documentos.service';
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
@@ -51,6 +51,13 @@ export class DocumentosController {
       limit ? Number(limit) : 20,
       offset ? Number(offset) : 0,
     );
+  }
+
+  @Post('archivos/:archivoId/procesar-ocr')
+  procesarOcrArchivo(
+    @Param('archivoId', ParseIntPipe) archivoId: number,
+  ) {
+    return this.service.procesarOcrArchivo(archivoId);
   }
 
   @ApiOperation({ summary: 'Obtener documento por ID con archivos vinculados' })

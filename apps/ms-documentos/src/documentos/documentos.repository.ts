@@ -146,4 +146,115 @@ export class DocumentosRepository {
       data,
     };
   }
+
+  async findArchivoById(archivoId: number) {
+    const rows = await sql`
+      SELECT
+        da.id,
+        da.documento_id,
+        da.storage_provider,
+        da.storage_key,
+        da.ruta_archivo,
+        da.nombre_archivo,
+        d.cliente_abreviatura
+      FROM documentos.documentos_archivos da
+      LEFT JOIN documentos.documentos d
+        ON d.id = da.documento_id
+      WHERE da.id = ${archivoId}
+      LIMIT 1
+    `;
+
+    return rows[0] ?? null;
+  }
+
+  async updateDocumentoOcrResult(params: {
+    documentoId: number;
+    tipoDocumental: string;
+    estado: string;
+    metadata: any;
+  }) {
+    const ocrMetadata = params.metadata;
+    const extracted = ocrMetadata?.metadata ?? {};
+
+    const rows = await sql`
+      UPDATE documentos.documentos
+      SET
+        tipo_documental = ${params.tipoDocumental},
+        estado = ${params.estado},
+        ruc_emisor = COALESCE(${extracted.ruc ?? null}, ruc_emisor),
+        serie = COALESCE(${extracted.serie ?? null}, serie),
+        numero = COALESCE(${extracted.numero ?? null}, numero),
+        fecha_emision = COALESCE(${extracted.fechaEmision ?? null}::date, fecha_emision),
+        monto_total = COALESCE(${extracted.montoTotal ?? null}::numeric, monto_total),
+        metadata = COALESCE(metadata, '{}'::jsonb) || ${JSON.stringify({
+          ocr: ocrMetadata,
+        })}::jsonb
+      WHERE id = ${params.documentoId}
+      RETURNING *
+    `;
+
+    if (params.tipoDocumental === 'FACTURA') {
+      await sql`
+        INSERT INTO documentos.documentos_factura (
+          documento_id,
+          ruc_emisor,
+          serie,
+          numero,
+          fecha_emision,
+          total
+        )
+        VALUES (
+          ${params.documentoId},
+          ${extracted.ruc ?? null},
+          ${extracted.serie ?? null},
+          ${extracted.numero ?? null},
+          ${extracted.fechaEmision ?? null}::date,
+          ${extracted.montoTotal ?? null}::numeric
+        )
+        ON CONFLICT (documento_id)
+        DO UPDATE SET
+          ruc_emisor = COALESCE(EXCLUDED.ruc_emisor, documentos.documentos_factura.ruc_emisor),
+          serie = COALESCE(EXCLUDED.serie, documentos.documentos_factura.serie),
+          numero = COALESCE(EXCLUDED.numero, documentos.documentos_factura.numero),
+          fecha_emision = COALESCE(EXCLUDED.fecha_emision, documentos.documentos_factura.fecha_emision),
+          total = COALESCE(EXCLUDED.total, documentos.documentos_factura.total)
+      `;
+    }
+
+    return rows[0] ?? null;
+  }
+
+  async saveOcrResultado(params: {
+    archivoId: number;
+    documentoId: number | null;
+    tipoPropuesto: string | null;
+    estado: string;
+    confidence: number | null;
+    claveDocumental: string | null;
+    metadata: unknown;
+  }) {
+    const rows = await sql`
+      INSERT INTO documentos.ocr_resultados (
+        archivo_id,
+        documento_id,
+        tipo_propuesto,
+        estado,
+        confidence,
+        clave_documental,
+        metadata
+      )
+      VALUES (
+        ${params.archivoId},
+        ${params.documentoId},
+        ${params.tipoPropuesto},
+        ${params.estado},
+        ${params.confidence},
+        ${params.claveDocumental},
+        ${JSON.stringify(params.metadata)}::jsonb
+      )
+      RETURNING *
+    `;
+
+    return rows[0] ?? null;
+  }
 }

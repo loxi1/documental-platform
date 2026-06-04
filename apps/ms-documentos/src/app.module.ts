@@ -1,5 +1,6 @@
 import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { NatsModule } from './nats/nats.module';
 
 import configuration from './config/configuration';
 import { AppController } from './app.controller';
@@ -17,6 +18,7 @@ import { RequestIdMiddleware } from './common/middleware/request-id.middleware';
     }),
     DocumentosModule,
     GruposModule,
+    NatsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
