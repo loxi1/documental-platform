@@ -60,6 +60,33 @@ export class DocumentosController {
     return this.service.procesarOcrArchivo(archivoId);
   }
 
+  @Get('ocr-resultados')
+  findOcrResultados(
+    @Query('estado') estado?: string,
+    @Query('limit') limit?: string,
+    @Query('offset') offset?: string,
+  ) {
+    return this.service.findOcrResultados({
+      estado,
+      limit: limit ? Number(limit) : 20,
+      offset: offset ? Number(offset) : 0,
+    });
+  }
+
+  @Get('ocr-resultados/:id')
+  findOcrResultadoById(
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.service.findOcrResultadoById(id);
+  }
+
+  @Post('ocr-resultados/:id/confirmar')
+  confirmarOcrResultado(
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.service.confirmarOcrResultado(id);
+  }
+
   @ApiOperation({ summary: 'Obtener documento por ID con archivos vinculados' })
   @ApiParam({ name: 'id', example: 1 })
   @Get(':id')

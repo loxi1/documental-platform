@@ -85,13 +85,61 @@ export class DocumentosService {
 
       return {
         ...result,
-        ocrResultadoId: saved?.ya_existia ?? false,
-        ocrResultadoYaExistia: saved?.ya_existia ?? false,
+        ocrResultadoId: saved?.row?.id,
+        ocrResultadoYaExistia: saved?.yaExistia ?? false,
+        ocrResultadoMotivo: saved?.motivo ?? null,
         estado: 'pendiente_validacion',
         requiereValidacionUsuario: true,
       };
     }
 
     return result;
+  }
+
+  findOcrResultados(filters: {
+    estado?: string;
+    limit?: number;
+    offset?: number;
+  }) {
+    return this.repo.findOcrResultados(filters);
+  }
+
+  async findOcrResultadoById(id: number) {
+    const result = await this.repo.findOcrResultadoById(id);
+
+    if (!result) {
+      throw new NotFoundException(`Resultado OCR ${id} no encontrado`);
+    }
+
+    return result;
+  }
+
+  async confirmarOcrResultado(id: number, usuarioId?: number) {
+    const result = await this.repo.findOcrResultadoById(id);
+
+    if (!result) {
+      throw new NotFoundException(`Resultado OCR ${id} no encontrado`);
+    }
+
+    const metadata = result.metadata;
+    const extracted = metadata?.metadata ?? {};
+
+    await this.repo.updateDocumentoOcrResult({
+      documentoId: result.documento_id,
+      tipoDocumental: result.tipo_propuesto,
+      estado: 'confirmado',
+      metadata,
+    });
+
+    const confirmado = await this.repo.confirmarOcrResultado(id, usuarioId);
+
+    return {
+      id: confirmado.id,
+      estado: confirmado.estado,
+      documentoId: result.documento_id,
+      tipoDocumental: result.tipo_propuesto,
+      claveDocumental: result.clave_documental,
+      metadata: extracted,
+    };
   }
 }

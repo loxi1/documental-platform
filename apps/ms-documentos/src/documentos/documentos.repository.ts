@@ -233,23 +233,42 @@ export class DocumentosRepository {
     claveDocumental: string | null;
     metadata: unknown;
   }) {
-    if (params.claveDocumental) {
-      const existing = await sql`
-        SELECT *
-        FROM documentos.ocr_resultados
-        WHERE clave_documental = ${params.claveDocumental}
-          AND estado IN ('pendiente_validacion', 'confirmado')
-        ORDER BY id DESC
-        LIMIT 1
-      `;
+    const sameArchivo = await sql`
+      SELECT *
+      FROM documentos.ocr_resultados
+      WHERE archivo_id = ${params.archivoId}
+        AND estado IN ('pendiente_validacion', 'confirmado')
+      ORDER BY id DESC
+      LIMIT 1
+    `;
 
-      if (existing[0]) {
-        return {
-          ...existing[0],
-          ya_existia: true,
-        };
-      }
+    if (sameArchivo[0]) {
+      return {
+        row: sameArchivo[0],
+        yaExistia: true,
+        motivo: 'MISMO_ARCHIVO',
+      };
     }
+
+    const documentoExistente = params.claveDocumental
+      ? await sql`
+          SELECT id
+          FROM documentos.documentos
+          WHERE clave_documental = ${params.claveDocumental}
+          LIMIT 1
+        `
+      : [];
+
+    const metadataFinal = {
+      ...(params.metadata as object),
+      duplicado: documentoExistente[0]
+        ? {
+            existeDocumento: true,
+            documentoId: documentoExistente[0].id,
+            claveDocumental: params.claveDocumental,
+          }
+        : null,
+    };
 
     const rows = await sql`
       INSERT INTO documentos.ocr_resultados (
@@ -268,14 +287,78 @@ export class DocumentosRepository {
         ${params.estado},
         ${params.confidence},
         ${params.claveDocumental},
-        ${JSON.stringify(params.metadata)}::jsonb
+        ${JSON.stringify(metadataFinal)}::jsonb
       )
       RETURNING *
     `;
 
     return {
-      ...rows[0],
-      ya_existia: false,
+      row: rows[0],
+      yaExistia: false,
+      motivo: documentoExistente[0] ? 'MISMA_CLAVE_DOCUMENTAL' : null,
     };
+  }
+
+  async findOcrResultados(filters: {
+    estado?: string;
+    limit?: number;
+    offset?: number;
+  }) {
+    const limit = filters.limit ?? 20;
+    const offset = filters.offset ?? 0;
+
+    return sql`
+      SELECT
+        o.id,
+        o.archivo_id,
+        o.documento_id,
+        o.tipo_propuesto,
+        o.estado,
+        o.confidence,
+        o.clave_documental,
+        o.creado_en,
+        da.nombre_archivo,
+        da.storage_provider,
+        da.storage_key
+      FROM documentos.ocr_resultados o
+      LEFT JOIN documentos.documentos_archivos da
+        ON da.id = o.archivo_id
+      WHERE (${filters.estado ?? null}::text IS NULL OR o.estado = ${filters.estado ?? null})
+      ORDER BY o.id DESC
+      LIMIT ${limit}
+      OFFSET ${offset}
+    `;
+  }
+
+  async findOcrResultadoById(id: number) {
+    const rows = await sql`
+      SELECT
+        o.*,
+        da.nombre_archivo,
+        da.storage_provider,
+        da.storage_key,
+        da.ruta_archivo
+      FROM documentos.ocr_resultados o
+      LEFT JOIN documentos.documentos_archivos da
+        ON da.id = o.archivo_id
+      WHERE o.id = ${id}
+      LIMIT 1
+    `;
+
+    return rows[0] ?? null;
+  }
+
+  async confirmarOcrResultado(id: number, usuarioId?: number) {
+    const rows = await sql`
+      UPDATE documentos.ocr_resultados
+      SET
+        estado = 'confirmado',
+        validado_en = now(),
+        validado_por = ${usuarioId ?? null}
+      WHERE id = ${id}
+      RETURNING *
+    `;
+
+    return rows[0] ?? null;
   }
 }
