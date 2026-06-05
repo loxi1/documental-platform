@@ -8,6 +8,7 @@ import { AppService } from './app.service';
 import { DocumentosModule } from './documentos/documentos.module';
 import { GruposModule } from './grupos/grupos.module';
 import { RequestIdMiddleware } from './common/middleware/request-id.middleware';
+import { ExpedientesModule } from './expedientes/expedientes.module';
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { RequestIdMiddleware } from './common/middleware/request-id.middleware';
     DocumentosModule,
     GruposModule,
     NatsModule,
+    ExpedientesModule,
   ],
   controllers: [AppController],
   providers: [AppService],
