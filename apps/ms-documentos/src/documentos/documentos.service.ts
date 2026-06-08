@@ -142,4 +142,17 @@ export class DocumentosService {
       metadata: extracted,
     };
   }
+
+  createDocumentoRelacion(data: {
+    documentoOrigenId: number;
+    documentoDestinoId: number;
+    tipoRelacion: string;
+    metadata?: unknown;
+  }) {
+    return this.repo.createDocumentoRelacion(data);
+  }
+
+  findDocumentoRelaciones(documentoId: number) {
+    return this.repo.findDocumentoRelaciones(documentoId);
+  }
 }

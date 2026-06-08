@@ -1,4 +1,4 @@
-import { Controller, Get, Param, ParseIntPipe, Query, Post } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseIntPipe, Query, Post } from '@nestjs/common';
 import { ApiOperation, ApiQuery, ApiTags, ApiParam, } from '@nestjs/swagger';
 import { DocumentosService } from './documentos.service';
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
@@ -85,6 +85,18 @@ export class DocumentosController {
     @Param('id', ParseIntPipe) id: number,
   ) {
     return this.service.confirmarOcrResultado(id);
+  }
+
+  @Post('relaciones')
+  createDocumentoRelacion(@Body() body: any) {
+    return this.service.createDocumentoRelacion(body);
+  }
+
+  @Get(':id/relaciones')
+  findDocumentoRelaciones(
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.service.findDocumentoRelaciones(id);
   }
 
   @ApiOperation({ summary: 'Obtener documento por ID con archivos vinculados' })

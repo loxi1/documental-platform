@@ -361,4 +361,64 @@ export class DocumentosRepository {
 
     return rows[0] ?? null;
   }
+
+  async createDocumentoRelacion(params: {
+    documentoOrigenId: number;
+    documentoDestinoId: number;
+    tipoRelacion: string;
+    metadata?: unknown;
+  }) {
+    const rows = await sql`
+      INSERT INTO documentos.documento_relaciones (
+        documento_origen_id,
+        documento_destino_id,
+        tipo_relacion,
+        metadata
+      )
+      VALUES (
+        ${params.documentoOrigenId},
+        ${params.documentoDestinoId},
+        ${params.tipoRelacion},
+        ${JSON.stringify(params.metadata ?? {})}::jsonb
+      )
+      ON CONFLICT (
+        documento_origen_id,
+        documento_destino_id,
+        tipo_relacion
+      )
+      DO UPDATE SET
+        metadata = EXCLUDED.metadata
+      RETURNING *
+    `;
+
+    return rows[0];
+  }
+
+  async findDocumentoRelaciones(documentoId: number) {
+    return sql`
+      SELECT
+        r.id,
+        r.documento_origen_id,
+        r.documento_destino_id,
+        r.tipo_relacion,
+        r.metadata,
+        r.creado_en,
+
+        origen.tipo_documental AS origen_tipo,
+        origen.serie AS origen_serie,
+        origen.numero AS origen_numero,
+
+        destino.tipo_documental AS destino_tipo,
+        destino.serie AS destino_serie,
+        destino.numero AS destino_numero
+      FROM documentos.documento_relaciones r
+      JOIN documentos.documentos origen
+        ON origen.id = r.documento_origen_id
+      JOIN documentos.documentos destino
+        ON destino.id = r.documento_destino_id
+      WHERE r.documento_origen_id = ${documentoId}
+         OR r.documento_destino_id = ${documentoId}
+      ORDER BY r.id DESC
+    `;
+  }
 }
