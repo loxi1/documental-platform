@@ -208,4 +208,14 @@ export class DocumentosService {
       tipoRelacionPrincipal,
     };
   }
+
+  async sugerirExpedienteParaOcr(id: number) {
+    const result = await this.repo.sugerirExpedienteParaOcr(id);
+
+    if (!result) {
+      throw new NotFoundException(`Resultado OCR ${id} no encontrado`);
+    }
+
+    return result.sugerencia;
+  }
 }

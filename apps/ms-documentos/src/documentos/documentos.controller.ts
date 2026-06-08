@@ -107,6 +107,13 @@ export class DocumentosController {
     return this.service.crearExpedienteDesdeOcr(id, body);
   }
 
+  @Post('ocr-resultados/:id/sugerir-expediente')
+  sugerirExpedienteParaOcr(
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.service.sugerirExpedienteParaOcr(id);
+  }
+
   @ApiOperation({ summary: 'Obtener documento por ID con archivos vinculados' })
   @ApiParam({ name: 'id', example: 1 })
   @Get(':id')

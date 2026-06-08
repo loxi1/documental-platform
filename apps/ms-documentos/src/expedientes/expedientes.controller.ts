@@ -30,14 +30,14 @@ export class ExpedientesController {
     });
   }
 
+  @Get('buscar-por-clave')
+  findByClavePrincipal(@Query('clave') clave: string) {
+    return this.service.findByClavePrincipal(clave);
+  }
+
   @Get(':id/resumen')
   getResumen(@Param('id', ParseIntPipe) id: number) {
     return this.service.getResumen(id);
-  }
-
-  @Get(':id')
-  findById(@Param('id', ParseIntPipe) id: number) {
-    return this.service.findById(id);
   }
 
   @Post()
@@ -51,6 +51,7 @@ export class ExpedientesController {
   ) {
     return this.service.getTimeline(id);
   }
+  
 
   @Post(':id/documentos')
   addDocumento(
@@ -58,5 +59,11 @@ export class ExpedientesController {
     @Body() body: any,
   ) {
     return this.service.addDocumento(id, body);
+  }
+
+  
+  @Get(':id')
+  findById(@Param('id', ParseIntPipe) id: number) {
+    return this.service.findById(id);
   }
 }

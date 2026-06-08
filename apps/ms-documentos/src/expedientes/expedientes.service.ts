@@ -119,4 +119,13 @@ export class ExpedientesService {
       timeline,
     };
   }
+  
+  async findByClavePrincipal(clave: string) {
+    const expediente = await this.repo.findByClavePrincipal(clave);
+
+    return {
+      existe: !!expediente,
+      expediente,
+    };
+  }
 }

@@ -515,4 +515,58 @@ export class DocumentosRepository {
 
     return expediente;
   }
+
+  async sugerirExpedienteParaOcr(id: number) {
+    const ocrRows = await sql`
+      SELECT *
+      FROM documentos.ocr_resultados
+      WHERE id = ${id}
+      LIMIT 1
+    `;
+
+    const ocr = ocrRows[0];
+
+    if (!ocr) {
+      return null;
+    }
+
+    if (!ocr.clave_documental) {
+      return {
+        ocr,
+        sugerencia: {
+          accion: 'SIN_SUGERENCIA',
+          motivo: 'OCR_SIN_CLAVE_DOCUMENTAL',
+          confidence: 0,
+        },
+      };
+    }
+
+    const expedienteRows = await sql`
+      SELECT *
+      FROM documentos.expedientes
+      WHERE clave_principal = ${ocr.clave_documental}
+      LIMIT 1
+    `;
+
+    if (expedienteRows[0]) {
+      return {
+        ocr,
+        sugerencia: {
+          accion: 'USAR_EXPEDIENTE_EXISTENTE',
+          expediente: expedienteRows[0],
+          motivo: 'MISMA_CLAVE_PRINCIPAL',
+          confidence: 100,
+        },
+      };
+    }
+
+    return {
+      ocr,
+      sugerencia: {
+        accion: 'CREAR_EXPEDIENTE',
+        motivo: 'NO_EXISTE_EXPEDIENTE_PARA_CLAVE',
+        confidence: 100,
+      },
+    };
+  }
 }

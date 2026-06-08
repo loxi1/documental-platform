@@ -219,4 +219,15 @@ export class ExpedientesRepository {
         d.id ASC
     `;
   }
+
+  async findByClavePrincipal(clave: string) {
+    const rows = await sql`
+      SELECT *
+      FROM documentos.expedientes
+      WHERE clave_principal = ${clave}
+      LIMIT 1
+    `;
+
+    return rows[0] ?? null;
+  }
 }
