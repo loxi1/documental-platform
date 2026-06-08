@@ -421,4 +421,98 @@ export class DocumentosRepository {
       ORDER BY r.id DESC
     `;
   }
+
+  async createExpedienteDesdeOcr(params: {
+    ocrResultadoId: number;
+    correlativo: string;
+    empresaCodigo: string;
+    tipoExpediente: string;
+    descripcion?: string | null;
+    codigoCentroCosto?: string | null;
+    codigoOp?: string | null;
+    clavePrincipal?: string | null;
+    tipoRelacionPrincipal: string;
+  }) {
+    const ocrRows = await sql`
+      SELECT *
+      FROM documentos.ocr_resultados
+      WHERE id = ${params.ocrResultadoId}
+      LIMIT 1
+    `;
+
+    const ocr = ocrRows[0];
+
+    if (!ocr) {
+      return null;
+    }
+
+    const clavePrincipal =
+      params.clavePrincipal ?? ocr.clave_documental ?? null;
+
+    if (clavePrincipal) {
+      const existingExpediente = await sql`
+        SELECT *
+        FROM documentos.expedientes
+        WHERE clave_principal = ${clavePrincipal}
+          AND empresa_codigo = ${params.empresaCodigo}
+        LIMIT 1
+      `;
+
+      if (existingExpediente[0]) {
+        return {
+          expediente: existingExpediente[0],
+          yaExistia: true,
+          motivo: 'MISMA_CLAVE_PRINCIPAL',
+        };
+      }
+    }
+
+    const expedienteRows = await sql`
+      INSERT INTO documentos.expedientes (
+        correlativo,
+        empresa_codigo,
+        tipo_expediente,
+        descripcion,
+        codigo_centro_costo,
+        codigo_op,
+        clave_principal
+      )
+      VALUES (
+        ${params.correlativo},
+        ${params.empresaCodigo},
+        ${params.tipoExpediente},
+        ${params.descripcion ?? null},
+        ${params.codigoCentroCosto ?? null},
+        ${params.codigoOp ?? null},
+        ${params.clavePrincipal ?? ocr.clave_documental ?? null}
+      )
+      RETURNING *
+    `;
+
+    const expediente = expedienteRows[0];
+
+    await sql`
+      INSERT INTO documentos.expediente_documentos (
+        expediente_id,
+        documento_id,
+        tipo_relacion,
+        es_principal,
+        orden
+      )
+      VALUES (
+        ${expediente.id},
+        ${ocr.documento_id},
+        ${params.tipoRelacionPrincipal},
+        true,
+        1
+      )
+      ON CONFLICT (expediente_id, documento_id)
+      DO UPDATE SET
+        tipo_relacion = EXCLUDED.tipo_relacion,
+        es_principal = true,
+        orden = 1
+    `;
+
+    return expediente;
+  }
 }

@@ -30,6 +30,11 @@ export class ExpedientesController {
     });
   }
 
+  @Get(':id/resumen')
+  getResumen(@Param('id', ParseIntPipe) id: number) {
+    return this.service.getResumen(id);
+  }
+
   @Get(':id')
   findById(@Param('id', ParseIntPipe) id: number) {
     return this.service.findById(id);
@@ -38,6 +43,13 @@ export class ExpedientesController {
   @Post()
   create(@Body() body: any) {
     return this.service.create(body);
+  }
+
+  @Get(':id/timeline')
+  getTimeline(
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.service.getTimeline(id);
   }
 
   @Post(':id/documentos')

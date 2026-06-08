@@ -155,4 +155,57 @@ export class DocumentosService {
   findDocumentoRelaciones(documentoId: number) {
     return this.repo.findDocumentoRelaciones(documentoId);
   }
+
+  async crearExpedienteDesdeOcr(
+    id: number,
+    body: {
+      correlativo: string;
+      empresaCodigo: string;
+      tipoExpediente: string;
+      descripcion?: string | null;
+      codigoCentroCosto?: string | null;
+      codigoOp?: string | null;
+      tipoRelacionPrincipal?: string;
+    },
+  ) {
+    const result = await this.repo.findOcrResultadoById(id);
+
+    if (!result) {
+      throw new NotFoundException(`Resultado OCR ${id} no encontrado`);
+    }
+
+    if (!result.documento_id) {
+      throw new NotFoundException(
+        `Resultado OCR ${id} no tiene documento asociado`,
+      );
+    }
+
+    const tipoRelacionPrincipal =
+      body.tipoRelacionPrincipal ??
+      `principal_${String(result.tipo_propuesto ?? 'documento').toLowerCase()}`;
+
+    const expediente =
+      await this.repo.createExpedienteDesdeOcr({
+        ocrResultadoId: id,
+        correlativo: body.correlativo,
+        empresaCodigo: body.empresaCodigo,
+        tipoExpediente: body.tipoExpediente,
+        descripcion: body.descripcion,
+        codigoCentroCosto: body.codigoCentroCosto,
+        codigoOp: body.codigoOp,
+        clavePrincipal: result.clave_documental,
+        tipoRelacionPrincipal,
+      });
+
+    if (!expediente) {
+      throw new NotFoundException(`No se pudo crear expediente desde OCR ${id}`);
+    }
+
+    return {
+      expediente,
+      documentoId: result.documento_id,
+      ocrResultadoId: id,
+      tipoRelacionPrincipal,
+    };
+  }
 }

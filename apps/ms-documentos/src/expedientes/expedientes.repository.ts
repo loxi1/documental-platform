@@ -47,8 +47,11 @@ export class ExpedientesRepository {
               'serie', d.serie,
               'numero', d.numero,
               'estado', d.estado,
-              'tipoRelacion', ed.tipo_relacion
+              'tipoRelacion', ed.tipo_relacion,
+              'esPrincipal', ed.es_principal,
+              'orden', ed.orden
             )
+              ORDER BY ed.es_principal DESC, ed.orden ASC, d.id ASC
           ) FILTER (WHERE d.id IS NOT NULL),
           '[]'
         ) AS documentos
@@ -100,24 +103,120 @@ export class ExpedientesRepository {
     expedienteId: number;
     documentoId: number;
     tipoRelacion?: string | null;
+    esPrincipal?: boolean;
+    orden?: number;
   }) {
+    if (data.esPrincipal) {
+      await sql`
+        UPDATE documentos.expediente_documentos
+        SET es_principal = false
+        WHERE expediente_id = ${data.expedienteId}
+      `;
+    }
+
     const rows = await sql`
       INSERT INTO documentos.expediente_documentos (
         expediente_id,
         documento_id,
-        tipo_relacion
+        tipo_relacion,
+        es_principal,
+        orden
       )
       VALUES (
         ${data.expedienteId},
         ${data.documentoId},
-        ${data.tipoRelacion ?? null}
+        ${data.tipoRelacion ?? null},
+        ${data.esPrincipal ?? false},
+        ${data.orden ?? 0}
       )
       ON CONFLICT (expediente_id, documento_id)
       DO UPDATE SET
-        tipo_relacion = EXCLUDED.tipo_relacion
+        tipo_relacion = EXCLUDED.tipo_relacion,
+        es_principal = EXCLUDED.es_principal,
+        orden = EXCLUDED.orden
       RETURNING *
     `;
 
     return rows[0];
+  }
+
+  async getResumen(id: number) {
+    const rows = await sql`
+      SELECT
+        e.id,
+        e.correlativo,
+        e.empresa_codigo,
+        e.tipo_expediente,
+        e.codigo_centro_costo,
+        e.codigo_op,
+        e.estado,
+
+        COUNT(ed.documento_id)::int AS total_documentos,
+
+        COUNT(*) FILTER (
+          WHERE d.tipo_documental = 'FACTURA'
+        )::int AS total_facturas,
+
+        COUNT(*) FILTER (
+          WHERE d.tipo_documental = 'GUIA_REMISION'
+        )::int AS total_guias,
+
+        COUNT(*) FILTER (
+          WHERE d.tipo_documental = 'NOTA_INGRESO'
+        )::int AS total_notas_ingreso,
+
+        COUNT(*) FILTER (
+          WHERE d.tipo_documental IN ('PAGO_TRANSFERENCIA', 'PAGO_DETRACCION')
+        )::int AS total_pagos,
+
+        COALESCE(
+          json_agg(
+            json_build_object(
+              'documentoId', d.id,
+              'tipoDocumental', d.tipo_documental,
+              'serie', d.serie,
+              'numero', d.numero,
+              'estado', d.estado,
+              'tipoRelacion', ed.tipo_relacion,
+              'esPrincipal', ed.es_principal
+            )
+            ORDER BY ed.es_principal DESC, ed.orden ASC, d.id ASC
+          ) FILTER (WHERE d.id IS NOT NULL),
+          '[]'
+        ) AS documentos
+      FROM documentos.expedientes e
+      LEFT JOIN documentos.expediente_documentos ed
+        ON ed.expediente_id = e.id
+      LEFT JOIN documentos.documentos d
+        ON d.id = ed.documento_id
+      WHERE e.id = ${id}
+      GROUP BY e.id
+      LIMIT 1
+    `;
+
+    return rows[0] ?? null;
+  }
+
+  async getTimeline(expedienteId: number) {
+    return sql`
+      SELECT
+        d.id,
+        d.tipo_documental,
+        d.serie,
+        d.numero,
+        d.fecha_emision,
+        d.estado,
+        ed.tipo_relacion,
+        ed.es_principal,
+        ed.orden
+      FROM documentos.expediente_documentos ed
+      JOIN documentos.documentos d
+        ON d.id = ed.documento_id
+      WHERE ed.expediente_id = ${expedienteId}
+      ORDER BY
+        d.fecha_emision NULLS LAST,
+        ed.orden ASC,
+        d.id ASC
+    `;
   }
 }

@@ -99,6 +99,14 @@ export class DocumentosController {
     return this.service.findDocumentoRelaciones(id);
   }
 
+  @Post('ocr-resultados/:id/crear-expediente')
+  crearExpedienteDesdeOcr(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: any,
+  ) {
+    return this.service.crearExpedienteDesdeOcr(id, body);
+  }
+
   @ApiOperation({ summary: 'Obtener documento por ID con archivos vinculados' })
   @ApiParam({ name: 'id', example: 1 })
   @Get(':id')

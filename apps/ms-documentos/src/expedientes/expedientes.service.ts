@@ -21,7 +21,17 @@ export class ExpedientesService {
       throw new NotFoundException(`Expediente ${id} no encontrado`);
     }
 
-    return expediente;
+    const documentos = expediente.documentos ?? [];
+
+    return {
+      ...expediente,
+
+      documentoPrincipal:
+        documentos.find((d: any) => d.esPrincipal) ?? null,
+
+      documentosAdjuntos:
+        documentos.filter((d: any) => !d.esPrincipal),
+    };
   }
 
   create(data: {
@@ -40,6 +50,8 @@ export class ExpedientesService {
     data: {
       documentoId: number;
       tipoRelacion?: string | null;
+      esPrincipal?: boolean;
+      orden?: number;
     },
   ) {
     await this.findById(expedienteId);
@@ -48,6 +60,63 @@ export class ExpedientesService {
       expedienteId,
       documentoId: data.documentoId,
       tipoRelacion: data.tipoRelacion,
+      esPrincipal: data.esPrincipal ?? false,
+      orden: data.orden ?? 0,
     });
+  }
+
+  async getResumen(id: number) {
+    const resumen = await this.repo.getResumen(id);
+
+    if (!resumen) {
+      throw new NotFoundException(`Expediente ${id} no encontrado`);
+    }
+
+    const documentos = resumen.documentos ?? [];
+
+    return {
+      expediente: {
+        id: resumen.id,
+        correlativo: resumen.correlativo,
+        empresaCodigo: resumen.empresa_codigo,
+        tipoExpediente: resumen.tipo_expediente,
+        codigoCentroCosto: resumen.codigo_centro_costo,
+        codigoOp: resumen.codigo_op,
+        estado: resumen.estado,
+      },
+      documentoPrincipal:
+        documentos.find((d: any) => d.esPrincipal) ?? null,
+      totales: {
+        documentos: resumen.total_documentos,
+        facturas: resumen.total_facturas,
+        guias: resumen.total_guias,
+        notasIngreso: resumen.total_notas_ingreso,
+        pagos: resumen.total_pagos,
+      },
+      documentos,
+    };
+  }
+
+  async getTimeline(id: number) {
+    const expediente = await this.repo.findById(id);
+
+    if (!expediente) {
+      throw new NotFoundException(
+        `Expediente ${id} no encontrado`,
+      );
+    }
+
+    const timeline =
+      await this.repo.getTimeline(id);
+
+    return {
+      expediente: {
+        id: expediente.id,
+        correlativo: expediente.correlativo,
+        empresaCodigo:
+          expediente.empresa_codigo,
+      },
+      timeline,
+    };
   }
 }
