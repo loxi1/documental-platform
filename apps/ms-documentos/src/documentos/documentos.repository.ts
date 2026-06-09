@@ -303,6 +303,7 @@ export class DocumentosRepository {
     estado?: string;
     limit?: number;
     offset?: number;
+    soloNoVinculados?: boolean;
   }) {
     const limit = filters.limit ?? 20;
     const offset = filters.offset ?? 0;
@@ -319,11 +320,14 @@ export class DocumentosRepository {
         o.creado_en,
         da.nombre_archivo,
         da.storage_provider,
-        da.storage_key
+        da.storage_key,
+        o.expediente_id,
+        o.vinculado_en
       FROM documentos.ocr_resultados o
       LEFT JOIN documentos.documentos_archivos da
         ON da.id = o.archivo_id
       WHERE (${filters.estado ?? null}::text IS NULL OR o.estado = ${filters.estado ?? null})
+        AND (${filters.soloNoVinculados ?? false}::boolean = false OR o.expediente_id IS NULL)
       ORDER BY o.id DESC
       LIMIT ${limit}
       OFFSET ${offset}
@@ -567,6 +571,88 @@ export class DocumentosRepository {
         motivo: 'NO_EXISTE_EXPEDIENTE_PARA_CLAVE',
         confidence: 100,
       },
+    };
+  }
+
+  async vincularOcrAExpediente(params: {
+    ocrResultadoId: number;
+    expedienteId: number;
+    tipoRelacion: string;
+    esPrincipal?: boolean;
+    orden?: number;
+  }) {
+    const ocrRows = await sql`
+      SELECT *
+      FROM documentos.ocr_resultados
+      WHERE id = ${params.ocrResultadoId}
+      LIMIT 1
+    `;
+
+    const ocr = ocrRows[0];
+
+    if (!ocr) {
+      return null;
+    }
+
+    if (params.esPrincipal) {
+      await sql`
+        UPDATE documentos.expediente_documentos
+        SET es_principal = false
+        WHERE expediente_id = ${params.expedienteId}
+      `;
+    }
+
+    const vinculoExistente = await sql`
+      SELECT expediente_id
+      FROM documentos.expediente_documentos
+      WHERE documento_id = ${ocr.documento_id}
+        AND expediente_id <> ${params.expedienteId}
+      LIMIT 1
+    `;
+
+    if (vinculoExistente[0]) {
+      return {
+        ocr,
+        vinculo: null,
+        yaVinculado: true,
+        expedienteId: vinculoExistente[0].expediente_id,
+      };
+    }
+
+    const rows = await sql`
+      INSERT INTO documentos.expediente_documentos (
+        expediente_id,
+        documento_id,
+        tipo_relacion,
+        es_principal,
+        orden
+      )
+      VALUES (
+        ${params.expedienteId},
+        ${ocr.documento_id},
+        ${params.tipoRelacion},
+        ${params.esPrincipal ?? false},
+        ${params.orden ?? 0}
+      )
+      ON CONFLICT (expediente_id, documento_id)
+      DO UPDATE SET
+        tipo_relacion = EXCLUDED.tipo_relacion,
+        es_principal = EXCLUDED.es_principal,
+        orden = EXCLUDED.orden
+      RETURNING *
+    `;
+    
+    await sql`
+      UPDATE documentos.ocr_resultados
+      SET
+        expediente_id = ${params.expedienteId},
+        vinculado_en = now()
+      WHERE id = ${params.ocrResultadoId}
+    `;
+
+    return {
+      ocr,
+      vinculo: rows[0],
     };
   }
 }

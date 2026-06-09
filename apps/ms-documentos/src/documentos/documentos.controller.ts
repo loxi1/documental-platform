@@ -65,11 +65,13 @@ export class DocumentosController {
     @Query('estado') estado?: string,
     @Query('limit') limit?: string,
     @Query('offset') offset?: string,
+    @Query('soloNoVinculados') soloNoVinculados?: string
   ) {
     return this.service.findOcrResultados({
       estado,
       limit: limit ? Number(limit) : 20,
       offset: offset ? Number(offset) : 0,
+      soloNoVinculados: soloNoVinculados === 'true',
     });
   }
 
@@ -112,6 +114,14 @@ export class DocumentosController {
     @Param('id', ParseIntPipe) id: number,
   ) {
     return this.service.sugerirExpedienteParaOcr(id);
+  }
+
+  @Post('ocr-resultados/:id/vincular-expediente')
+  vincularOcrAExpediente(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: any,
+  ) {
+    return this.service.vincularOcrAExpediente(id, body);
   }
 
   @ApiOperation({ summary: 'Obtener documento por ID con archivos vinculados' })

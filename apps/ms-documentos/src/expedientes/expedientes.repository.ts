@@ -114,6 +114,21 @@ export class ExpedientesRepository {
       `;
     }
 
+    const vinculoExistente = await sql`
+      SELECT expediente_id
+      FROM documentos.expediente_documentos
+      WHERE documento_id = ${data.documentoId}
+        AND expediente_id <> ${data.expedienteId}
+      LIMIT 1
+    `;
+
+    if (vinculoExistente[0]) {
+      return {
+        yaVinculado: true,
+        expedienteId: vinculoExistente[0].expediente_id,
+      };
+    }
+
     const rows = await sql`
       INSERT INTO documentos.expediente_documentos (
         expediente_id,
@@ -229,5 +244,43 @@ export class ExpedientesRepository {
     `;
 
     return rows[0] ?? null;
+  }
+
+  async getRevisionContable(filters: {
+    empresa: string;
+    anio: number;
+    mes: number;
+  }) {
+    const rows = await sql`
+      SELECT DISTINCT
+        e.id AS expediente_id,
+        e.correlativo,
+        e.estado AS expediente_estado,
+        d.id AS documento_id,
+        d.tipo_documental,
+        d.fecha_emision,
+        d.periodo_anio,
+        d.periodo_mes,
+        d.serie,
+        d.numero,
+        d.ruc_emisor,
+        d.razon_social_emisor,
+        d.monto_total,
+        d.estado AS documento_estado,
+        d.alerta_contable,
+        d.observacion_contable
+      FROM documentos.expedientes e
+      JOIN documentos.expediente_documentos ed
+        ON ed.expediente_id = e.id
+      JOIN documentos.documentos d
+        ON d.id = ed.documento_id
+      WHERE e.empresa_codigo = ${filters.empresa}
+        AND d.tipo_documental = 'FACTURA'
+        AND d.periodo_anio = ${filters.anio}
+        AND d.periodo_mes = ${filters.mes}
+      ORDER BY d.fecha_emision ASC, e.id ASC
+    `;
+
+    return rows;
   }
 }

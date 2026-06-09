@@ -100,6 +100,7 @@ export class DocumentosService {
     estado?: string;
     limit?: number;
     offset?: number;
+    soloNoVinculados?: boolean;
   }) {
     return this.repo.findOcrResultados(filters);
   }
@@ -217,5 +218,45 @@ export class DocumentosService {
     }
 
     return result.sugerencia;
+  }
+
+  async vincularOcrAExpediente(
+    id: number,
+    body: {
+      expedienteId: number;
+      tipoRelacion: string;
+      esPrincipal?: boolean;
+      orden?: number;
+    },
+  ) {
+    const result = await this.repo.vincularOcrAExpediente({
+      ocrResultadoId: id,
+      expedienteId: body.expedienteId,
+      tipoRelacion: body.tipoRelacion,
+      esPrincipal: body.esPrincipal ?? false,
+      orden: body.orden ?? 0,
+    });
+
+    if (!result) {
+      throw new NotFoundException(`Resultado OCR ${id} no encontrado`);
+    }
+
+    if (result?.yaVinculado) {
+      return {
+        ok: false,
+        mensaje: 'Documento OCR ya vinculado a otro expediente',
+        expedienteId: result.expedienteId,
+      };
+    }
+
+    return {
+      ocrResultadoId: id,
+      expedienteId: body.expedienteId,
+      documentoId: result.ocr.documento_id,
+      tipoRelacion: body.tipoRelacion,
+      esPrincipal: body.esPrincipal ?? false,
+      orden: body.orden ?? 0,
+      vinculo: result.vinculo,
+    };
   }
 }

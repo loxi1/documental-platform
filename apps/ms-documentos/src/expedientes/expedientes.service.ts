@@ -56,13 +56,23 @@ export class ExpedientesService {
   ) {
     await this.findById(expedienteId);
 
-    return this.repo.addDocumento({
+    const result = await this.repo.addDocumento({
       expedienteId,
       documentoId: data.documentoId,
       tipoRelacion: data.tipoRelacion,
       esPrincipal: data.esPrincipal ?? false,
       orden: data.orden ?? 0,
     });
+
+    if (result?.yaVinculado) {
+      return {
+        ok: false,
+        mensaje: 'Documento ya vinculado a otro expediente',
+        expedienteId: result.expedienteId,
+      };
+    }
+
+    return result;
   }
 
   async getResumen(id: number) {
@@ -127,5 +137,13 @@ export class ExpedientesService {
       existe: !!expediente,
       expediente,
     };
+  }
+
+  getRevisionContable(filters: {
+    empresa: string;
+    anio: number;
+    mes: number;
+  }) {
+    return this.repo.getRevisionContable(filters);
   }
 }

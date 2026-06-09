@@ -61,6 +61,18 @@ export class ExpedientesController {
     return this.service.addDocumento(id, body);
   }
 
+  @Get('revision-contable')
+  getRevisionContable(
+    @Query('empresa') empresa: string,
+    @Query('anio') anio: string,
+    @Query('mes') mes: string,
+  ) {
+    return this.service.getRevisionContable({
+      empresa,
+      anio: Number(anio),
+      mes: Number(mes),
+    });
+  }
   
   @Get(':id')
   findById(@Param('id', ParseIntPipe) id: number) {
