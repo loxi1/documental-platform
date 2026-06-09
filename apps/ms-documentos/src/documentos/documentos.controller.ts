@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, ParseIntPipe, Query, Post } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseIntPipe, Query, Post, Patch } from '@nestjs/common';
 import { ApiOperation, ApiQuery, ApiTags, ApiParam, } from '@nestjs/swagger';
 import { DocumentosService } from './documentos.service';
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
@@ -122,6 +122,32 @@ export class DocumentosController {
     @Body() body: any,
   ) {
     return this.service.vincularOcrAExpediente(id, body);
+  }
+
+  @Post(':id/alertas')
+  createDocumentoAlerta(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: any,
+  ) {
+    return this.service.createDocumentoAlerta(id, body);
+  }
+
+  @Get(':id/alertas')
+  findDocumentoAlertas(
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.service.findDocumentoAlertas(id);
+  }
+
+  @Patch(':documentoId/alertas/:alertaId/resolver')
+  resolverDocumentoAlerta(
+    @Param('documentoId', ParseIntPipe) documentoId: number,
+    @Param('alertaId', ParseIntPipe) alertaId: number,
+  ) {
+    return this.service.resolverDocumentoAlerta(
+      documentoId,
+      alertaId,
+    );
   }
 
   @ApiOperation({ summary: 'Obtener documento por ID con archivos vinculados' })

@@ -655,4 +655,52 @@ export class DocumentosRepository {
       vinculo: rows[0],
     };
   }
+
+  async createDocumentoAlerta(params: {
+    documentoId: number;
+    tipoAlerta: string;
+    mensaje?: string | null;
+  }) {
+    const rows = await sql`
+      INSERT INTO documentos.documento_alertas (
+        documento_id,
+        tipo_alerta,
+        mensaje
+      )
+      VALUES (
+        ${params.documentoId},
+        ${params.tipoAlerta},
+        ${params.mensaje ?? null}
+      )
+      RETURNING *
+    `;
+
+    return rows[0];
+  }
+
+  async findDocumentoAlertas(documentoId: number) {
+    return sql`
+      SELECT *
+      FROM documentos.documento_alertas
+      WHERE documento_id = ${documentoId}
+      ORDER BY creado_en DESC
+    `;
+  }
+
+  async resolverDocumentoAlerta(params: {
+    documentoId: number;
+    alertaId: number;
+  }) {
+    const rows = await sql`
+      UPDATE documentos.documento_alertas
+      SET
+        estado = 'resuelta',
+        resuelto_en = now()
+      WHERE id = ${params.alertaId}
+        AND documento_id = ${params.documentoId}
+      RETURNING *
+    `;
+
+    return rows[0] ?? null;
+  }
 }

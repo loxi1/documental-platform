@@ -1,4 +1,4 @@
-import {
+import {  
   Body,
   Controller,
   Get,
@@ -68,6 +68,26 @@ export class ExpedientesController {
     @Query('mes') mes: string,
   ) {
     return this.service.getRevisionContable({
+      empresa,
+      anio: Number(anio),
+      mes: Number(mes),
+    });
+  }
+
+  @Get(':id/estado-documental')
+  getEstadoDocumental(
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.service.getEstadoDocumental(id);
+  }
+
+  @Get('dashboard-contable')
+  getDashboardContable(
+    @Query('empresa') empresa: string,
+    @Query('anio') anio: string,
+    @Query('mes') mes: string,
+  ) {
+    return this.service.getDashboardContable({
       empresa,
       anio: Number(anio),
       mes: Number(mes),

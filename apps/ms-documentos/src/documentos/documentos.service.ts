@@ -259,4 +259,40 @@ export class DocumentosService {
       vinculo: result.vinculo,
     };
   }
+
+  createDocumentoAlerta(
+    documentoId: number,
+    data: {
+      tipoAlerta: string;
+      mensaje?: string | null;
+    },
+  ) {
+    return this.repo.createDocumentoAlerta({
+      documentoId,
+      tipoAlerta: data.tipoAlerta,
+      mensaje: data.mensaje,
+    });
+  }
+
+  findDocumentoAlertas(documentoId: number) {
+    return this.repo.findDocumentoAlertas(documentoId);
+  }
+
+  async resolverDocumentoAlerta(
+    documentoId: number,
+    alertaId: number,
+  ) {
+    const alerta = await this.repo.resolverDocumentoAlerta({
+      documentoId,
+      alertaId,
+    });
+
+    if (!alerta) {
+      throw new NotFoundException(
+        `Alerta ${alertaId} no encontrada para documento ${documentoId}`,
+      );
+    }
+
+    return alerta;
+  }
 }

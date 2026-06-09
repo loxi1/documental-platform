@@ -146,4 +146,34 @@ export class ExpedientesService {
   }) {
     return this.repo.getRevisionContable(filters);
   }
+
+  async getEstadoDocumental(id: number) {
+    const result = await this.repo.getEstadoDocumental(id);
+
+    if (!result) {
+      throw new NotFoundException(`Expediente ${id} no encontrado`);
+    }
+
+    return result;
+  }
+
+  async getDashboardContable(filters: {
+    empresa: string;
+    anio: number;
+    mes: number;
+  }) {
+    const dashboard = await this.repo.getDashboardContable(filters);
+
+    return {
+      empresa: filters.empresa,
+      anio: filters.anio,
+      mes: filters.mes,
+      totales: {
+        expedientes: dashboard?.expedientes ?? 0,
+        facturas: dashboard?.facturas ?? 0,
+        montoFacturado: dashboard?.monto_facturado ?? '0.00',
+        alertasActivas: dashboard?.alertas_activas ?? 0,
+      },
+    };
+  }
 }

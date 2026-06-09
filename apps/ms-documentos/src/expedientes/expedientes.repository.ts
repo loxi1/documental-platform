@@ -252,7 +252,7 @@ export class ExpedientesRepository {
     mes: number;
   }) {
     const rows = await sql`
-      SELECT DISTINCT
+      SELECT
         e.id AS expediente_id,
         e.correlativo,
         e.estado AS expediente_estado,
@@ -268,19 +268,126 @@ export class ExpedientesRepository {
         d.monto_total,
         d.estado AS documento_estado,
         d.alerta_contable,
-        d.observacion_contable
+        d.observacion_contable,
+        COUNT(a.id)::int AS alertas_activas
       FROM documentos.expedientes e
       JOIN documentos.expediente_documentos ed
         ON ed.expediente_id = e.id
       JOIN documentos.documentos d
         ON d.id = ed.documento_id
+      LEFT JOIN documentos.documento_alertas a
+        ON a.documento_id = d.id
+      AND a.estado = 'activa'
       WHERE e.empresa_codigo = ${filters.empresa}
         AND d.tipo_documental = 'FACTURA'
         AND d.periodo_anio = ${filters.anio}
         AND d.periodo_mes = ${filters.mes}
+      GROUP BY
+        e.id,
+        e.correlativo,
+        e.estado,
+        d.id,
+        d.tipo_documental,
+        d.fecha_emision,
+        d.periodo_anio,
+        d.periodo_mes,
+        d.serie,
+        d.numero,
+        d.ruc_emisor,
+        d.razon_social_emisor,
+        d.monto_total,
+        d.estado,
+        d.alerta_contable,
+        d.observacion_contable
       ORDER BY d.fecha_emision ASC, e.id ASC
     `;
 
     return rows;
+  }
+
+  async getEstadoDocumental(expedienteId: number) {
+    const expedienteRows = await sql`
+      SELECT id, correlativo, empresa_codigo, estado
+      FROM documentos.expedientes
+      WHERE id = ${expedienteId}
+      LIMIT 1
+    `;
+
+    const expediente = expedienteRows[0];
+
+    if (!expediente) {
+      return null;
+    }
+
+    const rows = await sql`
+      SELECT
+        d.tipo_documental,
+        COUNT(*)::int AS cantidad
+      FROM documentos.expediente_documentos ed
+      JOIN documentos.documentos d
+        ON d.id = ed.documento_id
+      WHERE ed.expediente_id = ${expedienteId}
+      GROUP BY d.tipo_documental
+    `;
+
+    const alertaRows = await sql`
+      SELECT COUNT(*)::int AS total
+      FROM documentos.documento_alertas a
+      JOIN documentos.expediente_documentos ed
+        ON ed.documento_id = a.documento_id
+      WHERE ed.expediente_id = ${expedienteId}
+        AND a.estado = 'activa'
+    `;
+
+    const alertasActivas = Number(alertaRows[0]?.total ?? 0);
+
+    const base = {
+      FACTURA: 0,
+      GUIA_REMISION: 0,
+      NOTA_INGRESO: 0,
+      PAGO_TRANSFERENCIA: 0,
+      PAGO_DETRACCION: 0,
+      RECIBO_HONORARIO: 0,
+      OC: 0,
+      OS: 0,
+    };
+
+    for (const row of rows) {
+      base[row.tipo_documental] = Number(row.cantidad);
+    }
+
+    return {
+      expediente,
+      documentos: base,
+      alertasActivas,
+    };
+  }
+
+  async getDashboardContable(filters: {
+    empresa: string;
+    anio: number;
+    mes: number;
+  }) {
+    const rows = await sql`
+      SELECT
+        COUNT(DISTINCT e.id)::int AS expedientes,
+        COUNT(d.id)::int AS facturas,
+        COALESCE(SUM(d.monto_total), 0)::numeric(14,2) AS monto_facturado,
+        COUNT(a.id)::int AS alertas_activas
+      FROM documentos.expedientes e
+      JOIN documentos.expediente_documentos ed
+        ON ed.expediente_id = e.id
+      JOIN documentos.documentos d
+        ON d.id = ed.documento_id
+      LEFT JOIN documentos.documento_alertas a
+        ON a.documento_id = d.id
+      AND a.estado = 'activa'
+      WHERE e.empresa_codigo = ${filters.empresa}
+        AND d.tipo_documental = 'FACTURA'
+        AND d.periodo_anio = ${filters.anio}
+        AND d.periodo_mes = ${filters.mes}
+    `;
+
+    return rows[0];
   }
 }
