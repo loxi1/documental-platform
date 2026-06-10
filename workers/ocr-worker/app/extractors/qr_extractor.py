@@ -3,17 +3,14 @@ import subprocess
 import tempfile
 import re
 from typing import Any
-from app.core.dates import normalize_date
 
 import cv2
 from pyzbar.pyzbar import decode
 
+from app.core.dates import normalize_date
+
 
 def parse_sunat_qr(raw: str) -> dict[str, Any] | None:
-    """
-    Formatos comunes SUNAT QR:
-    RUC|TIPO|SERIE|NUMERO|IGV|TOTAL|FECHA|...
-    """
     if not raw:
         return None
 
@@ -31,7 +28,6 @@ def parse_sunat_qr(raw: str) -> dict[str, Any] | None:
     total = None
     fecha = None
 
-    # SUNAT suele traer IGV en parts[4], total en parts[5], fecha en parts[6]
     if len(parts) > 5:
         try:
             total = float(parts[5])
@@ -39,8 +35,7 @@ def parse_sunat_qr(raw: str) -> dict[str, Any] | None:
             total = None
 
     if len(parts) > 6:
-        fecha_raw = parts[6].strip()
-        fecha = normalize_date(fecha_raw)
+        fecha = normalize_date(parts[6].strip())
 
     if not re.match(r"^(10|20)\d{9}$", ruc):
         return None
@@ -56,23 +51,86 @@ def parse_sunat_qr(raw: str) -> dict[str, Any] | None:
     }
 
 
+def decode_qr_from_cv_image(img) -> list[str]:
+    results = decode(img)
+    return [
+        r.data.decode("utf-8", errors="ignore")
+        for r in results
+    ]
+
+
+def preprocess_variants(img) -> list:
+    variants = []
+
+    variants.append(img)
+
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    variants.append(gray)
+
+    for scale in [1.5, 2, 3]:
+        resized = cv2.resize(
+            gray,
+            None,
+            fx=scale,
+            fy=scale,
+            interpolation=cv2.INTER_CUBIC,
+        )
+        variants.append(resized)
+
+    blurred = cv2.GaussianBlur(gray, (3, 3), 0)
+    variants.append(blurred)
+
+    _, thresh = cv2.threshold(
+        gray,
+        0,
+        255,
+        cv2.THRESH_BINARY + cv2.THRESH_OTSU,
+    )
+    variants.append(thresh)
+
+    adaptive = cv2.adaptiveThreshold(
+        gray,
+        255,
+        cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+        cv2.THRESH_BINARY,
+        31,
+        2,
+    )
+    variants.append(adaptive)
+
+    return variants
+
+
 def decode_qr_from_image(image_path: Path) -> list[str]:
     img = cv2.imread(str(image_path))
 
     if img is None:
         return []
 
-    results = decode(img)
-    return [r.data.decode("utf-8", errors="ignore") for r in results]
+    values: list[str] = []
+
+    for region in crop_regions(img):
+        for variant in preprocess_variants(region):
+            try:
+                decoded = decode_qr_from_cv_image(variant)
+                for item in decoded:
+                    if item not in values:
+                        values.append(item)
+            except Exception:
+                continue
+
+    return values
 
 
-def render_pdf_first_page_to_png(pdf_path: Path) -> Path:
+def render_pdf_first_page_to_png(pdf_path: Path, dpi: int = 300) -> Path:
     tmp_dir = Path(tempfile.mkdtemp(prefix="ocr_qr_"))
     output_prefix = tmp_dir / "page"
 
     subprocess.run(
         [
             "pdftoppm",
+            "-r",
+            str(dpi),
             "-png",
             "-f",
             "1",
@@ -94,11 +152,19 @@ def extract_qr_data(path: Path) -> dict[str, Any] | None:
     qr_values: list[str] = []
 
     if ext == ".pdf":
-        try:
-            png_path = render_pdf_first_page_to_png(path)
-            qr_values = decode_qr_from_image(png_path)
-        except Exception:
-            qr_values = []
+        for dpi in [300, 400, 500]:
+            try:
+                png_path = render_pdf_first_page_to_png(path, dpi=dpi)
+                values = decode_qr_from_image(png_path)
+
+                for value in values:
+                    if value not in qr_values:
+                        qr_values.append(value)
+
+                if qr_values:
+                    break
+            except Exception:
+                continue
 
     elif ext in [".png", ".jpg", ".jpeg", ".webp", ".tif", ".tiff"]:
         qr_values = decode_qr_from_image(path)
@@ -109,3 +175,25 @@ def extract_qr_data(path: Path) -> dict[str, Any] | None:
             return parsed
 
     return None
+
+def crop_regions(img) -> list:
+    h, w = img.shape[:2]
+
+    regions = [img]
+
+    # zona inferior completa
+    regions.append(img[int(h * 0.45):h, 0:w])
+
+    # inferior izquierda
+    regions.append(img[int(h * 0.45):h, 0:int(w * 0.5)])
+
+    # inferior centro
+    regions.append(img[int(h * 0.45):h, int(w * 0.25):int(w * 0.75)])
+
+    # inferior derecha
+    regions.append(img[int(h * 0.45):h, int(w * 0.5):w])
+
+    # centro vertical, útil para tickets pegados en A4
+    regions.append(img[int(h * 0.20):int(h * 0.95), int(w * 0.10):int(w * 0.90)])
+
+    return regions

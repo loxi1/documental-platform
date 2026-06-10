@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { AlertTriangle, ArrowLeft, CalendarClock, CheckCircle2, ExternalLink, FileText, XCircle } from "lucide-react";
+import { AlertTriangle, ArrowLeft, CalendarClock, CheckCircle2, CircleDot, ExternalLink, FileText, Link2, XCircle } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import {
@@ -44,6 +44,66 @@ function tituloTimeline(item: ExpedienteTimelineItem) {
 
 function descripcionTimeline(item: ExpedienteTimelineItem) {
   return item.descripcion ?? item.mensaje ?? "Sin descripción";
+}
+
+function tipoTimeline(item: ExpedienteTimelineItem) {
+  return String(item.tipo ?? item.evento ?? item.titulo ?? "EVENTO").toUpperCase();
+}
+
+function timelineBadgeLabel(item: ExpedienteTimelineItem) {
+  const tipo = tipoTimeline(item);
+
+  if (tipo.includes("OCR")) return "OCR";
+  if (tipo.includes("EXPEDIENTE")) return "Expediente";
+  if (tipo.includes("DOCUMENTO")) return "Documento";
+  if (tipo.includes("ALERTA")) return "Alerta";
+  if (tipo.includes("VINCUL")) return "Vínculo";
+
+  return "Evento";
+}
+
+function timelineIcon(item: ExpedienteTimelineItem) {
+  const tipo = tipoTimeline(item);
+
+  if (tipo.includes("ALERTA")) return <AlertTriangle className="h-4 w-4" />;
+  if (tipo.includes("VINCUL")) return <Link2 className="h-4 w-4" />;
+  if (tipo.includes("DOCUMENTO")) return <FileText className="h-4 w-4" />;
+  if (tipo.includes("OCR")) return <CircleDot className="h-4 w-4" />;
+
+  return <CalendarClock className="h-4 w-4" />;
+}
+
+function timelineTone(item: ExpedienteTimelineItem) {
+  const tipo = tipoTimeline(item);
+
+  if (tipo.includes("ALERTA")) {
+    return "border-amber-200 bg-amber-50 text-amber-900";
+  }
+
+  if (tipo.includes("OCR")) {
+    return "border-blue-200 bg-blue-50 text-blue-900";
+  }
+
+  if (tipo.includes("EXPEDIENTE") || tipo.includes("VINCUL")) {
+    return "border-emerald-200 bg-emerald-50 text-emerald-900";
+  }
+
+  return "border-border bg-muted/30 text-foreground";
+}
+
+function formatTimelineDate(value: string) {
+  if (!value) return "Sin fecha";
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return new Intl.DateTimeFormat("es-PE", {
+    dateStyle: "short",
+    timeStyle: "short",
+  }).format(date);
 }
 
 function documentoLabel(documento?: ExpedienteDocumento | null) {
@@ -380,47 +440,64 @@ export default function ExpedienteDetallePage() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <CalendarClock className="h-5 w-5" />
-            Timeline
-          </CardTitle>
+          <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
+            <CardTitle className="flex items-center gap-2">
+              <CalendarClock className="h-5 w-5" />
+              Timeline
+            </CardTitle>
+            <span className="text-xs text-muted-foreground">
+              {timeline.length} evento{timeline.length === 1 ? "" : "s"} registrado
+              {timeline.length === 1 ? "" : "s"}
+            </span>
+          </div>
         </CardHeader>
         <CardContent>
-          <div className="space-y-3">
-            {timeline.length ? (
-              timeline.map((item, index) => (
-                <div key={item.id ?? index} className="relative pl-7">
-                  <span className="absolute left-0 top-1 flex h-4 w-4 items-center justify-center rounded-full border bg-background">
-                    <span className="h-2 w-2 rounded-full bg-foreground" />
-                  </span>
+          {timeline.length ? (
+            <div className="relative ml-2 space-y-4">
+              {timeline.map((item, index) => (
+                <div key={item.id ?? index} className="relative grid gap-3 pl-10 md:grid-cols-[180px_1fr]">
                   {index < timeline.length - 1 ? (
-                    <span className="absolute bottom-[-0.75rem] left-[7px] top-5 w-px bg-border" />
+                    <span className="absolute left-[15px] top-9 h-[calc(100%+1rem)] w-px bg-border" />
                   ) : null}
-                  <div className="rounded-lg border bg-muted/20 p-3">
-                    <div className="text-sm font-medium">{tituloTimeline(item)}</div>
-                    <div className="text-sm text-muted-foreground">
-                      {descripcionTimeline(item)}
-                    </div>
-                    <div className="mt-1 text-xs text-muted-foreground">
-                      {fechaTimeline(item)}
+
+                  <span className={`absolute left-0 top-1 flex h-8 w-8 items-center justify-center rounded-full border ${timelineTone(item)}`}>
+                    {timelineIcon(item)}
+                  </span>
+
+                  <div className="pt-1 text-xs text-muted-foreground">
+                    {formatTimelineDate(fechaTimeline(item))}
+                  </div>
+
+                  <div className={`rounded-xl border p-4 shadow-sm ${timelineTone(item)}`}>
+                    <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+                      <div>
+                        <div className="text-sm font-semibold">{tituloTimeline(item)}</div>
+                        <p className="mt-1 text-sm opacity-80">
+                          {descripcionTimeline(item)}
+                        </p>
+                      </div>
+
+                      <Badge variant="secondary" className="w-fit bg-background/70">
+                        {timelineBadgeLabel(item)}
+                      </Badge>
                     </div>
                   </div>
                 </div>
-              ))
-            ) : (
-              <Empty>
-                <EmptyHeader>
-                  <EmptyMedia variant="icon">
-                    <CalendarClock className="h-5 w-5" />
-                  </EmptyMedia>
-                  <EmptyTitle>Timeline sin eventos</EmptyTitle>
-                  <EmptyDescription>
-                    Los eventos de OCR, vinculación y alertas aparecerán aquí.
-                  </EmptyDescription>
-                </EmptyHeader>
-              </Empty>
-            )}
-          </div>
+              ))}
+            </div>
+          ) : (
+            <Empty>
+              <EmptyHeader>
+                <EmptyMedia variant="icon">
+                  <CalendarClock className="h-5 w-5" />
+                </EmptyMedia>
+                <EmptyTitle>Timeline sin eventos</EmptyTitle>
+                <EmptyDescription>
+                  Los eventos de OCR, vinculación y alertas aparecerán aquí.
+                </EmptyDescription>
+              </EmptyHeader>
+            </Empty>
+          )}
         </CardContent>
       </Card>
     </main>
