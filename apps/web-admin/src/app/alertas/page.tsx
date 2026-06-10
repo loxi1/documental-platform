@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -69,9 +70,11 @@ function resueltoEn(alerta: DocumentoAlerta) {
   return fechaAlerta(pick(alerta.resuelto_en, alerta.resueltoEn, null));
 }
 
-export default function AlertasPage() {
-  const [documentoIdInput, setDocumentoIdInput] = useState("");
-  const [documentoId, setDocumentoId] = useState<string | undefined>();
+function AlertasContent() {
+  const searchParams = useSearchParams();
+  const documentoIdParam = searchParams.get("documentoId") ?? undefined;
+  const [documentoIdInput, setDocumentoIdInput] = useState(documentoIdParam ?? "");
+  const [documentoId, setDocumentoId] = useState<string | undefined>(documentoIdParam);
   const [resolviendoId, setResolviendoId] = useState<number | string | null>(null);
 
   const alertasQuery = useDocumentoAlertas(documentoId);
@@ -80,6 +83,13 @@ export default function AlertasPage() {
   const alertas = useMemo(() => alertasQuery.data ?? [], [alertasQuery.data]);
   const activas = alertas.filter((alerta) => estadoAlerta(alerta) !== "resuelta");
   const resueltas = alertas.filter((alerta) => estadoAlerta(alerta) === "resuelta");
+
+  useEffect(() => {
+    if (!documentoIdParam) return;
+
+    setDocumentoIdInput(documentoIdParam);
+    setDocumentoId(documentoIdParam);
+  }, [documentoIdParam]);
 
   function consultar() {
     const value = documentoIdInput.trim();
@@ -320,5 +330,13 @@ export default function AlertasPage() {
         </CardContent>
       </Card>
     </main>
+  );
+}
+
+export default function AlertasPage() {
+  return (
+    <Suspense fallback={<div className="p-6 text-sm text-muted-foreground">Cargando alertas...</div>}>
+      <AlertasContent />
+    </Suspense>
   );
 }

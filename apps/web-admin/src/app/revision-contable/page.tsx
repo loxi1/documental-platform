@@ -382,17 +382,25 @@ export default function RevisionContablePage() {
                           ) : null}
 
                           {docId !== "-" ? (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => crearObservacion(item)}
-                              disabled={
-                                crearAlerta.isPending && observandoId === docId
-                              }
-                            >
-                              <AlertTriangle className="mr-1 h-4 w-4" />
-                              Observar
-                            </Button>
+                            <>
+                              <Button asChild size="sm" variant="outline">
+                                <Link href={`/alertas?documentoId=${docId}`}>
+                                  Alertas
+                                </Link>
+                              </Button>
+
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => crearObservacion(item)}
+                                disabled={
+                                  crearAlerta.isPending && observandoId === docId
+                                }
+                              >
+                                <AlertTriangle className="mr-1 h-4 w-4" />
+                                Observar
+                              </Button>
+                            </>
                           ) : null}
                         </td>
                       </tr>
