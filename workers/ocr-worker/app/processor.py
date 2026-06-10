@@ -3,20 +3,21 @@ from pathlib import Path
 from app.schemas import OcrProcesarArchivoPayload
 from app.storage import resolve_local_path, file_exists
 from app.extractors.text_extractor import extract_text
-metadata = {
-    "ruc": enriched.get("ruc") or extract_ruc(text),
-    "serie": enriched.get("serie"),
-    "numero": enriched.get("numero"),
-    "fechaEmision": extract_fecha(text),
-    "montoTotal": extract_monto(text),
-}
-
+from app.extractors.metadata_extractor import (
+    extract_ruc,
+    extract_fecha,
+    extract_monto,
+    extract_serie_numero,
+)
+from app.extractors.qr_extractor import extract_qr_data
+from app.extractors.qr_sunat_extractor import (
+    build_initial_metadata_source,
+    merge_qr_metadata,
+)
 from app.result_builder import build_ocr_result
 from app.r2_storage import download_from_r2
 from app.legacy_core.document_enricher import enrich_page
-
-from app.extractors.qr_extractor import extract_qr_data
-from app.extractors.qr_sunat_extractor import merge_qr_metadata
+from app.classifier import classify_document
 
 
 TIPO_MAP = {
@@ -29,6 +30,8 @@ TIPO_MAP = {
     "PAGO_DETRACCION": "PAGO_DETRACCION",
     "RECIBO_HONORARIO": "RECIBO_HONORARIO",
     "NOTA_CREDITO": "NOTA_CREDITO",
+    "OC": "OC",
+    "OS": "OS",
     "OTRO": "OTRO",
 }
 
@@ -45,7 +48,9 @@ def normalize_cliente_abreviatura(cliente: str) -> str:
     value = str(cliente or "").strip().upper()
 
     if not value:
-        raise ValueError("clienteAbreviatura es obligatorio para construir la clave documental")
+        raise ValueError(
+            "clienteAbreviatura es obligatorio para construir la clave documental"
+        )
 
     return value
 
@@ -135,7 +140,9 @@ async def process_file(payload: OcrProcesarArchivoPayload) -> dict:
         cliente=cliente,
     )
 
-    tipo_documental = map_tipo(enriched.get("tipo"))
+    tipo_documental = map_tipo(
+        enriched.get("tipo") or classify_document(text, file_path.name)
+    )
 
     serie_numero = extract_serie_numero(text)
 
@@ -147,6 +154,8 @@ async def process_file(payload: OcrProcesarArchivoPayload) -> dict:
         "montoTotal": extract_monto(text),
     }
 
+    metadata_source = build_initial_metadata_source(metadata)
+
     campos_detectados = [
         key for key, value in metadata.items()
         if value is not None and value != ""
@@ -154,12 +163,15 @@ async def process_file(payload: OcrProcesarArchivoPayload) -> dict:
 
     confidence = round(len(campos_detectados) / len(metadata), 2)
 
-    # QR se usará luego de forma condicionada:
-    # solo FACTURA/GUIA_REMISION y solo si faltan campos o confidence baja.
     qr_data = None
-    # if should_use_qr(tipo_documental, metadata, confidence):
-    #     qr_data = extract_qr_data(file_path)
-    #     metadata = merge_qr_metadata(metadata, qr_data)
+
+    if should_use_qr(tipo_documental, metadata, confidence):
+        qr_data = extract_qr_data(file_path)
+        metadata, metadata_source = merge_qr_metadata(
+            metadata,
+            qr_data,
+            metadata_source,
+        )
 
     clave_documental = build_clave_documental(
         cliente=cliente,
@@ -182,6 +194,7 @@ async def process_file(payload: OcrProcesarArchivoPayload) -> dict:
         "textLength": len(text),
         "textPreview": text[:500],
         "metadata": metadata,
+        "metadataSource": metadata_source,
         "qr": qr_data,
         "mensaje": "Archivo leído, clasificado y extraído correctamente",
     })
