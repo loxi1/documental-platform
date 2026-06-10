@@ -5,6 +5,13 @@ import { useParams } from "next/navigation";
 import { ArrowLeft, CalendarClock, CheckCircle2, FileText, XCircle } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "@/components/ui/empty";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -184,9 +191,17 @@ export default function ExpedienteDetallePage() {
             {documentoPrincipal ? (
               <DocumentoCard documento={documentoPrincipal} />
             ) : (
-              <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
-                Este expediente aún no tiene documento principal.
-              </div>
+              <Empty className="p-6">
+                <EmptyHeader>
+                  <EmptyMedia variant="icon">
+                    <FileText className="h-5 w-5" />
+                  </EmptyMedia>
+                  <EmptyTitle>Sin documento principal</EmptyTitle>
+                  <EmptyDescription>
+                    Este expediente aún no tiene OC, OS o factura principal vinculada.
+                  </EmptyDescription>
+                </EmptyHeader>
+              </Empty>
             )}
           </CardContent>
         </Card>
@@ -249,9 +264,17 @@ export default function ExpedienteDetallePage() {
                 <DocumentoCard key={documento.documentoId} documento={documento} />
               ))
             ) : (
-              <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground md:col-span-2">
-                No hay documentos adjuntos registrados.
-              </div>
+              <Empty className="md:col-span-2">
+                <EmptyHeader>
+                  <EmptyMedia variant="icon">
+                    <FileText className="h-5 w-5" />
+                  </EmptyMedia>
+                  <EmptyTitle>Sin documentos adjuntos</EmptyTitle>
+                  <EmptyDescription>
+                    Cuando se agreguen guías, notas de ingreso o pagos aparecerán aquí.
+                  </EmptyDescription>
+                </EmptyHeader>
+              </Empty>
             )}
           </div>
         </CardContent>
@@ -268,20 +291,36 @@ export default function ExpedienteDetallePage() {
           <div className="space-y-3">
             {timeline.length ? (
               timeline.map((item, index) => (
-                <div key={item.id ?? index} className="border-l pl-4">
-                  <div className="text-sm font-medium">{tituloTimeline(item)}</div>
-                  <div className="text-sm text-muted-foreground">
-                    {descripcionTimeline(item)}
-                  </div>
-                  <div className="mt-1 text-xs text-muted-foreground">
-                    {fechaTimeline(item)}
+                <div key={item.id ?? index} className="relative pl-7">
+                  <span className="absolute left-0 top-1 flex h-4 w-4 items-center justify-center rounded-full border bg-background">
+                    <span className="h-2 w-2 rounded-full bg-foreground" />
+                  </span>
+                  {index < timeline.length - 1 ? (
+                    <span className="absolute bottom-[-0.75rem] left-[7px] top-5 w-px bg-border" />
+                  ) : null}
+                  <div className="rounded-lg border bg-muted/20 p-3">
+                    <div className="text-sm font-medium">{tituloTimeline(item)}</div>
+                    <div className="text-sm text-muted-foreground">
+                      {descripcionTimeline(item)}
+                    </div>
+                    <div className="mt-1 text-xs text-muted-foreground">
+                      {fechaTimeline(item)}
+                    </div>
                   </div>
                 </div>
               ))
             ) : (
-              <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
-                No hay eventos en el timeline.
-              </div>
+              <Empty>
+                <EmptyHeader>
+                  <EmptyMedia variant="icon">
+                    <CalendarClock className="h-5 w-5" />
+                  </EmptyMedia>
+                  <EmptyTitle>Timeline sin eventos</EmptyTitle>
+                  <EmptyDescription>
+                    Los eventos de OCR, vinculación y alertas aparecerán aquí.
+                  </EmptyDescription>
+                </EmptyHeader>
+              </Empty>
             )}
           </div>
         </CardContent>

@@ -9,6 +9,7 @@ import {
   Search,
 } from "lucide-react";
 
+import { MetricCard } from "@/components/documental/metric-card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -19,6 +20,13 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "@/components/ui/empty";
 import { useDocumentoAlertas, useResolverDocumentoAlerta } from "@/hooks/useAlertas";
 import type { DocumentoAlerta } from "@/types/alerta";
 
@@ -173,57 +181,27 @@ function AlertasContent() {
       </Card>
 
       <div className="grid gap-4 md:grid-cols-3">
-        <Card>
-          <CardHeader className="space-y-0">
-            <CardTitle className="text-sm text-muted-foreground">
-              Documento consultado
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-3xl font-bold">{documentoId ?? "-"}</div>
-            <p className="mt-2 text-xs text-muted-foreground">
-              Documento usado para consultar alertas.
-            </p>
-          </CardContent>
-        </Card>
+        <MetricCard
+          title="Documento consultado"
+          value={documentoId ?? "-"}
+          description="Documento usado para consultar alertas."
+        />
 
-        <Card>
-          <CardHeader className="space-y-0">
-            <CardTitle className="text-sm text-muted-foreground">
-              Alertas activas
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center gap-2 text-3xl font-bold">
-              {activas.length}
-              {activas.length > 0 ? (
-                <AlertTriangle className="h-6 w-6 text-amber-600" />
-              ) : null}
-            </div>
-            <p className="mt-2 text-xs text-muted-foreground">
-              Avisos pendientes de resolver.
-            </p>
-          </CardContent>
-        </Card>
+        <MetricCard
+          title="Alertas activas"
+          value={activas.length}
+          description="Avisos pendientes de resolver."
+          icon={<AlertTriangle className="h-5 w-5" />}
+          accent={activas.length > 0 ? "warning" : "success"}
+        />
 
-        <Card>
-          <CardHeader className="space-y-0">
-            <CardTitle className="text-sm text-muted-foreground">
-              Alertas resueltas
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center gap-2 text-3xl font-bold">
-              {resueltas.length}
-              {resueltas.length > 0 ? (
-                <CheckCircle2 className="h-6 w-6 text-emerald-600" />
-              ) : null}
-            </div>
-            <p className="mt-2 text-xs text-muted-foreground">
-              Observaciones ya atendidas.
-            </p>
-          </CardContent>
-        </Card>
+        <MetricCard
+          title="Alertas resueltas"
+          value={resueltas.length}
+          description="Observaciones ya atendidas."
+          icon={<CheckCircle2 className="h-5 w-5" />}
+          accent="success"
+        />
       </div>
 
       {alertasQuery.error ? (
@@ -247,13 +225,24 @@ function AlertasContent() {
         </CardHeader>
         <CardContent>
           {!documentoId ? (
-            <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
-              Ingresa un Documento ID para consultar sus alertas.
-            </div>
+            <Empty>
+              <EmptyHeader>
+                <EmptyMedia variant="icon">
+                  <Search className="h-5 w-5" />
+                </EmptyMedia>
+                <EmptyTitle>Consulta un documento</EmptyTitle>
+                <EmptyDescription>
+                  Ingresa un Documento ID para consultar sus alertas activas e históricas.
+                </EmptyDescription>
+              </EmptyHeader>
+            </Empty>
           ) : alertasQuery.isLoading ? (
-            <div className="py-8 text-sm text-muted-foreground">
-              Cargando alertas...
-            </div>
+            <Empty>
+              <EmptyHeader>
+                <EmptyTitle>Cargando alertas...</EmptyTitle>
+                <EmptyDescription>Estamos consultando el historial del documento.</EmptyDescription>
+              </EmptyHeader>
+            </Empty>
           ) : alertas.length ? (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
@@ -323,9 +312,17 @@ function AlertasContent() {
               </table>
             </div>
           ) : (
-            <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
-              Este documento no tiene alertas registradas.
-            </div>
+            <Empty>
+              <EmptyHeader>
+                <EmptyMedia variant="icon">
+                  <CheckCircle2 className="h-5 w-5" />
+                </EmptyMedia>
+                <EmptyTitle>Sin alertas registradas</EmptyTitle>
+                <EmptyDescription>
+                  Este documento no tiene alertas activas ni históricas.
+                </EmptyDescription>
+              </EmptyHeader>
+            </Empty>
           )}
         </CardContent>
       </Card>

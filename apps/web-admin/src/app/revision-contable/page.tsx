@@ -10,6 +10,7 @@ import {
   Search,
 } from "lucide-react";
 
+import { MetricCard } from "@/components/documental/metric-card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -19,6 +20,13 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "@/components/ui/empty";
 import { useCrearDocumentoAlerta } from "@/hooks/useAlertas";
 import { useRevisionContable } from "@/hooks/useRevisionContable";
 import type { RevisionContableItem } from "@/types/revision-contable";
@@ -226,58 +234,31 @@ export default function RevisionContablePage() {
       </Card>
 
       <div className="grid gap-4 md:grid-cols-3">
-        <Card>
-          <CardHeader className="space-y-0">
-            <CardTitle className="text-sm text-muted-foreground">
-              Facturas revisadas
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-3xl font-bold">{totalFacturas}</div>
-            <p className="mt-2 text-xs text-muted-foreground">
-              Documentos tipo factura del periodo consultado.
-            </p>
-          </CardContent>
-        </Card>
+        <MetricCard
+          title="Facturas revisadas"
+          value={totalFacturas}
+          description="Documentos tipo factura del periodo consultado."
+          icon={<FileText className="h-5 w-5" />}
+        />
 
-        <Card>
-          <CardHeader className="space-y-0">
-            <CardTitle className="text-sm text-muted-foreground">
-              Monto del periodo
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-3xl font-bold">
-              {new Intl.NumberFormat("es-PE", {
-                style: "currency",
-                currency: "PEN",
-                minimumFractionDigits: 2,
-              }).format(totalMonto)}
-            </div>
-            <p className="mt-2 text-xs text-muted-foreground">
-              Total calculado desde facturas listadas.
-            </p>
-          </CardContent>
-        </Card>
+        <MetricCard
+          title="Monto del periodo"
+          value={new Intl.NumberFormat("es-PE", {
+            style: "currency",
+            currency: "PEN",
+            minimumFractionDigits: 2,
+          }).format(totalMonto)}
+          description="Total calculado desde facturas listadas."
+        />
 
-        <Card>
-          <CardHeader className="space-y-0">
-            <CardTitle className="text-sm text-muted-foreground">
-              Alertas activas
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center gap-2 text-3xl font-bold">
-              {totalAlertas}
-              {totalAlertas > 0 ? (
-                <AlertTriangle className="h-6 w-6 text-amber-600" />
-              ) : null}
-            </div>
-            <p className="mt-2 text-xs text-muted-foreground">
-              Alertas pendientes de resolver en los documentos listados.
-            </p>
-          </CardContent>
-        </Card>
+        <MetricCard
+          title="Alertas activas"
+          value={totalAlertas}
+          description="Alertas pendientes de resolver en los documentos listados."
+          icon={<AlertTriangle className="h-5 w-5" />}
+          accent={totalAlertas > 0 ? "warning" : "success"}
+          href="/alertas"
+        />
       </div>
 
       {error ? (
@@ -298,9 +279,12 @@ export default function RevisionContablePage() {
         </CardHeader>
         <CardContent>
           {isLoading ? (
-            <div className="py-8 text-sm text-muted-foreground">
-              Cargando revisión contable...
-            </div>
+            <Empty>
+              <EmptyHeader>
+                <EmptyTitle>Cargando revisión contable...</EmptyTitle>
+                <EmptyDescription>Estamos consultando documentos del periodo.</EmptyDescription>
+              </EmptyHeader>
+            </Empty>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
@@ -410,9 +394,17 @@ export default function RevisionContablePage() {
               </table>
 
               {!data?.length ? (
-                <div className="py-8 text-center text-sm text-muted-foreground">
-                  No hay facturas para el periodo consultado.
-                </div>
+                <Empty className="mt-4">
+                  <EmptyHeader>
+                    <EmptyMedia variant="icon">
+                      <FileText className="h-5 w-5" />
+                    </EmptyMedia>
+                    <EmptyTitle>Sin facturas para este periodo</EmptyTitle>
+                    <EmptyDescription>
+                      No se encontraron facturas confirmadas con el filtro seleccionado.
+                    </EmptyDescription>
+                  </EmptyHeader>
+                </Empty>
               ) : null}
             </div>
           )}

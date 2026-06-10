@@ -12,6 +12,14 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { useExpedientes } from "@/hooks/useExpedientes";
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "@/components/ui/empty";
+import { Skeleton } from "@/components/ui/skeleton";
 import type { Expediente } from "@/types/expediente";
 
 function empresa(expediente: Expediente) {
@@ -43,7 +51,18 @@ export default function ExpedientesPage() {
   const { data, isLoading, error } = useExpedientes();
 
   if (isLoading) {
-    return <div className="p-6">Cargando expedientes...</div>;
+    return (
+      <main className="space-y-4">
+        <Skeleton className="h-10 w-64" />
+        <Card>
+          <CardContent className="space-y-3 py-6">
+            <Skeleton className="h-5 w-full" />
+            <Skeleton className="h-5 w-11/12" />
+            <Skeleton className="h-5 w-10/12" />
+          </CardContent>
+        </Card>
+      </main>
+    );
   }
 
   if (error) {
@@ -131,9 +150,17 @@ export default function ExpedientesPage() {
             </table>
 
             {!data?.length && (
-              <div className="py-8 text-center text-sm text-muted-foreground">
-                No hay expedientes registrados.
-              </div>
+              <Empty className="mt-4">
+                <EmptyHeader>
+                  <EmptyMedia variant="icon">
+                    <FolderKanban className="h-5 w-5" />
+                  </EmptyMedia>
+                  <EmptyTitle>Sin expedientes registrados</EmptyTitle>
+                  <EmptyDescription>
+                    Los expedientes creados desde OCR o de forma manual aparecerán aquí.
+                  </EmptyDescription>
+                </EmptyHeader>
+              </Empty>
             )}
           </div>
         </CardContent>

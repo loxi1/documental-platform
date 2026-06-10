@@ -11,21 +11,10 @@ import {
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { MetricCard, MetricCardSkeleton } from "@/components/documental/metric-card";
 import { Input } from "@/components/ui/input";
 import { useDashboardContable } from "@/hooks/useDashboard";
-
-type KpiCardProps = {
-  title: string;
-  value: string | number;
-  description: string;
-  icon: React.ReactNode;
-};
 
 function asValue(value: unknown, fallback = "0") {
   if (value === null || value === undefined || value === "") return fallback;
@@ -44,25 +33,6 @@ function formatMoney(value: unknown) {
     currency: "PEN",
     minimumFractionDigits: 2,
   }).format(raw);
-}
-
-function KpiCard({ title, value, description, icon }: KpiCardProps) {
-  return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between gap-3 space-y-0">
-        <CardTitle className="text-sm font-medium text-muted-foreground">
-          {title}
-        </CardTitle>
-        <div className="rounded-lg border bg-muted/40 p-2 text-muted-foreground">
-          {icon}
-        </div>
-      </CardHeader>
-      <CardContent>
-        <div className="text-3xl font-bold tracking-tight">{value}</div>
-        <p className="mt-2 text-xs text-muted-foreground">{description}</p>
-      </CardContent>
-    </Card>
-  );
 }
 
 export default function DashboardPage() {
@@ -171,37 +141,44 @@ export default function DashboardPage() {
       ) : null}
 
       {isLoading ? (
-        <div className="rounded-lg border bg-card p-6 text-sm text-muted-foreground">
-          Cargando dashboard contable...
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <MetricCardSkeleton />
+          <MetricCardSkeleton />
+          <MetricCardSkeleton />
+          <MetricCardSkeleton />
         </div>
       ) : (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <KpiCard
+          <MetricCard
             title="Expedientes"
             value={asValue(totales.expedientes)}
             description="Expedientes encontrados para el periodo consultado."
             icon={<FolderKanban className="h-5 w-5" />}
+            href="/expedientes"
           />
 
-          <KpiCard
+          <MetricCard
             title="Facturas"
             value={asValue(totales.facturas)}
             description="Facturas consideradas en la revisión contable."
             icon={<FileText className="h-5 w-5" />}
+            href="/revision-contable"
           />
 
-          <KpiCard
+          <MetricCard
             title="Monto facturado"
             value={formatMoney(totales.montoFacturado)}
             description="Total facturado del mes según documentos confirmados."
             icon={<Banknote className="h-5 w-5" />}
           />
 
-          <KpiCard
+          <MetricCard
             title="Alertas activas"
             value={asValue(totales.alertasActivas)}
             description="Alertas operativas pendientes de resolver."
             icon={<AlertTriangle className="h-5 w-5" />}
+            href="/alertas"
+            accent={Number(totales.alertasActivas ?? 0) > 0 ? "warning" : "success"}
           />
         </div>
       )}
