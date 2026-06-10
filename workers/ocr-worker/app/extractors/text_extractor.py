@@ -30,3 +30,6 @@ def extract_text(path: Path) -> str:
         return extract_text_from_pdf(path)
 
     raise ValueError(f"Extensión no soportada todavía: {ext}")
+
+def is_text_too_short(text: str, min_length: int = 80) -> bool:
+    return len((text or "").strip()) < min_length
