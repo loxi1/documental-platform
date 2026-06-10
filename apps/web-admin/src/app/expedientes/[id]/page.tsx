@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { ArrowLeft, CalendarClock, CheckCircle2, FileText, XCircle } from "lucide-react";
+import { AlertTriangle, ArrowLeft, CalendarClock, CheckCircle2, ExternalLink, FileText, XCircle } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import {
@@ -19,12 +19,14 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { useDocumentosAlertas } from "@/hooks/useAlertas";
 import {
   useExpediente,
   useExpedienteEstadoDocumental,
   useExpedienteResumen,
   useExpedienteTimeline,
 } from "@/hooks/useExpedientes";
+import type { DocumentoAlerta } from "@/types/alerta";
 import type { ExpedienteDocumento, ExpedienteTimelineItem } from "@/types/expediente";
 
 function asString(value: unknown, fallback = "-") {
@@ -54,6 +56,23 @@ function documentoLabel(documento?: ExpedienteDocumento | null) {
   ].filter(Boolean);
 
   return partes.length ? partes.join(" ") : `Documento #${documento.documentoId}`;
+}
+
+
+function estadoAlerta(alerta: DocumentoAlerta) {
+  return String(alerta.estado ?? "activa");
+}
+
+function tipoAlerta(alerta: DocumentoAlerta) {
+  return String(alerta.tipoAlerta ?? alerta.tipo_alerta ?? "ALERTA");
+}
+
+function mensajeAlerta(alerta: DocumentoAlerta) {
+  return String(alerta.mensaje ?? "Sin mensaje registrado.");
+}
+
+function alertaDocumentoId(alerta: DocumentoAlerta) {
+  return String(alerta.documentoId ?? alerta.documento_id ?? "-");
 }
 
 function DocumentoCard({ documento }: { documento: ExpedienteDocumento }) {
@@ -101,6 +120,21 @@ export default function ExpedienteDetallePage() {
   const documentosAdjuntos =
     expediente?.documentosAdjuntos ?? resumen?.documentosAdjuntos ?? [];
 
+  const documentosDelExpediente = [
+    documentoPrincipal,
+    ...documentosAdjuntos,
+  ].filter(Boolean) as ExpedienteDocumento[];
+
+  const documentosIds = documentosDelExpediente
+    .map((documento) => documento.documentoId)
+    .filter(Boolean);
+
+  const alertasExpedienteQuery = useDocumentosAlertas(documentosIds);
+  const alertasExpediente = alertasExpedienteQuery.alertas;
+  const alertasActivas = alertasExpediente.filter(
+    (alerta) => estadoAlerta(alerta) !== "resuelta",
+  );
+
   const presentes =
     estadoDocumental?.presentes ?? estadoDocumental?.documentosPresentes ?? [];
 
@@ -144,7 +178,7 @@ export default function ExpedienteDetallePage() {
         </Badge>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-4">
+      <div className="grid gap-4 lg:grid-cols-5">
         <Card>
           <CardHeader>
             <CardTitle>Empresa</CardTitle>
@@ -178,6 +212,15 @@ export default function ExpedienteDetallePage() {
           </CardHeader>
           <CardContent className="text-2xl font-semibold">
             {documentosAdjuntos.length}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Alertas activas</CardTitle>
+          </CardHeader>
+          <CardContent className="text-2xl font-semibold">
+            {alertasActivas.length}
           </CardContent>
         </Card>
       </div>
@@ -277,6 +320,61 @@ export default function ExpedienteDetallePage() {
               </Empty>
             )}
           </div>
+        </CardContent>
+      </Card>
+
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <AlertTriangle className="h-5 w-5" />
+            Alertas del expediente
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {alertasExpedienteQuery.isLoading ? (
+            <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
+              Cargando alertas del expediente...
+            </div>
+          ) : alertasActivas.length ? (
+            <div className="space-y-3">
+              {alertasActivas.map((alerta) => (
+                <div
+                  key={`${alertaDocumentoId(alerta)}-${alerta.id}`}
+                  className="flex flex-col gap-3 rounded-lg border p-3 text-sm md:flex-row md:items-center md:justify-between"
+                >
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge variant="outline">{tipoAlerta(alerta)}</Badge>
+                      <span className="text-xs text-muted-foreground">
+                        Documento #{alertaDocumentoId(alerta)}
+                      </span>
+                    </div>
+                    <p className="mt-2 text-sm">{mensajeAlerta(alerta)}</p>
+                  </div>
+
+                  <Button asChild size="sm" variant="outline">
+                    <Link href={`/alertas?documentoId=${alertaDocumentoId(alerta)}`}>
+                      <ExternalLink className="mr-1 h-4 w-4" />
+                      Ver alerta
+                    </Link>
+                  </Button>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <Empty>
+              <EmptyHeader>
+                <EmptyMedia variant="icon">
+                  <CheckCircle2 className="h-5 w-5" />
+                </EmptyMedia>
+                <EmptyTitle>Sin alertas activas</EmptyTitle>
+                <EmptyDescription>
+                  No hay observaciones pendientes en los documentos de este expediente.
+                </EmptyDescription>
+              </EmptyHeader>
+            </Empty>
+          )}
         </CardContent>
       </Card>
 
