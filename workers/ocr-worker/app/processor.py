@@ -15,6 +15,9 @@ from app.result_builder import build_ocr_result
 from app.r2_storage import download_from_r2
 from app.legacy_core.document_enricher import enrich_page
 
+from app.extractors.qr_extractor import extract_qr_data
+from app.extractors.qr_sunat_extractor import merge_qr_metadata
+
 
 TIPO_MAP = {
     "FACTURA": "FACTURA",

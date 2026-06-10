@@ -30,6 +30,7 @@ def build_ocr_result(params: dict[str, Any]) -> dict[str, Any]:
         "confidence": confidence,
         "estado": estado,
         "metadata": metadata,
+        "metadataSource": params.get("metadataSource"),
         "camposDetectados": campos_detectados,
         "camposFaltantes": campos_faltantes,
         "archivo": {
