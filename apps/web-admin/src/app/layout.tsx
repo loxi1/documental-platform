@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import './globals.css'
 import Providers from './providers'
+import DefaultLayout from '@/layout/DefaultLayout'
 
 export const metadata: Metadata = {
   title: 'Documental Platform',
@@ -16,7 +17,7 @@ export default function RootLayout({
     <html lang="es">
       <body>
         <Providers>
-          {children}
+          <DefaultLayout>{children}</DefaultLayout>
         </Providers>
       </body>
     </html>

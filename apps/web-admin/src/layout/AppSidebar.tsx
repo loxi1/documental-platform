@@ -5,7 +5,7 @@ import React, { useEffect, useRef, useState, type RefCallback } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useSidebar } from "@/context/SidebarContext";
-import { LayoutDashboard, Users, Boxes } from "lucide-react";
+import { AlertTriangle, ClipboardList, FileSearch, FolderKanban, LayoutDashboard, Scale } from "lucide-react";
 import Image from "next/image";
 
 // 👇 agrega el tipo de props
@@ -23,8 +23,11 @@ type NavItem = {
 
 const navItems: NavItem[] = [
   { name: "Dashboard", path: "/dashboard", icon: <LayoutDashboard className="h-5 w-5" /> },
-  { name: "Usuarios", path: "/usuarios", icon: <Users className="h-5 w-5" /> },
-  { name: "Artículos", path: "/articulos", icon: <Boxes className="h-5 w-5" /> },
+  { name: "OCR Resultados", path: "/ocr-resultados", icon: <FileSearch className="h-5 w-5" /> },
+  { name: "Expedientes", path: "/expedientes", icon: <FolderKanban className="h-5 w-5" /> },
+  { name: "Revisión contable", path: "/revision-contable", icon: <Scale className="h-5 w-5" /> },
+  { name: "Alertas", path: "/alertas", icon: <AlertTriangle className="h-5 w-5" /> },
+  { name: "Documentos", path: "/documentos", icon: <ClipboardList className="h-5 w-5" /> },
 ];
 
 const AppSidebar: React.FC<AppSidebarProps> = ({ userCod }) => {
@@ -153,16 +156,16 @@ const AppSidebar: React.FC<AppSidebarProps> = ({ userCod }) => {
     >
       <div className="flex items-center justify-center px-6 py-5">
         <Image
-          src="/images/logo/logo.svg"
-          alt="ARASAC"
+          src="/logo.svg"
+          alt="Documental Platform"
           width={160}
           height={36}
           priority
           className="block h-9 w-auto dark:hidden"
         />
         <Image
-          src="/images/logo/auth-dark.svg"
-          alt="ARASAC"
+          src="/logo-dark.svg"
+          alt="Documental Platform"
           width={160}
           height={36}
           priority

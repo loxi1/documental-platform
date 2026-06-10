@@ -39,9 +39,10 @@ def normalize_date(value: str | None) -> str | None:
             d, mth, y = m.groups()
             return f"{y}-{str(mth).zfill(2)}-{str(d).zfill(2)}"
 
-    m = re.match(r"^(\d{4})-(\d{2})-(\d{2})$", raw)
+    m = re.match(r"^(\d{4})/(\d{2})/(\d{2})$", raw)
     if m:
-        return raw
+        y, month, d = m.groups()
+        return f"{y}-{month}-{d}"
 
     m = re.match(r"^(\d{1,2})/([A-Z]{3})\.?/(\d{4})$", raw)
     if m:

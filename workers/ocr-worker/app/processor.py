@@ -3,11 +3,14 @@ from pathlib import Path
 from app.schemas import OcrProcesarArchivoPayload
 from app.storage import resolve_local_path, file_exists
 from app.extractors.text_extractor import extract_text
-from app.extractors.metadata_extractor import (
-    extract_ruc,
-    extract_fecha,
-    extract_monto,
-)
+metadata = {
+    "ruc": enriched.get("ruc") or extract_ruc(text),
+    "serie": enriched.get("serie"),
+    "numero": enriched.get("numero"),
+    "fechaEmision": extract_fecha(text),
+    "montoTotal": extract_monto(text),
+}
+
 from app.result_builder import build_ocr_result
 from app.r2_storage import download_from_r2
 from app.legacy_core.document_enricher import enrich_page
@@ -131,10 +134,12 @@ async def process_file(payload: OcrProcesarArchivoPayload) -> dict:
 
     tipo_documental = map_tipo(enriched.get("tipo"))
 
+    serie_numero = extract_serie_numero(text)
+
     metadata = {
         "ruc": enriched.get("ruc") or extract_ruc(text),
-        "serie": enriched.get("serie"),
-        "numero": enriched.get("numero"),
+        "serie": enriched.get("serie") or serie_numero.get("serie"),
+        "numero": enriched.get("numero") or serie_numero.get("numero"),
         "fechaEmision": extract_fecha(text),
         "montoTotal": extract_monto(text),
     }

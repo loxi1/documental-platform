@@ -3,6 +3,7 @@ import subprocess
 import tempfile
 import re
 from typing import Any
+from app.core.dates import normalize_date
 
 import cv2
 from pyzbar.pyzbar import decode
@@ -39,7 +40,7 @@ def parse_sunat_qr(raw: str) -> dict[str, Any] | None:
 
     if len(parts) > 6:
         fecha_raw = parts[6].strip()
-        fecha = normalize_qr_date(fecha_raw)
+        fecha = normalize_date(fecha_raw)
 
     if not re.match(r"^(10|20)\d{9}$", ruc):
         return None
@@ -53,24 +54,6 @@ def parse_sunat_qr(raw: str) -> dict[str, Any] | None:
         "fechaEmision": fecha,
         "montoTotal": total,
     }
-
-
-def normalize_qr_date(value: str | None) -> str | None:
-    if not value:
-        return None
-
-    value = value.strip()
-
-    m = re.match(r"^(\d{4})-(\d{2})-(\d{2})$", value)
-    if m:
-        return value
-
-    m = re.match(r"^(\d{2})/(\d{2})/(\d{4})$", value)
-    if m:
-        d, month, y = m.groups()
-        return f"{y}-{month}-{d}"
-
-    return value
 
 
 def decode_qr_from_image(image_path: Path) -> list[str]:
