@@ -354,13 +354,46 @@ export class DocumentosRepository {
 
   async confirmarOcrResultado(id: number, usuarioId?: number) {
     const rows = await sql`
-      UPDATE documentos.ocr_resultados
-      SET
-        estado = 'confirmado',
-        validado_en = now(),
-        validado_por = ${usuarioId ?? null}
-      WHERE id = ${id}
-      RETURNING *
+      WITH ocr AS (
+        UPDATE documentos.ocr_resultados
+        SET
+          estado = 'confirmado',
+          validado_en = now(),
+          validado_por = ${usuarioId ?? null}
+        WHERE id = ${id}
+        RETURNING *
+      ),
+      datos AS (
+        SELECT
+          ocr.*,
+          ocr.metadata->'metadata' AS meta,
+          ocr.metadata->>'tipoDocumental' AS tipo_documental_final,
+          ocr.metadata->>'claveDocumental' AS clave_documental_final
+        FROM ocr
+      ),
+      doc_update AS (
+        UPDATE documentos.documentos d
+        SET
+          tipo_documental = datos.tipo_documental_final,
+          estado = 'confirmado',
+          ruc_emisor = datos.meta->>'ruc',
+          serie = datos.meta->>'serie',
+          numero = datos.meta->>'numero',
+          fecha_emision = NULLIF(datos.meta->>'fechaEmision', '')::date,
+          monto_total = NULLIF(datos.meta->>'montoTotal', '')::numeric,
+          clave_documental = datos.clave_documental_final
+        FROM datos
+        WHERE d.id = datos.documento_id
+        RETURNING d.*
+      )
+      SELECT
+        datos.id,
+        datos.estado,
+        datos.documento_id,
+        datos.tipo_documental_final AS tipo_documental,
+        datos.clave_documental_final AS clave_documental,
+        datos.meta AS metadata
+      FROM datos
     `;
 
     return rows[0] ?? null;
