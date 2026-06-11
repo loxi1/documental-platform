@@ -113,14 +113,17 @@ def resolve_file_path(payload: OcrProcesarArchivoPayload) -> Path | dict:
     }
 
 
-def should_use_qr(tipo_documental: str, metadata: dict, confidence: float) -> bool:
-    if tipo_documental not in ["FACTURA", "GUIA_REMISION"]:
-        return False
+def should_use_qr(tipo_documental: str, metadata: dict, confidence: float, text: str = "") -> bool:
+    if tipo_documental in ["FACTURA", "GUIA_REMISION"]:
+        required = ["ruc", "serie", "numero", "fechaEmision", "montoTotal"]
+        missing = [key for key in required if not metadata.get(key)]
+        return bool(missing) or confidence < 0.90
 
-    required = ["ruc", "serie", "numero", "fechaEmision", "montoTotal"]
-    missing = [key for key in required if not metadata.get(key)]
+    # PDF escaneado sin texto: intentar QR aunque el tipo sea OTRO
+    if len((text or "").strip()) < 80:
+        return True
 
-    return bool(missing) or confidence < 0.90
+    return False
 
 
 async def process_file(payload: OcrProcesarArchivoPayload) -> dict:
@@ -165,13 +168,17 @@ async def process_file(payload: OcrProcesarArchivoPayload) -> dict:
 
     qr_data = None
 
-    if should_use_qr(tipo_documental, metadata, confidence):
+    if should_use_qr(tipo_documental, metadata, confidence, text):
         qr_data = extract_qr_data(file_path)
         metadata, metadata_source = merge_qr_metadata(
             metadata,
             qr_data,
             metadata_source,
         )
+    
+    if tipo_documental == "OTRO" and qr_data:
+        if qr_data.get("tipoComprobanteCodigo") == "01":
+            tipo_documental = "FACTURA"
 
     clave_documental = build_clave_documental(
         cliente=cliente,
