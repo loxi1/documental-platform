@@ -121,16 +121,45 @@
   * {
     @apply border-border outline-ring/50;
   }
+  html {
+    @apply font-sans antialiased;
+    text-rendering: optimizeLegibility;
+    font-feature-settings: 'rlig' 1, 'calt' 1, 'ss01' 1;
+  }
+
   body {
     @apply bg-background text-foreground;
+    font-size: 14px;
+    line-height: 1.5;
   }
-  html {
+
+  h1 {
+    @apply text-2xl font-semibold tracking-tight text-slate-950 dark:text-white;
+  }
+
+  h2 {
+    @apply text-xl font-semibold tracking-tight text-slate-950 dark:text-white;
+  }
+
+  h3 {
+    @apply text-base font-semibold tracking-tight text-slate-950 dark:text-white;
+  }
+
+  p {
+    @apply leading-relaxed;
+  }
+
+  table {
+    @apply text-sm;
+  }
+
+  input, button, select, textarea {
     @apply font-sans;
   }
 }
 @layer components {
   .menu-item {
-    @apply flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors;
+    @apply flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium tracking-[-0.01em] transition-colors;
   }
 
   .menu-item-active {
@@ -183,5 +212,20 @@
 
   .menu-dropdown-badge-inactive {
     @apply bg-slate-100 text-slate-600 dark:bg-white/10 dark:text-slate-300;
+  }
+}
+
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  .content-card {
+    @apply rounded-2xl border border-slate-200/80 bg-white shadow-sm dark:border-white/10 dark:bg-slate-950;
+  }
+
+  .muted-label {
+    @apply text-xs font-medium uppercase tracking-[0.14em] text-slate-400;
   }
 }
