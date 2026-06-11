@@ -1,5 +1,5 @@
 import axios from "axios";
-import { getAccessToken } from "@/lib/auth-storage";
+import { clearAuthSession, getAccessToken } from "@/lib/auth-storage";
 
 export const authApi = axios.create({
   baseURL:
@@ -17,3 +17,16 @@ authApi.interceptors.request.use((config) => {
 
   return config;
 });
+
+
+authApi.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error?.response?.status === 401 && typeof window !== "undefined") {
+      clearAuthSession();
+      window.location.href = "/login";
+    }
+
+    return Promise.reject(error);
+  },
+);

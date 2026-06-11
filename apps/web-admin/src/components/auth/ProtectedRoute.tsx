@@ -2,7 +2,7 @@
 
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { getAuthSession, clearAuthSession } from "@/lib/auth-storage";
+import { clearAuthSession, getAuthSession } from "@/lib/auth-storage";
 import { validateToken } from "@/services/auth";
 
 const publicRoutes = ["/login", "/seleccionar-contexto"];
@@ -16,13 +16,16 @@ export default function ProtectedRoute({ children }: { children: React.ReactNode
     let active = true;
 
     async function checkAuth() {
-      if (publicRoutes.some((route) => pathname.startsWith(route))) {
+      const isPublicRoute = publicRoutes.some((route) => pathname.startsWith(route));
+      const session = getAuthSession();
+
+      if (isPublicRoute) {
         if (active) setChecking(false);
         return;
       }
 
-      const session = getAuthSession();
       if (!session?.accessToken) {
+        clearAuthSession();
         router.replace("/login");
         return;
       }
@@ -42,6 +45,7 @@ export default function ProtectedRoute({ children }: { children: React.ReactNode
       }
     }
 
+    setChecking(true);
     checkAuth();
 
     return () => {
