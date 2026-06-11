@@ -1,4 +1,4 @@
-import { api } from "@/services/api";
+import { authApi } from "@/services/auth-api";
 import type { AuthSession, LoginResult, ValidateTokenResult } from "@/types/auth";
 
 type ApiResponse<T> = {
@@ -9,7 +9,7 @@ type ApiResponse<T> = {
 };
 
 export async function login(email: string, password: string) {
-  const response = await api.post<ApiResponse<LoginResult>>("/auth/login", {
+  const response = await authApi.post<ApiResponse<LoginResult>>("/auth/login", {
     email,
     password,
   });
@@ -22,7 +22,7 @@ export async function selectContext(
   sistema: string,
   empresaCodigo: string,
 ) {
-  const response = await api.post<ApiResponse<AuthSession>>("/auth/select-context", {
+  const response = await authApi.post<ApiResponse<AuthSession>>("/auth/select-context", {
     usuarioId,
     sistema,
     empresaCodigo,
@@ -32,7 +32,7 @@ export async function selectContext(
 }
 
 export async function validateToken(token: string) {
-  const response = await api.post<ApiResponse<ValidateTokenResult>>("/auth/validate-token", {
+  const response = await authApi.post<ApiResponse<ValidateTokenResult>>("/auth/validate-token", {
     token,
   });
 
