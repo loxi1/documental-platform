@@ -1,149 +1,110 @@
 // src/layout/AppSidebar.tsx
 "use client";
 
-import React, { useEffect, useRef, useState, type RefCallback } from "react";
+import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useSidebar } from "@/context/SidebarContext";
-import { AlertTriangle, ClipboardList, FileSearch, FolderKanban, LayoutDashboard, Scale } from "lucide-react";
+import {
+  AlertTriangle,
+  ClipboardList,
+  FileSearch,
+  FolderKanban,
+  LayoutDashboard,
+  Scale,
+  Settings,
+  ShieldCheck,
+  X,
+} from "lucide-react";
 import Image from "next/image";
 
-// 👇 agrega el tipo de props
 type AppSidebarProps = {
   userCod?: string | null;
 };
 
 type NavItem = {
   name: string;
-  icon?: React.ReactNode;
-  path?: string;
+  path: string;
+  icon: React.ReactNode;
+  description?: string;
   badge?: string;
-  subItems?: { name: string; path: string }[];
 };
 
-const navItems: NavItem[] = [
-  { name: "Dashboard", path: "/dashboard", icon: <LayoutDashboard className="h-5 w-5" /> },
-  { name: "OCR Resultados", path: "/ocr-resultados", icon: <FileSearch className="h-5 w-5" /> },
-  { name: "Expedientes", path: "/expedientes", icon: <FolderKanban className="h-5 w-5" /> },
-  { name: "Revisión contable", path: "/revision-contable", icon: <Scale className="h-5 w-5" /> },
-  { name: "Alertas", path: "/alertas", icon: <AlertTriangle className="h-5 w-5" /> },
-  { name: "Documentos", path: "/documentos", icon: <ClipboardList className="h-5 w-5" /> },
+type NavGroup = {
+  label: string;
+  items: NavItem[];
+};
+
+const navGroups: NavGroup[] = [
+  {
+    label: "Gestión documental",
+    items: [
+      {
+        name: "Dashboard",
+        path: "/dashboard",
+        icon: <LayoutDashboard className="h-4 w-4" />,
+        description: "Indicadores",
+      },
+      {
+        name: "Expedientes",
+        path: "/expedientes",
+        icon: <FolderKanban className="h-4 w-4" />,
+        description: "Unidad principal",
+      },
+      {
+        name: "Documentos",
+        path: "/documentos",
+        icon: <ClipboardList className="h-4 w-4" />,
+        description: "Buscador global",
+      },
+      {
+        name: "OCR Resultados",
+        path: "/ocr-resultados",
+        icon: <FileSearch className="h-4 w-4" />,
+        description: "Validación OCR",
+      },
+    ],
+  },
+  {
+    label: "Control contable",
+    items: [
+      {
+        name: "Revisión contable",
+        path: "/revision-contable",
+        icon: <Scale className="h-4 w-4" />,
+        description: "Periodo mensual",
+      },
+      {
+        name: "Alertas",
+        path: "/alertas",
+        icon: <AlertTriangle className="h-4 w-4" />,
+        description: "Observaciones",
+      },
+    ],
+  },
+  {
+    label: "Sistema",
+    items: [
+      {
+        name: "Configuración",
+        path: "/configuracion",
+        icon: <Settings className="h-4 w-4" />,
+        description: "Próximamente",
+        badge: "Soon",
+      },
+    ],
+  },
 ];
 
 const AppSidebar: React.FC<AppSidebarProps> = ({ userCod }) => {
   const pathname = usePathname();
   const { isMobileOpen, setIsHovered, toggleMobileSidebar } = useSidebar();
-  const [openSubmenu, setOpenSubmenu] = useState<{ type: "main" | "others"; index: number } | null>(null);
-  const subMenuRefs = useRef<Record<string, HTMLUListElement | null>>({});
-  const [subMenuHeight, setSubMenuHeight] = useState<Record<string, number>>({});
 
   const isActive = (href = "") => pathname === href || pathname.startsWith(`${href}/`);
-
-  useEffect(() => {
-    setOpenSubmenu(null);
-  }, [pathname]);
-
-  useEffect(() => {
-    if (openSubmenu !== null) {
-      const key = `${openSubmenu.type}-${openSubmenu.index}`;
-      const el = subMenuRefs.current[key];
-      if (el) setSubMenuHeight((prev) => ({ ...prev, [key]: el.scrollHeight }));
-    }
-  }, [openSubmenu]);
-
-  const handleSubmenuToggle = (index: number, menuType: "main" | "others") => {
-    setOpenSubmenu((prev) =>
-      prev && prev.type === menuType && prev.index === index ? null : { type: menuType, index }
-    );
-  };
 
   const handleMobileNavigate = () => {
     if (isMobileOpen) toggleMobileSidebar();
   };
-
-  const renderMenuItems = (items: NavItem[], menuType: "main" | "others") => (
-    <ul className="space-y-1">
-      {items.map((nav, index) => {
-        const active = isActive(nav.path);
-        return (
-          <li key={`${menuType}-${nav.name}`}>
-            {nav.subItems ? (
-              <>
-                <button
-                  onClick={() => handleSubmenuToggle(index, menuType)}
-                  className={`menu-item group w-full text-left ${
-                    openSubmenu?.type === menuType && openSubmenu?.index === index
-                      ? "menu-item-active"
-                      : "menu-item-inactive"
-                  }`}
-                  aria-expanded={openSubmenu?.type === menuType && openSubmenu?.index === index}
-                >
-                  {nav.icon ? <span className="menu-item-icon">{nav.icon}</span> : null}
-                  <span className="menu-item-text">{nav.name}</span>
-                  <span
-                    className={`menu-item-arrow ${
-                      openSubmenu?.type === menuType && openSubmenu?.index === index
-                        ? "menu-item-arrow-active"
-                        : "menu-item-arrow-inactive"
-                    }`}
-                  >
-                    ▼
-                  </span>
-                </button>
-                <ul
-                  ref={
-                    ((el) => {
-                      subMenuRefs.current[`${menuType}-${index}`] = el;
-                    }) as RefCallback<HTMLUListElement>
-                  }
-                  className="overflow-hidden transition-all duration-300 ease-in-out"
-                  style={{
-                    height:
-                      openSubmenu?.type === menuType && openSubmenu?.index === index
-                        ? `${subMenuHeight[`${menuType}-${index}`] || "auto"}px`
-                        : "0px",
-                  }}
-                >
-                  {nav.subItems.map((sub) => {
-                    const subActive = isActive(sub.path);
-                    return (
-                      <li key={sub.path}>
-                        <Link
-                          href={sub.path}
-                          onClick={handleMobileNavigate}
-                          className={`menu-dropdown-item ${
-                            subActive ? "menu-dropdown-item-active" : "menu-dropdown-item-inactive"
-                          }`}
-                          aria-current={subActive ? "page" : undefined}
-                        >
-                          {sub.name}
-                        </Link>
-                      </li>
-                    );
-                  })}
-                </ul>
-              </>
-            ) : (
-              <Link
-                href={nav.path || "#"}
-                onClick={handleMobileNavigate}
-                className={`menu-item group ${active ? "menu-item-active" : "menu-item-inactive"}`}
-                aria-current={active ? "page" : undefined}
-              >
-                {nav.icon ? <span className="menu-item-icon">{nav.icon}</span> : null}
-                <span className="menu-item-text">{nav.name}</span>
-                {nav.badge && (
-                  <span className={`menu-dropdown-badge ${active ? "menu-dropdown-badge-active" : "menu-dropdown-badge-inactive"}`}>
-                    {nav.badge}
-                  </span>
-                )}
-              </Link>
-            )}
-          </li>
-        );
-      })}
-    </ul>
-  );
 
   return (
     <aside
@@ -151,38 +112,153 @@ const AppSidebar: React.FC<AppSidebarProps> = ({ userCod }) => {
       aria-label="Menú principal"
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
-      className={`fixed inset-y-0 left-0 z-40 w-64 bg-white shadow-sm transition-transform dark:bg-[#0B1221]
+      className={`fixed inset-y-0 left-0 z-40 flex w-72 flex-col border-r border-slate-200/80 bg-white/95 shadow-xl shadow-slate-200/30 backdrop-blur-xl transition-transform duration-300 dark:border-white/10 dark:bg-[#07111f]/95 dark:shadow-black/20
         ${isMobileOpen ? "translate-x-0" : "-translate-x-full"} lg:translate-x-0`}
     >
-      <div className="flex items-center justify-center px-6 py-5">
-        <Image
-          src="/logo.svg"
-          alt="Documental Platform"
-          width={160}
-          height={36}
-          priority
-          className="block h-9 w-auto dark:hidden"
-        />
-        <Image
-          src="/logo-dark.svg"
-          alt="Documental Platform"
-          width={160}
-          height={36}
-          priority
-          className="hidden h-9 w-auto dark:block"
-        />
+      <div className="flex h-20 items-center justify-between border-b border-slate-100 px-5 dark:border-white/10">
+        <Link href="/dashboard" className="flex items-center gap-3" onClick={handleMobileNavigate}>
+          <span className="flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-white/10 dark:bg-white/10">
+            <Image
+              src="/logo.svg"
+              alt="Documental Platform"
+              width={34}
+              height={34}
+              priority
+              className="block h-8 w-auto dark:hidden"
+            />
+            <Image
+              src="/logo-dark.svg"
+              alt="Documental Platform"
+              width={34}
+              height={34}
+              priority
+              className="hidden h-8 w-auto dark:block"
+            />
+          </span>
+          <span className="min-w-0">
+            <span className="block truncate text-sm font-bold text-slate-950 dark:text-white">
+              Documental
+            </span>
+            <span className="block truncate text-xs text-slate-500 dark:text-slate-400">
+              Expedientes y OCR
+            </span>
+          </span>
+        </Link>
+
+        <button
+          type="button"
+          onClick={toggleMobileSidebar}
+          className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-slate-500 hover:bg-slate-50 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/10 lg:hidden"
+          aria-label="Cerrar menú"
+        >
+          <X className="h-4 w-4" />
+        </button>
       </div>
 
-      {userCod ? (
-        <div className="px-6 pb-2">
-          <span className="inline-flex items-center gap-2 rounded-full border border-gray-200 bg-white px-3 py-1 text-xs font-medium text-gray-700 dark:border-white/10 dark:bg-white/10 dark:text-gray-200">
+      <div className="px-5 py-4">
+        <div className="rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-50 to-white p-4 shadow-sm dark:border-white/10 dark:from-white/10 dark:to-white/[0.03]">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-950 text-sm font-bold text-white dark:bg-white dark:text-slate-950">
+              {userCod?.slice(0, 1).toUpperCase() || "L"}
+            </div>
+            <div className="min-w-0">
+              <p className="truncate text-sm font-semibold text-slate-950 dark:text-white">
+                {userCod || "Loxi1"}
+              </p>
+              <p className="truncate text-xs text-slate-500 dark:text-slate-400">
+                BBTI · Administrador
+              </p>
+            </div>
+          </div>
+          <div className="mt-3 inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700 dark:border-emerald-400/20 dark:bg-emerald-400/10 dark:text-emerald-300">
             <span className="h-2 w-2 rounded-full bg-emerald-500" />
-            {userCod}
-          </span>
+            Sesión activa
+          </div>
         </div>
-      ) : null}
+      </div>
 
-      <nav className="p-4 overflow-y-auto">{renderMenuItems(navItems, "main")}</nav>
+      <nav className="flex-1 space-y-6 overflow-y-auto px-4 pb-4">
+        {navGroups.map((group) => (
+          <section key={group.label}>
+            <h3 className="mb-2 px-3 text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">
+              {group.label}
+            </h3>
+            <ul className="space-y-1">
+              {group.items.map((item) => {
+                const active = isActive(item.path);
+                return (
+                  <li key={item.path}>
+                    <Link
+                      href={item.path}
+                      onClick={handleMobileNavigate}
+                      aria-current={active ? "page" : undefined}
+                      className={`group relative flex items-center gap-3 rounded-2xl px-3 py-3 text-sm transition-all duration-200 ${
+                        active
+                          ? "bg-slate-950 text-white shadow-lg shadow-slate-900/10 dark:bg-white dark:text-slate-950"
+                          : "text-slate-600 hover:bg-slate-100 hover:text-slate-950 dark:text-slate-300 dark:hover:bg-white/10 dark:hover:text-white"
+                      } ${item.badge ? "opacity-80" : ""}`}
+                    >
+                      {active ? (
+                        <span className="absolute left-0 top-1/2 h-7 w-1 -translate-y-1/2 rounded-r-full bg-emerald-400" />
+                      ) : null}
+                      <span
+                        className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition-colors ${
+                          active
+                            ? "bg-white/15 text-white dark:bg-slate-950/10 dark:text-slate-950"
+                            : "bg-slate-100 text-slate-500 group-hover:bg-white dark:bg-white/10 dark:text-slate-300 dark:group-hover:bg-white/15"
+                        }`}
+                      >
+                        {item.icon}
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate font-semibold">{item.name}</span>
+                        {item.description ? (
+                          <span
+                            className={`block truncate text-xs ${
+                              active
+                                ? "text-white/70 dark:text-slate-700"
+                                : "text-slate-400 dark:text-slate-500"
+                            }`}
+                          >
+                            {item.description}
+                          </span>
+                        ) : null}
+                      </span>
+                      {item.badge ? (
+                        <span
+                          className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
+                            active
+                              ? "bg-white/15 text-white dark:bg-slate-950/10 dark:text-slate-950"
+                              : "bg-slate-100 text-slate-500 dark:bg-white/10 dark:text-slate-300"
+                          }`}
+                        >
+                          {item.badge}
+                        </span>
+                      ) : null}
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
+        ))}
+      </nav>
+
+      <div className="border-t border-slate-100 p-4 dark:border-white/10">
+        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-white/10 dark:bg-white/[0.04]">
+          <div className="flex items-start gap-3">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-emerald-700 dark:bg-emerald-400/10 dark:text-emerald-300">
+              <ShieldCheck className="h-4 w-4" />
+            </span>
+            <div>
+              <p className="text-sm font-semibold text-slate-950 dark:text-white">Contexto seguro</p>
+              <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">
+                Documentos · BBTI · permisos por perfil.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
     </aside>
   );
 };

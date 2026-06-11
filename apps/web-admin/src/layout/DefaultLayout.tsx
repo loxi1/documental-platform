@@ -12,9 +12,9 @@ export default function DefaultLayout({
   return (
     <div className="min-h-screen bg-background">
       <AppSidebar />
-      <div className="lg:pl-64">
+      <div className="lg:pl-72">
         <AppHeader />
-        <main className="px-6 py-8">
+        <main className="px-6 py-8 lg:px-8">
           {children}
         </main>
       </div>

@@ -186,6 +186,14 @@ async def process_file(payload: OcrProcesarArchivoPayload) -> dict:
         metadata=metadata,
     )
 
+    mensaje = "Archivo leído, clasificado y extraído correctamente"
+
+    if len((text or "").strip()) < 80 and not qr_data and not clave_documental:
+        mensaje = (
+            "PDF escaneado sin texto digital y sin QR legible. "
+            "Requiere revisión manual o reescaneo con mejor calidad."
+        )
+
     return build_ocr_result({
         "documentoId": payload.documentoId,
         "archivoId": payload.archivoId,
@@ -203,5 +211,5 @@ async def process_file(payload: OcrProcesarArchivoPayload) -> dict:
         "metadata": metadata,
         "metadataSource": metadata_source,
         "qr": qr_data,
-        "mensaje": "Archivo leído, clasificado y extraído correctamente",
+        "mensaje": mensaje,
     })
