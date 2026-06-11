@@ -17,6 +17,7 @@ import {
   X,
 } from "lucide-react";
 import Image from "next/image";
+import { useAuth } from "@/hooks/useAuth";
 
 type AppSidebarProps = {
   userCod?: string | null;
@@ -98,6 +99,7 @@ const navGroups: NavGroup[] = [
 
 const AppSidebar: React.FC<AppSidebarProps> = ({ userCod }) => {
   const pathname = usePathname();
+  const { contexto, hasPermission } = useAuth();
   const { isMobileOpen, setIsHovered, toggleMobileSidebar } = useSidebar();
 
   const isActive = (href = "") => pathname === href || pathname.startsWith(`${href}/`);
@@ -105,6 +107,22 @@ const AppSidebar: React.FC<AppSidebarProps> = ({ userCod }) => {
   const handleMobileNavigate = () => {
     if (isMobileOpen) toggleMobileSidebar();
   };
+
+  const visibleGroups = navGroups
+    .map((group) => ({
+      ...group,
+      items: group.items.filter((item) => {
+        if (contexto?.perfil === "admin") return true;
+        if (item.path === "/dashboard") return Boolean(contexto?.permisos?.length);
+        if (item.path === "/documentos") return hasPermission("documentos.ver");
+        if (item.path === "/ocr-resultados") return hasPermission("documentos.validar");
+        if (item.path === "/expedientes") return hasPermission("documentos.ver");
+        if (item.path === "/revision-contable") return hasPermission("finanzas.ver");
+        if (item.path === "/alertas") return hasPermission("documentos.ver");
+        return false;
+      }),
+    }))
+    .filter((group) => group.items.length > 0);
 
   return (
     <aside
@@ -159,14 +177,14 @@ const AppSidebar: React.FC<AppSidebarProps> = ({ userCod }) => {
         <div className="rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-50 to-white p-4 shadow-sm dark:border-white/10 dark:from-white/10 dark:to-white/[0.03]">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-950 text-sm font-bold text-white dark:bg-white dark:text-slate-950">
-              {userCod?.slice(0, 1).toUpperCase() || "L"}
+              {contexto?.nombres?.slice(0, 1).toUpperCase() || userCod?.slice(0, 1).toUpperCase() || "A"}
             </div>
             <div className="min-w-0">
               <p className="truncate text-sm font-semibold text-slate-950 dark:text-white">
-                {userCod || "Loxi1"}
+                {contexto?.nombres || userCod || "Administrador"}
               </p>
               <p className="truncate text-xs text-slate-500 dark:text-slate-400">
-                BBTI · Administrador
+                {contexto ? `${contexto.empresa} · ${contexto.perfil}` : "Sin contexto"}
               </p>
             </div>
           </div>
@@ -178,7 +196,7 @@ const AppSidebar: React.FC<AppSidebarProps> = ({ userCod }) => {
       </div>
 
       <nav className="flex-1 space-y-6 overflow-y-auto px-4 pb-4">
-        {navGroups.map((group) => (
+        {visibleGroups.map((group) => (
           <section key={group.label}>
             <h3 className="mb-2 px-3 text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">
               {group.label}
@@ -253,7 +271,7 @@ const AppSidebar: React.FC<AppSidebarProps> = ({ userCod }) => {
             <div>
               <p className="text-sm font-semibold text-slate-950 dark:text-white">Contexto seguro</p>
               <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">
-                Documentos · BBTI · permisos por perfil.
+                {contexto ? `${contexto.sistema} · ${contexto.empresa} · permisos por perfil.` : "Permisos por perfil."}
               </p>
             </div>
           </div>

@@ -1,5 +1,6 @@
 import Providers from './providers'
 import AppShell from '@/layout/AppShell'
+import ProtectedRoute from '@/components/auth/ProtectedRoute'
 import './globals.css'
 
 export default function RootLayout({
@@ -11,7 +12,9 @@ export default function RootLayout({
     <html lang="es">
       <body>
         <Providers>
-          <AppShell>{children}</AppShell>
+          <ProtectedRoute>
+            <AppShell>{children}</AppShell>
+          </ProtectedRoute>
         </Providers>
       </body>
     </html>

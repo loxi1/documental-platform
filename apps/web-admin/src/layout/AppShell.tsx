@@ -11,7 +11,7 @@ export default function AppShell({
 }) {
   const pathname = usePathname()
 
-  const publicRoutes = ['/login']
+  const publicRoutes = ['/login', '/seleccionar-contexto']
 
   if (publicRoutes.some((route) => pathname.startsWith(route))) {
     return <>{children}</>

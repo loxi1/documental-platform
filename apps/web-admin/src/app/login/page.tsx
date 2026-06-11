@@ -3,12 +3,45 @@
 import { Eye, EyeOff, FileText, LockKeyhole, Mail, ShieldCheck } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { FormEvent, useMemo, useState } from "react";
+import { login as loginRequest, selectContext } from "@/services/auth";
+import { saveAuthSession, saveLoginResult } from "@/lib/auth-storage";
 
 export default function LoginPage() {
+  const router = useRouter();
   const [showPassword, setShowPassword] = useState(false);
+  const [email, setEmail] = useState("admin@documental.local");
+  const [password, setPassword] = useState("Admin123*");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const currentYear = useMemo(() => new Date().getFullYear(), []);
+
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setLoading(true);
+    setError(null);
+
+    try {
+      const result = await loginRequest(email, password);
+      saveLoginResult(result);
+
+      if (result.accesos.length === 1) {
+        const access = result.accesos[0];
+        const session = await selectContext(result.usuario.id, access.sistema, access.empresa_codigo);
+        saveAuthSession(session);
+        router.replace("/dashboard");
+        return;
+      }
+
+      router.replace("/seleccionar-contexto");
+    } catch (err) {
+      setError("No se pudo iniciar sesión. Revisa el correo, la clave o el API Gateway.");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <main className="min-h-screen bg-[#f6f7fb] text-slate-950 dark:bg-[#050816] dark:text-white">
@@ -79,7 +112,7 @@ export default function LoginPage() {
                 </p>
               </div>
 
-              <form className="space-y-5">
+              <form className="space-y-5" onSubmit={handleSubmit}>
                 <div className="space-y-2">
                   <label htmlFor="email" className="text-sm font-medium">
                     Correo electrónico
@@ -89,6 +122,8 @@ export default function LoginPage() {
                     <input
                       id="email"
                       type="email"
+                      value={email}
+                      onChange={(event) => setEmail(event.target.value)}
                       placeholder="admin@documental.local"
                       className="h-11 w-full rounded-xl border border-border bg-background pl-10 pr-3 text-sm outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-200/60 dark:focus:ring-white/10"
                     />
@@ -104,6 +139,8 @@ export default function LoginPage() {
                     <input
                       id="password"
                       type={showPassword ? "text" : "password"}
+                      value={password}
+                      onChange={(event) => setPassword(event.target.value)}
                       placeholder="••••••••"
                       className="h-11 w-full rounded-xl border border-border bg-background pl-10 pr-11 text-sm outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-200/60 dark:focus:ring-white/10"
                     />
@@ -118,6 +155,12 @@ export default function LoginPage() {
                   </div>
                 </div>
 
+                {error ? (
+                  <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                    {error}
+                  </div>
+                ) : null}
+
                 <div className="flex items-center justify-between text-sm">
                   <label className="flex items-center gap-2 text-muted-foreground">
                     <input type="checkbox" className="h-4 w-4 rounded border-border" />
@@ -129,20 +172,13 @@ export default function LoginPage() {
                 </div>
 
                 <button
-                  type="button"
-                  className="h-11 w-full rounded-xl bg-slate-950 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800 dark:bg-white dark:text-slate-950 dark:hover:bg-white/90"
+                  type="submit"
+                  disabled={loading}
+                  className="h-11 w-full rounded-xl bg-slate-950 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-white dark:text-slate-950 dark:hover:bg-white/90"
                 >
-                  Continuar
+                  {loading ? "Ingresando..." : "Continuar"}
                 </button>
               </form>
-
-              <div className="mt-6 rounded-2xl border border-dashed border-border bg-muted/40 p-4 text-sm text-muted-foreground">
-                <p className="font-medium text-foreground">Vista preparada</p>
-                <p className="mt-1">
-                  La integración con <code className="rounded bg-background px-1 py-0.5">/auth/login</code>,
-                  <code className="ml-1 rounded bg-background px-1 py-0.5">/auth/select-context</code> y token se hará en el siguiente paso.
-                </p>
-              </div>
             </div>
           </div>
         </section>
