@@ -1,8 +1,25 @@
 "use client";
 
+import type { ReactNode } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { AlertTriangle, ArrowLeft, CalendarClock, CheckCircle2, CircleDot, ExternalLink, FileText, Link2, XCircle } from "lucide-react";
+import {
+  AlertTriangle,
+  ArrowLeft,
+  CalendarClock,
+  CheckCircle2,
+  CircleDot,
+  CreditCard,
+  ExternalLink,
+  FileCheck2,
+  FileText,
+  Link2,
+  PackageCheck,
+  ReceiptText,
+  ShoppingCart,
+  Truck,
+  XCircle,
+} from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import {
@@ -135,6 +152,176 @@ function alertaDocumentoId(alerta: DocumentoAlerta) {
   return String(alerta.documentoId ?? alerta.documento_id ?? "-");
 }
 
+
+
+type DocumentoSlot = {
+  key: string;
+  label: string;
+  description: string;
+  relation: string;
+  optional?: boolean;
+  icon: ReactNode;
+};
+
+const DOCUMENTO_PRINCIPAL_SLOTS: DocumentoSlot[] = [
+  {
+    key: "principal_factura",
+    label: "Factura principal",
+    description: "Documento fiscal base del gasto directo.",
+    relation: "principal_factura",
+    icon: <ReceiptText className="h-4 w-4" />,
+  },
+  {
+    key: "principal_oc",
+    label: "OC principal",
+    description: "Orden de compra que abre el expediente.",
+    relation: "principal_oc",
+    icon: <ShoppingCart className="h-4 w-4" />,
+  },
+  {
+    key: "principal_os",
+    label: "OS principal",
+    description: "Orden de servicio que abre el expediente.",
+    relation: "principal_os",
+    icon: <FileCheck2 className="h-4 w-4" />,
+  },
+];
+
+const DOCUMENTO_ADJUNTO_SLOTS: DocumentoSlot[] = [
+  {
+    key: "adjunto_factura",
+    label: "Factura adjunta",
+    description: "Factura vinculada a OC/OS del expediente.",
+    relation: "adjunto_factura",
+    icon: <ReceiptText className="h-4 w-4" />,
+  },
+  {
+    key: "adjunto_guia",
+    label: "Guía de remisión",
+    description: "Guía del proveedor o sustento de entrega.",
+    relation: "adjunto_guia",
+    icon: <Truck className="h-4 w-4" />,
+  },
+  {
+    key: "adjunto_nota_ingreso",
+    label: "Nota de ingreso",
+    description: "Confirmación de almacén o recepción interna.",
+    relation: "adjunto_nota_ingreso",
+    icon: <PackageCheck className="h-4 w-4" />,
+  },
+  {
+    key: "adjunto_transferencia",
+    label: "Transferencia",
+    description: "Pago por transferencia bancaria.",
+    relation: "adjunto_transferencia",
+    icon: <CreditCard className="h-4 w-4" />,
+  },
+  {
+    key: "adjunto_detraccion",
+    label: "Detracción",
+    description: "Constancia de detracción cuando corresponda.",
+    relation: "adjunto_detraccion",
+    optional: true,
+    icon: <CreditCard className="h-4 w-4" />,
+  },
+  {
+    key: "adjunto_recibo_honorario",
+    label: "Recibo por honorario",
+    description: "Documento de servicios personales, si aplica.",
+    relation: "adjunto_recibo_honorario",
+    optional: true,
+    icon: <FileText className="h-4 w-4" />,
+  },
+];
+
+function normalizeRelation(value?: string) {
+  return String(value ?? "").toLowerCase().trim();
+}
+
+function findDocumentoByRelation(
+  documentos: ExpedienteDocumento[],
+  relation: string,
+) {
+  const normalized = normalizeRelation(relation);
+
+  return documentos.find(
+    (documento) => normalizeRelation(documento.tipoRelacion) === normalized,
+  );
+}
+
+function DocumentoSlotCard({
+  slot,
+  documento,
+}: {
+  slot: DocumentoSlot;
+  documento?: ExpedienteDocumento;
+}) {
+  const disponible = Boolean(documento);
+
+  return (
+    <div
+      className={`rounded-xl border p-4 transition-colors ${
+        disponible
+          ? "border-emerald-200 bg-emerald-50/50"
+          : slot.optional
+            ? "border-dashed bg-muted/20"
+            : "border-dashed bg-background"
+      }`}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex gap-3">
+          <span
+            className={`mt-0.5 flex h-9 w-9 items-center justify-center rounded-xl border ${
+              disponible
+                ? "border-emerald-200 bg-emerald-100 text-emerald-700"
+                : "bg-muted text-muted-foreground"
+            }`}
+          >
+            {slot.icon}
+          </span>
+
+          <div>
+            <div className="font-semibold">{slot.label}</div>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {slot.description}
+            </p>
+          </div>
+        </div>
+
+        <Badge variant={disponible ? "secondary" : "outline"}>
+          {disponible ? "Presente" : slot.optional ? "Opcional" : "Pendiente"}
+        </Badge>
+      </div>
+
+      {documento ? (
+        <div className="mt-4 rounded-lg border bg-background/80 p-3 text-sm">
+          <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+            <div>
+              <div className="font-medium">{documentoLabel(documento)}</div>
+              <div className="mt-1 text-xs text-muted-foreground">
+                Documento #{documento.documentoId} · Estado {documento.estado ?? "-"}
+              </div>
+            </div>
+
+            <Button asChild size="sm" variant="outline">
+              <Link href={`/documentos/${documento.documentoId}`}>
+                <ExternalLink className="mr-1 h-4 w-4" />
+                Ver
+              </Link>
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <p className="mt-4 text-xs text-muted-foreground">
+          {slot.optional
+            ? "Se agregará si este expediente lo requiere."
+            : "Pendiente de adjuntar o vincular al expediente."}
+        </p>
+      )}
+    </div>
+  );
+}
+
 function DocumentoCard({ documento }: { documento: ExpedienteDocumento }) {
   return (
     <div className="rounded-lg border p-3 text-sm">
@@ -189,6 +376,23 @@ export default function ExpedienteDetallePage() {
     .map((documento) => documento.documentoId)
     .filter(Boolean);
 
+  const principalSlot = DOCUMENTO_PRINCIPAL_SLOTS.find((slot) =>
+    findDocumentoByRelation(documentosDelExpediente, slot.relation),
+  );
+
+  const documentosEsperados = [
+    ...DOCUMENTO_PRINCIPAL_SLOTS,
+    ...DOCUMENTO_ADJUNTO_SLOTS.filter((slot) => !slot.optional),
+  ];
+
+  const documentosPresentesCatalogo = documentosEsperados.filter((slot) =>
+    findDocumentoByRelation(documentosDelExpediente, slot.relation),
+  ).length;
+
+  const avanceDocumental = documentosEsperados.length
+    ? Math.round((documentosPresentesCatalogo / documentosEsperados.length) * 100)
+    : 0;
+
   const alertasExpedienteQuery = useDocumentosAlertas(documentosIds);
   const alertasExpediente = alertasExpedienteQuery.alertas;
   const alertasActivas = alertasExpediente.filter(
@@ -238,7 +442,7 @@ export default function ExpedienteDetallePage() {
         </Badge>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-5">
+      <div className="grid gap-4 lg:grid-cols-6">
         <Card>
           <CardHeader>
             <CardTitle>Empresa</CardTitle>
@@ -283,7 +487,66 @@ export default function ExpedienteDetallePage() {
             {alertasActivas.length}
           </CardContent>
         </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Avance documental</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-semibold">{avanceDocumental}%</div>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {documentosPresentesCatalogo}/{documentosEsperados.length} requeridos
+            </p>
+          </CardContent>
+        </Card>
       </div>
+
+      <Card>
+        <CardHeader>
+          <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
+            <div>
+              <CardTitle>Expediente documental completo</CardTitle>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Vista operativa por catálogo oficial de documentos principales y adjuntos.
+              </p>
+            </div>
+            <Badge variant="outline" className="w-fit">
+              Principal: {principalSlot?.label ?? "sin definir"}
+            </Badge>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-5">
+          <div>
+            <div className="mb-3 text-sm font-semibold text-muted-foreground">
+              Documento principal
+            </div>
+            <div className="grid gap-3 lg:grid-cols-3">
+              {DOCUMENTO_PRINCIPAL_SLOTS.map((slot) => (
+                <DocumentoSlotCard
+                  key={slot.key}
+                  slot={slot}
+                  documento={findDocumentoByRelation(documentosDelExpediente, slot.relation)}
+                />
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <div className="mb-3 text-sm font-semibold text-muted-foreground">
+              Documentos adjuntos y financieros
+            </div>
+            <div className="grid gap-3 lg:grid-cols-3">
+              {DOCUMENTO_ADJUNTO_SLOTS.map((slot) => (
+                <DocumentoSlotCard
+                  key={slot.key}
+                  slot={slot}
+                  documento={findDocumentoByRelation(documentosDelExpediente, slot.relation)}
+                />
+              ))}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       <div className="grid gap-4 lg:grid-cols-2">
         <Card>

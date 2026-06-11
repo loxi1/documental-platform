@@ -150,6 +150,14 @@ export class DocumentosController {
     );
   }
 
+  @Post('ocr-resultados/:id/rechazar')
+  rechazarOcrResultado(
+    @Param('id', ParseIntPipe) id: number,
+    @Body('motivo') motivo?: string,
+  ) {
+    return this.service.rechazarOcrResultado(id, motivo);
+  }
+
   @ApiOperation({ summary: 'Obtener documento por ID con archivos vinculados' })
   @ApiParam({ name: 'id', example: 1 })
   @Get(':id')

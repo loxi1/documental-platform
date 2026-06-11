@@ -736,4 +736,33 @@ export class DocumentosRepository {
 
     return rows[0] ?? null;
   }
+
+  async rechazarOcrResultado(id: number, motivo?: string, usuarioId?: number) {
+    const rows = await sql`
+      UPDATE documentos.ocr_resultados
+      SET
+        estado = 'rechazado',
+        validado_en = now(),
+        validado_por = ${usuarioId ?? null},
+        metadata = jsonb_set(
+          COALESCE(metadata, '{}'::jsonb),
+          '{rechazo}',
+          ${JSON.stringify({
+            motivo: motivo ?? 'Rechazado por usuario',
+            fecha: new Date().toISOString(),
+          })}::jsonb,
+          true
+        )
+      WHERE id = ${id}
+      RETURNING
+        id,
+        estado,
+        documento_id,
+        tipo_propuesto,
+        clave_documental,
+        metadata
+    `;
+
+    return rows[0] ?? null;
+  }
 }

@@ -295,4 +295,21 @@ export class DocumentosService {
 
     return alerta;
   }
+
+  async rechazarOcrResultado(id: number, motivo?: string, usuarioId?: number) {
+    const rechazado = await this.repo.rechazarOcrResultado(id, motivo, usuarioId);
+
+    if (!rechazado) {
+      throw new NotFoundException(`Resultado OCR ${id} no encontrado`);
+    }
+
+    return {
+      id: rechazado.id,
+      estado: rechazado.estado,
+      documentoId: rechazado.documento_id,
+      tipoDocumental: rechazado.tipo_propuesto,
+      claveDocumental: rechazado.clave_documental,
+      rechazo: rechazado.metadata?.rechazo ?? null,
+    };
+  }
 }
