@@ -158,6 +158,18 @@ export class DocumentosController {
     return this.service.rechazarOcrResultado(id, motivo);
   }
 
+  @Patch('ocr-resultados/:id/editar')
+  editarOcrResultado(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: {
+      tipoPropuesto?: string;
+      metadata?: Record<string, any>;
+      observacion?: string;
+    },
+  ) {
+    return this.service.editarOcrResultado(id, body);
+  }
+
   @ApiOperation({ summary: 'Obtener documento por ID con archivos vinculados' })
   @ApiParam({ name: 'id', example: 1 })
   @Get(':id')

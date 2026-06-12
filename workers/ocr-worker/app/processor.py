@@ -19,6 +19,14 @@ from app.r2_storage import download_from_r2
 from app.legacy_core.document_enricher import enrich_page
 from app.classifier import classify_document
 
+from app.core.document_keys import build_document_key
+from app.core.document_types import (
+    normalize_document_type,
+    calculate_confidence,
+    get_missing_metadata,
+    should_require_review,
+)
+
 
 TIPO_MAP = {
     "FACTURA": "FACTURA",
@@ -34,15 +42,6 @@ TIPO_MAP = {
     "OS": "OS",
     "OTRO": "OTRO",
 }
-
-
-def map_tipo(tipo: str | None) -> str:
-    if not tipo:
-        return "OTRO"
-
-    key = tipo.upper()
-    return TIPO_MAP.get(key, key)
-
 
 def normalize_cliente_abreviatura(cliente: str) -> str:
     value = str(cliente or "").strip().upper()
@@ -61,33 +60,6 @@ def clean_key_part(value) -> str | None:
 
     cleaned = str(value).strip()
     return cleaned or None
-
-
-def build_clave_documental(
-    cliente: str,
-    tipo_documental: str,
-    metadata: dict,
-) -> str | None:
-    cliente_key = normalize_cliente_abreviatura(cliente)
-    tipo_key = clean_key_part(tipo_documental)
-    ruc = clean_key_part(metadata.get("ruc"))
-    serie = clean_key_part(metadata.get("serie"))
-    numero = clean_key_part(metadata.get("numero"))
-
-    if tipo_key in [
-        "FACTURA",
-        "GUIA_REMISION",
-        "NOTA_CREDITO",
-        "RECIBO_HONORARIO",
-    ]:
-        if ruc and serie and numero:
-            return f"{cliente_key}|{tipo_key}|{ruc}|{serie}|{numero}"
-
-    if tipo_key in ["OC", "OS", "NOTA_INGRESO"]:
-        if numero:
-            return f"{cliente_key}|{tipo_key}|{numero}"
-
-    return None
 
 
 def resolve_file_path(payload: OcrProcesarArchivoPayload) -> Path | dict:
@@ -143,7 +115,7 @@ async def process_file(payload: OcrProcesarArchivoPayload) -> dict:
         cliente=cliente,
     )
 
-    tipo_documental = map_tipo(
+    tipo_documental = normalize_document_type(
         enriched.get("tipo") or classify_document(text, file_path.name)
     )
 
@@ -159,12 +131,7 @@ async def process_file(payload: OcrProcesarArchivoPayload) -> dict:
 
     metadata_source = build_initial_metadata_source(metadata)
 
-    campos_detectados = [
-        key for key, value in metadata.items()
-        if value is not None and value != ""
-    ]
-
-    confidence = round(len(campos_detectados) / len(metadata), 2)
+    confidence = calculate_confidence(tipo_documental, metadata)
 
     qr_data = None
 
@@ -175,24 +142,32 @@ async def process_file(payload: OcrProcesarArchivoPayload) -> dict:
             qr_data,
             metadata_source,
         )
+        confidence = calculate_confidence(tipo_documental, metadata)
     
     if tipo_documental == "OTRO" and qr_data:
         if qr_data.get("tipoComprobanteCodigo") == "01":
             tipo_documental = "FACTURA"
 
-    clave_documental = build_clave_documental(
+    clave_documental = build_document_key(
         cliente=cliente,
         tipo_documental=tipo_documental,
         metadata=metadata,
     )
 
+    estado_forzado = None
     mensaje = "Archivo leído, clasificado y extraído correctamente"
 
-    if len((text or "").strip()) < 80 and not qr_data and not clave_documental:
-        mensaje = (
-            "PDF escaneado sin texto digital y sin QR legible. "
-            "Requiere revisión manual o reescaneo con mejor calidad."
-        )
+    if should_require_review(tipo_documental, metadata, text, qr_data) or not clave_documental:
+        estado_forzado = "requiere_revision"
+        mensaje = "Documento requiere revisión manual por metadata incompleta o clave documental no generable."
+    
+    campos_faltantes = get_missing_metadata(tipo_documental, metadata)
+
+    campos_detectados = [
+        field
+        for field in metadata.keys()
+        if metadata.get(field) not in [None, ""]
+    ]
 
     return build_ocr_result({
         "documentoId": payload.documentoId,
@@ -210,6 +185,9 @@ async def process_file(payload: OcrProcesarArchivoPayload) -> dict:
         "textPreview": text[:500],
         "metadata": metadata,
         "metadataSource": metadata_source,
+        "estadoForzado": estado_forzado,
+        "camposDetectados": campos_detectados,
+        "camposFaltantes": campos_faltantes,
         "qr": qr_data,
         "mensaje": mensaje,
     })

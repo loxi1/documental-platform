@@ -312,4 +312,31 @@ export class DocumentosService {
       rechazo: rechazado.metadata?.rechazo ?? null,
     };
   }
+
+  async editarOcrResultado(
+    id: number,
+    input: {
+      tipoPropuesto?: string;
+      metadata?: Record<string, any>;
+      observacion?: string;
+    },
+    usuarioId?: number,
+  ) {
+    const editado = await this.repo.editarOcrResultado(id, input, usuarioId);
+
+    if (!editado) {
+      throw new NotFoundException(`Resultado OCR ${id} no encontrado`);
+    }
+
+    return {
+      id: editado.id,
+      estado: editado.estado,
+      documentoId: editado.documento_id,
+      tipoDocumental: editado.tipo_propuesto,
+      claveDocumental: editado.clave_documental,
+      metadata: editado.metadata?.metadata ?? {},
+      metadataSource: editado.metadata?.metadataSource ?? {},
+      audit: editado.metadata?.audit ?? [],
+    };
+  }
 }
