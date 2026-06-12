@@ -1,13 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
+  CheckCircle2,
   Eye,
   FileText,
+  Filter,
   RefreshCcw,
   Search,
+  XCircle,
 } from "lucide-react";
 
 import { MetricCard } from "@/components/documental/metric-card";
@@ -29,12 +32,50 @@ import {
 } from "@/components/ui/empty";
 import { useCrearDocumentoAlerta } from "@/hooks/useAlertas";
 import { useRevisionContable } from "@/hooks/useRevisionContable";
+import { getContexto } from "@/lib/auth-storage";
 import type { RevisionContableItem } from "@/types/revision-contable";
+
+const MESES = [
+  { value: "1", label: "Enero" },
+  { value: "2", label: "Febrero" },
+  { value: "3", label: "Marzo" },
+  { value: "4", label: "Abril" },
+  { value: "5", label: "Mayo" },
+  { value: "6", label: "Junio" },
+  { value: "7", label: "Julio" },
+  { value: "8", label: "Agosto" },
+  { value: "9", label: "Septiembre" },
+  { value: "10", label: "Octubre" },
+  { value: "11", label: "Noviembre" },
+  { value: "12", label: "Diciembre" },
+];
 
 function pick<T>(...values: T[]) {
   return values.find(
     (value) => value !== null && value !== undefined && value !== "",
   );
+}
+
+function asText(value: unknown, fallback = "-") {
+  if (value === null || value === undefined || value === "") return fallback;
+  return String(value);
+}
+
+function getNestedText(
+  object: Record<string, unknown> | null | undefined,
+  keys: string[],
+  fallback = "-",
+) {
+  if (!object) return fallback;
+
+  for (const key of keys) {
+    const value = object[key];
+    if (value !== null && value !== undefined && value !== "") {
+      return String(value);
+    }
+  }
+
+  return fallback;
 }
 
 function expedienteId(item: RevisionContableItem) {
@@ -55,6 +96,29 @@ function rucEmisor(item: RevisionContableItem) {
 
 function razonSocial(item: RevisionContableItem) {
   return pick(item.razon_social_emisor, item.razonSocialEmisor, "-");
+}
+
+function codigoExpediente(item: RevisionContableItem) {
+  const codigo = pick(
+    item.codigo_pr,
+    item.codigoPr,
+    item.codigo_op,
+    item.codigoOp,
+    item.codigo_centro_costo,
+    item.codigoCentroCosto,
+    null,
+  );
+
+  if (!codigo) return "-";
+
+  const tipo = String(
+    pick(item.tipo_expediente, item.tipoExpediente, "EXP"),
+  ).toUpperCase();
+
+  if (tipo.includes("CENTRO")) return `CC ${codigo}`;
+  if (tipo.includes("PR") || tipo.includes("OP")) return `PR ${codigo}`;
+
+  return String(codigo);
 }
 
 function fechaEmision(item: RevisionContableItem) {
@@ -100,11 +164,126 @@ function documentoNombre(item: RevisionContableItem) {
   return `${pick(item.tipo_documental, item.tipoDocumental, "DOCUMENTO")} ${serie} ${numero}`;
 }
 
+function principalDocumento(item: RevisionContableItem) {
+  const principal = (item.documentoPrincipal ?? item.documento_principal ??
+    null) as Record<string, unknown> | null;
+
+  if (principal) {
+    const tipo = getNestedText(principal, ["tipoDocumental", "tipo_documental", "tipo"], "Principal");
+    const serie = getNestedText(principal, ["serie"], "");
+    const numero = getNestedText(principal, ["numero"], "");
+    const label = [tipo, serie, numero].filter(Boolean).join(" ").trim();
+    return label || "Documento principal";
+  }
+
+  const tipo = String(pick(item.tipo_documental, item.tipoDocumental, "")).toUpperCase();
+
+  if (tipo === "FACTURA") return documentoNombre(item);
+
+  return "No informado";
+}
+
+function includesType(value: unknown, tipo: string) {
+  const normalized = tipo.toUpperCase();
+
+  if (Array.isArray(value)) {
+    return value.some((item) =>
+      JSON.stringify(item ?? {}).toUpperCase().includes(normalized),
+    );
+  }
+
+  if (value && typeof value === "object") {
+    return JSON.stringify(value).toUpperCase().includes(normalized);
+  }
+
+  return String(value ?? "").toUpperCase().includes(normalized);
+}
+
+function hasDocumentType(item: RevisionContableItem, tipo: string) {
+  const estado = item.estadoDocumental ?? item.estado_documental;
+  const documentos = item.documentos ?? item.documentosAdjuntos ?? item.documentos_adjuntos;
+  const principal = item.documentoPrincipal ?? item.documento_principal;
+  const currentTipo = pick(item.tipo_documental, item.tipoDocumental, "");
+
+  if (String(currentTipo).toUpperCase() === tipo) return true;
+
+  return (
+    includesType(estado, tipo) ||
+    includesType(documentos, tipo) ||
+    includesType(principal, tipo)
+  );
+}
+
+function EstadoChip({ label, active }: { label: string; active: boolean }) {
+  return (
+    <span
+      className={
+        active
+          ? "inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-1 text-[11px] font-medium text-emerald-700"
+          : "inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] font-medium text-slate-500"
+      }
+      title={active ? `${label} presente` : `${label} no registrado`}
+    >
+      {active ? <CheckCircle2 className="h-3 w-3" /> : <XCircle className="h-3 w-3" />}
+      {label}
+    </span>
+  );
+}
+
+function EstadoDocumentalHorizontal({ item }: { item: RevisionContableItem }) {
+  const principal = principalDocumento(item) !== "No informado";
+
+  const states = [
+    { label: "Principal", active: principal },
+    { label: "OC", active: hasDocumentType(item, "OC") },
+    { label: "OS", active: hasDocumentType(item, "OS") },
+    { label: "Factura", active: hasDocumentType(item, "FACTURA") },
+    { label: "Guía", active: hasDocumentType(item, "GUIA_REMISION") || hasDocumentType(item, "GUIA") },
+    { label: "NI", active: hasDocumentType(item, "NOTA_INGRESO") },
+    { label: "Transf.", active: hasDocumentType(item, "PAGO_TRANSFERENCIA") || hasDocumentType(item, "TRANSFERENCIA") },
+    { label: "Detrac.", active: hasDocumentType(item, "PAGO_DETRACCION") || hasDocumentType(item, "DETRACCION") },
+  ];
+
+  return (
+    <div className="flex min-w-[560px] flex-wrap gap-1.5">
+      {states.map((state) => (
+        <EstadoChip key={state.label} {...state} />
+      ))}
+    </div>
+  );
+}
+
+function buildSearchText(item: RevisionContableItem) {
+  return [
+    item.correlativo,
+    item.expediente_correlativo,
+    item.expedienteCorrelativo,
+    codigoExpediente(item),
+    documentoNombre(item),
+    principalDocumento(item),
+    rucEmisor(item),
+    razonSocial(item),
+    documentoEstado(item),
+    alertasActivas(item) > 0 ? "alertas observado" : "sin alertas",
+  ]
+    .join(" ")
+    .toLowerCase();
+}
+
 export default function RevisionContablePage() {
-  const [empresa, setEmpresa] = useState("BBTI");
-  const [anio, setAnio] = useState("2026");
-  const [mes, setMes] = useState("1");
+  const contexto = getContexto();
+  const today = new Date();
+  const [empresa, setEmpresa] = useState(contexto?.empresa ?? "BBTI");
+  const [anio, setAnio] = useState(String(today.getFullYear()));
+  const [mes, setMes] = useState(String(today.getMonth() + 1));
+  const [busqueda, setBusqueda] = useState("");
+  const [filtroAlertas, setFiltroAlertas] = useState("todos");
   const [observandoId, setObservandoId] = useState<number | string | null>(null);
+
+  useEffect(() => {
+    if (contexto?.empresa) setEmpresa(contexto.empresa);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const params = useMemo(
     () => ({
@@ -119,14 +298,33 @@ export default function RevisionContablePage() {
     useRevisionContable(params);
   const crearAlerta = useCrearDocumentoAlerta();
 
-  const totalFacturas = data?.length ?? 0;
-  const totalAlertas =
-    data?.reduce((sum, item) => sum + alertasActivas(item), 0) ?? 0;
-  const totalMonto =
-    data?.reduce((sum, item) => {
-      const raw = Number(pick(item.monto_total, item.montoTotal, 0));
-      return sum + (Number.isNaN(raw) ? 0 : raw);
-    }, 0) ?? 0;
+  const items = data?.items ?? [];
+  const filteredItems = useMemo(() => {
+    const q = busqueda.trim().toLowerCase();
+
+    return items.filter((item) => {
+      const matchesText = !q || buildSearchText(item).includes(q);
+      const matchesAlertas =
+        filtroAlertas === "todos" ||
+        (filtroAlertas === "con_alertas" && alertasActivas(item) > 0) ||
+        (filtroAlertas === "sin_alertas" && alertasActivas(item) === 0);
+
+      return matchesText && matchesAlertas;
+    });
+  }, [busqueda, filtroAlertas, items]);
+
+  const totalFacturas = items.length;
+  const totalAlertas = items.reduce(
+    (sum, item) => sum + alertasActivas(item),
+    0,
+  );
+  const totalMonto = items.reduce((sum, item) => {
+    const raw = Number(pick(item.monto_total, item.montoTotal, 0));
+    return sum + (Number.isNaN(raw) ? 0 : raw);
+  }, 0);
+
+  const fechaLimite = asText(data?.fechaLimite ?? data?.fecha_limite, "No definida");
+  const diaCierre = asText(data?.diaCierreContable ?? data?.dia_cierre_contable, "-");
 
   async function crearObservacion(item: RevisionContableItem) {
     const id = documentoId(item);
@@ -146,6 +344,7 @@ export default function RevisionContablePage() {
             empresa: params.empresa,
             anio: params.anio,
             mes: params.mes,
+            regla: "alerta_manual",
           },
         },
       });
@@ -159,10 +358,10 @@ export default function RevisionContablePage() {
     <main className="space-y-4">
       <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Revisión contable</h1>
+          <h1 className="text-2xl font-bold">Bandeja contable</h1>
           <p className="text-sm text-muted-foreground">
-            Revisión mensual de facturas confirmadas. El expediente puede vivir
-            varios meses; el filtro se basa en el periodo de emisión de factura.
+            Una fila representa una factura del periodo. El expediente, PR/centro
+            de costo, documento eje y adjuntos aparecen como contexto operativo.
           </p>
         </div>
 
@@ -179,10 +378,10 @@ export default function RevisionContablePage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Filtros</CardTitle>
+          <CardTitle>Periodo de revisión</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid gap-3 md:grid-cols-4">
+          <div className="grid gap-3 md:grid-cols-[1fr_1fr_1fr_auto]">
             <label className="space-y-1 text-sm">
               <span className="text-xs font-medium text-muted-foreground">
                 Empresa
@@ -210,12 +409,17 @@ export default function RevisionContablePage() {
               <span className="text-xs font-medium text-muted-foreground">
                 Mes
               </span>
-              <Input
+              <select
+                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
                 value={mes}
                 onChange={(event) => setMes(event.target.value)}
-                placeholder="1"
-                inputMode="numeric"
-              />
+              >
+                {MESES.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
             </label>
 
             <div className="flex items-end">
@@ -230,15 +434,28 @@ export default function RevisionContablePage() {
               </Button>
             </div>
           </div>
+
+          <div className="mt-3 flex flex-wrap gap-2 text-xs text-muted-foreground">
+            <Badge variant="outline">Día cierre: {diaCierre}</Badge>
+            <Badge variant="outline">Fecha límite: {fechaLimite}</Badge>
+            <Badge variant="outline">Alertas manuales, no automáticas</Badge>
+          </div>
         </CardContent>
       </Card>
 
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-4">
         <MetricCard
-          title="Facturas revisadas"
+          title="Facturas del periodo"
           value={totalFacturas}
-          description="Documentos tipo factura del periodo consultado."
+          description="Base de la bandeja contable."
           icon={<FileText className="h-5 w-5" />}
+        />
+
+        <MetricCard
+          title="Visibles"
+          value={filteredItems.length}
+          description="Después de filtros locales."
+          icon={<Filter className="h-5 w-5" />}
         />
 
         <MetricCard
@@ -254,7 +471,7 @@ export default function RevisionContablePage() {
         <MetricCard
           title="Alertas activas"
           value={totalAlertas}
-          description="Alertas pendientes de resolver en los documentos listados."
+          description="Observaciones manuales pendientes."
           icon={<AlertTriangle className="h-5 w-5" />}
           accent={totalAlertas > 0 ? "warning" : "success"}
           href="/alertas"
@@ -264,11 +481,38 @@ export default function RevisionContablePage() {
       {error ? (
         <Card>
           <CardContent className="py-6 text-sm text-red-600">
-            No se pudo cargar la revisión contable. Verifica backend, empresa,
+            No se pudo cargar la bandeja contable. Verifica backend, empresa,
             año y mes.
           </CardContent>
         </Card>
       ) : null}
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Filter className="h-5 w-5" />
+            Filtros de bandeja
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-3 md:grid-cols-[1fr_220px]">
+            <Input
+              value={busqueda}
+              onChange={(event) => setBusqueda(event.target.value)}
+              placeholder="Buscar expediente, PR/CC, factura, proveedor, documento eje..."
+            />
+            <select
+              className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+              value={filtroAlertas}
+              onChange={(event) => setFiltroAlertas(event.target.value)}
+            >
+              <option value="todos">Todas</option>
+              <option value="con_alertas">Con alertas</option>
+              <option value="sin_alertas">Sin alertas</option>
+            </select>
+          </div>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>
@@ -281,7 +525,7 @@ export default function RevisionContablePage() {
           {isLoading ? (
             <Empty>
               <EmptyHeader>
-                <EmptyTitle>Cargando revisión contable...</EmptyTitle>
+                <EmptyTitle>Cargando bandeja contable...</EmptyTitle>
                 <EmptyDescription>Estamos consultando documentos del periodo.</EmptyDescription>
               </EmptyHeader>
             </Empty>
@@ -290,18 +534,19 @@ export default function RevisionContablePage() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b text-left">
-                    <th className="py-2">Expediente</th>
-                    <th>Documento</th>
-                    <th>Proveedor</th>
+                    <th className="min-w-48 py-2">Expediente</th>
+                    <th className="min-w-56">Factura</th>
+                    <th className="min-w-56">Proveedor</th>
                     <th>Fecha</th>
                     <th>Monto</th>
-                    <th>Estado</th>
+                    <th className="min-w-56">Documento eje</th>
+                    <th className="min-w-[580px]">Estado documental</th>
                     <th>Alertas</th>
                     <th className="text-right">Acciones</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {data?.map((item) => {
+                  {filteredItems.map((item) => {
                     const expId = expedienteId(item);
                     const docId = documentoId(item);
                     const alertas = alertasActivas(item);
@@ -313,17 +558,29 @@ export default function RevisionContablePage() {
                       >
                         <td className="py-3">
                           <div className="font-medium">
-                            {item.correlativo ?? `Exp. ${expId}`}
+                            {item.correlativo ??
+                              item.expediente_correlativo ??
+                              item.expedienteCorrelativo ??
+                              `Exp. ${expId}`}
                           </div>
                           <div className="text-xs text-muted-foreground">
-                            ID: {expId}
+                            {codigoExpediente(item)} · ID {expId}
                           </div>
+                          <Badge className="mt-1" variant="outline">
+                            {asText(
+                              pick(item.tipo_expediente, item.tipoExpediente),
+                              "EXP",
+                            )}
+                          </Badge>
                         </td>
                         <td>
                           <div className="font-medium">{documentoNombre(item)}</div>
                           <div className="text-xs text-muted-foreground">
                             ID documento: {docId}
                           </div>
+                          <Badge className="mt-1" variant="secondary">
+                            {documentoEstado(item)}
+                          </Badge>
                         </td>
                         <td>
                           <div>{rucEmisor(item)}</div>
@@ -337,14 +594,15 @@ export default function RevisionContablePage() {
                         <td>{fechaEmision(item)}</td>
                         <td className="font-medium">{montoTotal(item)}</td>
                         <td>
-                          <Badge variant="secondary">
-                            {documentoEstado(item)}
-                          </Badge>
-                          {item.alerta_contable || item.alertaContable ? (
-                            <div className="mt-1 text-xs text-amber-700">
-                              Observado contable
-                            </div>
-                          ) : null}
+                          <div className="max-w-56 truncate font-medium" title={principalDocumento(item)}>
+                            {principalDocumento(item)}
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            OC / OS / factura directa
+                          </div>
+                        </td>
+                        <td>
+                          <EstadoDocumentalHorizontal item={item} />
                         </td>
                         <td>
                           {alertas > 0 ? (
@@ -366,25 +624,17 @@ export default function RevisionContablePage() {
                           ) : null}
 
                           {docId !== "-" ? (
-                            <>
-                              <Button asChild size="sm" variant="outline">
-                                <Link href={`/alertas?documentoId=${docId}`}>
-                                  Alertas
-                                </Link>
-                              </Button>
-
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => crearObservacion(item)}
-                                disabled={
-                                  crearAlerta.isPending && observandoId === docId
-                                }
-                              >
-                                <AlertTriangle className="mr-1 h-4 w-4" />
-                                Observar
-                              </Button>
-                            </>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => crearObservacion(item)}
+                              disabled={
+                                crearAlerta.isPending && observandoId === docId
+                              }
+                            >
+                              <AlertTriangle className="mr-1 h-4 w-4" />
+                              Observar
+                            </Button>
                           ) : null}
                         </td>
                       </tr>
@@ -393,15 +643,16 @@ export default function RevisionContablePage() {
                 </tbody>
               </table>
 
-              {!data?.length ? (
+              {!filteredItems.length ? (
                 <Empty className="mt-4">
                   <EmptyHeader>
                     <EmptyMedia variant="icon">
                       <FileText className="h-5 w-5" />
                     </EmptyMedia>
-                    <EmptyTitle>Sin facturas para este periodo</EmptyTitle>
+                    <EmptyTitle>Sin facturas para este filtro</EmptyTitle>
                     <EmptyDescription>
-                      No se encontraron facturas confirmadas con el filtro seleccionado.
+                      No se encontraron facturas confirmadas con el periodo y
+                      filtros seleccionados.
                     </EmptyDescription>
                   </EmptyHeader>
                 </Empty>

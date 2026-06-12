@@ -44,6 +44,7 @@ def normalize_document_type(tipo: str | None) -> str:
         "GUÍA": "GUIA_REMISION",
         "GUIA DE REMISION": "GUIA_REMISION",
         "GUÍA DE REMISIÓN": "GUIA_REMISION",
+        "BOLETA": "OTRO",
         "TRANSFERENCIA": "PAGO_TRANSFERENCIA",
         "DETRACCION": "PAGO_DETRACCION",
         "DETRACCIÓN": "PAGO_DETRACCION",
@@ -90,13 +91,18 @@ def calculate_confidence(tipo_documental: str | None, metadata: dict[str, Any]) 
     return round(len(detected) / len(required), 2)
 
 
-def should_require_review(tipo_documental: str | None, metadata: dict[str, Any], text: str = "", qr_data: dict | None = None) -> bool:
-    missing = get_missing_metadata(tipo_documental, metadata)
+def should_require_review(
+    tipo_documental: str | None,
+    metadata: dict[str, Any],
+    text: str = "",
+    qr_data: dict | None = None,
+) -> bool:
+    tipo = normalize_document_type(tipo_documental)
 
-    if missing:
+    if get_missing_metadata(tipo, metadata):
         return True
 
-    if len((text or "").strip()) < 80 and not qr_data and normalize_document_type(tipo_documental) == "OTRO":
+    if len((text or "").strip()) < 80 and not qr_data and tipo == "OTRO":
         return True
 
     return False

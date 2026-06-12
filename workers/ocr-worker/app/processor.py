@@ -18,7 +18,6 @@ from app.result_builder import build_ocr_result
 from app.r2_storage import download_from_r2
 from app.legacy_core.document_enricher import enrich_page
 from app.classifier import classify_document
-
 from app.core.document_keys import build_document_key
 from app.core.document_types import (
     normalize_document_type,
@@ -27,21 +26,6 @@ from app.core.document_types import (
     should_require_review,
 )
 
-
-TIPO_MAP = {
-    "FACTURA": "FACTURA",
-    "GUIA_REMISION": "GUIA_REMISION",
-    "ORDEN_COMPRA": "OC",
-    "ORDEN_SERVICIO": "OS",
-    "NOTA_INGRESO": "NOTA_INGRESO",
-    "PAGO_TRANSFERENCIA": "PAGO_TRANSFERENCIA",
-    "PAGO_DETRACCION": "PAGO_DETRACCION",
-    "RECIBO_HONORARIO": "RECIBO_HONORARIO",
-    "NOTA_CREDITO": "NOTA_CREDITO",
-    "OC": "OC",
-    "OS": "OS",
-    "OTRO": "OTRO",
-}
 
 def normalize_cliente_abreviatura(cliente: str) -> str:
     value = str(cliente or "").strip().upper()
@@ -52,14 +36,6 @@ def normalize_cliente_abreviatura(cliente: str) -> str:
         )
 
     return value
-
-
-def clean_key_part(value) -> str | None:
-    if value is None:
-        return None
-
-    cleaned = str(value).strip()
-    return cleaned or None
 
 
 def resolve_file_path(payload: OcrProcesarArchivoPayload) -> Path | dict:
@@ -85,17 +61,39 @@ def resolve_file_path(payload: OcrProcesarArchivoPayload) -> Path | dict:
     }
 
 
-def should_use_qr(tipo_documental: str, metadata: dict, confidence: float, text: str = "") -> bool:
-    if tipo_documental in ["FACTURA", "GUIA_REMISION"]:
-        required = ["ruc", "serie", "numero", "fechaEmision", "montoTotal"]
-        missing = [key for key in required if not metadata.get(key)]
-        return bool(missing) or confidence < 0.90
+def should_use_qr(
+    tipo_documental: str,
+    metadata: dict,
+    confidence: float,
+    text: str = "",
+) -> bool:
+    tipo = normalize_document_type(tipo_documental)
 
-    # PDF escaneado sin texto: intentar QR aunque el tipo sea OTRO
+    if tipo in ["FACTURA", "GUIA_REMISION", "NOTA_CREDITO", "RECIBO_HONORARIO"]:
+        return bool(get_missing_metadata(tipo, metadata)) or confidence < 0.90
+
     if len((text or "").strip()) < 80:
         return True
 
     return False
+
+
+def infer_tipo_from_qr(tipo_documental: str, qr_data: dict | None) -> str:
+    tipo = normalize_document_type(tipo_documental)
+
+    if tipo != "OTRO" or not qr_data:
+        return tipo
+
+    codigo = str(qr_data.get("tipoComprobanteCodigo") or "").strip()
+
+    sunat_map = {
+        "01": "FACTURA",
+        "07": "NOTA_CREDITO",
+        "09": "GUIA_REMISION",
+        "R1": "RECIBO_HONORARIO",
+    }
+
+    return normalize_document_type(sunat_map.get(codigo, tipo))
 
 
 async def process_file(payload: OcrProcesarArchivoPayload) -> dict:
@@ -130,7 +128,6 @@ async def process_file(payload: OcrProcesarArchivoPayload) -> dict:
     }
 
     metadata_source = build_initial_metadata_source(metadata)
-
     confidence = calculate_confidence(tipo_documental, metadata)
 
     qr_data = None
@@ -142,11 +139,8 @@ async def process_file(payload: OcrProcesarArchivoPayload) -> dict:
             qr_data,
             metadata_source,
         )
+        tipo_documental = infer_tipo_from_qr(tipo_documental, qr_data)
         confidence = calculate_confidence(tipo_documental, metadata)
-    
-    if tipo_documental == "OTRO" and qr_data:
-        if qr_data.get("tipoComprobanteCodigo") == "01":
-            tipo_documental = "FACTURA"
 
     clave_documental = build_document_key(
         cliente=cliente,
@@ -154,13 +148,6 @@ async def process_file(payload: OcrProcesarArchivoPayload) -> dict:
         metadata=metadata,
     )
 
-    estado_forzado = None
-    mensaje = "Archivo leído, clasificado y extraído correctamente"
-
-    if should_require_review(tipo_documental, metadata, text, qr_data) or not clave_documental:
-        estado_forzado = "requiere_revision"
-        mensaje = "Documento requiere revisión manual por metadata incompleta o clave documental no generable."
-    
     campos_faltantes = get_missing_metadata(tipo_documental, metadata)
 
     campos_detectados = [
@@ -168,6 +155,23 @@ async def process_file(payload: OcrProcesarArchivoPayload) -> dict:
         for field in metadata.keys()
         if metadata.get(field) not in [None, ""]
     ]
+
+    estado_forzado = None
+    mensaje = "Archivo leído, clasificado y extraído correctamente"
+
+    if should_require_review(tipo_documental, metadata, text, qr_data) or not clave_documental:
+        estado_forzado = "requiere_revision"
+
+        if len((text or "").strip()) < 80 and not qr_data:
+            mensaje = (
+                "PDF escaneado sin texto digital y sin QR legible. "
+                "Requiere revisión manual o reescaneo con mejor calidad."
+            )
+        else:
+            mensaje = (
+                "Documento requiere revisión manual por metadata incompleta "
+                "o clave documental no generable."
+            )
 
     return build_ocr_result({
         "documentoId": payload.documentoId,
@@ -180,12 +184,13 @@ async def process_file(payload: OcrProcesarArchivoPayload) -> dict:
         "extension": file_path.suffix.lower(),
         "tipoSolicitud": payload.tipoSolicitud,
         "tipoDocumental": tipo_documental,
+        "confidence": confidence,
+        "estadoForzado": estado_forzado,
         "claveDocumental": clave_documental,
         "textLength": len(text),
         "textPreview": text[:500],
         "metadata": metadata,
         "metadataSource": metadata_source,
-        "estadoForzado": estado_forzado,
         "camposDetectados": campos_detectados,
         "camposFaltantes": campos_faltantes,
         "qr": qr_data,
