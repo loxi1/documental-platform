@@ -7,21 +7,14 @@ import {
   CheckCircle2,
   Eye,
   FileText,
-  Filter,
   RefreshCcw,
   Search,
   XCircle,
 } from "lucide-react";
 
-import { MetricCard } from "@/components/documental/metric-card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import {
   Empty,
@@ -30,10 +23,26 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from "@/components/ui/empty";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useCrearDocumentoAlerta } from "@/hooks/useAlertas";
 import { useRevisionContable } from "@/hooks/useRevisionContable";
 import { getContexto } from "@/lib/auth-storage";
 import type { RevisionContableItem } from "@/types/revision-contable";
+
+const EMPRESAS = [
+  { value: "BBTI", label: "BBTI - BBTI S.A.C." },
+  { value: "BBTEC", label: "BBTEC - BB TECNOLOGÍA INDUSTRIAL S.A.C." },
+  { value: "CIMA", label: "CIMA - CIMA ENERGY" },
+  { value: "TARMA", label: "TARMA - TARMA" },
+  { value: "HUANCA", label: "HUANCA - HUANCA" },
+  { value: "KIMBIRI", label: "KIMBIRI - KIMBIRI" },
+];
 
 const MESES = [
   { value: "1", label: "Enero" },
@@ -49,6 +58,29 @@ const MESES = [
   { value: "11", label: "Noviembre" },
   { value: "12", label: "Diciembre" },
 ];
+
+const PAGE_SIZE_OPTIONS = ["25", "50", "100"];
+
+function buildYearOptions() {
+  const current = new Date().getFullYear();
+  const end = Math.max(current, 2026);
+  return Array.from({ length: end - 2026 + 1 }, (_, index) => String(2026 + index));
+}
+
+function buildMonthOptions(year: string) {
+  const current = new Date();
+  const selectedYear = Number(year);
+
+  if (selectedYear === current.getFullYear()) {
+    return MESES.slice(0, current.getMonth() + 1);
+  }
+
+  return MESES;
+}
+
+function monthLabel(month: string | number | undefined) {
+  return MESES.find((item) => item.value === String(month))?.label ?? "-";
+}
 
 function pick<T>(...values: T[]) {
   return values.find(
@@ -139,6 +171,19 @@ function fechaEmision(item: RevisionContableItem) {
   }).format(date);
 }
 
+function montoNumber(item: RevisionContableItem) {
+  const raw = Number(pick(item.monto_total, item.montoTotal, 0));
+  return Number.isNaN(raw) ? 0 : raw;
+}
+
+function formatMoney(value: number) {
+  return new Intl.NumberFormat("es-PE", {
+    style: "currency",
+    currency: "PEN",
+    minimumFractionDigits: 2,
+  }).format(value);
+}
+
 function montoTotal(item: RevisionContableItem) {
   const raw = pick(item.monto_total, item.montoTotal, 0);
   const value = Number(raw ?? 0);
@@ -147,11 +192,7 @@ function montoTotal(item: RevisionContableItem) {
     return `S/ ${raw}`;
   }
 
-  return new Intl.NumberFormat("es-PE", {
-    style: "currency",
-    currency: "PEN",
-    minimumFractionDigits: 2,
-  }).format(value);
+  return formatMoney(value);
 }
 
 function alertasActivas(item: RevisionContableItem) {
@@ -169,14 +210,20 @@ function principalDocumento(item: RevisionContableItem) {
     null) as Record<string, unknown> | null;
 
   if (principal) {
-    const tipo = getNestedText(principal, ["tipoDocumental", "tipo_documental", "tipo"], "Principal");
+    const tipo = getNestedText(
+      principal,
+      ["tipoDocumental", "tipo_documental", "tipo"],
+      "Principal",
+    );
     const serie = getNestedText(principal, ["serie"], "");
     const numero = getNestedText(principal, ["numero"], "");
     const label = [tipo, serie, numero].filter(Boolean).join(" ").trim();
     return label || "Documento principal";
   }
 
-  const tipo = String(pick(item.tipo_documental, item.tipoDocumental, "")).toUpperCase();
+  const tipo = String(
+    pick(item.tipo_documental, item.tipoDocumental, ""),
+  ).toUpperCase();
 
   if (tipo === "FACTURA") return documentoNombre(item);
 
@@ -201,7 +248,8 @@ function includesType(value: unknown, tipo: string) {
 
 function hasDocumentType(item: RevisionContableItem, tipo: string) {
   const estado = item.estadoDocumental ?? item.estado_documental;
-  const documentos = item.documentos ?? item.documentosAdjuntos ?? item.documentos_adjuntos;
+  const documentos =
+    item.documentos ?? item.documentosAdjuntos ?? item.documentos_adjuntos;
   const principal = item.documentoPrincipal ?? item.documento_principal;
   const currentTipo = pick(item.tipo_documental, item.tipoDocumental, "");
 
@@ -224,7 +272,11 @@ function EstadoChip({ label, active }: { label: string; active: boolean }) {
       }
       title={active ? `${label} presente` : `${label} no registrado`}
     >
-      {active ? <CheckCircle2 className="h-3 w-3" /> : <XCircle className="h-3 w-3" />}
+      {active ? (
+        <CheckCircle2 className="h-3 w-3" />
+      ) : (
+        <XCircle className="h-3 w-3" />
+      )}
       {label}
     </span>
   );
@@ -238,10 +290,24 @@ function EstadoDocumentalHorizontal({ item }: { item: RevisionContableItem }) {
     { label: "OC", active: hasDocumentType(item, "OC") },
     { label: "OS", active: hasDocumentType(item, "OS") },
     { label: "Factura", active: hasDocumentType(item, "FACTURA") },
-    { label: "Guía", active: hasDocumentType(item, "GUIA_REMISION") || hasDocumentType(item, "GUIA") },
+    {
+      label: "Guía",
+      active:
+        hasDocumentType(item, "GUIA_REMISION") || hasDocumentType(item, "GUIA"),
+    },
     { label: "NI", active: hasDocumentType(item, "NOTA_INGRESO") },
-    { label: "Transf.", active: hasDocumentType(item, "PAGO_TRANSFERENCIA") || hasDocumentType(item, "TRANSFERENCIA") },
-    { label: "Detrac.", active: hasDocumentType(item, "PAGO_DETRACCION") || hasDocumentType(item, "DETRACCION") },
+    {
+      label: "Transf.",
+      active:
+        hasDocumentType(item, "PAGO_TRANSFERENCIA") ||
+        hasDocumentType(item, "TRANSFERENCIA"),
+    },
+    {
+      label: "Detrac.",
+      active:
+        hasDocumentType(item, "PAGO_DETRACCION") ||
+        hasDocumentType(item, "DETRACCION"),
+    },
   ];
 
   return (
@@ -272,18 +338,31 @@ function buildSearchText(item: RevisionContableItem) {
 
 export default function RevisionContablePage() {
   const contexto = getContexto();
+  const yearOptions = useMemo(() => buildYearOptions(), []);
   const today = new Date();
+  const initialYear = String(Math.max(today.getFullYear(), 2026));
+
   const [empresa, setEmpresa] = useState(contexto?.empresa ?? "BBTI");
-  const [anio, setAnio] = useState(String(today.getFullYear()));
+  const [anio, setAnio] = useState(initialYear);
   const [mes, setMes] = useState(String(today.getMonth() + 1));
   const [busqueda, setBusqueda] = useState("");
   const [filtroAlertas, setFiltroAlertas] = useState("todos");
+  const [pageSize, setPageSize] = useState("50");
+  const [page, setPage] = useState(1);
   const [observandoId, setObservandoId] = useState<number | string | null>(null);
 
   useEffect(() => {
     if (contexto?.empresa) setEmpresa(contexto.empresa);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const monthOptions = useMemo(() => buildMonthOptions(anio), [anio]);
+
+  useEffect(() => {
+    if (!monthOptions.some((option) => option.value === mes)) {
+      setMes(monthOptions.at(-1)?.value ?? "1");
+    }
+  }, [mes, monthOptions]);
 
   const params = useMemo(
     () => ({
@@ -313,18 +392,30 @@ export default function RevisionContablePage() {
     });
   }, [busqueda, filtroAlertas, items]);
 
+  useEffect(() => {
+    setPage(1);
+  }, [empresa, anio, mes, busqueda, filtroAlertas, pageSize]);
+
   const totalFacturas = items.length;
   const totalAlertas = items.reduce(
     (sum, item) => sum + alertasActivas(item),
     0,
   );
-  const totalMonto = items.reduce((sum, item) => {
-    const raw = Number(pick(item.monto_total, item.montoTotal, 0));
-    return sum + (Number.isNaN(raw) ? 0 : raw);
-  }, 0);
+  const totalMonto = items.reduce((sum, item) => sum + montoNumber(item), 0);
+  const fechaLimite = asText(
+    data?.fechaLimite ?? data?.fecha_limite,
+    "No definida",
+  );
+  const diaCierre = asText(
+    data?.diaCierreContable ?? data?.dia_cierre_contable,
+    "-",
+  );
 
-  const fechaLimite = asText(data?.fechaLimite ?? data?.fecha_limite, "No definida");
-  const diaCierre = asText(data?.diaCierreContable ?? data?.dia_cierre_contable, "-");
+  const numericPageSize = Number(pageSize);
+  const totalPages = Math.max(1, Math.ceil(filteredItems.length / numericPageSize));
+  const safePage = Math.min(page, totalPages);
+  const start = (safePage - 1) * numericPageSize;
+  const pageItems = filteredItems.slice(start, start + numericPageSize);
 
   async function crearObservacion(item: RevisionContableItem) {
     const id = documentoId(item);
@@ -355,19 +446,19 @@ export default function RevisionContablePage() {
   }
 
   return (
-    <main className="space-y-4">
-      <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+    <main className="space-y-3">
+      <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Bandeja contable</h1>
+          <h1 className="text-2xl font-bold">Revisión contable</h1>
           <p className="text-sm text-muted-foreground">
-            Una fila representa una factura del periodo. El expediente, PR/centro
-            de costo, documento eje y adjuntos aparecen como contexto operativo.
+            Bandeja operativa para validar documentos del periodo.
           </p>
         </div>
 
         <Button
           type="button"
           variant="outline"
+          size="sm"
           onClick={() => refetch()}
           disabled={isFetching}
         >
@@ -377,110 +468,94 @@ export default function RevisionContablePage() {
       </div>
 
       <Card>
-        <CardHeader>
-          <CardTitle>Periodo de revisión</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid gap-3 md:grid-cols-[1fr_1fr_1fr_auto]">
-            <label className="space-y-1 text-sm">
+        <CardContent className="p-3">
+          <div className="grid items-center gap-2 lg:grid-cols-[minmax(330px,1.35fr)_minmax(170px,0.55fr)_minmax(220px,0.75fr)_132px]">
+            <div className="grid grid-cols-[74px_minmax(0,1fr)] items-center gap-2">
               <span className="text-xs font-medium text-muted-foreground">
                 Empresa
               </span>
-              <Input
-                value={empresa}
-                onChange={(event) => setEmpresa(event.target.value)}
-                placeholder="BBTI"
-              />
-            </label>
+              <Select value={empresa} onValueChange={setEmpresa}>
+                <SelectTrigger className="h-9 w-full">
+                  <SelectValue placeholder="Selecciona empresa" />
+                </SelectTrigger>
+                <SelectContent>
+                  {EMPRESAS.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
 
-            <label className="space-y-1 text-sm">
+            <div className="grid grid-cols-[42px_minmax(0,1fr)] items-center gap-2">
               <span className="text-xs font-medium text-muted-foreground">
                 Año
               </span>
-              <Input
-                value={anio}
-                onChange={(event) => setAnio(event.target.value)}
-                placeholder="2026"
-                inputMode="numeric"
-              />
-            </label>
+              <Select value={anio} onValueChange={setAnio}>
+                <SelectTrigger className="h-9 w-full">
+                  <SelectValue placeholder="Año" />
+                </SelectTrigger>
+                <SelectContent>
+                  {yearOptions.map((option) => (
+                    <SelectItem key={option} value={option}>
+                      {option}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
 
-            <label className="space-y-1 text-sm">
+            <div className="grid grid-cols-[38px_minmax(0,1fr)] items-center gap-2">
               <span className="text-xs font-medium text-muted-foreground">
                 Mes
               </span>
-              <select
-                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-                value={mes}
-                onChange={(event) => setMes(event.target.value)}
-              >
-                {MESES.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <div className="flex items-end">
-              <Button
-                className="w-full"
-                type="button"
-                onClick={() => refetch()}
-                disabled={isFetching}
-              >
-                <Search className="mr-1 h-4 w-4" />
-                Consultar
-              </Button>
+              <Select value={mes} onValueChange={setMes}>
+                <SelectTrigger className="h-9 w-full">
+                  <SelectValue placeholder="Mes" />
+                </SelectTrigger>
+                <SelectContent>
+                  {monthOptions.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
+
+            <Button
+              className="h-9 w-full"
+              type="button"
+              onClick={() => refetch()}
+              disabled={isFetching}
+            >
+              <Search className="mr-1 h-4 w-4" />
+              Consultar
+            </Button>
           </div>
 
-          <div className="mt-3 flex flex-wrap gap-2 text-xs text-muted-foreground">
-            <Badge variant="outline">Día cierre: {diaCierre}</Badge>
-            <Badge variant="outline">Fecha límite: {fechaLimite}</Badge>
-            <Badge variant="outline">Alertas manuales, no automáticas</Badge>
+          <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+            <span className="font-medium text-foreground">
+              {monthLabel(mes)} {anio}
+            </span>
+            <span>·</span>
+            <span>{totalFacturas} facturas</span>
+            <span>·</span>
+            <span>{formatMoney(totalMonto)}</span>
+            <span>·</span>
+            <span>{totalAlertas} alertas activas</span>
+            <span>·</span>
+            <span>Día cierre: {diaCierre}</span>
+            <span>·</span>
+            <span>Fecha límite: {fechaLimite}</span>
           </div>
         </CardContent>
       </Card>
 
-      <div className="grid gap-4 md:grid-cols-4">
-        <MetricCard
-          title="Facturas del periodo"
-          value={totalFacturas}
-          description="Base de la bandeja contable."
-          icon={<FileText className="h-5 w-5" />}
-        />
-
-        <MetricCard
-          title="Visibles"
-          value={filteredItems.length}
-          description="Después de filtros locales."
-          icon={<Filter className="h-5 w-5" />}
-        />
-
-        <MetricCard
-          title="Monto del periodo"
-          value={new Intl.NumberFormat("es-PE", {
-            style: "currency",
-            currency: "PEN",
-            minimumFractionDigits: 2,
-          }).format(totalMonto)}
-          description="Total calculado desde facturas listadas."
-        />
-
-        <MetricCard
-          title="Alertas activas"
-          value={totalAlertas}
-          description="Observaciones manuales pendientes."
-          icon={<AlertTriangle className="h-5 w-5" />}
-          accent={totalAlertas > 0 ? "warning" : "success"}
-          href="/alertas"
-        />
-      </div>
-
       {error ? (
         <Card>
-          <CardContent className="py-6 text-sm text-red-600">
+          <CardContent className="py-4 text-sm text-red-600">
             No se pudo cargar la bandeja contable. Verifica backend, empresa,
             año y mes.
           </CardContent>
@@ -488,65 +563,81 @@ export default function RevisionContablePage() {
       ) : null}
 
       <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Filter className="h-5 w-5" />
-            Filtros de bandeja
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid gap-3 md:grid-cols-[1fr_220px]">
+        <CardContent className="p-3">
+          <div className="grid gap-2 lg:grid-cols-[1fr_180px_150px]">
             <Input
               value={busqueda}
               onChange={(event) => setBusqueda(event.target.value)}
               placeholder="Buscar expediente, PR/CC, factura, proveedor, documento eje..."
             />
-            <select
-              className="h-10 rounded-md border border-input bg-background px-3 text-sm"
-              value={filtroAlertas}
-              onChange={(event) => setFiltroAlertas(event.target.value)}
-            >
-              <option value="todos">Todas</option>
-              <option value="con_alertas">Con alertas</option>
-              <option value="sin_alertas">Sin alertas</option>
-            </select>
+
+            <Select value={filtroAlertas} onValueChange={setFiltroAlertas}>
+              <SelectTrigger className="h-10 w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="todos">Todas</SelectItem>
+                <SelectItem value="con_alertas">Con alertas</SelectItem>
+                <SelectItem value="sin_alertas">Sin alertas</SelectItem>
+              </SelectContent>
+            </Select>
+
+            <Select value={pageSize} onValueChange={setPageSize}>
+              <SelectTrigger className="h-10 w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {PAGE_SIZE_OPTIONS.map((option) => (
+                  <SelectItem key={option} value={option}>
+                    {option} por página
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <FileText className="h-5 w-5" />
-            Facturas del periodo
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
+      <Card className="overflow-hidden">
+        <CardContent className="p-0">
+          <div className="flex items-center justify-between border-b px-4 py-3">
+            <div className="flex items-center gap-2 font-semibold">
+              <FileText className="h-5 w-5" />
+              Facturas del periodo
+            </div>
+            <div className="text-xs text-muted-foreground">
+              Mostrando {pageItems.length ? start + 1 : 0}-
+              {Math.min(start + pageItems.length, filteredItems.length)} de {filteredItems.length}
+            </div>
+          </div>
+
           {isLoading ? (
-            <Empty>
+            <Empty className="py-10">
               <EmptyHeader>
                 <EmptyTitle>Cargando bandeja contable...</EmptyTitle>
-                <EmptyDescription>Estamos consultando documentos del periodo.</EmptyDescription>
+                <EmptyDescription>
+                  Estamos consultando documentos del periodo.
+                </EmptyDescription>
               </EmptyHeader>
             </Empty>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b text-left">
-                    <th className="min-w-48 py-2">Expediente</th>
-                    <th className="min-w-56">Factura</th>
-                    <th className="min-w-56">Proveedor</th>
-                    <th>Fecha</th>
-                    <th>Monto</th>
-                    <th className="min-w-56">Documento eje</th>
-                    <th className="min-w-[580px]">Estado documental</th>
-                    <th>Alertas</th>
-                    <th className="text-right">Acciones</th>
+                  <tr className="border-b bg-muted/40 text-left">
+                    <th className="min-w-48 px-4 py-2.5">Expediente</th>
+                    <th className="min-w-56 px-4 py-2.5">Factura</th>
+                    <th className="min-w-56 px-4 py-2.5">Proveedor</th>
+                    <th className="px-4 py-2.5">Fecha</th>
+                    <th className="px-4 py-2.5">Monto</th>
+                    <th className="min-w-56 px-4 py-2.5">Documento eje</th>
+                    <th className="min-w-[580px] px-4 py-2.5">Estado documental</th>
+                    <th className="px-4 py-2.5">Alertas</th>
+                    <th className="px-4 py-2.5 text-right">Acciones</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredItems.map((item) => {
+                  {pageItems.map((item) => {
                     const expId = expedienteId(item);
                     const docId = documentoId(item);
                     const alertas = alertasActivas(item);
@@ -554,9 +645,9 @@ export default function RevisionContablePage() {
                     return (
                       <tr
                         key={`${expId}-${docId}`}
-                        className="border-b align-top"
+                        className="border-b align-top hover:bg-muted/30"
                       >
-                        <td className="py-3">
+                        <td className="px-4 py-3">
                           <div className="font-medium">
                             {item.correlativo ??
                               item.expediente_correlativo ??
@@ -573,7 +664,7 @@ export default function RevisionContablePage() {
                             )}
                           </Badge>
                         </td>
-                        <td>
+                        <td className="px-4 py-3">
                           <div className="font-medium">{documentoNombre(item)}</div>
                           <div className="text-xs text-muted-foreground">
                             ID documento: {docId}
@@ -582,7 +673,7 @@ export default function RevisionContablePage() {
                             {documentoEstado(item)}
                           </Badge>
                         </td>
-                        <td>
+                        <td className="px-4 py-3">
                           <div>{rucEmisor(item)}</div>
                           <div
                             className="max-w-64 truncate text-xs text-muted-foreground"
@@ -591,20 +682,23 @@ export default function RevisionContablePage() {
                             {razonSocial(item)}
                           </div>
                         </td>
-                        <td>{fechaEmision(item)}</td>
-                        <td className="font-medium">{montoTotal(item)}</td>
-                        <td>
-                          <div className="max-w-56 truncate font-medium" title={principalDocumento(item)}>
+                        <td className="px-4 py-3">{fechaEmision(item)}</td>
+                        <td className="px-4 py-3 font-medium">{montoTotal(item)}</td>
+                        <td className="px-4 py-3">
+                          <div
+                            className="max-w-56 truncate font-medium"
+                            title={principalDocumento(item)}
+                          >
                             {principalDocumento(item)}
                           </div>
                           <div className="text-xs text-muted-foreground">
                             OC / OS / factura directa
                           </div>
                         </td>
-                        <td>
+                        <td className="px-4 py-3">
                           <EstadoDocumentalHorizontal item={item} />
                         </td>
-                        <td>
+                        <td className="px-4 py-3">
                           {alertas > 0 ? (
                             <Badge variant="destructive">
                               {alertas} activa{alertas === 1 ? "" : "s"}
@@ -613,7 +707,7 @@ export default function RevisionContablePage() {
                             <Badge variant="outline">Sin alertas</Badge>
                           )}
                         </td>
-                        <td className="space-x-2 text-right">
+                        <td className="space-x-2 px-4 py-3 text-right">
                           {expId !== "-" ? (
                             <Button asChild size="sm" variant="outline">
                               <Link href={`/expedientes/${expId}`}>
@@ -644,7 +738,7 @@ export default function RevisionContablePage() {
               </table>
 
               {!filteredItems.length ? (
-                <Empty className="mt-4">
+                <Empty className="py-10">
                   <EmptyHeader>
                     <EmptyMedia variant="icon">
                       <FileText className="h-5 w-5" />
@@ -659,6 +753,32 @@ export default function RevisionContablePage() {
               ) : null}
             </div>
           )}
+
+          <div className="flex flex-col gap-2 border-t px-4 py-3 text-sm md:flex-row md:items-center md:justify-between">
+            <div className="text-xs text-muted-foreground">
+              Página {safePage} de {totalPages} · {pageSize} registros por página
+            </div>
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => setPage((value) => Math.max(1, value - 1))}
+                disabled={safePage <= 1}
+              >
+                Anterior
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => setPage((value) => Math.min(totalPages, value + 1))}
+                disabled={safePage >= totalPages}
+              >
+                Siguiente
+              </Button>
+            </div>
+          </div>
         </CardContent>
       </Card>
     </main>

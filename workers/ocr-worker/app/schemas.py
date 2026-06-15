@@ -10,3 +10,7 @@ class OcrProcesarArchivoPayload(BaseModel):
     tipoSolicitud: Literal["clasificar", "extraer", "clasificar_extraer"] = "clasificar_extraer"
     requestId: Optional[str] = None
     clienteAbreviatura: str = Field(..., min_length=1)
+    tipoEsperado: str | None = None
+    expedienteId: int | None = None
+    documentoBaseId: int | None = None
+    tipoRelacionSugerida: str | None = None

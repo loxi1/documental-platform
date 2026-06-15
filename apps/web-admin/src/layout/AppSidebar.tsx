@@ -8,6 +8,7 @@ import { useSidebar } from "@/context/SidebarContext";
 import {
   AlertTriangle,
   ClipboardList,
+  FilePlus2,
   FileSearch,
   FolderKanban,
   LayoutDashboard,
@@ -56,6 +57,11 @@ const navGroups: NavGroup[] = [
         icon: <ClipboardList className="h-4 w-4" />,
       },
       {
+        name: "Carga guiada",
+        path: "/documentos/cargar",
+        icon: <FilePlus2 className="h-4 w-4" />,
+      },
+      {
         name: "OCR Resultados",
         path: "/ocr-resultados",
         icon: <FileSearch className="h-4 w-4" />,
@@ -101,8 +107,10 @@ const AppSidebar: React.FC<AppSidebarProps> = ({ userCod }) => {
     toggleSidebar,
   } = useSidebar();
 
-  const isActive = (href = "") =>
-    pathname === href || pathname.startsWith(`${href}/`);
+  const isActive = (href = "") => {
+    if (href === "/documentos") return pathname === href;
+    return pathname === href || pathname.startsWith(`${href}/`);
+  };
 
   const handleMobileNavigate = () => {
     if (isMobileOpen) toggleMobileSidebar();
@@ -115,7 +123,7 @@ const AppSidebar: React.FC<AppSidebarProps> = ({ userCod }) => {
         if (contexto?.perfil === "admin") return true;
         if (item.path === "/dashboard")
           return Boolean(contexto?.permisos?.length);
-        if (item.path === "/documentos") return hasPermission("documentos.ver");
+        if (item.path === "/documentos" || item.path === "/documentos/cargar") return hasPermission("documentos.subir") || hasPermission("documentos.ver");
         if (item.path === "/ocr-resultados")
           return hasPermission("documentos.validar");
         if (item.path === "/expedientes")

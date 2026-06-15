@@ -3,12 +3,7 @@ from pathlib import Path
 from app.schemas import OcrProcesarArchivoPayload
 from app.storage import resolve_local_path, file_exists
 from app.extractors.text_extractor import extract_text
-from app.extractors.metadata_extractor import (
-    extract_ruc,
-    extract_fecha,
-    extract_monto,
-    extract_serie_numero,
-)
+from app.extractors.type_metadata_extractor import extract_metadata_by_type
 from app.extractors.qr_extractor import extract_qr_data
 from app.extractors.qr_sunat_extractor import (
     build_initial_metadata_source,
@@ -38,11 +33,30 @@ def normalize_cliente_abreviatura(cliente: str) -> str:
     return value
 
 
+def resolve_case_insensitive_path(file_path: Path) -> Path | None:
+    if file_path.exists():
+        return file_path
+
+    parent = file_path.parent
+
+    if not parent.exists():
+        return None
+
+    expected = file_path.name.lower()
+
+    for candidate in parent.iterdir():
+        if candidate.name.lower() == expected:
+            return candidate
+
+    return None
+
+
 def resolve_file_path(payload: OcrProcesarArchivoPayload) -> Path | dict:
     if payload.storageProvider == "local":
         file_path = resolve_local_path(payload.storageKey)
+        resolved = resolve_case_insensitive_path(file_path)
 
-        if not file_exists(file_path):
+        if not resolved or not file_exists(resolved):
             return {
                 "ok": False,
                 "error": "Archivo no encontrado",
@@ -50,7 +64,7 @@ def resolve_file_path(payload: OcrProcesarArchivoPayload) -> Path | dict:
                 "resolvedPath": str(file_path),
             }
 
-        return file_path
+        return resolved
 
     if payload.storageProvider == "r2":
         return download_from_r2(payload.storageKey)
@@ -96,6 +110,15 @@ def infer_tipo_from_qr(tipo_documental: str, qr_data: dict | None) -> str:
     return normalize_document_type(sunat_map.get(codigo, tipo))
 
 
+def resolve_cliente_for_key(payload_cliente: str, metadata: dict) -> str:
+    detected = metadata.get("clienteAbreviatura")
+
+    if detected:
+        return normalize_cliente_abreviatura(detected)
+
+    return normalize_cliente_abreviatura(payload_cliente)
+
+
 async def process_file(payload: OcrProcesarArchivoPayload) -> dict:
     resolved = resolve_file_path(payload)
 
@@ -103,29 +126,28 @@ async def process_file(payload: OcrProcesarArchivoPayload) -> dict:
         return resolved
 
     file_path: Path = resolved
-    cliente = normalize_cliente_abreviatura(payload.clienteAbreviatura)
+    payload_cliente = normalize_cliente_abreviatura(payload.clienteAbreviatura)
 
     text = extract_text(file_path)
 
     enriched = enrich_page(
         text,
         archivo_fuente=file_path.name,
-        cliente=cliente,
+        cliente=payload_cliente,
     )
 
     tipo_documental = normalize_document_type(
         enriched.get("tipo") or classify_document(text, file_path.name)
     )
 
-    serie_numero = extract_serie_numero(text)
+    metadata = extract_metadata_by_type(
+        tipo_documental=tipo_documental,
+        text=text,
+        enriched=enriched,
+        filename=file_path.name,
+    )
 
-    metadata = {
-        "ruc": enriched.get("ruc") or extract_ruc(text),
-        "serie": enriched.get("serie") or serie_numero.get("serie"),
-        "numero": enriched.get("numero") or serie_numero.get("numero"),
-        "fechaEmision": extract_fecha(text),
-        "montoTotal": extract_monto(text),
-    }
+    cliente_for_key = resolve_cliente_for_key(payload_cliente, metadata)
 
     metadata_source = build_initial_metadata_source(metadata)
     confidence = calculate_confidence(tipo_documental, metadata)
@@ -134,16 +156,28 @@ async def process_file(payload: OcrProcesarArchivoPayload) -> dict:
 
     if should_use_qr(tipo_documental, metadata, confidence, text):
         qr_data = extract_qr_data(file_path)
+        tipo_documental = infer_tipo_from_qr(tipo_documental, qr_data)
+
+        metadata = extract_metadata_by_type(
+            tipo_documental=tipo_documental,
+            text=text,
+            enriched=enriched,
+            filename=file_path.name,
+        )
+
+        cliente_for_key = resolve_cliente_for_key(payload_cliente, metadata)
+        metadata_source = build_initial_metadata_source(metadata)
+
         metadata, metadata_source = merge_qr_metadata(
             metadata,
             qr_data,
             metadata_source,
         )
-        tipo_documental = infer_tipo_from_qr(tipo_documental, qr_data)
+
         confidence = calculate_confidence(tipo_documental, metadata)
 
     clave_documental = build_document_key(
-        cliente=cliente,
+        cliente=cliente_for_key,
         tipo_documental=tipo_documental,
         metadata=metadata,
     )
@@ -176,7 +210,7 @@ async def process_file(payload: OcrProcesarArchivoPayload) -> dict:
     return build_ocr_result({
         "documentoId": payload.documentoId,
         "archivoId": payload.archivoId,
-        "clienteAbreviatura": cliente,
+        "clienteAbreviatura": cliente_for_key,
         "storageProvider": payload.storageProvider,
         "storageKey": payload.storageKey,
         "resolvedPath": str(file_path),

@@ -6,16 +6,29 @@ from app.schemas import OcrProcesarArchivoPayload
 
 
 FILES = [
-    "factura_scaneada_1.pdf",
-    "factura_scaneada_2.pdf",
-    "factura_scaneada_3.pdf",
-    "factura_scaneada_4.pdf",
-    "factura_scaneada_5.pdf",
-    "factura_scaneada_6.pdf",
-    "factura_scaneada_7.pdf",
-    "factura_scaneada_8.pdf",
+    "guia_1.pdf",
+    "guia_2.pdf",
+    "guia_3.pdf",
+    "guia_4.pdf",
+    "guia_3_1.pdf",
+    "guia_3_2.pdf",
+    "guia_3_3.pdf",
+    "guia_3_4.pdf",
+    "nota_i_31.pdf",
+    "nota_i_32.pdf",
+    "nota_i_34.pdf",
+    "nota_i_37.pdf",
+    "nota_i_168.pdf",
+    "nota_i_169.pdf",
+    "nota_i_173.pdf",
+    "nota_i_174.pdf",
+    "oc_007902.pdf",
+    "oc_007934.pdf",
+    "oc_007950.pdf",
+    "pago_1.pdf",
+    "pago_2.pdf",
+    "pago_3.pdf",
 ]
-
 
 async def main():
     for idx, filename in enumerate(FILES, start=1):

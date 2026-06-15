@@ -1,6 +1,7 @@
 from typing import Any
 
-CRITICAL_FIELDS = [
+
+QR_FIELDS = [
     "ruc",
     "serie",
     "numero",
@@ -11,8 +12,8 @@ CRITICAL_FIELDS = [
 
 def build_initial_metadata_source(metadata: dict[str, Any]) -> dict[str, str | None]:
     return {
-        key: "TEXT" if metadata.get(key) not in [None, ""] else None
-        for key in CRITICAL_FIELDS
+        key: "TEXT" if value not in [None, ""] else None
+        for key, value in metadata.items()
     }
 
 
@@ -27,8 +28,8 @@ def merge_qr_metadata(
     if not qr:
         return result, source
 
-    for field in CRITICAL_FIELDS:
-        if not result.get(field) and qr.get(field) not in [None, ""]:
+    for field in QR_FIELDS:
+        if field in result and not result.get(field) and qr.get(field) not in [None, ""]:
             result[field] = qr.get(field)
             source[field] = "QR"
 
