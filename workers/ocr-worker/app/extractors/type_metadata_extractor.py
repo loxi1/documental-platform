@@ -6,12 +6,11 @@ from app.extractors.metadata_extractor import (
     extract_fecha,
     extract_monto,
     extract_serie_numero,
-    extract_numero_documento,
     extract_numero_operacion,
     extract_banco,
-    extract_proveedor,
 )
 from app.extractors.nota_ingreso_extractor import extract_nota_ingreso_metadata
+from app.extractors.orden_extractor import extract_orden_metadata
 
 
 def extract_metadata_by_type(
@@ -45,12 +44,12 @@ def extract_metadata_by_type(
         return data
 
     if tipo in ["OC", "OS"]:
-        return {
-            "numero": enriched.get("numero") or extract_numero_documento(text, tipo, filename),
-            "fechaEmision": common_fecha,
-            "montoTotal": common_monto,
-            "proveedor": extract_proveedor(text),
-        }
+        return extract_orden_metadata(
+            text=text,
+            tipo_documental=tipo,
+            filename=filename,
+            enriched=enriched,
+        )
 
     if tipo == "NOTA_INGRESO":
         return extract_nota_ingreso_metadata(text)

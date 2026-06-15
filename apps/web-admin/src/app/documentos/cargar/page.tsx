@@ -1,15 +1,19 @@
 "use client";
 
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+import Link from "next/link";
 import {
   AlertCircle,
   Banknote,
   Boxes,
   Building2,
   CheckCircle2,
+  Circle,
   FileCheck2,
   FileText,
+  Link2,
   MailPlus,
+  Paperclip,
   Search,
   Send,
   UploadCloud,
@@ -29,9 +33,9 @@ import {
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { useAuth } from "@/hooks/useAuth";
-import { useExpedientes } from "@/hooks/useExpedientes";
+import { useExpediente, useExpedientes } from "@/hooks/useExpedientes";
 import { useSubirDocumentoGuiado } from "@/hooks/useCargaGuiada";
-import type { Expediente } from "@/types/expediente";
+import type { Expediente, ExpedienteDocumento } from "@/types/expediente";
 import type {
   AreaOrigen,
   CargaGuiadaAccion,
@@ -40,66 +44,52 @@ import type {
 } from "@/types/carga-guiada";
 
 const CLIENTES: ClienteDestinoOption[] = [
-  {
-    abreviatura: "BBTI",
-    nombreOficial: "BBTI S.A.C.",
-    ruc: "20565747356",
-  },
-  {
-    abreviatura: "BBTEC",
-    nombreOficial: "BB TECNOLOGIA INDUSTRIAL S.A.C.",
-    ruc: "20299922821",
-  },
-  {
-    abreviatura: "CIMA",
-    nombreOficial: "CONSORCIO CIMA ENERGY",
-    ruc: "20613521004",
-  },
-  {
-    abreviatura: "HUANCA",
-    nombreOficial: "CONSORCIO HUANCAVELICA",
-    ruc: "20612122416",
-  },
-  {
-    abreviatura: "TARMA",
-    nombreOficial: "CONSORCIO ILUMINACION TARMA 2025",
-    ruc: "20614307197",
-  },
-  {
-    abreviatura: "KIMBIRI",
-    nombreOficial: "Consorcio Kimbiri",
-    ruc: "20609856140",
-  },
+  { abreviatura: "BBTI", nombreOficial: "BBTI S.A.C.", ruc: "20565747356" },
+  { abreviatura: "BBTEC", nombreOficial: "BB TECNOLOGIA INDUSTRIAL S.A.C.", ruc: "20299922821" },
+  { abreviatura: "CIMA", nombreOficial: "CONSORCIO CIMA ENERGY", ruc: "20613521004" },
+  { abreviatura: "HUANCA", nombreOficial: "CONSORCIO HUANCAVELICA", ruc: "20612122416" },
+  { abreviatura: "TARMA", nombreOficial: "CONSORCIO ILUMINACION TARMA 2025", ruc: "20614307197" },
+  { abreviatura: "KIMBIRI", nombreOficial: "Consorcio Kimbiri", ruc: "20609856140" },
 ];
 
 const AREAS: Array<{
   id: AreaOrigen;
   titulo: string;
+  resumen: string;
   descripcion: string;
+  referencia: string;
   icon: ReactNode;
 }> = [
   {
     id: "COMPRAS",
     titulo: "Compras",
-    descripcion: "OC, OS, factura directa y futuros envíos por correo/WhatsApp.",
+    resumen: "Vincula documentos eje",
+    descripcion: "OC, OS, factura directa y documentos de apoyo.",
+    referencia: "Busca expediente / PR / centro de costo",
     icon: <MailPlus className="h-4 w-4" />,
   },
   {
     id: "ALMACEN",
     titulo: "Almacén",
-    descripcion: "Guía, nota de ingreso y factura escaneada vinculada al expediente.",
+    resumen: "Adjunta recepción",
+    descripcion: "Guía, nota de ingreso y factura escaneada.",
+    referencia: "Busca OC / OS; el sistema resuelve el expediente",
     icon: <Boxes className="h-4 w-4" />,
   },
   {
     id: "FINANZAS",
     titulo: "Finanzas",
+    resumen: "Adjunta pago",
     descripcion: "Transferencia, detracción y factura sellada o firmada.",
+    referencia: "Busca factura; el sistema resuelve el expediente",
     icon: <Banknote className="h-4 w-4" />,
   },
   {
     id: "RRHH",
     titulo: "RR.HH.",
+    resumen: "Adjunta RH",
     descripcion: "Recibos por honorarios y sustentos relacionados.",
+    referencia: "Busca expediente o persona relacionada",
     icon: <UserRoundCheck className="h-4 w-4" />,
   },
 ];
@@ -109,7 +99,7 @@ const ACCIONES: CargaGuiadaAccion[] = [
     id: "compras-oc",
     area: "COMPRAS",
     titulo: "Orden de compra",
-    descripcion: "Documento eje enviado al proveedor o registrado por Compras.",
+    descripcion: "Documento eje creado o enviado por Compras.",
     tipoEsperado: "OC",
     tipoRelacionSugerida: "principal_oc",
   },
@@ -130,13 +120,21 @@ const ACCIONES: CargaGuiadaAccion[] = [
     tipoRelacionSugerida: "principal_factura",
   },
   {
+    id: "compras-otro",
+    area: "COMPRAS",
+    titulo: "Otro / cotización / proforma",
+    descripcion: "Sustento de apoyo. No reemplaza al documento eje.",
+    tipoEsperado: "OTRO",
+    tipoRelacionSugerida: "adjunto_otro",
+  },
+  {
     id: "almacen-guia",
     area: "ALMACEN",
     titulo: "Guía de remisión",
     descripcion: "Sustento operativo de recepción o traslado.",
     tipoEsperado: "GUIA_REMISION",
     tipoRelacionSugerida: "adjunto_guia",
-    documentoBaseLabel: "OC / OS / expediente asociado",
+    documentoBaseLabel: "OC / OS asociada",
   },
   {
     id: "almacen-ni",
@@ -145,7 +143,7 @@ const ACCIONES: CargaGuiadaAccion[] = [
     descripcion: "Documento generado por almacén con OC y número NI.",
     tipoEsperado: "NOTA_INGRESO",
     tipoRelacionSugerida: "adjunto_nota_ingreso",
-    documentoBaseLabel: "OC / OS / factura asociada",
+    documentoBaseLabel: "OC / OS asociada",
   },
   {
     id: "almacen-factura",
@@ -157,13 +155,21 @@ const ACCIONES: CargaGuiadaAccion[] = [
     documentoBaseLabel: "OC / OS asociada",
   },
   {
+    id: "almacen-otro",
+    area: "ALMACEN",
+    titulo: "Otro sustento",
+    descripcion: "Acta, imagen o evidencia operativa no contable.",
+    tipoEsperado: "OTRO",
+    tipoRelacionSugerida: "adjunto_otro",
+  },
+  {
     id: "finanzas-transferencia",
     area: "FINANZAS",
     titulo: "Transferencia",
-    descripcion: "Comprobante de pago bancario: BCP, BBVA, Interbank o Scotiabank.",
+    descripcion: "Comprobante bancario: BCP, BBVA, Interbank o Scotiabank.",
     tipoEsperado: "PAGO_TRANSFERENCIA",
     tipoRelacionSugerida: "adjunto_transferencia",
-    documentoBaseLabel: "Factura / OC / OS pagada",
+    documentoBaseLabel: "Factura pagada",
     requiereDocumentoBase: true,
   },
   {
@@ -193,14 +199,20 @@ const ACCIONES: CargaGuiadaAccion[] = [
     tipoEsperado: "RECIBO_HONORARIO",
     tipoRelacionSugerida: "adjunto_recibo_honorario",
   },
-  {
-    id: "otros",
-    area: "COMPRAS",
-    titulo: "Otro / cotización / proforma",
-    descripcion: "Documento no contable o evidencia complementaria.",
-    tipoEsperado: "OTRO",
-    tipoRelacionSugerida: "adjunto_otro",
-  },
+];
+
+const STATUS_ITEMS: Array<{
+  key: string;
+  label: string;
+  relaciones: string[];
+}> = [
+  { key: "principal", label: "Documento eje", relaciones: ["principal_oc", "principal_os", "principal_factura"] },
+  { key: "factura", label: "Factura", relaciones: ["principal_factura", "adjunto_factura"] },
+  { key: "guia", label: "Guía", relaciones: ["adjunto_guia"] },
+  { key: "ni", label: "Nota ingreso", relaciones: ["adjunto_nota_ingreso"] },
+  { key: "pago", label: "Pago", relaciones: ["adjunto_transferencia", "adjunto_detraccion"] },
+  { key: "rh", label: "RH", relaciones: ["adjunto_recibo_honorario"] },
+  { key: "otro", label: "Otros", relaciones: ["adjunto_otro"] },
 ];
 
 function getExpedienteCodigo(expediente: Expediente) {
@@ -221,6 +233,16 @@ function getExpedienteTipo(expediente: Expediente) {
   return expediente.tipo_expediente ?? expediente.tipoExpediente ?? "-";
 }
 
+function getDocumentoRelacion(documento: ExpedienteDocumento) {
+  return documento.tipoRelacion ?? "";
+}
+
+function getDocumentoLabel(documento: ExpedienteDocumento) {
+  const tipo = documento.tipoDocumental ?? "DOC";
+  const serieNumero = [documento.serie, documento.numero].filter(Boolean).join("-");
+  return serieNumero ? `${tipo} ${serieNumero}` : `${tipo} #${documento.documentoId}`;
+}
+
 function matchesExpediente(expediente: Expediente, search: string) {
   if (!search.trim()) return true;
   const normalized = search.trim().toLowerCase();
@@ -230,9 +252,26 @@ function matchesExpediente(expediente: Expediente, search: string) {
     expediente.descripcion,
     getExpedienteEmpresa(expediente),
     getExpedienteTipo(expediente),
+    expediente.clave_principal,
+    expediente.clavePrincipal,
+    ...(expediente.documentos ?? []).flatMap((doc) => [
+      doc.tipoDocumental,
+      doc.serie,
+      doc.numero,
+      doc.claveDocumental,
+      doc.nombreArchivo,
+    ]),
   ];
 
   return fields.some((field) => String(field ?? "").toLowerCase().includes(normalized));
+}
+
+function inferAreaFromContext(permisos: string[] = [], perfil?: string): AreaOrigen {
+  if (perfil === "admin") return "COMPRAS";
+  if (permisos.includes("finanzas.ver")) return "FINANZAS";
+  if (permisos.includes("logistica.ver")) return "ALMACEN";
+  if (permisos.includes("compras.ver")) return "COMPRAS";
+  return "COMPRAS";
 }
 
 function formatJson(value: unknown) {
@@ -242,8 +281,11 @@ function formatJson(value: unknown) {
 export default function CargaGuiadaDocumentosPage() {
   const { contexto } = useAuth();
   const empresaInicial = contexto?.empresa ?? "BBTI";
+  const areaInicial = inferAreaFromContext(contexto?.permisos, contexto?.perfil);
+  const canSwitchArea = contexto?.perfil === "admin";
+
   const [empresa, setEmpresa] = useState(empresaInicial);
-  const [area, setArea] = useState<AreaOrigen>("COMPRAS");
+  const [area, setArea] = useState<AreaOrigen>(areaInicial);
   const [accionId, setAccionId] = useState("compras-oc");
   const [expedienteSearch, setExpedienteSearch] = useState("");
   const [expedienteId, setExpedienteId] = useState<string>("");
@@ -252,15 +294,27 @@ export default function CargaGuiadaDocumentosPage() {
   const [file, setFile] = useState<File | null>(null);
 
   const expedientesQuery = useExpedientes();
+  const expedienteDetalleQuery = useExpediente(expedienteId || undefined);
   const subirMutation = useSubirDocumentoGuiado();
 
+  useEffect(() => {
+    if (contexto?.empresa) setEmpresa(contexto.empresa);
+  }, [contexto?.empresa]);
+
+  useEffect(() => {
+    const nextArea = inferAreaFromContext(contexto?.permisos, contexto?.perfil);
+    setArea(nextArea);
+    const first = ACCIONES.find((item) => item.area === nextArea);
+    if (first) setAccionId(first.id);
+  }, [contexto?.perfil, contexto?.permisos]);
+
   const accionesArea = useMemo(
-    () => ACCIONES.filter((accion) => accion.area === area || accion.id === "otros"),
+    () => ACCIONES.filter((accion) => accion.area === area),
     [area],
   );
 
   const accion = useMemo(
-    () => accionesArea.find((item) => item.id === accionId) ?? accionesArea[0],
+    () => accionesArea.find((item) => item.id === accionId) ?? accionesArea[0] ?? ACCIONES[0],
     [accionId, accionesArea],
   );
 
@@ -270,16 +324,19 @@ export default function CargaGuiadaDocumentosPage() {
       expedientes
         .filter((expediente) => !empresa || getExpedienteEmpresa(expediente) === empresa)
         .filter((expediente) => matchesExpediente(expediente, expedienteSearch))
-        .slice(0, 6),
+        .slice(0, 8),
     [empresa, expedientes, expedienteSearch],
   );
 
-  const expedienteSeleccionado = useMemo(
+  const expedienteBase = useMemo(
     () => expedientes.find((item) => String(item.id) === expedienteId) ?? null,
     [expedienteId, expedientes],
   );
 
+  const expedienteSeleccionado = expedienteDetalleQuery.data ?? expedienteBase;
+  const documentos = expedienteSeleccionado?.documentos ?? [];
   const cliente = CLIENTES.find((item) => item.abreviatura === empresa) ?? CLIENTES[0];
+  const areaInfo = AREAS.find((item) => item.id === area) ?? AREAS[0];
 
   const payloadPreview: CargaGuiadaPayloadPreview = {
     areaOrigen: area,
@@ -297,6 +354,7 @@ export default function CargaGuiadaDocumentosPage() {
     const first = ACCIONES.find((item) => item.area === nextArea);
     if (first) setAccionId(first.id);
     setDocumentoBaseId("");
+    setFile(null);
   }
 
   async function handleSubmit() {
@@ -312,12 +370,17 @@ export default function CargaGuiadaDocumentosPage() {
             Carga guiada de documentos
           </h1>
           <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
-            El usuario entrega contexto al OCR: empresa, área, expediente y tipo esperado. El backend extrae, valida y recién vincula después de la confirmación humana.
+            El usuario selecciona contexto, el OCR extrae y valida, y el documento se confirma antes de clasificar y vincular.
           </p>
         </div>
-        <Badge variant="outline" className="w-fit rounded-full px-3 py-1">
-          OCR asistido por contexto
-        </Badge>
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge variant="outline" className="rounded-full px-3 py-1">
+            OCR modo GUIADO
+          </Badge>
+          <Badge variant="secondary" className="rounded-full px-3 py-1">
+            Área: {areaInfo.titulo}
+          </Badge>
+        </div>
       </div>
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1.25fr)_minmax(360px,0.75fr)]">
@@ -326,11 +389,11 @@ export default function CargaGuiadaDocumentosPage() {
             <CardHeader className="pb-3">
               <CardTitle className="flex items-center gap-2 text-base">
                 <Building2 className="h-4 w-4" />
-                1. Contexto de carga
+                1. Contexto operativo
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="grid gap-3 md:grid-cols-[220px_220px_1fr]">
+              <div className="grid gap-3 md:grid-cols-[250px_1fr]">
                 <div className="space-y-1.5">
                   <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                     Empresa
@@ -352,37 +415,59 @@ export default function CargaGuiadaDocumentosPage() {
 
                 <div className="space-y-1.5">
                   <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    Área
-                  </label>
-                  <Select value={area} onValueChange={(value) => handleAreaChange(value as AreaOrigen)}>
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Área" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {AREAS.map((item) => (
-                        <SelectItem key={item.id} value={item.id}>
-                          {item.titulo}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    Buscar expediente / PR / Centro costo
+                    {area === "ALMACEN"
+                      ? "Buscar OC / OS / expediente"
+                      : area === "FINANZAS"
+                        ? "Buscar factura / OC / OS / expediente"
+                        : "Buscar expediente / PR / centro costo"}
                   </label>
                   <div className="relative">
                     <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                     <Input
                       value={expedienteSearch}
                       onChange={(event) => setExpedienteSearch(event.target.value)}
-                      placeholder="PR-001-26, centro costo, correlativo..."
+                      placeholder={areaInfo.referencia}
                       className="pl-9"
                     />
                   </div>
                 </div>
               </div>
+
+              {canSwitchArea ? (
+                <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-2 dark:border-white/10 dark:bg-white/[0.03]">
+                  <div className="mb-2 flex items-center justify-between gap-3 px-1">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      Vista de trabajo
+                    </p>
+                    <p className="text-[11px] text-muted-foreground">
+                      En producción se resuelve por permisos del usuario.
+                    </p>
+                  </div>
+                  <div className="grid gap-2 md:grid-cols-4">
+                    {AREAS.map((item) => {
+                      const active = item.id === area;
+                      return (
+                        <button
+                          key={item.id}
+                          type="button"
+                          onClick={() => handleAreaChange(item.id)}
+                          className={`rounded-lg border px-3 py-2 text-left transition ${
+                            active
+                              ? "border-slate-950 bg-white shadow-sm dark:border-white dark:bg-white/10"
+                              : "border-transparent hover:border-slate-300 dark:hover:border-white/20"
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 text-sm font-semibold">
+                            {item.icon}
+                            {item.titulo}
+                          </div>
+                          <p className="mt-1 text-[11px] text-muted-foreground">{item.resumen}</p>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : null}
 
               <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/60 p-3 dark:border-white/10 dark:bg-white/[0.03]">
                 {expedientesQuery.isLoading ? (
@@ -432,8 +517,93 @@ export default function CargaGuiadaDocumentosPage() {
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="flex items-center gap-2 text-base">
+                <Link2 className="h-4 w-4" />
+                2. Documentos actuales del expediente
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {expedienteSeleccionado ? (
+                <>
+                  <div className="rounded-xl border border-slate-200 p-3 dark:border-white/10">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                      <div>
+                        <p className="text-sm font-semibold text-slate-950 dark:text-white">
+                          {expedienteSeleccionado.correlativo}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {getExpedienteTipo(expedienteSeleccionado)} · {getExpedienteCodigo(expedienteSeleccionado)}
+                        </p>
+                      </div>
+                      <Badge variant="outline">{documentos.length} documentos</Badge>
+                    </div>
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      {expedienteSeleccionado.descripcion ?? "Sin descripción"}
+                    </p>
+                  </div>
+
+                  <div className="grid gap-2 md:grid-cols-4">
+                    {STATUS_ITEMS.map((item) => {
+                      const docs = documentos.filter((doc) => item.relaciones.includes(getDocumentoRelacion(doc)));
+                      const present = docs.length > 0;
+                      return (
+                        <div
+                          key={item.key}
+                          className={`rounded-xl border px-3 py-2 ${
+                            present
+                              ? "border-emerald-200 bg-emerald-50 text-emerald-900 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-100"
+                              : "border-slate-200 bg-white text-slate-600 dark:border-white/10 dark:bg-white/[0.03] dark:text-slate-300"
+                          }`}
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-xs font-semibold">{item.label}</span>
+                            {present ? <CheckCircle2 className="h-4 w-4" /> : <Circle className="h-4 w-4" />}
+                          </div>
+                          <p className="mt-1 text-[11px] opacity-80">
+                            {present ? `${docs.length} registrado(s)` : "Pendiente"}
+                          </p>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {documentos.length ? (
+                    <div className="rounded-xl border border-slate-200 dark:border-white/10">
+                      {documentos.slice(0, 6).map((doc, index) => (
+                        <button
+                          key={`${doc.documentoId}-${index}`}
+                          type="button"
+                          onClick={() => setDocumentoBaseId(String(doc.documentoId))}
+                          className="flex w-full items-center justify-between gap-3 border-b border-slate-100 px-3 py-2 text-left text-sm last:border-b-0 hover:bg-slate-50 dark:border-white/10 dark:hover:bg-white/[0.03]"
+                        >
+                          <div>
+                            <p className="font-medium text-slate-950 dark:text-white">{getDocumentoLabel(doc)}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {doc.tipoRelacion ?? "sin relación"} {doc.esPrincipal ? "· principal" : ""}
+                            </p>
+                          </div>
+                          <Badge variant="outline">Usar base</Badge>
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="rounded-xl border border-dashed border-slate-200 p-4 text-sm text-muted-foreground dark:border-white/10">
+                      Este expediente todavía no tiene documentos asociados. Compras puede registrar primero OC, OS o factura directa como documento eje.
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div className="rounded-xl border border-dashed border-slate-200 p-4 text-sm text-muted-foreground dark:border-white/10">
+                  Selecciona un expediente o documento base para ver su estado documental antes de subir archivos.
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-base">
                 <FileCheck2 className="h-4 w-4" />
-                2. ¿Qué documento está subiendo {AREAS.find((item) => item.id === area)?.titulo}?
+                3. Agregar documento para {areaInfo.titulo}
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -461,7 +631,7 @@ export default function CargaGuiadaDocumentosPage() {
                         {item.descripcion}
                       </p>
                       <p className={`mt-3 text-[11px] ${active ? "text-white/70 dark:text-slate-600" : "text-muted-foreground"}`}>
-                        Relación: {item.tipoRelacionSugerida}
+                        {item.tipoRelacionSugerida.startsWith("principal") ? "Documento eje" : "Adjunto"} · {item.tipoRelacionSugerida}
                       </p>
                     </button>
                   );
@@ -474,7 +644,7 @@ export default function CargaGuiadaDocumentosPage() {
             <CardHeader className="pb-3">
               <CardTitle className="flex items-center gap-2 text-base">
                 <UploadCloud className="h-4 w-4" />
-                3. Archivo y datos de apoyo
+                4. Archivo y validación
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -489,7 +659,7 @@ export default function CargaGuiadaDocumentosPage() {
                     placeholder="ID factura / OC / OS si ya existe"
                   />
                   <p className="text-[11px] text-muted-foreground">
-                    Ayuda a vincular el pago, guía o NI con el documento correcto.
+                    Almacén puede buscar OC/OS; Finanzas puede buscar factura. El sistema resuelve el expediente.
                   </p>
                 </div>
 
@@ -525,7 +695,7 @@ export default function CargaGuiadaDocumentosPage() {
                 <div className="flex items-start gap-2 rounded-xl bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:bg-amber-500/10 dark:text-amber-200">
                   <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
                   <span>
-                    Si el OCR contradice el tipo esperado, debe quedar observado o en revisión antes de confirmar.
+                    El envío por correo/WhatsApp no va aquí. Después de confirmar el documento, se enviará desde ms-comunicaciones.
                   </span>
                 </div>
 
@@ -548,7 +718,7 @@ export default function CargaGuiadaDocumentosPage() {
             <CardHeader className="pb-3">
               <CardTitle className="flex items-center gap-2 text-base">
                 <FileText className="h-4 w-4" />
-                Contexto enviado al backend
+                Registro que se preparará
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -558,8 +728,8 @@ export default function CargaGuiadaDocumentosPage() {
                   <Badge variant="outline">{empresa}</Badge>
                 </div>
                 <div className="flex items-center justify-between gap-3">
-                  <span className="text-muted-foreground">Área</span>
-                  <Badge variant="outline">{area}</Badge>
+                  <span className="text-muted-foreground">Vista</span>
+                  <Badge variant="outline">{areaInfo.titulo}</Badge>
                 </div>
                 <div className="flex items-center justify-between gap-3">
                   <span className="text-muted-foreground">Tipo esperado</span>
@@ -573,11 +743,24 @@ export default function CargaGuiadaDocumentosPage() {
 
               <Separator />
 
-              <div className="rounded-xl bg-slate-950 p-3 text-xs text-slate-100 dark:bg-black">
-                <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words">
+              <div className="rounded-xl border border-slate-200 p-3 text-sm dark:border-white/10">
+                <p className="font-semibold text-slate-950 dark:text-white">Flujo al confirmar</p>
+                <ol className="mt-2 space-y-1 text-xs text-muted-foreground">
+                  <li>1. OCR extrae metadata usando tipo esperado.</li>
+                  <li>2. Usuario valida, edita o rechaza.</li>
+                  <li>3. Backend clasifica el documento definitivo.</li>
+                  <li>4. Backend vincula al expediente con la relación sugerida.</li>
+                </ol>
+              </div>
+
+              <details className="rounded-xl bg-slate-950 p-3 text-xs text-slate-100 dark:bg-black">
+                <summary className="cursor-pointer font-semibold text-slate-200">
+                  Payload técnico
+                </summary>
+                <pre className="mt-3 max-h-72 overflow-auto whitespace-pre-wrap break-words">
                   {formatJson(payloadPreview)}
                 </pre>
-              </div>
+              </details>
 
               {expedienteSeleccionado ? (
                 <div className="rounded-xl border border-slate-200 p-3 text-sm dark:border-white/10">
@@ -605,6 +788,14 @@ export default function CargaGuiadaDocumentosPage() {
                   <pre className="mt-2 max-h-72 overflow-auto whitespace-pre-wrap break-words text-xs">
                     {formatJson(subirMutation.data)}
                   </pre>
+                  {subirMutation.data.ocrResultadoId || subirMutation.data.id ? (
+                    <Button asChild size="sm" variant="outline" className="mt-3">
+                      <Link href="/ocr-resultados">
+                        <Paperclip className="mr-2 h-4 w-4" />
+                        Ir a validar OCR
+                      </Link>
+                    </Button>
+                  ) : null}
                 </div>
               ) : null}
             </CardContent>

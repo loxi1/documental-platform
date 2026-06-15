@@ -86,7 +86,7 @@ def should_use_qr(
     if tipo in ["FACTURA", "GUIA_REMISION", "NOTA_CREDITO", "RECIBO_HONORARIO"]:
         return bool(get_missing_metadata(tipo, metadata)) or confidence < 0.90
 
-    if len((text or "").strip()) < 80:
+    if tipo == "OTRO" and len((text or "").strip()) < 80:
         return True
 
     return False
@@ -119,6 +119,16 @@ def resolve_cliente_for_key(payload_cliente: str, metadata: dict) -> str:
     return normalize_cliente_abreviatura(payload_cliente)
 
 
+def resolve_expected_type(payload: OcrProcesarArchivoPayload) -> str | None:
+    tipo = getattr(payload, "tipoEsperado", None)
+
+    if tipo is None or str(tipo).strip() == "":
+        return None
+
+    normalized = normalize_document_type(tipo)
+    return normalized if normalized != "OTRO" else None
+
+
 async def process_file(payload: OcrProcesarArchivoPayload) -> dict:
     resolved = resolve_file_path(payload)
 
@@ -136,7 +146,9 @@ async def process_file(payload: OcrProcesarArchivoPayload) -> dict:
         cliente=payload_cliente,
     )
 
-    tipo_documental = normalize_document_type(
+    expected_type = resolve_expected_type(payload)
+
+    tipo_documental = expected_type or normalize_document_type(
         enriched.get("tipo") or classify_document(text, file_path.name)
     )
 
@@ -156,7 +168,9 @@ async def process_file(payload: OcrProcesarArchivoPayload) -> dict:
 
     if should_use_qr(tipo_documental, metadata, confidence, text):
         qr_data = extract_qr_data(file_path)
-        tipo_documental = infer_tipo_from_qr(tipo_documental, qr_data)
+
+        if not expected_type:
+            tipo_documental = infer_tipo_from_qr(tipo_documental, qr_data)
 
         metadata = extract_metadata_by_type(
             tipo_documental=tipo_documental,
@@ -229,4 +243,12 @@ async def process_file(payload: OcrProcesarArchivoPayload) -> dict:
         "camposFaltantes": campos_faltantes,
         "qr": qr_data,
         "mensaje": mensaje,
+        "contextoCarga": {
+            "areaOrigen": getattr(payload, "areaOrigen", None),
+            "tipoEsperado": getattr(payload, "tipoEsperado", None),
+            "expedienteId": getattr(payload, "expedienteId", None),
+            "documentoBaseId": getattr(payload, "documentoBaseId", None),
+            "tipoRelacionSugerida": getattr(payload, "tipoRelacionSugerida", None),
+            "canalIngreso": getattr(payload, "canalIngreso", None),
+        },
     })

@@ -94,18 +94,27 @@ def extraer_fecha_doc(texto: str) -> str | None:
 
     return None
 
-
 def extraer_proveedor(texto: str) -> dict[str, str | None]:
     texto_u = normalizar_texto(texto)
+    lines = [line.strip() for line in texto_u.splitlines() if line.strip()]
 
-    for line in texto_u.splitlines():
-        match = re.match(r"^(10\d{9}|20\d{9})\s+(.+)$", line.strip())
+    for idx, line in enumerate(lines):
+        match = re.match(r"^(10\d{9}|20\d{9})\s+(.+)$", line)
 
         if match:
             return {
                 "proveedorRuc": match.group(1),
                 "proveedorNombre": match.group(2).strip(),
             }
+
+        if re.fullmatch(r"10\d{9}|20\d{9}", line):
+            next_line = lines[idx + 1].strip() if idx + 1 < len(lines) else None
+
+            if next_line and not re.fullmatch(r"\d{10,13}", next_line):
+                return {
+                    "proveedorRuc": line,
+                    "proveedorNombre": next_line,
+                }
 
     return {
         "proveedorRuc": None,
