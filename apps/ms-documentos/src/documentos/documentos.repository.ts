@@ -356,22 +356,36 @@ export class DocumentosRepository {
   }
 
   async confirmarOcrResultado(id: number, usuarioId?: number) {
+    const usuarioIdFinal = usuarioId ?? null;
+
     const rows = await sql`
       WITH ocr AS (
         UPDATE documentos.ocr_resultados
         SET
           estado = 'confirmado',
           validado_en = now(),
-          validado_por = ${usuarioId ?? null}
-        WHERE id = ${id}
+          validado_por = ${usuarioIdFinal}::integer,
+          metadata = jsonb_set(
+            COALESCE(metadata, '{}'::jsonb),
+            '{estado}',
+            to_jsonb('confirmado'::text),
+            true
+          )
+        WHERE id = ${id}::integer
         RETURNING *
       ),
       datos AS (
         SELECT
           ocr.*,
           ocr.metadata->'metadata' AS meta,
-          ocr.metadata->>'tipoDocumental' AS tipo_documental_final,
-          ocr.metadata->>'claveDocumental' AS clave_documental_final
+          COALESCE(
+            ocr.metadata->>'tipoDocumental',
+            ocr.tipo_propuesto
+          ) AS tipo_documental_final,
+          COALESCE(
+            ocr.metadata->>'claveDocumental',
+            ocr.clave_documental
+          ) AS clave_documental_final
         FROM ocr
       ),
       doc_update AS (
@@ -385,7 +399,9 @@ export class DocumentosRepository {
           fecha_emision = NULLIF(datos.meta->>'fechaEmision', '')::date,
           monto_total = NULLIF(datos.meta->>'montoTotal', '')::numeric,
           clave_documental = datos.clave_documental_final,
-          actualizado_en = now()
+          actualizado_en = now(),
+          validado_en = now(),
+          validado_por = ${usuarioIdFinal}::integer
         FROM datos
         WHERE d.id = datos.documento_id
         RETURNING d.*
@@ -747,22 +763,29 @@ export class DocumentosRepository {
     usuarioId?: number,
   ) {
     const motivoFinal = motivo?.trim() || 'Rechazado por usuario';
-
+    const usuarioIdFinal = usuarioId ?? null;
 
     const rows = await sql`
       UPDATE documentos.ocr_resultados
       SET
         estado = 'rechazado',
         validado_en = now(),
-        validado_por = ${usuarioId ?? null},
-        metadata = metadata || jsonb_build_object(
-          'rechazo',
-          jsonb_build_object(
-            'fecha', now(),
-            'motivo', ${motivoFinal}
+        validado_por = ${usuarioIdFinal}::integer,
+        metadata =
+          jsonb_set(
+            COALESCE(metadata, '{}'::jsonb),
+            '{estado}',
+            to_jsonb('rechazado'::text),
+            true
           )
-        )
-      WHERE id = ${id}
+          || jsonb_build_object(
+            'rechazo',
+            jsonb_build_object(
+              'fecha', now(),
+              'motivo', ${motivoFinal}::text
+            )
+          )
+      WHERE id = ${id}::integer
       RETURNING *
     `;
 
@@ -781,23 +804,23 @@ export class DocumentosRepository {
     const currentRows = await sql`
       SELECT *
       FROM documentos.ocr_resultados
-      WHERE id = ${id}
+      WHERE id = ${id}::integer
       LIMIT 1
     `;
 
     const current = currentRows[0];
 
-    if (!current) {
-      return null;
-    }
+    if (!current) return null;
 
     const metadataActual = current.metadata?.metadata ?? {};
+
     const metadataNueva = {
       ...metadataActual,
       ...(input.metadata ?? {}),
     };
 
     const metadataSourceActual = current.metadata?.metadataSource ?? {};
+
     const metadataSourceNueva = {
       ...metadataSourceActual,
       ...Object.fromEntries(
@@ -806,18 +829,27 @@ export class DocumentosRepository {
     };
 
     const tipoPropuestoFinal =
-      input.tipoPropuesto ?? current.tipo_propuesto ?? current.metadata?.tipoDocumental ?? null;
+      input.tipoPropuesto ??
+      current.tipo_propuesto ??
+      current.metadata?.tipoDocumental ??
+      null;
 
     const clienteAbreviatura =
-      current.metadata?.clienteAbreviatura ?? 'BBTI';
+      current.metadata?.clienteAbreviatura ??
+      current.metadata?.metadata?.clienteAbreviatura ??
+      current.metadata?.cliente ??
+      'BBTI';
 
     const claveDocumental =
-      metadataNueva?.ruc && metadataNueva?.serie && metadataNueva?.numero
-        ? `${clienteAbreviatura}|${tipoPropuestoFinal}|${metadataNueva.ruc}|${metadataNueva.serie}|${metadataNueva.numero}`
-        : current.clave_documental;
+      this.buildClaveDocumental(
+        clienteAbreviatura,
+        tipoPropuestoFinal,
+        metadataNueva,
+      ) ?? current.clave_documental;
 
     const metadataFinal = {
       ...current.metadata,
+      estado: 'editado',
       tipoPropuesto: tipoPropuestoFinal,
       tipoDocumental: tipoPropuestoFinal,
       metadata: metadataNueva,
@@ -842,11 +874,51 @@ export class DocumentosRepository {
         tipo_propuesto = ${tipoPropuestoFinal},
         clave_documental = ${claveDocumental},
         metadata = ${JSON.stringify(metadataFinal)}::jsonb
-      WHERE id = ${id}
+      WHERE id = ${id}::integer
       RETURNING *
     `;
 
     return rows[0] ?? null;
+  }
+
+  private buildClaveDocumental(
+    cliente: string,
+    tipo: string | null,
+    metadata: Record<string, any>,
+  ): string | null {
+    const clienteKey = String(cliente || 'BBTI').trim().toUpperCase();
+    const tipoKey = String(tipo || '').trim().toUpperCase();
+
+    const clean = (v: any) => {
+      if (v === null || v === undefined) return null;
+      const text = String(v).trim();
+      return text.length ? text : null;
+    };
+
+    const ruc = clean(metadata.ruc);
+    const serie = clean(metadata.serie);
+    const numero = clean(metadata.numero);
+    const numeroOperacion = clean(metadata.numeroOperacion);
+
+    if (['FACTURA', 'GUIA_REMISION', 'NOTA_CREDITO', 'RECIBO_HONORARIO'].includes(tipoKey)) {
+      if (clienteKey && ruc && serie && numero) {
+        return `${clienteKey}|${tipoKey}|${ruc}|${serie}|${numero}`;
+      }
+    }
+
+    if (['OC', 'OS', 'NOTA_INGRESO'].includes(tipoKey)) {
+      if (clienteKey && numero) {
+        return `${clienteKey}|${tipoKey}|${numero}`;
+      }
+    }
+
+    if (['PAGO_TRANSFERENCIA', 'PAGO_DETRACCION'].includes(tipoKey)) {
+      if (clienteKey && numeroOperacion) {
+        return `${clienteKey}|${tipoKey}|${numeroOperacion}`;
+      }
+    }
+
+    return null;
   }
 
 }

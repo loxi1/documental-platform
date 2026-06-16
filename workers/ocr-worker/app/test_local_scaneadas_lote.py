@@ -6,6 +6,14 @@ from app.schemas import OcrProcesarArchivoPayload
 
 
 FILES = [
+    "OC_007902.pdf",
+    "OC_007934.pdf",
+    "OC_007950.pdf",
+    "OS_000177.pdf",
+    "OS_000229.pdf",
+    "OS_000238.pdf",
+    "OS_000254.pdf",
+    "OS_000256.pdf",
     "guia_1.pdf",
     "guia_2.pdf",
     "guia_3.pdf",
