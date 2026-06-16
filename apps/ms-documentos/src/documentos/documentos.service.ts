@@ -44,14 +44,27 @@ export class DocumentosService {
     return this.repo.getProveedores(search, limit, offset);
   }
 
-  async procesarOcrArchivo(archivoId: number) {
+  async procesarOcrArchivo(
+    archivoId: number,
+    contexto: {
+      tipoEsperado?: string;
+      areaOrigen?: string;
+      expedienteId?: number;
+      documentoBaseId?: number;
+      tipoRelacionSugerida?: string;
+      canalIngreso?: string;
+      reprocesar?: boolean;
+    } = {},
+  ) {
     const archivo = await this.repo.findArchivoById(archivoId);
 
     if (!archivo) {
       throw new NotFoundException(`Archivo ${archivoId} no encontrado`);
     }
 
-    const clienteAbreviatura = String(archivo.cliente_abreviatura ?? '').trim().toUpperCase();
+    const clienteAbreviatura = String(
+      archivo.cliente_abreviatura ?? '',
+    ).trim().toUpperCase();
 
     if (!clienteAbreviatura) {
       throw new BadRequestException(
@@ -66,6 +79,13 @@ export class DocumentosService {
       storageProvider: archivo.storage_provider ?? 'local',
       storageKey: archivo.storage_key ?? archivo.ruta_archivo,
       tipoSolicitud: 'clasificar_extraer',
+
+      tipoEsperado: contexto.tipoEsperado ?? null,
+      areaOrigen: contexto.areaOrigen ?? null,
+      expedienteId: contexto.expedienteId ?? null,
+      documentoBaseId: contexto.documentoBaseId ?? null,
+      tipoRelacionSugerida: contexto.tipoRelacionSugerida ?? null,
+      canalIngreso: contexto.canalIngreso ?? null,
     };
 
     const result = await firstValueFrom(
@@ -296,47 +316,45 @@ export class DocumentosService {
     return alerta;
   }
 
-  async rechazarOcrResultado(id: number, motivo?: string, usuarioId?: number) {
-    const rechazado = await this.repo.rechazarOcrResultado(id, motivo, usuarioId);
+  async rechazarOcrResultado(
+    id: number,
+    motivo?: string,
+    usuarioId?: number,
+  ) {
+    const motivoFinal = motivo?.trim() || 'Rechazado por usuario';
+
+    const rechazado = await this.repo.rechazarOcrResultado(
+      id,
+      motivoFinal,
+      usuarioId,
+    );
 
     if (!rechazado) {
-      throw new NotFoundException(`Resultado OCR ${id} no encontrado`);
+      throw new NotFoundException(
+        `Resultado OCR ${id} no encontrado`,
+      );
     }
 
-    return {
-      id: rechazado.id,
-      estado: rechazado.estado,
-      documentoId: rechazado.documento_id,
-      tipoDocumental: rechazado.tipo_propuesto,
-      claveDocumental: rechazado.clave_documental,
-      rechazo: rechazado.metadata?.rechazo ?? null,
-    };
+    return rechazado;
   }
 
   async editarOcrResultado(
     id: number,
-    input: {
-      tipoPropuesto?: string;
-      metadata?: Record<string, any>;
-      observacion?: string;
-    },
+    input: any,
     usuarioId?: number,
   ) {
-    const editado = await this.repo.editarOcrResultado(id, input, usuarioId);
+    const editado = await this.repo.editarOcrResultado(
+      id,
+      input,
+      usuarioId,
+    );
 
     if (!editado) {
-      throw new NotFoundException(`Resultado OCR ${id} no encontrado`);
+      throw new NotFoundException(
+        `Resultado OCR ${id} no encontrado`,
+      );
     }
 
-    return {
-      id: editado.id,
-      estado: editado.estado,
-      documentoId: editado.documento_id,
-      tipoDocumental: editado.tipo_propuesto,
-      claveDocumental: editado.clave_documental,
-      metadata: editado.metadata?.metadata ?? {},
-      metadataSource: editado.metadata?.metadataSource ?? {},
-      audit: editado.metadata?.audit ?? [],
-    };
+    return editado;
   }
 }

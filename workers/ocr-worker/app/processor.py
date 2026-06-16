@@ -83,12 +83,15 @@ def should_use_qr(
 ) -> bool:
     tipo = normalize_document_type(tipo_documental)
 
-    if tipo in ["FACTURA", "GUIA_REMISION", "NOTA_CREDITO", "RECIBO_HONORARIO"]:
+    # Solo comprobantes donde QR realmente aporta valor.
+    if tipo in ["FACTURA", "GUIA_REMISION", "NOTA_CREDITO"]:
         return bool(get_missing_metadata(tipo, metadata)) or confidence < 0.90
 
+    # Fallback automático solo cuando no se sabe el tipo.
     if tipo == "OTRO" and len((text or "").strip()) < 80:
         return True
 
+    # No intentar QR en OC, OS, NI, RH, pagos ni detracciones.
     return False
 
 

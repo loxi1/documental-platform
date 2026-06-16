@@ -56,8 +56,17 @@ export class DocumentosController {
   @Post('archivos/:archivoId/procesar-ocr')
   procesarOcrArchivo(
     @Param('archivoId', ParseIntPipe) archivoId: number,
+    @Body() body: {
+      tipoEsperado?: string;
+      areaOrigen?: string;
+      expedienteId?: number;
+      documentoBaseId?: number;
+      tipoRelacionSugerida?: string;
+      canalIngreso?: string;
+      reprocesar?: boolean;
+    },
   ) {
-    return this.service.procesarOcrArchivo(archivoId);
+    return this.service.procesarOcrArchivo(archivoId, body);
   }
 
   @Get('ocr-resultados')
