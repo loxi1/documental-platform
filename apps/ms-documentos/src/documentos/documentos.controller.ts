@@ -64,7 +64,7 @@ export class DocumentosController {
       tipoRelacionSugerida?: string;
       canalIngreso?: string;
       reprocesar?: boolean;
-    },
+    } = {},
   ) {
     return this.service.procesarOcrArchivo(archivoId, body);
   }
@@ -162,9 +162,12 @@ export class DocumentosController {
   @Post('ocr-resultados/:id/rechazar')
   rechazarOcrResultado(
     @Param('id', ParseIntPipe) id: number,
-    @Body('motivo') motivo?: string,
+    @Body() body: { motivo?: string },
   ) {
-    return this.service.rechazarOcrResultado(id, motivo);
+    return this.service.rechazarOcrResultado(
+      id,
+      body?.motivo,
+    );
   }
 
   @Patch('ocr-resultados/:id/editar')

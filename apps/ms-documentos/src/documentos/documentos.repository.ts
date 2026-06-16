@@ -239,7 +239,7 @@ export class DocumentosRepository {
         SELECT *
         FROM documentos.ocr_resultados
         WHERE archivo_id = ${params.archivoId}
-          AND estado IN ('pendiente_validacion', 'confirmado')
+          AND estado IN ('pendiente_validacion', 'confirmado', 'editado')
         ORDER BY id DESC
         LIMIT 1
       `;
@@ -740,13 +740,14 @@ export class DocumentosRepository {
 
     return rows[0] ?? null;
   }
-
+  
   async rechazarOcrResultado(
     id: number,
     motivo: string,
     usuarioId?: number,
   ) {
     const motivoFinal = motivo?.trim() || 'Rechazado por usuario';
+
 
     const rows = await sql`
       UPDATE documentos.ocr_resultados
@@ -768,29 +769,84 @@ export class DocumentosRepository {
     return rows[0] ?? null;
   }
 
-  async editarOcrResultado(id: number, input: any, usuarioId?: number) {
+  async editarOcrResultado(
+    id: number,
+    input: {
+      tipoPropuesto?: string;
+      metadata?: Record<string, any>;
+      observacion?: string;
+    },
+    usuarioId?: number,
+  ) {
+    const currentRows = await sql`
+      SELECT *
+      FROM documentos.ocr_resultados
+      WHERE id = ${id}
+      LIMIT 1
+    `;
+
+    const current = currentRows[0];
+
+    if (!current) {
+      return null;
+    }
+
+    const metadataActual = current.metadata?.metadata ?? {};
+    const metadataNueva = {
+      ...metadataActual,
+      ...(input.metadata ?? {}),
+    };
+
+    const metadataSourceActual = current.metadata?.metadataSource ?? {};
+    const metadataSourceNueva = {
+      ...metadataSourceActual,
+      ...Object.fromEntries(
+        Object.keys(input.metadata ?? {}).map((key) => [key, 'MANUAL']),
+      ),
+    };
+
+    const tipoPropuestoFinal =
+      input.tipoPropuesto ?? current.tipo_propuesto ?? current.metadata?.tipoDocumental ?? null;
+
+    const clienteAbreviatura =
+      current.metadata?.clienteAbreviatura ?? 'BBTI';
+
+    const claveDocumental =
+      metadataNueva?.ruc && metadataNueva?.serie && metadataNueva?.numero
+        ? `${clienteAbreviatura}|${tipoPropuestoFinal}|${metadataNueva.ruc}|${metadataNueva.serie}|${metadataNueva.numero}`
+        : current.clave_documental;
+
+    const metadataFinal = {
+      ...current.metadata,
+      tipoPropuesto: tipoPropuestoFinal,
+      tipoDocumental: tipoPropuestoFinal,
+      metadata: metadataNueva,
+      metadataSource: metadataSourceNueva,
+      claveDocumental,
+      audit: [
+        ...(current.metadata?.audit ?? []),
+        {
+          accion: 'EDITADO_MANUAL',
+          fecha: new Date().toISOString(),
+          usuarioId: usuarioId ?? null,
+          observacion: input.observacion ?? null,
+          cambios: input,
+        },
+      ],
+    };
+
     const rows = await sql`
       UPDATE documentos.ocr_resultados
       SET
         estado = 'editado',
-        metadata = metadata || jsonb_build_object(
-          'metadata', ${sql.json(input.metadata ?? {})}::jsonb,
-          'metadataSource', ${sql.json(input.metadataSource ?? {})}::jsonb,
-          'tipoPropuesto', ${input.tipoPropuesto ?? null},
-          'audit',
-          COALESCE(metadata->'audit', '[]'::jsonb) || jsonb_build_array(
-            jsonb_build_object(
-              'accion', 'EDITADO_MANUAL',
-              'fecha', now(),
-              'usuarioId', ${usuarioId ?? null},
-              'cambios', ${sql.json(input)}::jsonb
-            )
-          )
-        )
+        tipo_propuesto = ${tipoPropuestoFinal},
+        clave_documental = ${claveDocumental},
+        metadata = ${JSON.stringify(metadataFinal)}::jsonb
       WHERE id = ${id}
       RETURNING *
     `;
 
     return rows[0] ?? null;
   }
+
 }
