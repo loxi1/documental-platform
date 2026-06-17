@@ -155,6 +155,16 @@ export class DocumentosService {
 
     const confirmado = await this.repo.confirmarOcrResultado(id, usuarioId);
 
+    const tipoRelacionSugerida =
+      metadata?.contextoCarga?.tipoRelacionSugerida ??
+      metadata?.tipoRelacionSugerida ??
+      null;
+
+    const vinculacionExpediente = await this.repo.intentarVincularExpedienteDesdeOcr({
+      ocrResultadoId: id,
+      tipoRelacionSugerida,
+    });
+
     return {
       id: confirmado.id,
       estado: confirmado.estado,
@@ -162,6 +172,7 @@ export class DocumentosService {
       tipoDocumental: result.tipo_propuesto,
       claveDocumental: result.clave_documental,
       metadata: extracted,
+      vinculacionExpediente,
     };
   }
 

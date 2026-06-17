@@ -646,14 +646,6 @@ export class DocumentosRepository {
       return null;
     }
 
-    if (params.esPrincipal) {
-      await sql`
-        UPDATE documentos.expediente_documentos
-        SET es_principal = false
-        WHERE expediente_id = ${params.expedienteId}
-      `;
-    }
-
     const vinculoExistente = await sql`
       SELECT expediente_id
       FROM documentos.expediente_documentos
@@ -705,6 +697,190 @@ export class DocumentosRepository {
     return {
       ocr,
       vinculo: rows[0],
+    };
+  }
+
+
+  async intentarVincularExpedienteDesdeOcr(params: {
+    ocrResultadoId: number;
+    tipoRelacionSugerida?: string | null;
+  }) {
+    const ocrRows = await sql`
+      SELECT *
+      FROM documentos.ocr_resultados
+      WHERE id = ${params.ocrResultadoId}
+      LIMIT 1
+    `;
+
+    const ocr = ocrRows[0];
+
+    if (!ocr) {
+      return null;
+    }
+
+    const metadata = ocr.metadata ?? {};
+    const extracted = metadata.metadata ?? {};
+    const contextoCarga = metadata.contextoCarga ?? {};
+
+    const clienteAbreviatura = String(
+      metadata.clienteAbreviatura ??
+        extracted.clienteAbreviatura ??
+        contextoCarga.clienteAbreviatura ??
+        '',
+    )
+      .trim()
+      .toUpperCase();
+
+    const tipoCodigo = String(extracted.tipoCodigoExpediente ?? '').trim();
+    const codigoOp = extracted.codigoOp ?? null;
+    const codigoCentroCosto = extracted.codigoCentroCosto ?? null;
+
+    const tipoRelacion =
+      params.tipoRelacionSugerida ??
+      contextoCarga.tipoRelacionSugerida ??
+      null;
+
+    const pendingBase = {
+      estado: 'pendiente',
+      motivo: 'SIN_CODIGO_EXPEDIENTE',
+      tipoCodigoExpediente: tipoCodigo || null,
+      codigoBuscado: null,
+      campoBuscado: null,
+    };
+
+    if (!clienteAbreviatura || (!codigoOp && !codigoCentroCosto)) {
+      const metadataFinal = {
+        ...metadata,
+        vinculacionExpediente: pendingBase,
+      };
+
+      const updated = await sql`
+        UPDATE documentos.ocr_resultados
+        SET metadata = ${JSON.stringify(metadataFinal)}::jsonb
+        WHERE id = ${params.ocrResultadoId}
+        RETURNING *
+      `;
+
+      return {
+        ocr: updated[0] ?? ocr,
+        expediente: null,
+        vinculo: null,
+        vinculado: false,
+        motivo: 'SIN_CODIGO_EXPEDIENTE',
+      };
+    }
+
+    const campoBuscado = codigoOp ? 'codigo_op' : 'codigo_centro_costo';
+    const codigoBuscado = String(codigoOp ?? codigoCentroCosto);
+
+    const expedienteRows = codigoOp
+      ? await sql`
+          SELECT *
+          FROM documentos.expedientes
+          WHERE empresa_codigo = ${clienteAbreviatura}
+            AND codigo_op = ${codigoOp}
+          LIMIT 1
+        `
+      : await sql`
+          SELECT *
+          FROM documentos.expedientes
+          WHERE empresa_codigo = ${clienteAbreviatura}
+            AND codigo_centro_costo = ${codigoCentroCosto}
+          LIMIT 1
+        `;
+
+    const expediente = expedienteRows[0];
+
+    if (!expediente) {
+      const metadataFinal = {
+        ...metadata,
+        vinculacionExpediente: {
+          estado: 'pendiente',
+          motivo: 'EXPEDIENTE_NO_ENCONTRADO',
+          codigoBuscado,
+          campoBuscado,
+          empresaCodigo: clienteAbreviatura,
+        },
+      };
+
+      const updated = await sql`
+        UPDATE documentos.ocr_resultados
+        SET
+          expediente_id = NULL,
+          metadata = ${JSON.stringify(metadataFinal)}::jsonb
+        WHERE id = ${params.ocrResultadoId}
+        RETURNING *
+      `;
+
+      return {
+        ocr: updated[0] ?? ocr,
+        expediente: null,
+        vinculo: null,
+        vinculado: false,
+        motivo: 'EXPEDIENTE_NO_ENCONTRADO',
+      };
+    }
+
+    type DbRow = Record<string, any>;
+
+    let vinculo: DbRow | null = null;
+
+    if (ocr.documento_id && tipoRelacion) {
+      const vinculoRows = await sql`
+        INSERT INTO documentos.expediente_documentos (
+          expediente_id,
+          documento_id,
+          tipo_relacion,
+          es_principal,
+          orden
+        )
+        VALUES (
+          ${expediente.id},
+          ${ocr.documento_id},
+          ${tipoRelacion},
+          ${tipoRelacion.startsWith('principal_')},
+          0
+        )
+        ON CONFLICT (expediente_id, documento_id)
+        DO UPDATE SET
+          tipo_relacion = EXCLUDED.tipo_relacion,
+          es_principal = EXCLUDED.es_principal,
+          orden = EXCLUDED.orden
+        RETURNING *
+      `;
+
+      vinculo = vinculoRows[0] ?? null;
+    }
+
+    const metadataFinal = {
+      ...metadata,
+      vinculacionExpediente: {
+        estado: 'vinculado',
+        motivo: 'EXPEDIENTE_ENCONTRADO',
+        codigoBuscado,
+        campoBuscado,
+        empresaCodigo: clienteAbreviatura,
+        expedienteId: expediente.id,
+        tipoRelacion,
+      },
+    };
+
+    const updated = await sql`
+      UPDATE documentos.ocr_resultados
+      SET
+        expediente_id = ${expediente.id},
+        vinculado_en = now(),
+        metadata = ${JSON.stringify(metadataFinal)}::jsonb
+      WHERE id = ${params.ocrResultadoId}
+      RETURNING *
+    `;
+
+    return {
+      ocr: updated[0] ?? ocr,
+      expediente,
+      vinculo,
+      vinculado: true,
+      motivo: 'EXPEDIENTE_ENCONTRADO',
     };
   }
 
