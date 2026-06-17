@@ -762,8 +762,8 @@ export class DocumentosRepository {
     motivo: string,
     usuarioId?: number,
   ) {
-    const motivoFinal = motivo?.trim() || 'Rechazado por usuario';
-    const usuarioIdFinal = usuarioId ?? null;
+    const motivoFinal: string = motivo?.trim() || 'Rechazado por usuario';
+    const usuarioIdFinal: number | null = usuarioId ?? null;
 
     const rows = await sql`
       UPDATE documentos.ocr_resultados

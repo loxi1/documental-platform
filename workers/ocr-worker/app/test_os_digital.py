@@ -30,7 +30,8 @@ async def main():
         "metadataSource": result.get("metadataSource"),
         "claveDocumental": result.get("claveDocumental"),
         "camposFaltantes": result.get("camposFaltantes"),
-        "contextoCarga": result.get("contextoCarga"),
+        "texto": result.get("texto"),
+        "mensaje": result.get("mensaje"),
     }
 
     print(json.dumps(resumen, indent=2, ensure_ascii=False))
