@@ -290,6 +290,73 @@ def extract_order_cotizacion(text: str) -> str | None:
     return None
 
 
+
+def classify_codigo_expediente(codigo: str | None) -> dict[str, str | None]:
+    if not codigo:
+        return {
+            "codigoExpediente": None,
+            "tipoCodigoExpediente": None,
+            "codigoOp": None,
+            "codigoCentroCosto": None,
+        }
+
+    code = str(codigo).strip()
+
+    if code.startswith("05"):
+        return {
+            "codigoExpediente": code,
+            "tipoCodigoExpediente": "OP",
+            "codigoOp": code,
+            "codigoCentroCosto": None,
+        }
+
+    if code.startswith("03"):
+        return {
+            "codigoExpediente": code,
+            "tipoCodigoExpediente": "CENTRO_COSTO",
+            "codigoOp": None,
+            "codigoCentroCosto": code,
+        }
+
+    return {
+        "codigoExpediente": code,
+        "tipoCodigoExpediente": "DESCONOCIDO",
+        "codigoOp": None,
+        "codigoCentroCosto": None,
+    }
+
+
+def extract_codigo_expediente(text: str) -> dict[str, str | None]:
+    raw = normalize_ocr_text(text)
+    t = normalize_for_search(text)
+
+    patterns = [
+        r"CENTRO\s+DE\s+COSTOS?\s*:?\s*(0[35]\d{4,10})\b",
+        r"CENTRO\s+COSTOS?\s*:?\s*(0[35]\d{4,10})\b",
+        r"CC\s*:?\s*(0[35]\d{4,10})\b",
+        r"C\.?\s*C\.?\s*:?\s*(0[35]\d{4,10})\b",
+        r"\b(0[35]\d{4})\s*-\s*[A-Z0-9ÁÉÍÓÚÑ ]{3,}",
+    ]
+
+    for pattern in patterns:
+        match = re.search(pattern, t, flags=re.DOTALL)
+        if match:
+            return classify_codigo_expediente(match.group(1))
+
+    # Algunos PDFs separan la etiqueta y el código en líneas distintas.
+    lines = _lines(raw)
+    for idx, line in enumerate(lines):
+        line_u = normalize_for_search(line)
+
+        if "CENTRO DE COSTO" in line_u or "CENTRO DE COSTOS" in line_u:
+            window = " ".join(lines[idx: idx + 5])
+            match = re.search(r"\b(0[35]\d{4,10})\b", normalize_for_search(window))
+
+            if match:
+                return classify_codigo_expediente(match.group(1))
+
+    return classify_codigo_expediente(None)
+
 def extract_orden_metadata(
     text: str,
     tipo_documental: str,
@@ -305,6 +372,8 @@ def extract_orden_metadata(
         or extract_orden_numero_from_filename(filename, tipo)
     )
 
+    codigo_exp = extract_codigo_expediente(text)
+
     return {
         "numero": numero,
         "fechaEmision": extract_fecha(text),
@@ -313,4 +382,8 @@ def extract_orden_metadata(
         "rucProveedor": extract_order_ruc_proveedor(text),
         "moneda": extract_order_moneda(text),
         "cotizacion": extract_order_cotizacion(text),
+        "codigoExpediente": codigo_exp.get("codigoExpediente"),
+        "tipoCodigoExpediente": codigo_exp.get("tipoCodigoExpediente"),
+        "codigoOp": codigo_exp.get("codigoOp"),
+        "codigoCentroCosto": codigo_exp.get("codigoCentroCosto"),
     }
