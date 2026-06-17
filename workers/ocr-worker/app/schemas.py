@@ -18,3 +18,5 @@ class OcrProcesarArchivoPayload(BaseModel):
     documentoBaseId: int | None = None
     tipoRelacionSugerida: str | None = None
     canalIngreso: str | None = None
+    codigoExpediente: str | None = None
+    tipoCodigoExpediente: str | None = None

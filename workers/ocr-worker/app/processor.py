@@ -128,8 +128,7 @@ def resolve_expected_type(payload: OcrProcesarArchivoPayload) -> str | None:
     if tipo is None or str(tipo).strip() == "":
         return None
 
-    normalized = normalize_document_type(tipo)
-    return normalized if normalized != "OTRO" else None
+    return normalize_document_type(tipo)
 
 
 async def process_file(payload: OcrProcesarArchivoPayload) -> dict:
@@ -253,5 +252,7 @@ async def process_file(payload: OcrProcesarArchivoPayload) -> dict:
             "documentoBaseId": getattr(payload, "documentoBaseId", None),
             "tipoRelacionSugerida": getattr(payload, "tipoRelacionSugerida", None),
             "canalIngreso": getattr(payload, "canalIngreso", None),
+            "codigoExpediente": getattr(payload, "codigoExpediente", None),
+            "tipoCodigoExpediente": getattr(payload, "tipoCodigoExpediente", None),
         },
     })

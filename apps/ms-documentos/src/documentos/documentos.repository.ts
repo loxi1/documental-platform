@@ -586,13 +586,43 @@ export class DocumentosRepository {
       return null;
     }
 
-    if (!ocr.clave_documental) {
+    const metadata = ocr.metadata ?? {};
+    const extracted = metadata.metadata ?? {};
+    const contextoCarga = metadata.contextoCarga ?? {};
+
+    const empresaCodigo = String(
+      metadata.clienteAbreviatura ??
+        extracted.clienteAbreviatura ??
+        contextoCarga.clienteAbreviatura ??
+        '',
+    )
+      .trim()
+      .toUpperCase();
+
+    const tipoCodigoExpediente = String(
+      extracted.tipoCodigoExpediente ??
+        contextoCarga.tipoCodigoExpediente ??
+        '',
+    )
+      .trim()
+      .toUpperCase();
+
+    const codigoExpediente = String(
+      extracted.codigoExpediente ??
+        contextoCarga.codigoExpediente ??
+        '',
+    ).trim();
+
+    if (!empresaCodigo || !tipoCodigoExpediente || !codigoExpediente) {
       return {
         ocr,
         sugerencia: {
           accion: 'SIN_SUGERENCIA',
-          motivo: 'OCR_SIN_CLAVE_DOCUMENTAL',
+          motivo: 'OCR_SIN_CODIGO_EXPEDIENTE',
           confidence: 0,
+          empresaCodigo: empresaCodigo || null,
+          tipoCodigoExpediente: tipoCodigoExpediente || null,
+          codigoExpediente: codigoExpediente || null,
         },
       };
     }
@@ -600,7 +630,9 @@ export class DocumentosRepository {
     const expedienteRows = await sql`
       SELECT *
       FROM documentos.expedientes
-      WHERE clave_principal = ${ocr.clave_documental}
+      WHERE empresa_codigo = ${empresaCodigo}
+        AND tipo_expediente = ${tipoCodigoExpediente}
+        AND codigo_expediente = ${codigoExpediente}
       LIMIT 1
     `;
 
@@ -610,8 +642,11 @@ export class DocumentosRepository {
         sugerencia: {
           accion: 'USAR_EXPEDIENTE_EXISTENTE',
           expediente: expedienteRows[0],
-          motivo: 'MISMA_CLAVE_PRINCIPAL',
+          motivo: 'MISMO_CODIGO_EXPEDIENTE',
           confidence: 100,
+          empresaCodigo,
+          tipoCodigoExpediente,
+          codigoExpediente,
         },
       };
     }
@@ -619,9 +654,12 @@ export class DocumentosRepository {
     return {
       ocr,
       sugerencia: {
-        accion: 'CREAR_EXPEDIENTE',
-        motivo: 'NO_EXISTE_EXPEDIENTE_PARA_CLAVE',
-        confidence: 100,
+        accion: 'PENDIENTE_EXPEDIENTE',
+        motivo: 'EXPEDIENTE_NO_ENCONTRADO',
+        confidence: 0,
+        empresaCodigo,
+        tipoCodigoExpediente,
+        codigoExpediente,
       },
     };
   }
@@ -731,9 +769,19 @@ export class DocumentosRepository {
       .trim()
       .toUpperCase();
 
-    const tipoCodigo = String(extracted.tipoCodigoExpediente ?? '').trim();
-    const codigoOp = extracted.codigoOp ?? null;
-    const codigoCentroCosto = extracted.codigoCentroCosto ?? null;
+    const codigoExpediente = String(
+      extracted.codigoExpediente ??
+        contextoCarga.codigoExpediente ??
+        '',
+    ).trim();
+
+    const tipoCodigoExpediente = String(
+      extracted.tipoCodigoExpediente ??
+        contextoCarga.tipoCodigoExpediente ??
+        '',
+    )
+      .trim()
+      .toUpperCase();
 
     const tipoRelacion =
       params.tipoRelacionSugerida ??
@@ -743,12 +791,12 @@ export class DocumentosRepository {
     const pendingBase = {
       estado: 'pendiente',
       motivo: 'SIN_CODIGO_EXPEDIENTE',
-      tipoCodigoExpediente: tipoCodigo || null,
-      codigoBuscado: null,
-      campoBuscado: null,
+      tipoCodigoExpediente: tipoCodigoExpediente || null,
+      codigoExpediente: codigoExpediente || null,
+      empresaCodigo: clienteAbreviatura || null,
     };
 
-    if (!clienteAbreviatura || (!codigoOp && !codigoCentroCosto)) {
+    if (!clienteAbreviatura || !codigoExpediente || !tipoCodigoExpediente) {
       const metadataFinal = {
         ...metadata,
         vinculacionExpediente: pendingBase,
@@ -770,24 +818,14 @@ export class DocumentosRepository {
       };
     }
 
-    const campoBuscado = codigoOp ? 'codigo_op' : 'codigo_centro_costo';
-    const codigoBuscado = String(codigoOp ?? codigoCentroCosto);
-
-    const expedienteRows = codigoOp
-      ? await sql`
-          SELECT *
-          FROM documentos.expedientes
-          WHERE empresa_codigo = ${clienteAbreviatura}
-            AND codigo_op = ${codigoOp}
-          LIMIT 1
-        `
-      : await sql`
-          SELECT *
-          FROM documentos.expedientes
-          WHERE empresa_codigo = ${clienteAbreviatura}
-            AND codigo_centro_costo = ${codigoCentroCosto}
-          LIMIT 1
-        `;
+    const expedienteRows = await sql`
+      SELECT *
+      FROM documentos.expedientes
+      WHERE empresa_codigo = ${clienteAbreviatura}
+        AND tipo_expediente = ${tipoCodigoExpediente}
+        AND codigo_expediente = ${codigoExpediente}
+      LIMIT 1
+    `;
 
     const expediente = expedienteRows[0];
 
@@ -797,8 +835,8 @@ export class DocumentosRepository {
         vinculacionExpediente: {
           estado: 'pendiente',
           motivo: 'EXPEDIENTE_NO_ENCONTRADO',
-          codigoBuscado,
-          campoBuscado,
+          codigoExpediente,
+          tipoCodigoExpediente,
           empresaCodigo: clienteAbreviatura,
         },
       };
@@ -857,8 +895,8 @@ export class DocumentosRepository {
       vinculacionExpediente: {
         estado: 'vinculado',
         motivo: 'EXPEDIENTE_ENCONTRADO',
-        codigoBuscado,
-        campoBuscado,
+        codigoExpediente,
+        tipoCodigoExpediente,
         empresaCodigo: clienteAbreviatura,
         expedienteId: expediente.id,
         tipoRelacion,

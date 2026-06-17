@@ -63,6 +63,8 @@ export class DocumentosController {
       documentoBaseId?: number;
       tipoRelacionSugerida?: string;
       canalIngreso?: string;
+      codigoExpediente?: string;
+      tipoCodigoExpediente?: string;
       reprocesar?: boolean;
     } = {},
   ) {

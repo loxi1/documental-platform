@@ -384,6 +384,4 @@ def extract_orden_metadata(
         "cotizacion": extract_order_cotizacion(text),
         "codigoExpediente": codigo_exp.get("codigoExpediente"),
         "tipoCodigoExpediente": codigo_exp.get("tipoCodigoExpediente"),
-        "codigoOp": codigo_exp.get("codigoOp"),
-        "codigoCentroCosto": codigo_exp.get("codigoCentroCosto"),
     }

@@ -53,6 +53,8 @@ export class DocumentosService {
       documentoBaseId?: number;
       tipoRelacionSugerida?: string;
       canalIngreso?: string;
+      codigoExpediente?: string;
+      tipoCodigoExpediente?: string;
       reprocesar?: boolean;
     } = {},
   ) {
@@ -86,6 +88,8 @@ export class DocumentosService {
       documentoBaseId: contexto.documentoBaseId ?? null,
       tipoRelacionSugerida: contexto.tipoRelacionSugerida ?? null,
       canalIngreso: contexto.canalIngreso ?? null,
+      codigoExpediente: contexto.codigoExpediente ?? null,
+      tipoCodigoExpediente: contexto.tipoCodigoExpediente ?? null,
     };
 
     const result = await firstValueFrom(
