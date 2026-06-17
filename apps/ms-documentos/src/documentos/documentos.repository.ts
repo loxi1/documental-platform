@@ -356,7 +356,7 @@ export class DocumentosRepository {
   }
 
   async confirmarOcrResultado(id: number, usuarioId?: number) {
-    const usuarioIdFinal = usuarioId ?? null;
+    const usuarioIdFinal: number | null = usuarioId ?? null;
 
     const rows = await sql`
       WITH ocr AS (
@@ -364,22 +364,23 @@ export class DocumentosRepository {
         SET
           estado = 'confirmado',
           validado_en = now(),
-          validado_por = ${usuarioIdFinal}::integer,
+          validado_por = ${usuarioIdFinal},
           metadata = jsonb_set(
             COALESCE(metadata, '{}'::jsonb),
             '{estado}',
             to_jsonb('confirmado'::text),
             true
           )
-        WHERE id = ${id}::integer
+        WHERE id = ${id}
         RETURNING *
       ),
       datos AS (
         SELECT
           ocr.*,
-          ocr.metadata->'metadata' AS meta,
+          COALESCE(ocr.metadata->'metadata', '{}'::jsonb) AS meta,
           COALESCE(
             ocr.metadata->>'tipoDocumental',
+            ocr.metadata->>'tipoPropuesto',
             ocr.tipo_propuesto
           ) AS tipo_documental_final,
           COALESCE(
@@ -393,15 +394,13 @@ export class DocumentosRepository {
         SET
           tipo_documental = datos.tipo_documental_final,
           estado = 'confirmado',
-          ruc_emisor = datos.meta->>'ruc',
-          serie = datos.meta->>'serie',
-          numero = datos.meta->>'numero',
-          fecha_emision = NULLIF(datos.meta->>'fechaEmision', '')::date,
-          monto_total = NULLIF(datos.meta->>'montoTotal', '')::numeric,
-          clave_documental = datos.clave_documental_final,
-          actualizado_en = now(),
-          validado_en = now(),
-          validado_por = ${usuarioIdFinal}::integer
+          ruc_emisor = COALESCE(NULLIF(datos.meta->>'ruc', ''), d.ruc_emisor),
+          serie = COALESCE(NULLIF(datos.meta->>'serie', ''), d.serie),
+          numero = COALESCE(NULLIF(datos.meta->>'numero', ''), d.numero),
+          fecha_emision = COALESCE(NULLIF(datos.meta->>'fechaEmision', '')::date, d.fecha_emision),
+          monto_total = COALESCE(NULLIF(datos.meta->>'montoTotal', '')::numeric, d.monto_total),
+          clave_documental = COALESCE(datos.clave_documental_final, d.clave_documental),
+          metadata = COALESCE(d.metadata, '{}'::jsonb) || jsonb_build_object('ocr', datos.metadata)
         FROM datos
         WHERE d.id = datos.documento_id
         RETURNING d.*
@@ -770,7 +769,7 @@ export class DocumentosRepository {
       SET
         estado = 'rechazado',
         validado_en = now(),
-        validado_por = ${usuarioIdFinal}::integer,
+        validado_por = ${usuarioIdFinal},
         metadata =
           jsonb_set(
             COALESCE(metadata, '{}'::jsonb),
@@ -782,10 +781,10 @@ export class DocumentosRepository {
             'rechazo',
             jsonb_build_object(
               'fecha', now(),
-              'motivo', ${motivoFinal}::text
+              'motivo', ${motivoFinal}
             )
           )
-      WHERE id = ${id}::integer
+      WHERE id = ${id}
       RETURNING *
     `;
 

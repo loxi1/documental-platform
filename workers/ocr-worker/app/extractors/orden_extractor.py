@@ -72,6 +72,7 @@ def clean_order_party_name(value: str | None) -> str | None:
     text = re.sub(r"\bSOCIEDAD\s+ANONIMA\s+CERRADA\b", "S.A.C.", text, flags=re.IGNORECASE)
     text = re.sub(r"\bSOCIEDAD\s+ANÓNIMA\s+CERRADA\b", "S.A.C.", text, flags=re.IGNORECASE)
     text = re.sub(r"\s+", " ", text).strip(" :-")
+    text = re.sub(r"\s+\d{1,2}/\d{1,2}/\d{4}$", "", text).strip(" :-")
 
     if " - " in text:
         left, right = [part.strip() for part in text.split(" - ", 1)]
@@ -153,6 +154,17 @@ def extract_order_proveedor(text: str, tipo_documental: str | None = None) -> st
     # Formato OC: SEÑOR(ES) : PROVEEDOR FECHA : ...
     match = re.search(
         r"SEÑOR\(ES\)\s*:\s*([^\n:]{4,180}?)\s+FECHA\s*:",
+        raw,
+        flags=re.IGNORECASE,
+    )
+    if match:
+        value = re.sub(r"\s+", " ", match.group(1)).strip(" :-")
+        if not _is_noise_line(value):
+            return clean_order_party_name(value)
+
+
+    match = re.search(
+        r"COTIZACI[OÓ]N\s*:\s*(.+?)(?:\s+\d{1,2}/\d{1,2}/\d{4}|\n|$)",
         raw,
         flags=re.IGNORECASE,
     )
