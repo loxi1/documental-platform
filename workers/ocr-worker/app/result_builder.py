@@ -57,4 +57,5 @@ def build_ocr_result(params: dict[str, Any]) -> dict[str, Any]:
         "clienteAbreviatura": params.get("clienteAbreviatura"),
         "claveDocumental": params.get("claveDocumental"),
         "qr": params.get("qr"),
+        "contextoCarga": params.get("contextoCarga"),
     }

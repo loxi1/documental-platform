@@ -16,6 +16,7 @@ FILES = [
     ("OS_000256.pdf", "OS", "principal_os"),
     ("OS_000262.pdf", "OS", "principal_os"),
     ("OS_000265.pdf", "OS", "principal_os"),
+    ("OS_30.pdf", "OS", "principal_os"),
 ]
 
 
