@@ -19,7 +19,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useExpedientes } from "@/hooks/useExpedientes";
 import type { Expediente, ExpedienteDocumento } from "@/types/expediente";
 
-type TipoVisual = "OP" | "CENTRO_COSTO" | "GASTO_DIRECTO" | "SIN_CLASIFICAR";
+type TipoCalculado = "OP" | "CENTRO_COSTO" | "GASTO_DIRECTO" | "SIN_CLASIFICAR";
 
 function text(value: unknown, fallback = "") {
   if (value === null || value === undefined) return fallback;
@@ -39,30 +39,14 @@ function getClavePrincipal(expediente: Expediente) {
   return text(expediente.clave_principal ?? expediente.clavePrincipal, "");
 }
 
-function inferTipoExpediente(expediente: Expediente): TipoVisual {
+function inferTipoCalculado(expediente: Expediente): TipoCalculado {
   const codigo = getCodigoExpediente(expediente);
 
   if (codigo.startsWith("05")) return "OP";
   if (codigo.startsWith("03")) return "CENTRO_COSTO";
   if (!codigo && getClavePrincipal(expediente)) return "GASTO_DIRECTO";
 
-  const legacyTipo = text(expediente.tipo_expediente ?? expediente.tipoExpediente).toUpperCase();
-  if (legacyTipo.includes("GASTO")) return "GASTO_DIRECTO";
-  if (legacyTipo.includes("CENTRO")) return "CENTRO_COSTO";
-  if (legacyTipo.includes("OP")) return "OP";
-
   return "SIN_CLASIFICAR";
-}
-
-function tipoLabel(tipo: TipoVisual) {
-  const labels: Record<TipoVisual, string> = {
-    OP: "OP",
-    CENTRO_COSTO: "Centro costo",
-    GASTO_DIRECTO: "Gasto directo",
-    SIN_CLASIFICAR: "Sin clasificar",
-  };
-
-  return labels[tipo];
 }
 
 function shouldHideDescription(description?: string | null) {
@@ -80,12 +64,13 @@ function shouldHideDescription(description?: string | null) {
 function getDescripcionAmigable(expediente: Expediente) {
   if (!shouldHideDescription(expediente.descripcion)) return expediente.descripcion ?? "";
 
-  const tipo = inferTipoExpediente(expediente);
-  if (tipo === "OP") return "Orden de producción / PR";
-  if (tipo === "CENTRO_COSTO") return "Centro de costo";
-  if (tipo === "GASTO_DIRECTO") return "Factura sin OC/OS";
+  const tipo = inferTipoCalculado(expediente);
 
-  return "Pendiente de clasificar";
+  if (tipo === "OP") return "Orden de Producción";
+  if (tipo === "CENTRO_COSTO") return "Centro de costo";
+  if (tipo === "GASTO_DIRECTO") return "Factura directa";
+
+  return "Pendiente de descripción";
 }
 
 function getPrincipal(expediente: Expediente): ExpedienteDocumento | null {
@@ -174,10 +159,8 @@ function ExpedienteCell({ expediente }: { expediente: Expediente }) {
 
   return (
     <div className="space-y-1">
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="font-mono text-sm font-semibold">
-          {codigo || "SIN EXPEDIENTE"}
-        </span>
+      <div className="font-mono text-sm font-semibold text-foreground">
+        {codigo || "SIN EXPEDIENTE"}
       </div>
       <div className="line-clamp-2 text-xs text-muted-foreground">
         {descripcion}
@@ -190,27 +173,19 @@ function ActionsCell({ expediente }: { expediente: Expediente }) {
   return (
     <div className="flex justify-end gap-1">
       <Button asChild size="icon" variant="outline" title="Ver expediente">
-        <Link href={`/expedientes/${expediente.id}`} aria-label="Ver expediente">
+        <Link href={`/compras/${expediente.id}/ver`} aria-label="Ver expediente">
           <Eye className="h-4 w-4" />
         </Link>
       </Button>
-      <Button
-        disabled
-        size="icon"
-        variant="outline"
-        title="Editar expediente pendiente de endpoint"
-        aria-label="Editar expediente"
-      >
-        <Pencil className="h-4 w-4" />
+      <Button asChild size="icon" variant="outline" title="Editar expediente">
+        <Link href={`/compras/${expediente.id}/editar`} aria-label="Editar expediente">
+          <Pencil className="h-4 w-4" />
+        </Link>
       </Button>
-      <Button
-        disabled
-        size="icon"
-        variant="outline"
-        title="Adjuntar documento pendiente de carga guiada"
-        aria-label="Adjuntar documento"
-      >
-        <FilePlus2 className="h-4 w-4" />
+      <Button asChild size="icon" variant="outline" title="Adjuntar documento">
+        <Link href={`/compras/${expediente.id}/editar?accion=adjuntar`} aria-label="Adjuntar documento">
+          <FilePlus2 className="h-4 w-4" />
+        </Link>
       </Button>
     </div>
   );
@@ -239,7 +214,7 @@ export function ComprasBandeja() {
         expediente.correlativo,
         getEmpresa(expediente),
         getCodigoExpediente(expediente),
-        tipoLabel(inferTipoExpediente(expediente)),
+        getDescripcionAmigable(expediente),
         expediente.descripcion,
         principalLabel(expediente),
         getClavePrincipal(expediente),
@@ -255,7 +230,7 @@ export function ComprasBandeja() {
     const expedientes = data ?? [];
     const abiertos = expedientes.length;
     const conPrincipal = expedientes.filter((expediente) => principalLabel(expediente) !== "Sin principal").length;
-    const gastosDirectos = expedientes.filter((expediente) => inferTipoExpediente(expediente) === "GASTO_DIRECTO").length;
+    const gastosDirectos = expedientes.filter((expediente) => inferTipoCalculado(expediente) === "GASTO_DIRECTO").length;
 
     return { abiertos, conPrincipal, gastosDirectos };
   }, [data]);
@@ -289,9 +264,11 @@ export function ComprasBandeja() {
           </p>
         </div>
 
-        <Button disabled title="Pendiente: POST /expedientes y carga guiada">
-          <Plus className="h-4 w-4" />
-          Nuevo expediente
+        <Button asChild>
+          <Link href="/compras/nuevo">
+            <Plus className="h-4 w-4" />
+            Nuevo expediente
+          </Link>
         </Button>
       </div>
 
@@ -310,7 +287,7 @@ export function ComprasBandeja() {
         </Card>
         <Card>
           <CardContent className="py-4">
-            <div className="text-xs text-muted-foreground">Gasto directo</div>
+            <div className="text-xs text-muted-foreground">Facturas directas</div>
             <div className="text-2xl font-bold">{metrics.gastosDirectos}</div>
           </CardContent>
         </Card>
@@ -372,7 +349,7 @@ export function ComprasBandeja() {
             </Empty>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[900px] text-sm">
+              <table className="w-full min-w-[860px] text-sm">
                 <thead>
                   <tr className="border-b text-left text-muted-foreground">
                     <th className="py-2">Expediente</th>
@@ -390,31 +367,19 @@ export function ComprasBandeja() {
                       "PRINCIPAL_FACTURA",
                     ]);
                     const tieneGuia = hasDocument(expediente, ["GUIA", "GUÍA"]);
-                    const tieneNi = hasDocument(expediente, [
-                      "NOTA_INGRESO",
-                      "NOTA INGRESO",
-                    ]);
-                    const tienePago = hasDocument(expediente, [
-                      "PAGO",
-                      "TRANSFERENCIA",
-                      "DETRACCION",
-                      "DETRACCIÓN",
-                    ]);
 
                     return (
                       <tr key={expediente.id} className="border-b align-top hover:bg-muted/30">
-                        <td className="w-[38%] py-3 pr-4">
+                        <td className="w-[40%] py-3 pr-4">
                           <ExpedienteCell expediente={expediente} />
                         </td>
-                        <td className="w-[28%] py-3 pr-4">
+                        <td className="w-[30%] py-3 pr-4">
                           <div className="font-medium">{principalLabel(expediente)}</div>
                         </td>
-                        <td className="w-[24%] py-3 pr-4">
+                        <td className="w-[20%] py-3 pr-4">
                           <div className="flex flex-wrap gap-1.5">
                             <AdjuntosBadge label="FAC" active={tieneFactura} />
-                            <AdjuntosBadge label="GUIA" active={tieneGuia} />
-                            <AdjuntosBadge label="NI" active={tieneNi} />
-                            <AdjuntosBadge label="PAGO" active={tienePago} />
+                            <AdjuntosBadge label="GUÍA" active={tieneGuia} />
                           </div>
                         </td>
                         <td className="w-[10%] py-3 text-right">
