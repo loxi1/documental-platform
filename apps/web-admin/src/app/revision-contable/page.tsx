@@ -420,8 +420,8 @@ export default function RevisionContablePage() {
   async function crearObservacion(item: RevisionContableItem) {
     const id = documentoId(item);
 
-    if (id === "-") return;
-
+    if (id === undefined || id === null || id === "-") return;
+    
     setObservandoId(id);
 
     try {

@@ -159,9 +159,17 @@ export default function DocumentosPage() {
 
   const { data, isLoading, error, refetch, isFetching } = useDocumentos(params);
 
-  const documentos = data?.data ?? [];
+  const documentos: Documento[] = data?.data ?? [];
   const documentosFiltrados = useMemo(
-    () => documentos.filter((documento) => matchesFilters(documento, { empresa, tipo, estado, search })),
+    () =>
+      documentos.filter((documento) =>
+        matchesFilters(documento, {
+          empresa,
+          tipo,
+          estado,
+          search,
+        }),
+      ),
     [documentos, empresa, tipo, estado, search],
   );
 
