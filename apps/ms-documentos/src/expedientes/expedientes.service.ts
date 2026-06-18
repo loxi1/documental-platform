@@ -1,5 +1,18 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { ExpedientesRepository } from './expedientes.repository';
+
+export type ExpedienteInput = {
+  correlativo?: string;
+  empresaCodigo?: string;
+  tipoExpediente?: string;
+  codigoExpediente?: string | null;
+  clavePrincipal?: string | null;
+  descripcion?: string | null;
+  estado?: string | null;
+  metadata?: Record<string, any> | null;
+  codigoCentroCosto?: string | null;
+  codigoOp?: string | null;
+};
 
 @Injectable()
 export class ExpedientesService {
@@ -25,24 +38,55 @@ export class ExpedientesService {
 
     return {
       ...expediente,
-
-      documentoPrincipal:
-        documentos.find((d: any) => d.esPrincipal) ?? null,
-
-      documentosAdjuntos:
-        documentos.filter((d: any) => !d.esPrincipal),
+      documentoPrincipal: documentos.find((d: any) => d.esPrincipal) ?? null,
+      documentosPrincipales: documentos.filter((d: any) => d.esPrincipal),
+      documentosAdjuntos: documentos.filter((d: any) => !d.esPrincipal),
     };
   }
 
-  create(data: {
-    correlativo: string;
-    empresaCodigo: string;
-    tipoExpediente: string;
-    codigoCentroCosto?: string | null;
-    codigoOp?: string | null;
-    descripcion?: string | null;
-  }) {
-    return this.repo.create(data);
+  create(data: ExpedienteInput) {
+    this.assertCreateInput(data);
+    return this.repo.create(this.normalizeInput(data));
+  }
+
+  async patch(id: number, data: ExpedienteInput) {
+    await this.findById(id);
+
+    const updated = await this.repo.patch(id, this.normalizeInput(data));
+
+    if (!updated) {
+      throw new NotFoundException(`Expediente ${id} no encontrado`);
+    }
+
+    return updated;
+  }
+
+  async replace(id: number, data: ExpedienteInput) {
+    await this.findById(id);
+    this.assertReplaceInput(data);
+
+    const updated = await this.repo.replace(id, this.normalizeInput(data));
+
+    if (!updated) {
+      throw new NotFoundException(`Expediente ${id} no encontrado`);
+    }
+
+    return updated;
+  }
+
+  async remove(id: number) {
+    await this.findById(id);
+
+    const removed = await this.repo.remove(id);
+
+    if (!removed) {
+      throw new NotFoundException(`Expediente ${id} no encontrado`);
+    }
+
+    return {
+      eliminado: true,
+      expediente: removed,
+    };
   }
 
   async addDocumento(
@@ -90,12 +134,14 @@ export class ExpedientesService {
         correlativo: resumen.correlativo,
         empresaCodigo: resumen.empresa_codigo,
         tipoExpediente: resumen.tipo_expediente,
-        codigoCentroCosto: resumen.codigo_centro_costo,
-        codigoOp: resumen.codigo_op,
+        codigoExpediente: resumen.codigo_expediente,
+        clavePrincipal: resumen.clave_principal,
         estado: resumen.estado,
+        descripcion: resumen.descripcion,
+        metadata: resumen.metadata ?? {},
       },
-      documentoPrincipal:
-        documentos.find((d: any) => d.esPrincipal) ?? null,
+      documentoPrincipal: documentos.find((d: any) => d.esPrincipal) ?? null,
+      documentosPrincipales: documentos.filter((d: any) => d.esPrincipal),
       totales: {
         documentos: resumen.total_documentos,
         facturas: resumen.total_facturas,
@@ -111,25 +157,21 @@ export class ExpedientesService {
     const expediente = await this.repo.findById(id);
 
     if (!expediente) {
-      throw new NotFoundException(
-        `Expediente ${id} no encontrado`,
-      );
+      throw new NotFoundException(`Expediente ${id} no encontrado`);
     }
 
-    const timeline =
-      await this.repo.getTimeline(id);
+    const timeline = await this.repo.getTimeline(id);
 
     return {
       expediente: {
         id: expediente.id,
         correlativo: expediente.correlativo,
-        empresaCodigo:
-          expediente.empresa_codigo,
+        empresaCodigo: expediente.empresa_codigo,
       },
       timeline,
     };
   }
-  
+
   async findByClavePrincipal(clave: string) {
     const expediente = await this.repo.findByClavePrincipal(clave);
 
@@ -139,11 +181,7 @@ export class ExpedientesService {
     };
   }
 
-  getRevisionContable(filters: {
-    empresa: string;
-    anio: number;
-    mes: number;
-  }) {
+  getRevisionContable(filters: { empresa: string; anio: number; mes: number }) {
     return this.repo.getRevisionContable(filters);
   }
 
@@ -157,11 +195,7 @@ export class ExpedientesService {
     return result;
   }
 
-  async getDashboardContable(filters: {
-    empresa: string;
-    anio: number;
-    mes: number;
-  }) {
+  async getDashboardContable(filters: { empresa: string; anio: number; mes: number }) {
     const dashboard = await this.repo.getDashboardContable(filters);
 
     return {
@@ -174,6 +208,53 @@ export class ExpedientesService {
         montoFacturado: dashboard?.monto_facturado ?? '0.00',
         alertasActivas: dashboard?.alertas_activas ?? 0,
       },
+    };
+  }
+
+  private assertCreateInput(data: ExpedienteInput) {
+    if (!data.correlativo?.trim()) {
+      throw new BadRequestException('correlativo es obligatorio');
+    }
+
+    if (!data.empresaCodigo?.trim()) {
+      throw new BadRequestException('empresaCodigo es obligatorio');
+    }
+
+    if (!data.tipoExpediente?.trim()) {
+      throw new BadRequestException('tipoExpediente es obligatorio');
+    }
+  }
+
+  private assertReplaceInput(data: ExpedienteInput) {
+    this.assertCreateInput(data);
+  }
+
+  private normalizeInput(data: ExpedienteInput) {
+    const metadata = {
+      ...(data.metadata ?? {}),
+    };
+
+    if (data.codigoCentroCosto !== undefined) {
+      metadata.codigoCentroCosto = data.codigoCentroCosto;
+    }
+
+    if (data.codigoOp !== undefined) {
+      metadata.codigoOp = data.codigoOp;
+    }
+
+    return {
+      correlativo: data.correlativo?.trim(),
+      empresaCodigo: data.empresaCodigo?.trim().toUpperCase(),
+      tipoExpediente: data.tipoExpediente?.trim().toUpperCase(),
+      codigoExpediente:
+        data.codigoExpediente?.trim() ||
+        data.codigoOp?.trim() ||
+        data.codigoCentroCosto?.trim() ||
+        null,
+      clavePrincipal: data.clavePrincipal?.trim() || null,
+      descripcion: data.descripcion ?? null,
+      estado: data.estado?.trim().toLowerCase() || null,
+      metadata,
     };
   }
 }

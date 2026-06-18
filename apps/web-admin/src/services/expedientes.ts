@@ -11,6 +11,13 @@ type ApiEnvelope<T> = {
   data?: T;
 };
 
+export type ExpedientesQuery = {
+  empresa?: string;
+  estado?: string;
+  limit?: number;
+  offset?: number;
+};
+
 function unwrap<T>(payload: T | ApiEnvelope<T>): T {
   if (
     payload &&
@@ -24,9 +31,17 @@ function unwrap<T>(payload: T | ApiEnvelope<T>): T {
   return payload as T;
 }
 
-export async function getExpedientes() {
+export async function getExpedientes(params: ExpedientesQuery = {}) {
   const { data } = await api.get<ApiEnvelope<Expediente[]> | Expediente[]>(
     "/expedientes",
+    {
+      params: {
+        empresa: params.empresa ?? "BBTI",
+        estado: params.estado ?? "abierto",
+        limit: params.limit ?? 20,
+        offset: params.offset ?? 0,
+      },
+    },
   );
 
   return unwrap<Expediente[]>(data);

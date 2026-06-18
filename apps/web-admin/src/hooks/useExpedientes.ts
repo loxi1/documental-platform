@@ -6,12 +6,13 @@ import {
   getExpedienteResumen,
   getExpedientes,
   getExpedienteTimeline,
+  type ExpedientesQuery,
 } from "@/services/expedientes";
 
-export function useExpedientes() {
+export function useExpedientes(params: ExpedientesQuery = {}) {
   return useQuery({
-    queryKey: ["expedientes"],
-    queryFn: getExpedientes,
+    queryKey: ["expedientes", params],
+    queryFn: () => getExpedientes(params),
   });
 }
 

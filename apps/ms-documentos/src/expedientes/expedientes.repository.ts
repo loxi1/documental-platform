@@ -9,6 +9,8 @@ export class ExpedientesRepository {
     limit?: number;
     offset?: number;
   }) {
+    const empresa = filters.empresa ?? null;
+    const estado = filters.estado ?? null;
     const limit = filters.limit ?? 20;
     const offset = filters.offset ?? 0;
 
@@ -25,8 +27,8 @@ export class ExpedientesRepository {
         creado_en,
         actualizado_en
       FROM documentos.expedientes
-      WHERE (${filters.empresa ?? null}::text IS NULL OR empresa_codigo = ${filters.empresa ?? null})
-        AND (${filters.estado ?? null}::text IS NULL OR estado = ${filters.estado ?? null})
+      WHERE (${empresa}::text IS NULL OR empresa_codigo = ${empresa})
+        AND (${estado}::text IS NULL OR estado = ${estado})
       ORDER BY id DESC
       LIMIT ${limit}
       OFFSET ${offset}
@@ -76,6 +78,13 @@ export class ExpedientesRepository {
     codigoOp?: string | null;
     descripcion?: string | null;
   }) {
+    const correlativo = String(data.correlativo ?? '').trim();
+    const empresaCodigo = String(data.empresaCodigo ?? '').trim().toUpperCase();
+    const tipoExpediente = String(data.tipoExpediente ?? '').trim();
+    const codigoCentroCosto = data.codigoCentroCosto ?? null;
+    const codigoOp = data.codigoOp ?? null;
+    const descripcion = data.descripcion ?? null;
+
     const rows = await sql`
       INSERT INTO documentos.expedientes (
         correlativo,
@@ -86,12 +95,12 @@ export class ExpedientesRepository {
         descripcion
       )
       VALUES (
-        ${data.correlativo},
-        ${data.empresaCodigo},
-        ${data.tipoExpediente},
-        ${data.codigoCentroCosto ?? null},
-        ${data.codigoOp ?? null},
-        ${data.descripcion ?? null}
+        ${correlativo},
+        ${empresaCodigo},
+        ${tipoExpediente},
+        ${codigoCentroCosto},
+        ${codigoOp},
+        ${descripcion}
       )
       RETURNING *
     `;
@@ -106,13 +115,9 @@ export class ExpedientesRepository {
     esPrincipal?: boolean;
     orden?: number;
   }) {
-    if (data.esPrincipal) {
-      await sql`
-        UPDATE documentos.expediente_documentos
-        SET es_principal = false
-        WHERE expediente_id = ${data.expedienteId}
-      `;
-    }
+    const tipoRelacion = data.tipoRelacion ?? null;
+    const esPrincipal = data.esPrincipal ?? false;
+    const orden = data.orden ?? 0;
 
     const vinculoExistente = await sql`
       SELECT expediente_id
@@ -140,9 +145,9 @@ export class ExpedientesRepository {
       VALUES (
         ${data.expedienteId},
         ${data.documentoId},
-        ${data.tipoRelacion ?? null},
-        ${data.esPrincipal ?? false},
-        ${data.orden ?? 0}
+        ${tipoRelacion},
+        ${esPrincipal},
+        ${orden}
       )
       ON CONFLICT (expediente_id, documento_id)
       DO UPDATE SET

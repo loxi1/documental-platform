@@ -27,6 +27,8 @@ export interface Expediente {
   empresaCodigo?: string;
   tipo_expediente?: string;
   tipoExpediente?: string;
+  codigo_expediente?: string | null;
+  codigoExpediente?: string | null;
   codigo_centro_costo?: string | null;
   codigoCentroCosto?: string | null;
   codigo_op?: string | null;

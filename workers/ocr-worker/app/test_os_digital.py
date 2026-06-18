@@ -20,8 +20,7 @@ async def main():
     )
 
     result = await process_file(payload)
-
-    resumen = {
+    print(json.dumps({
         "ok": result.get("ok"),
         "tipoDocumental": result.get("tipoDocumental"),
         "estado": result.get("estado"),
@@ -30,11 +29,8 @@ async def main():
         "metadataSource": result.get("metadataSource"),
         "claveDocumental": result.get("claveDocumental"),
         "camposFaltantes": result.get("camposFaltantes"),
-        "texto": result.get("texto"),
         "mensaje": result.get("mensaje"),
-    }
-
-    print(json.dumps(resumen, indent=2, ensure_ascii=False))
+    }, indent=2, ensure_ascii=False))
 
 
 if __name__ == "__main__":

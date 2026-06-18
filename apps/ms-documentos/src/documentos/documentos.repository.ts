@@ -356,7 +356,7 @@ export class DocumentosRepository {
   }
 
   async confirmarOcrResultado(id: number, usuarioId?: number) {
-    const usuarioIdFinal: number | null = usuarioId ?? null;
+    const usuarioIdFinal = usuarioId ?? null;
 
     const rows = await sql`
       WITH ocr AS (
@@ -364,55 +364,24 @@ export class DocumentosRepository {
         SET
           estado = 'confirmado',
           validado_en = now(),
-          validado_por = ${usuarioIdFinal},
+          validado_por = ${usuarioIdFinal}::integer,
           metadata = jsonb_set(
             COALESCE(metadata, '{}'::jsonb),
             '{estado}',
             to_jsonb('confirmado'::text),
             true
           )
-        WHERE id = ${id}
+        WHERE id = ${id}::integer
         RETURNING *
-      ),
-      datos AS (
-        SELECT
-          ocr.*,
-          COALESCE(ocr.metadata->'metadata', '{}'::jsonb) AS meta,
-          COALESCE(
-            ocr.metadata->>'tipoDocumental',
-            ocr.metadata->>'tipoPropuesto',
-            ocr.tipo_propuesto
-          ) AS tipo_documental_final,
-          COALESCE(
-            ocr.metadata->>'claveDocumental',
-            ocr.clave_documental
-          ) AS clave_documental_final
-        FROM ocr
-      ),
-      doc_update AS (
-        UPDATE documentos.documentos d
-        SET
-          tipo_documental = datos.tipo_documental_final,
-          estado = 'confirmado',
-          ruc_emisor = COALESCE(NULLIF(datos.meta->>'ruc', ''), d.ruc_emisor),
-          serie = COALESCE(NULLIF(datos.meta->>'serie', ''), d.serie),
-          numero = COALESCE(NULLIF(datos.meta->>'numero', ''), d.numero),
-          fecha_emision = COALESCE(NULLIF(datos.meta->>'fechaEmision', '')::date, d.fecha_emision),
-          monto_total = COALESCE(NULLIF(datos.meta->>'montoTotal', '')::numeric, d.monto_total),
-          clave_documental = COALESCE(datos.clave_documental_final, d.clave_documental),
-          metadata = COALESCE(d.metadata, '{}'::jsonb) || jsonb_build_object('ocr', datos.metadata)
-        FROM datos
-        WHERE d.id = datos.documento_id
-        RETURNING d.*
       )
       SELECT
-        datos.id,
-        datos.estado,
-        datos.documento_id,
-        datos.tipo_documental_final AS tipo_documental,
-        datos.clave_documental_final AS clave_documental,
-        datos.meta AS metadata
-      FROM datos
+        ocr.id,
+        ocr.estado,
+        ocr.documento_id,
+        COALESCE(ocr.metadata->>'tipoDocumental', ocr.tipo_propuesto) AS tipo_documental,
+        COALESCE(ocr.metadata->>'claveDocumental', ocr.clave_documental) AS clave_documental,
+        ocr.metadata->'metadata' AS metadata
+      FROM ocr
     `;
 
     return rows[0] ?? null;
@@ -586,43 +555,13 @@ export class DocumentosRepository {
       return null;
     }
 
-    const metadata = ocr.metadata ?? {};
-    const extracted = metadata.metadata ?? {};
-    const contextoCarga = metadata.contextoCarga ?? {};
-
-    const empresaCodigo = String(
-      metadata.clienteAbreviatura ??
-        extracted.clienteAbreviatura ??
-        contextoCarga.clienteAbreviatura ??
-        '',
-    )
-      .trim()
-      .toUpperCase();
-
-    const tipoCodigoExpediente = String(
-      extracted.tipoCodigoExpediente ??
-        contextoCarga.tipoCodigoExpediente ??
-        '',
-    )
-      .trim()
-      .toUpperCase();
-
-    const codigoExpediente = String(
-      extracted.codigoExpediente ??
-        contextoCarga.codigoExpediente ??
-        '',
-    ).trim();
-
-    if (!empresaCodigo || !tipoCodigoExpediente || !codigoExpediente) {
+    if (!ocr.clave_documental) {
       return {
         ocr,
         sugerencia: {
           accion: 'SIN_SUGERENCIA',
-          motivo: 'OCR_SIN_CODIGO_EXPEDIENTE',
+          motivo: 'OCR_SIN_CLAVE_DOCUMENTAL',
           confidence: 0,
-          empresaCodigo: empresaCodigo || null,
-          tipoCodigoExpediente: tipoCodigoExpediente || null,
-          codigoExpediente: codigoExpediente || null,
         },
       };
     }
@@ -630,9 +569,7 @@ export class DocumentosRepository {
     const expedienteRows = await sql`
       SELECT *
       FROM documentos.expedientes
-      WHERE empresa_codigo = ${empresaCodigo}
-        AND tipo_expediente = ${tipoCodigoExpediente}
-        AND codigo_expediente = ${codigoExpediente}
+      WHERE clave_principal = ${ocr.clave_documental}
       LIMIT 1
     `;
 
@@ -642,11 +579,8 @@ export class DocumentosRepository {
         sugerencia: {
           accion: 'USAR_EXPEDIENTE_EXISTENTE',
           expediente: expedienteRows[0],
-          motivo: 'MISMO_CODIGO_EXPEDIENTE',
+          motivo: 'MISMA_CLAVE_PRINCIPAL',
           confidence: 100,
-          empresaCodigo,
-          tipoCodigoExpediente,
-          codigoExpediente,
         },
       };
     }
@@ -654,12 +588,9 @@ export class DocumentosRepository {
     return {
       ocr,
       sugerencia: {
-        accion: 'PENDIENTE_EXPEDIENTE',
-        motivo: 'EXPEDIENTE_NO_ENCONTRADO',
-        confidence: 0,
-        empresaCodigo,
-        tipoCodigoExpediente,
-        codigoExpediente,
+        accion: 'CREAR_EXPEDIENTE',
+        motivo: 'NO_EXISTE_EXPEDIENTE_PARA_CLAVE',
+        confidence: 100,
       },
     };
   }
@@ -738,190 +669,6 @@ export class DocumentosRepository {
     };
   }
 
-
-  async intentarVincularExpedienteDesdeOcr(params: {
-    ocrResultadoId: number;
-    tipoRelacionSugerida?: string | null;
-  }) {
-    const ocrRows = await sql`
-      SELECT *
-      FROM documentos.ocr_resultados
-      WHERE id = ${params.ocrResultadoId}
-      LIMIT 1
-    `;
-
-    const ocr = ocrRows[0];
-
-    if (!ocr) {
-      return null;
-    }
-
-    const metadata = ocr.metadata ?? {};
-    const extracted = metadata.metadata ?? {};
-    const contextoCarga = metadata.contextoCarga ?? {};
-
-    const clienteAbreviatura = String(
-      metadata.clienteAbreviatura ??
-        extracted.clienteAbreviatura ??
-        contextoCarga.clienteAbreviatura ??
-        '',
-    )
-      .trim()
-      .toUpperCase();
-
-    const codigoExpediente = String(
-      extracted.codigoExpediente ??
-        contextoCarga.codigoExpediente ??
-        '',
-    ).trim();
-
-    const tipoCodigoExpediente = String(
-      extracted.tipoCodigoExpediente ??
-        contextoCarga.tipoCodigoExpediente ??
-        '',
-    )
-      .trim()
-      .toUpperCase();
-
-    const tipoRelacion =
-      params.tipoRelacionSugerida ??
-      contextoCarga.tipoRelacionSugerida ??
-      null;
-
-    const pendingBase = {
-      estado: 'pendiente',
-      motivo: 'SIN_CODIGO_EXPEDIENTE',
-      tipoCodigoExpediente: tipoCodigoExpediente || null,
-      codigoExpediente: codigoExpediente || null,
-      empresaCodigo: clienteAbreviatura || null,
-    };
-
-    if (!clienteAbreviatura || !codigoExpediente || !tipoCodigoExpediente) {
-      const metadataFinal = {
-        ...metadata,
-        vinculacionExpediente: pendingBase,
-      };
-
-      const updated = await sql`
-        UPDATE documentos.ocr_resultados
-        SET metadata = ${JSON.stringify(metadataFinal)}::jsonb
-        WHERE id = ${params.ocrResultadoId}
-        RETURNING *
-      `;
-
-      return {
-        ocr: updated[0] ?? ocr,
-        expediente: null,
-        vinculo: null,
-        vinculado: false,
-        motivo: 'SIN_CODIGO_EXPEDIENTE',
-      };
-    }
-
-    const expedienteRows = await sql`
-      SELECT *
-      FROM documentos.expedientes
-      WHERE empresa_codigo = ${clienteAbreviatura}
-        AND tipo_expediente = ${tipoCodigoExpediente}
-        AND codigo_expediente = ${codigoExpediente}
-      LIMIT 1
-    `;
-
-    const expediente = expedienteRows[0];
-
-    if (!expediente) {
-      const metadataFinal = {
-        ...metadata,
-        vinculacionExpediente: {
-          estado: 'pendiente',
-          motivo: 'EXPEDIENTE_NO_ENCONTRADO',
-          codigoExpediente,
-          tipoCodigoExpediente,
-          empresaCodigo: clienteAbreviatura,
-        },
-      };
-
-      const updated = await sql`
-        UPDATE documentos.ocr_resultados
-        SET
-          expediente_id = NULL,
-          metadata = ${JSON.stringify(metadataFinal)}::jsonb
-        WHERE id = ${params.ocrResultadoId}
-        RETURNING *
-      `;
-
-      return {
-        ocr: updated[0] ?? ocr,
-        expediente: null,
-        vinculo: null,
-        vinculado: false,
-        motivo: 'EXPEDIENTE_NO_ENCONTRADO',
-      };
-    }
-
-    type DbRow = Record<string, any>;
-
-    let vinculo: DbRow | null = null;
-
-    if (ocr.documento_id && tipoRelacion) {
-      const vinculoRows = await sql`
-        INSERT INTO documentos.expediente_documentos (
-          expediente_id,
-          documento_id,
-          tipo_relacion,
-          es_principal,
-          orden
-        )
-        VALUES (
-          ${expediente.id},
-          ${ocr.documento_id},
-          ${tipoRelacion},
-          ${tipoRelacion.startsWith('principal_')},
-          0
-        )
-        ON CONFLICT (expediente_id, documento_id)
-        DO UPDATE SET
-          tipo_relacion = EXCLUDED.tipo_relacion,
-          es_principal = EXCLUDED.es_principal,
-          orden = EXCLUDED.orden
-        RETURNING *
-      `;
-
-      vinculo = vinculoRows[0] ?? null;
-    }
-
-    const metadataFinal = {
-      ...metadata,
-      vinculacionExpediente: {
-        estado: 'vinculado',
-        motivo: 'EXPEDIENTE_ENCONTRADO',
-        codigoExpediente,
-        tipoCodigoExpediente,
-        empresaCodigo: clienteAbreviatura,
-        expedienteId: expediente.id,
-        tipoRelacion,
-      },
-    };
-
-    const updated = await sql`
-      UPDATE documentos.ocr_resultados
-      SET
-        expediente_id = ${expediente.id},
-        vinculado_en = now(),
-        metadata = ${JSON.stringify(metadataFinal)}::jsonb
-      WHERE id = ${params.ocrResultadoId}
-      RETURNING *
-    `;
-
-    return {
-      ocr: updated[0] ?? ocr,
-      expediente,
-      vinculo,
-      vinculado: true,
-      motivo: 'EXPEDIENTE_ENCONTRADO',
-    };
-  }
-
   async createDocumentoAlerta(params: {
     documentoId: number;
     tipoAlerta: string;
@@ -975,15 +722,15 @@ export class DocumentosRepository {
     motivo: string,
     usuarioId?: number,
   ) {
-    const motivoFinal: string = motivo?.trim() || 'Rechazado por usuario';
-    const usuarioIdFinal: number | null = usuarioId ?? null;
+    const motivoFinal = motivo?.trim() || 'Rechazado por usuario';
+    const usuarioIdFinal = usuarioId ?? null;
 
     const rows = await sql`
       UPDATE documentos.ocr_resultados
       SET
         estado = 'rechazado',
         validado_en = now(),
-        validado_por = ${usuarioIdFinal},
+        validado_por = ${usuarioIdFinal}::integer,
         metadata =
           jsonb_set(
             COALESCE(metadata, '{}'::jsonb),
@@ -995,10 +742,10 @@ export class DocumentosRepository {
             'rechazo',
             jsonb_build_object(
               'fecha', now(),
-              'motivo', ${motivoFinal}
+              'motivo', ${motivoFinal}::text
             )
           )
-      WHERE id = ${id}
+      WHERE id = ${id}::integer
       RETURNING *
     `;
 

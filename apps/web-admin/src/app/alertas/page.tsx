@@ -108,15 +108,16 @@ function AlertasContent() {
   async function resolver(alerta: DocumentoAlerta) {
     if (!documentoId) return;
 
-    const id = alertaId(alerta);
-    if (id === "-") return;
+    const alertaId = alerta.id;
 
-    setResolviendoId(id);
+    if (alertaId === undefined || alertaId === null || alertaId === "-") return;
+
+    setResolviendoId(alertaId);
 
     try {
       await resolverAlerta.mutateAsync({
         documentoId,
-        alertaId: id,
+        alertaId,
       });
     } finally {
       setResolviendoId(null);
