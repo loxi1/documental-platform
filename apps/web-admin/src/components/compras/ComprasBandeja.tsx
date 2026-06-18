@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { Eye, FilePlus2, Pencil, Plus } from "lucide-react";
+import { useMemo, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -11,7 +12,29 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useExpedientes } from "@/hooks/useExpedientes";
 import type { Expediente, ExpedienteDocumento } from "@/types/expediente";
-import { useMemo, useState } from "react";
+
+const ADJUNTOS = [
+  {
+    label: "Factura",
+    short: "FAC",
+    aliases: ["FACTURA", "ADJUNTO_FACTURA", "PRINCIPAL_FACTURA"],
+  },
+  {
+    label: "Guía",
+    short: "GUIA",
+    aliases: ["GUIA", "GUÍA", "GUIA_REMISION", "GUÍA_REMISIÓN"],
+  },
+  {
+    label: "Nota de ingreso",
+    short: "NI",
+    aliases: ["NOTA_INGRESO", "NOTA INGRESO", "NI"],
+  },
+  {
+    label: "Pago",
+    short: "PAGO",
+    aliases: ["PAGO", "TRANSFERENCIA", "DETRACCION", "DETRACCIÓN"],
+  },
+];
 
 function getEmpresa(expediente: Expediente) {
   return expediente.empresa_codigo ?? expediente.empresaCodigo ?? "-";
@@ -21,18 +44,14 @@ function getTipo(expediente: Expediente) {
   return expediente.tipo_expediente ?? expediente.tipoExpediente ?? "-";
 }
 
+function formatTipo(tipo: string) {
+  if (tipo === "CENTRO_COSTO") return "Centro costo";
+  if (tipo === "GASTO_DIRECTO") return "Gasto directo";
+  return tipo;
+}
+
 function getCodigo(expediente: Expediente) {
-  return (
-    expediente.codigo_expediente ??
-    expediente.codigoExpediente ??
-    expediente.codigo_op ??
-    expediente.codigoOp ??
-    expediente.codigo_centro_costo ??
-    expediente.codigoCentroCosto ??
-    expediente.clave_principal ??
-    expediente.clavePrincipal ??
-    "-"
-  );
+  return expediente.codigo_expediente ?? expediente.codigoExpediente ?? "";
 }
 
 function getPrincipal(expediente: Expediente): ExpedienteDocumento | null {
@@ -66,23 +85,55 @@ function hasDocument(expediente: Expediente, aliases: string[]) {
   });
 }
 
-function CheckCell({ active }: { active: boolean }) {
-  return active ? (
-    <Badge variant="secondary">✓</Badge>
-  ) : (
-    <span className="text-muted-foreground">—</span>
-  );
+function parseClavePrincipal(clave?: string | null) {
+  if (!clave) return null;
+
+  const parts = clave.split("|").map((part) => part.trim()).filter(Boolean);
+  const tipo = parts[1] ?? parts[0] ?? "Documento";
+  const serie = parts.length >= 5 ? parts[3] : null;
+  const numero = parts.length >= 5 ? parts[4] : parts.at(-1) ?? null;
+
+  if (tipo.toUpperCase() === "FACTURA" && serie && numero) {
+    return `FACTURA ${serie}-${numero}`;
+  }
+
+  if (numero) return `${tipo} ${numero}`;
+
+  return tipo;
 }
 
 function principalLabel(expediente: Expediente) {
   const principal = getPrincipal(expediente);
 
-  if (!principal) return "Sin principal";
+  if (principal) {
+    const tipo = String(principal.tipoDocumental ?? principal.tipoRelacion ?? "DOC")
+      .replace(/^principal_/i, "")
+      .replace(/^adjunto_/i, "")
+      .replaceAll("_", " ")
+      .toUpperCase();
+    const numero = [principal.serie, principal.numero].filter(Boolean).join("-");
 
-  const tipo = principal.tipoDocumental ?? principal.tipoRelacion ?? "DOC";
-  const numero = [principal.serie, principal.numero].filter(Boolean).join("-");
+    return numero ? `${tipo} ${numero}` : tipo;
+  }
 
-  return numero ? `${tipo} ${numero}` : tipo;
+  return parseClavePrincipal(expediente.clave_principal ?? expediente.clavePrincipal) ?? "Sin principal";
+}
+
+function AdjuntoPill({ active, label, short }: { active: boolean; label: string; short: string }) {
+  return (
+    <span
+      title={label}
+      className={[
+        "inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[11px] font-medium",
+        active
+          ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300"
+          : "border-gray-200 bg-gray-50 text-gray-400 dark:border-gray-800 dark:bg-gray-900/40 dark:text-gray-500",
+      ].join(" ")}
+    >
+      <span>{active ? "✓" : "—"}</span>
+      {short}
+    </span>
+  );
 }
 
 export function ComprasBandeja() {
@@ -144,13 +195,13 @@ export function ComprasBandeja() {
         <div>
           <h1 className="text-2xl font-bold">Compras</h1>
           <p className="text-sm text-muted-foreground">
-            Bandeja de documentos principales y adjuntos por expediente.
+            Bandeja operativa de principales y adjuntos por expediente.
           </p>
         </div>
 
         <Button disabled title="Pendiente: POST /expedientes y carga guiada">
           <Plus className="h-4 w-4" />
-          Nuevo principal
+          Nuevo expediente
         </Button>
       </div>
 
@@ -184,7 +235,7 @@ export function ComprasBandeja() {
             </select>
 
             <Input
-              placeholder="Buscar por código, descripción, principal o proveedor..."
+              placeholder="Buscar por código, tipo, principal o descripción..."
               value={search}
               onChange={(event) => setSearch(event.target.value)}
             />
@@ -193,71 +244,85 @@ export function ComprasBandeja() {
       </Card>
 
       <Card>
-        <CardHeader>
-          <CardTitle>Bandeja de principales</CardTitle>
+        <CardHeader className="flex flex-row items-center justify-between gap-3">
+          <CardTitle>Bandeja de compras</CardTitle>
+          <span className="text-xs text-muted-foreground">{rows.length} registros</span>
         </CardHeader>
 
         <CardContent>
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[1000px] text-sm">
+            <table className="w-full min-w-[860px] text-sm">
               <thead>
                 <tr className="border-b text-left text-muted-foreground">
-                  <th className="py-2">Código</th>
-                  <th>Tipo</th>
-                  <th>Empresa</th>
-                  <th>Descripción</th>
-                  <th>Principal</th>
-                  <th>Factura</th>
-                  <th>Guía</th>
-                  <th>NI</th>
-                  <th>Pago</th>
-                  <th>Estado</th>
-                  <th className="text-right">Acciones</th>
+                  <th className="w-[180px] py-2">Código expediente</th>
+                  <th className="w-[140px]">Tipo</th>
+                  <th>Documento principal</th>
+                  <th className="w-[300px]">Adjuntos</th>
+                  <th className="w-[130px] text-right">Acciones</th>
                 </tr>
               </thead>
 
               <tbody>
-                {rows.map((expediente) => (
-                  <tr key={expediente.id} className="border-b align-top">
-                    <td className="py-3 font-mono text-xs">{getCodigo(expediente)}</td>
-                    <td>
-                      <Badge variant="outline">{getTipo(expediente)}</Badge>
-                    </td>
-                    <td>{getEmpresa(expediente)}</td>
-                    <td className="max-w-80">
-                      <div className="font-medium">{expediente.correlativo}</div>
-                      <div className="line-clamp-2 text-xs text-muted-foreground">
-                        {expediente.descripcion ?? "Sin descripción"}
-                      </div>
-                    </td>
-                    <td>{principalLabel(expediente)}</td>
-                    <td><CheckCell active={hasDocument(expediente, ["FACTURA", "ADJUNTO_FACTURA", "PRINCIPAL_FACTURA"])} /></td>
-                    <td><CheckCell active={hasDocument(expediente, ["GUIA", "GUÍA"])} /></td>
-                    <td><CheckCell active={hasDocument(expediente, ["NOTA_INGRESO", "NOTA INGRESO"])} /></td>
-                    <td><CheckCell active={hasDocument(expediente, ["PAGO", "TRANSFERENCIA", "DETRACCION", "DETRACCIÓN"])} /></td>
-                    <td>
-                      <Badge variant="secondary">{expediente.estado ?? "abierto"}</Badge>
-                    </td>
-                    <td className="text-right">
-                      <div className="flex justify-end gap-1">
-                        <Button asChild size="sm" variant="outline">
-                          <Link href={`/expedientes/${expediente.id}`}>
-                            <Eye className="h-4 w-4" />
-                            Ver
-                          </Link>
-                        </Button>
-                        <Button disabled size="sm" variant="outline" title="Pendiente: PATCH /expedientes/{id}">
-                          <Pencil className="h-4 w-4" />
-                          Editar
-                        </Button>
-                        <Button disabled size="sm" variant="outline" title="Pendiente: carga guiada/vinculación">
-                          <FilePlus2 className="h-4 w-4" />
-                          Adjuntar
-                        </Button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                {rows.map((expediente) => {
+                  const codigo = getCodigo(expediente);
+                  const tipo = getTipo(expediente);
+
+                  return (
+                    <tr key={expediente.id} className="border-b align-top hover:bg-muted/30">
+                      <td className="py-3">
+                        <div className="font-mono text-sm font-semibold">
+                          {codigo || "—"}
+                        </div>
+                        <div className="mt-1 line-clamp-2 text-xs text-muted-foreground">
+                          {expediente.descripcion ?? expediente.correlativo ?? "Sin descripción"}
+                        </div>
+                      </td>
+
+                      <td className="py-3">
+                        <Badge variant="outline">{formatTipo(tipo)}</Badge>
+                        <div className="mt-1 text-[11px] text-muted-foreground">
+                          {getEmpresa(expediente)}
+                        </div>
+                      </td>
+
+                      <td className="py-3">
+                        <div className="font-medium">{principalLabel(expediente)}</div>
+                        <div className="mt-1 text-xs text-muted-foreground">
+                          {expediente.correlativo}
+                        </div>
+                      </td>
+
+                      <td className="py-3">
+                        <div className="flex flex-wrap gap-1.5">
+                          {ADJUNTOS.map((adjunto) => (
+                            <AdjuntoPill
+                              key={adjunto.short}
+                              active={hasDocument(expediente, adjunto.aliases)}
+                              label={adjunto.label}
+                              short={adjunto.short}
+                            />
+                          ))}
+                        </div>
+                      </td>
+
+                      <td className="py-3 text-right">
+                        <div className="flex justify-end gap-1">
+                          <Button asChild size="sm" variant="outline" className="h-8 w-8 p-0" title="Ver expediente">
+                            <Link href={`/expedientes/${expediente.id}`} aria-label="Ver expediente">
+                              <Eye className="h-4 w-4" />
+                            </Link>
+                          </Button>
+                          <Button disabled size="sm" variant="outline" className="h-8 w-8 p-0" title="Editar expediente">
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                          <Button disabled size="sm" variant="outline" className="h-8 w-8 p-0" title="Adjuntar documento">
+                            <FilePlus2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
 
