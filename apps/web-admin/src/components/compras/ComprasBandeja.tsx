@@ -7,51 +7,85 @@ import { useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "@/components/ui/empty";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useExpedientes } from "@/hooks/useExpedientes";
 import type { Expediente, ExpedienteDocumento } from "@/types/expediente";
 
-const ADJUNTOS = [
-  {
-    label: "Factura",
-    short: "FAC",
-    aliases: ["FACTURA", "ADJUNTO_FACTURA", "PRINCIPAL_FACTURA"],
-  },
-  {
-    label: "Guía",
-    short: "GUIA",
-    aliases: ["GUIA", "GUÍA", "GUIA_REMISION", "GUÍA_REMISIÓN"],
-  },
-  {
-    label: "Nota de ingreso",
-    short: "NI",
-    aliases: ["NOTA_INGRESO", "NOTA INGRESO", "NI"],
-  },
-  {
-    label: "Pago",
-    short: "PAGO",
-    aliases: ["PAGO", "TRANSFERENCIA", "DETRACCION", "DETRACCIÓN"],
-  },
-];
+type TipoVisual = "OP" | "CENTRO_COSTO" | "GASTO_DIRECTO" | "SIN_CLASIFICAR";
+
+function text(value: unknown, fallback = "") {
+  if (value === null || value === undefined) return fallback;
+  const normalized = String(value).trim();
+  return normalized || fallback;
+}
 
 function getEmpresa(expediente: Expediente) {
-  return expediente.empresa_codigo ?? expediente.empresaCodigo ?? "-";
+  return text(expediente.empresa_codigo ?? expediente.empresaCodigo, "-");
 }
 
-function getTipo(expediente: Expediente) {
-  return expediente.tipo_expediente ?? expediente.tipoExpediente ?? "-";
+function getCodigoExpediente(expediente: Expediente) {
+  return text(expediente.codigo_expediente ?? expediente.codigoExpediente, "");
 }
 
-function formatTipo(tipo: string) {
-  if (tipo === "CENTRO_COSTO") return "Centro costo";
-  if (tipo === "GASTO_DIRECTO") return "Gasto directo";
-  return tipo;
+function getClavePrincipal(expediente: Expediente) {
+  return text(expediente.clave_principal ?? expediente.clavePrincipal, "");
 }
 
-function getCodigo(expediente: Expediente) {
-  return expediente.codigo_expediente ?? expediente.codigoExpediente ?? "";
+function inferTipoExpediente(expediente: Expediente): TipoVisual {
+  const codigo = getCodigoExpediente(expediente);
+
+  if (codigo.startsWith("05")) return "OP";
+  if (codigo.startsWith("03")) return "CENTRO_COSTO";
+  if (!codigo && getClavePrincipal(expediente)) return "GASTO_DIRECTO";
+
+  const legacyTipo = text(expediente.tipo_expediente ?? expediente.tipoExpediente).toUpperCase();
+  if (legacyTipo.includes("GASTO")) return "GASTO_DIRECTO";
+  if (legacyTipo.includes("CENTRO")) return "CENTRO_COSTO";
+  if (legacyTipo.includes("OP")) return "OP";
+
+  return "SIN_CLASIFICAR";
+}
+
+function tipoLabel(tipo: TipoVisual) {
+  const labels: Record<TipoVisual, string> = {
+    OP: "OP",
+    CENTRO_COSTO: "Centro costo",
+    GASTO_DIRECTO: "Gasto directo",
+    SIN_CLASIFICAR: "Sin clasificar",
+  };
+
+  return labels[tipo];
+}
+
+function shouldHideDescription(description?: string | null) {
+  const value = text(description).toLowerCase();
+
+  if (!value) return true;
+
+  return [
+    "expediente documental de prueba",
+    "expediente creado desde ocr confirmado",
+    "expediente creado desde ocr",
+  ].some((technicalText) => value.includes(technicalText));
+}
+
+function getDescripcionAmigable(expediente: Expediente) {
+  if (!shouldHideDescription(expediente.descripcion)) return expediente.descripcion ?? "";
+
+  const tipo = inferTipoExpediente(expediente);
+  if (tipo === "OP") return "Orden de producción / PR";
+  if (tipo === "CENTRO_COSTO") return "Centro de costo";
+  if (tipo === "GASTO_DIRECTO") return "Factura sin OC/OS";
+
+  return "Pendiente de clasificar";
 }
 
 function getPrincipal(expediente: Expediente): ExpedienteDocumento | null {
@@ -85,54 +119,100 @@ function hasDocument(expediente: Expediente, aliases: string[]) {
   });
 }
 
-function parseClavePrincipal(clave?: string | null) {
-  if (!clave) return null;
+function getPrincipalFromClave(expediente: Expediente) {
+  const clave = getClavePrincipal(expediente);
+  if (!clave) return "Sin principal";
 
-  const parts = clave.split("|").map((part) => part.trim()).filter(Boolean);
-  const tipo = parts[1] ?? parts[0] ?? "Documento";
-  const serie = parts.length >= 5 ? parts[3] : null;
-  const numero = parts.length >= 5 ? parts[4] : parts.at(-1) ?? null;
+  const parts = clave.split("|").filter(Boolean);
+  const tipo = parts.find((part) => ["FACTURA", "OC", "OS"].includes(part.toUpperCase()));
 
-  if (tipo.toUpperCase() === "FACTURA" && serie && numero) {
-    return `FACTURA ${serie}-${numero}`;
+  if (tipo?.toUpperCase() === "FACTURA") {
+    const serie = parts.at(-2);
+    const numero = parts.at(-1);
+    return serie && numero ? `FACTURA ${serie}-${numero}` : "FACTURA";
   }
 
-  if (numero) return `${tipo} ${numero}`;
+  if (tipo?.toUpperCase() === "OC" || tipo?.toUpperCase() === "OS") {
+    const numero = parts.at(-1);
+    return numero ? `${tipo.toUpperCase()} ${numero}` : tipo.toUpperCase();
+  }
 
-  return tipo;
+  return clave;
 }
 
 function principalLabel(expediente: Expediente) {
   const principal = getPrincipal(expediente);
 
-  if (principal) {
-    const tipo = String(principal.tipoDocumental ?? principal.tipoRelacion ?? "DOC")
-      .replace(/^principal_/i, "")
-      .replace(/^adjunto_/i, "")
-      .replaceAll("_", " ")
-      .toUpperCase();
-    const numero = [principal.serie, principal.numero].filter(Boolean).join("-");
+  if (!principal) return getPrincipalFromClave(expediente);
 
-    return numero ? `${tipo} ${numero}` : tipo;
-  }
+  const tipo = text(principal.tipoDocumental ?? principal.tipoRelacion, "DOC")
+    .replace("PRINCIPAL_", "")
+    .replace("ADJUNTO_", "")
+    .replaceAll("_", " ")
+    .toUpperCase();
+  const numero = [principal.serie, principal.numero].filter(Boolean).join("-");
 
-  return parseClavePrincipal(expediente.clave_principal ?? expediente.clavePrincipal) ?? "Sin principal";
+  return numero ? `${tipo} ${numero}` : tipo;
 }
 
-function AdjuntoPill({ active, label, short }: { active: boolean; label: string; short: string }) {
+function AdjuntosBadge({ label, active }: { label: string; active: boolean }) {
   return (
-    <span
-      title={label}
-      className={[
-        "inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[11px] font-medium",
-        active
-          ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300"
-          : "border-gray-200 bg-gray-50 text-gray-400 dark:border-gray-800 dark:bg-gray-900/40 dark:text-gray-500",
-      ].join(" ")}
+    <Badge
+      variant={active ? "secondary" : "outline"}
+      className={active ? "gap-1" : "gap-1 text-muted-foreground"}
+      title={active ? `${label} presente` : `${label} pendiente`}
     >
       <span>{active ? "✓" : "—"}</span>
-      {short}
-    </span>
+      {label}
+    </Badge>
+  );
+}
+
+function ExpedienteCell({ expediente }: { expediente: Expediente }) {
+  const codigo = getCodigoExpediente(expediente);
+  const descripcion = getDescripcionAmigable(expediente);
+
+  return (
+    <div className="space-y-1">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="font-mono text-sm font-semibold">
+          {codigo || "SIN EXPEDIENTE"}
+        </span>
+      </div>
+      <div className="line-clamp-2 text-xs text-muted-foreground">
+        {descripcion}
+      </div>
+    </div>
+  );
+}
+
+function ActionsCell({ expediente }: { expediente: Expediente }) {
+  return (
+    <div className="flex justify-end gap-1">
+      <Button asChild size="icon" variant="outline" title="Ver expediente">
+        <Link href={`/expedientes/${expediente.id}`} aria-label="Ver expediente">
+          <Eye className="h-4 w-4" />
+        </Link>
+      </Button>
+      <Button
+        disabled
+        size="icon"
+        variant="outline"
+        title="Editar expediente pendiente de endpoint"
+        aria-label="Editar expediente"
+      >
+        <Pencil className="h-4 w-4" />
+      </Button>
+      <Button
+        disabled
+        size="icon"
+        variant="outline"
+        title="Adjuntar documento pendiente de carga guiada"
+        aria-label="Adjuntar documento"
+      >
+        <FilePlus2 className="h-4 w-4" />
+      </Button>
+    </div>
   );
 }
 
@@ -158,10 +238,11 @@ export function ComprasBandeja() {
       [
         expediente.correlativo,
         getEmpresa(expediente),
-        getTipo(expediente),
-        getCodigo(expediente),
+        getCodigoExpediente(expediente),
+        tipoLabel(inferTipoExpediente(expediente)),
         expediente.descripcion,
         principalLabel(expediente),
+        getClavePrincipal(expediente),
       ]
         .filter(Boolean)
         .join(" ")
@@ -169,6 +250,15 @@ export function ComprasBandeja() {
         .includes(value),
     );
   }, [data, search]);
+
+  const metrics = useMemo(() => {
+    const expedientes = data ?? [];
+    const abiertos = expedientes.length;
+    const conPrincipal = expedientes.filter((expediente) => principalLabel(expediente) !== "Sin principal").length;
+    const gastosDirectos = expedientes.filter((expediente) => inferTipoExpediente(expediente) === "GASTO_DIRECTO").length;
+
+    return { abiertos, conPrincipal, gastosDirectos };
+  }, [data]);
 
   if (isLoading) {
     return (
@@ -195,7 +285,7 @@ export function ComprasBandeja() {
         <div>
           <h1 className="text-2xl font-bold">Compras</h1>
           <p className="text-sm text-muted-foreground">
-            Bandeja operativa de principales y adjuntos por expediente.
+            Bandeja operativa de expedientes, principales y adjuntos.
           </p>
         </div>
 
@@ -203,6 +293,27 @@ export function ComprasBandeja() {
           <Plus className="h-4 w-4" />
           Nuevo expediente
         </Button>
+      </div>
+
+      <div className="grid gap-3 md:grid-cols-3">
+        <Card>
+          <CardContent className="py-4">
+            <div className="text-xs text-muted-foreground">Expedientes abiertos</div>
+            <div className="text-2xl font-bold">{metrics.abiertos}</div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="py-4">
+            <div className="text-xs text-muted-foreground">Con principal</div>
+            <div className="text-2xl font-bold">{metrics.conPrincipal}</div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="py-4">
+            <div className="text-xs text-muted-foreground">Gasto directo</div>
+            <div className="text-2xl font-bold">{metrics.gastosDirectos}</div>
+          </CardContent>
+        </Card>
       </div>
 
       <Card>
@@ -235,7 +346,7 @@ export function ComprasBandeja() {
             </select>
 
             <Input
-              placeholder="Buscar por código, tipo, principal o descripción..."
+              placeholder="Buscar por expediente, descripción, principal o proveedor..."
               value={search}
               onChange={(event) => setSearch(event.target.value)}
             />
@@ -244,102 +355,78 @@ export function ComprasBandeja() {
       </Card>
 
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between gap-3">
+        <CardHeader>
           <CardTitle>Bandeja de compras</CardTitle>
-          <span className="text-xs text-muted-foreground">{rows.length} registros</span>
         </CardHeader>
 
         <CardContent>
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[860px] text-sm">
-              <thead>
-                <tr className="border-b text-left text-muted-foreground">
-                  <th className="w-[180px] py-2">Código expediente</th>
-                  <th className="w-[140px]">Tipo</th>
-                  <th>Documento principal</th>
-                  <th className="w-[300px]">Adjuntos</th>
-                  <th className="w-[130px] text-right">Acciones</th>
-                </tr>
-              </thead>
+          {rows.length === 0 ? (
+            <Empty>
+              <EmptyHeader>
+                <EmptyMedia variant="icon">📄</EmptyMedia>
+                <EmptyTitle>Sin expedientes</EmptyTitle>
+                <EmptyDescription>
+                  No se encontraron expedientes con los filtros seleccionados.
+                </EmptyDescription>
+              </EmptyHeader>
+            </Empty>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[900px] text-sm">
+                <thead>
+                  <tr className="border-b text-left text-muted-foreground">
+                    <th className="py-2">Expediente</th>
+                    <th>Documento principal</th>
+                    <th>Adjuntos</th>
+                    <th className="text-right">Acciones</th>
+                  </tr>
+                </thead>
 
-              <tbody>
-                {rows.map((expediente) => {
-                  const codigo = getCodigo(expediente);
-                  const tipo = getTipo(expediente);
+                <tbody>
+                  {rows.map((expediente) => {
+                    const tieneFactura = hasDocument(expediente, [
+                      "FACTURA",
+                      "ADJUNTO_FACTURA",
+                      "PRINCIPAL_FACTURA",
+                    ]);
+                    const tieneGuia = hasDocument(expediente, ["GUIA", "GUÍA"]);
+                    const tieneNi = hasDocument(expediente, [
+                      "NOTA_INGRESO",
+                      "NOTA INGRESO",
+                    ]);
+                    const tienePago = hasDocument(expediente, [
+                      "PAGO",
+                      "TRANSFERENCIA",
+                      "DETRACCION",
+                      "DETRACCIÓN",
+                    ]);
 
-                  return (
-                    <tr key={expediente.id} className="border-b align-top hover:bg-muted/30">
-                      <td className="py-3">
-                        <div className="font-mono text-sm font-semibold">
-                          {codigo || "—"}
-                        </div>
-                        <div className="mt-1 line-clamp-2 text-xs text-muted-foreground">
-                          {expediente.descripcion ?? expediente.correlativo ?? "Sin descripción"}
-                        </div>
-                      </td>
-
-                      <td className="py-3">
-                        <Badge variant="outline">{formatTipo(tipo)}</Badge>
-                        <div className="mt-1 text-[11px] text-muted-foreground">
-                          {getEmpresa(expediente)}
-                        </div>
-                      </td>
-
-                      <td className="py-3">
-                        <div className="font-medium">{principalLabel(expediente)}</div>
-                        <div className="mt-1 text-xs text-muted-foreground">
-                          {expediente.correlativo}
-                        </div>
-                      </td>
-
-                      <td className="py-3">
-                        <div className="flex flex-wrap gap-1.5">
-                          {ADJUNTOS.map((adjunto) => (
-                            <AdjuntoPill
-                              key={adjunto.short}
-                              active={hasDocument(expediente, adjunto.aliases)}
-                              label={adjunto.label}
-                              short={adjunto.short}
-                            />
-                          ))}
-                        </div>
-                      </td>
-
-                      <td className="py-3 text-right">
-                        <div className="flex justify-end gap-1">
-                          <Button asChild size="sm" variant="outline" className="h-8 w-8 p-0" title="Ver expediente">
-                            <Link href={`/expedientes/${expediente.id}`} aria-label="Ver expediente">
-                              <Eye className="h-4 w-4" />
-                            </Link>
-                          </Button>
-                          <Button disabled size="sm" variant="outline" className="h-8 w-8 p-0" title="Editar expediente">
-                            <Pencil className="h-4 w-4" />
-                          </Button>
-                          <Button disabled size="sm" variant="outline" className="h-8 w-8 p-0" title="Adjuntar documento">
-                            <FilePlus2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-
-            {!rows.length && (
-              <Empty className="mt-4">
-                <EmptyHeader>
-                  <EmptyMedia variant="icon">
-                    <FilePlus2 className="h-5 w-5" />
-                  </EmptyMedia>
-                  <EmptyTitle>Sin expedientes para compras</EmptyTitle>
-                  <EmptyDescription>
-                    Cuando existan documentos principales o expedientes, aparecerán en esta bandeja.
-                  </EmptyDescription>
-                </EmptyHeader>
-              </Empty>
-            )}
-          </div>
+                    return (
+                      <tr key={expediente.id} className="border-b align-top hover:bg-muted/30">
+                        <td className="w-[38%] py-3 pr-4">
+                          <ExpedienteCell expediente={expediente} />
+                        </td>
+                        <td className="w-[28%] py-3 pr-4">
+                          <div className="font-medium">{principalLabel(expediente)}</div>
+                        </td>
+                        <td className="w-[24%] py-3 pr-4">
+                          <div className="flex flex-wrap gap-1.5">
+                            <AdjuntosBadge label="FAC" active={tieneFactura} />
+                            <AdjuntosBadge label="GUIA" active={tieneGuia} />
+                            <AdjuntosBadge label="NI" active={tieneNi} />
+                            <AdjuntosBadge label="PAGO" active={tienePago} />
+                          </div>
+                        </td>
+                        <td className="w-[10%] py-3 text-right">
+                          <ActionsCell expediente={expediente} />
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
         </CardContent>
       </Card>
     </main>
