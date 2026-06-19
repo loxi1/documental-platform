@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { Eye, FilePlus2, Pencil, Plus } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -25,6 +25,8 @@ type ExpedientesApiResponse = {
   offset?: number;
   data?: Expediente[];
 };
+
+const PAGE_SIZE = 8;
 
 function normalizeExpedientes(input: unknown): Expediente[] {
   if (Array.isArray(input)) return input as Expediente[];
@@ -150,7 +152,10 @@ function principalLabel(expediente: Expediente) {
   if (!principal) return "Sin principal";
 
   const doc = principal as unknown as Record<string, unknown>;
-  const tipo = text(doc.tipoDocumental ?? doc.tipo_documental ?? doc.tipoRelacion ?? doc.tipo_relacion, "DOC")
+  const tipo = text(
+    doc.tipoDocumental ?? doc.tipo_documental ?? doc.tipoRelacion ?? doc.tipo_relacion,
+    "DOC",
+  )
     .replace("PRINCIPAL_", "")
     .replace("ADJUNTO_", "")
     .replaceAll("_", " ")
@@ -214,10 +219,87 @@ function ActionsCell({ expediente }: { expediente: Expediente }) {
   );
 }
 
+function PaginationControls({
+  page,
+  totalPages,
+  totalRows,
+  pageSize,
+  onPageChange,
+}: {
+  page: number;
+  totalPages: number;
+  totalRows: number;
+  pageSize: number;
+  onPageChange: (page: number) => void;
+}) {
+  if (totalRows === 0) return null;
+
+  const start = (page - 1) * pageSize + 1;
+  const end = Math.min(page * pageSize, totalRows);
+  const pages = Array.from({ length: totalPages }, (_, index) => index + 1);
+  const visiblePages = pages.filter(
+    (item) =>
+      item === 1 ||
+      item === totalPages ||
+      Math.abs(item - page) <= 1,
+  );
+
+  return (
+    <div className="flex flex-col gap-3 border-t pt-4 text-sm text-muted-foreground md:flex-row md:items-center md:justify-between">
+      <div>
+        Mostrando {start} a {end} de {totalRows} resultados
+      </div>
+
+      <div className="flex items-center gap-1">
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={page <= 1}
+          onClick={() => onPageChange(page - 1)}
+        >
+          Anterior
+        </Button>
+
+        {visiblePages.map((item, index) => {
+          const previous = visiblePages[index - 1];
+          const showEllipsis = previous !== undefined && item - previous > 1;
+
+          return (
+            <div key={item} className="flex items-center gap-1">
+              {showEllipsis ? <span className="px-2">...</span> : null}
+              <Button
+                type="button"
+                variant={item === page ? "default" : "outline"}
+                size="sm"
+                className="min-w-9"
+                onClick={() => onPageChange(item)}
+              >
+                {item}
+              </Button>
+            </div>
+          );
+        })}
+
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={page >= totalPages}
+          onClick={() => onPageChange(page + 1)}
+        >
+          Siguiente
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 export function ComprasBandeja() {
   const [empresa, setEmpresa] = useState("BBTI");
   const [estado, setEstado] = useState("abierto");
   const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
 
   const { data, isLoading, error } = useExpedientes({
     empresa,
@@ -249,14 +331,16 @@ export function ComprasBandeja() {
     );
   }, [expedientes, search]);
 
-  const metrics = useMemo(() => {
-    const abiertos = expedientes.length;
-    const conPrincipal = expedientes.filter(
-      (expediente) => principalLabel(expediente) !== "Sin principal",
-    ).length;
+  const totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
+  const currentPage = Math.min(page, totalPages);
+  const paginatedRows = useMemo(() => {
+    const start = (currentPage - 1) * PAGE_SIZE;
+    return rows.slice(start, start + PAGE_SIZE);
+  }, [currentPage, rows]);
 
-    return { abiertos, conPrincipal };
-  }, [expedientes]);
+  useEffect(() => {
+    setPage(1);
+  }, [empresa, estado, search]);
 
   if (isLoading) {
     return (
@@ -293,21 +377,6 @@ export function ComprasBandeja() {
             Nuevo expediente
           </Link>
         </Button>
-      </div>
-
-      <div className="grid gap-3 md:grid-cols-2">
-        <Card>
-          <CardContent className="py-4">
-            <div className="text-xs text-muted-foreground">Expedientes abiertos</div>
-            <div className="text-2xl font-bold">{metrics.abiertos}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="py-4">
-            <div className="text-xs text-muted-foreground">Con documento principal</div>
-            <div className="text-2xl font-bold">{metrics.conPrincipal}</div>
-          </CardContent>
-        </Card>
       </div>
 
       <Card>
@@ -353,7 +422,7 @@ export function ComprasBandeja() {
           <CardTitle>Bandeja de compras</CardTitle>
         </CardHeader>
 
-        <CardContent>
+        <CardContent className="space-y-4">
           {rows.length === 0 ? (
             <Empty>
               <EmptyHeader>
@@ -365,60 +434,63 @@ export function ComprasBandeja() {
               </EmptyHeader>
             </Empty>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[860px] text-sm">
-                <thead>
-                  <tr className="border-b text-left text-muted-foreground">
-                    <th className="py-2">Expediente</th>
-                    <th>Empresa</th>
-                    <th>Documento principal</th>
-                    <th>Adjuntos</th>
-                    <th>Estado</th>
-                    <th className="text-right">Acciones</th>
-                  </tr>
-                </thead>
+            <>
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[780px] text-sm">
+                  <thead>
+                    <tr className="border-b text-left text-muted-foreground">
+                      <th className="py-2">Expediente</th>
+                      <th>Documento principal</th>
+                      <th>Adjuntos</th>
+                      <th>Estado</th>
+                      <th className="text-right">Acciones</th>
+                    </tr>
+                  </thead>
 
-                <tbody>
-                  {rows.map((expediente) => {
-                    const tieneFactura = hasDocument(expediente, [
-                      "FACTURA",
-                      "ADJUNTO_FACTURA",
-                      "PRINCIPAL_FACTURA",
-                    ]);
-                    const tieneGuia = hasDocument(expediente, ["GUIA", "GUÍA"]);
+                  <tbody>
+                    {paginatedRows.map((expediente) => {
+                      const tieneFactura = hasDocument(expediente, [
+                        "FACTURA",
+                        "ADJUNTO_FACTURA",
+                        "PRINCIPAL_FACTURA",
+                      ]);
+                      const tieneGuia = hasDocument(expediente, ["GUIA", "GUÍA"]);
 
-                    return (
-                      <tr key={expediente.id} className="border-b align-top hover:bg-muted/30">
-                        <td className="w-[32%] py-3 pr-4">
-                          <ExpedienteCell expediente={expediente} />
-                        </td>
-                        <td className="w-[18%] py-3 pr-4">
-                          <div className="font-medium">{getEmpresa(expediente)}</div>
-                          <div className="line-clamp-1 text-xs text-muted-foreground">
-                            {getClienteNombre(expediente)}
-                          </div>
-                        </td>
-                        <td className="w-[24%] py-3 pr-4">
-                          <div className="font-medium">{principalLabel(expediente)}</div>
-                        </td>
-                        <td className="w-[14%] py-3 pr-4">
-                          <div className="flex flex-wrap gap-1.5">
-                            <AdjuntosBadge label="FAC" active={tieneFactura} />
-                            <AdjuntosBadge label="GUÍA" active={tieneGuia} />
-                          </div>
-                        </td>
-                        <td className="w-[8%] py-3 pr-4">
-                          <Badge variant="secondary">{getEstado(expediente)}</Badge>
-                        </td>
-                        <td className="w-[10%] py-3 text-right">
-                          <ActionsCell expediente={expediente} />
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+                      return (
+                        <tr key={expediente.id} className="border-b align-top hover:bg-muted/30">
+                          <td className="w-[34%] py-3 pr-4">
+                            <ExpedienteCell expediente={expediente} />
+                          </td>
+                          <td className="w-[26%] py-3 pr-4">
+                            <div className="font-medium">{principalLabel(expediente)}</div>
+                          </td>
+                          <td className="w-[18%] py-3 pr-4">
+                            <div className="flex flex-wrap gap-1.5">
+                              <AdjuntosBadge label="FAC" active={tieneFactura} />
+                              <AdjuntosBadge label="GUÍA" active={tieneGuia} />
+                            </div>
+                          </td>
+                          <td className="w-[10%] py-3 pr-4">
+                            <Badge variant="secondary">{getEstado(expediente)}</Badge>
+                          </td>
+                          <td className="w-[12%] py-3 text-right">
+                            <ActionsCell expediente={expediente} />
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              <PaginationControls
+                page={currentPage}
+                totalPages={totalPages}
+                totalRows={rows.length}
+                pageSize={PAGE_SIZE}
+                onPageChange={setPage}
+              />
+            </>
           )}
         </CardContent>
       </Card>
