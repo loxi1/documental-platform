@@ -8,6 +8,7 @@ import { RequestIdMiddleware } from './common/middleware/request-id.middleware';
 import { AuthModule } from './auth/auth.module';
 import { NatsModule } from './nats/nats.module';
 import { DocumentosGatewayModule } from './documentos/documentos.module';
+import { ExpedientesGatewayModule } from './expedientes/expedientes.module';
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { DocumentosGatewayModule } from './documentos/documentos.module';
     NatsModule,
     AuthModule,
     DocumentosGatewayModule,
+    ExpedientesGatewayModule,
   ],
   controllers: [AppController],
   providers: [AppService],

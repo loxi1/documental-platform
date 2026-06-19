@@ -356,7 +356,7 @@ export class DocumentosRepository {
   }
 
   async confirmarOcrResultado(id: number, usuarioId?: number) {
-    const usuarioIdFinal = usuarioId ?? null;
+    const usuarioIdFinal: number | null = usuarioId ?? null;
 
     const rows = await sql`
       WITH ocr AS (
@@ -364,24 +364,54 @@ export class DocumentosRepository {
         SET
           estado = 'confirmado',
           validado_en = now(),
-          validado_por = ${usuarioIdFinal}::integer,
+          validado_por = ${usuarioIdFinal},
           metadata = jsonb_set(
             COALESCE(metadata, '{}'::jsonb),
             '{estado}',
             to_jsonb('confirmado'::text),
             true
           )
-        WHERE id = ${id}::integer
+        WHERE id = ${id}
         RETURNING *
+      ),
+      datos AS (
+        SELECT
+          ocr.*,
+          ocr.metadata->'metadata' AS meta,
+          COALESCE(
+            ocr.metadata->>'tipoDocumental',
+            ocr.tipo_propuesto
+          ) AS tipo_documental_final,
+          COALESCE(
+            ocr.metadata->>'claveDocumental',
+            ocr.clave_documental
+          ) AS clave_documental_final
+        FROM ocr
+      ),
+      doc_update AS (
+        UPDATE documentos.documentos d
+        SET
+          tipo_documental = datos.tipo_documental_final,
+          estado = 'confirmado',
+          ruc_emisor = COALESCE(datos.meta->>'ruc', d.ruc_emisor),
+          serie = COALESCE(datos.meta->>'serie', d.serie),
+          numero = COALESCE(datos.meta->>'numero', d.numero),
+          fecha_emision = COALESCE(NULLIF(datos.meta->>'fechaEmision', '')::date, d.fecha_emision),
+          monto_total = COALESCE(NULLIF(datos.meta->>'montoTotal', '')::numeric, d.monto_total),
+          clave_documental = datos.clave_documental_final,
+          metadata = COALESCE(d.metadata, '{}'::jsonb) || jsonb_build_object('ocr', datos.metadata)
+        FROM datos
+        WHERE d.id = datos.documento_id
+        RETURNING d.*
       )
       SELECT
-        ocr.id,
-        ocr.estado,
-        ocr.documento_id,
-        COALESCE(ocr.metadata->>'tipoDocumental', ocr.tipo_propuesto) AS tipo_documental,
-        COALESCE(ocr.metadata->>'claveDocumental', ocr.clave_documental) AS clave_documental,
-        ocr.metadata->'metadata' AS metadata
-      FROM ocr
+        datos.id,
+        datos.estado,
+        datos.documento_id,
+        datos.tipo_documental_final AS tipo_documental,
+        datos.clave_documental_final AS clave_documental,
+        datos.meta AS metadata
+      FROM datos
     `;
 
     return rows[0] ?? null;
@@ -449,13 +479,11 @@ export class DocumentosRepository {
 
   async createExpedienteDesdeOcr(params: {
     ocrResultadoId: number;
-    correlativo: string;
+    clienteDestinoId: number;
     empresaCodigo: string;
-    tipoExpediente: string;
+    codigoExpediente: string;
     descripcion?: string | null;
-    codigoCentroCosto?: string | null;
-    codigoOp?: string | null;
-    clavePrincipal?: string | null;
+    metadata?: Record<string, any> | null;
     tipoRelacionPrincipal: string;
   }) {
     const ocrRows = await sql`
@@ -471,72 +499,65 @@ export class DocumentosRepository {
       return null;
     }
 
-    const clavePrincipal =
-      params.clavePrincipal ?? ocr.clave_documental ?? null;
+    const existingExpediente = await sql`
+      SELECT *
+      FROM documentos.expedientes
+      WHERE codigo_expediente = ${params.codigoExpediente}
+        AND empresa_codigo = ${params.empresaCodigo}
+      LIMIT 1
+    `;
 
-    if (clavePrincipal) {
-      const existingExpediente = await sql`
-        SELECT *
-        FROM documentos.expedientes
-        WHERE clave_principal = ${clavePrincipal}
-          AND empresa_codigo = ${params.empresaCodigo}
-        LIMIT 1
-      `;
-
-      if (existingExpediente[0]) {
-        return {
-          expediente: existingExpediente[0],
-          yaExistia: true,
-          motivo: 'MISMA_CLAVE_PRINCIPAL',
-        };
-      }
+    if (existingExpediente[0]) {
+      return {
+        expediente: existingExpediente[0],
+        yaExistia: true,
+        motivo: 'MISMO_CODIGO_EXPEDIENTE',
+      };
     }
 
     const expedienteRows = await sql`
       INSERT INTO documentos.expedientes (
-        correlativo,
+        cliente_destino_id,
         empresa_codigo,
-        tipo_expediente,
+        codigo_expediente,
         descripcion,
-        codigo_centro_costo,
-        codigo_op,
-        clave_principal
+        metadata
       )
       VALUES (
-        ${params.correlativo},
+        ${params.clienteDestinoId},
         ${params.empresaCodigo},
-        ${params.tipoExpediente},
+        ${params.codigoExpediente},
         ${params.descripcion ?? null},
-        ${params.codigoCentroCosto ?? null},
-        ${params.codigoOp ?? null},
-        ${params.clavePrincipal ?? ocr.clave_documental ?? null}
+        ${JSON.stringify(params.metadata ?? {})}::jsonb
       )
       RETURNING *
     `;
 
     const expediente = expedienteRows[0];
 
-    await sql`
-      INSERT INTO documentos.expediente_documentos (
-        expediente_id,
-        documento_id,
-        tipo_relacion,
-        es_principal,
-        orden
-      )
-      VALUES (
-        ${expediente.id},
-        ${ocr.documento_id},
-        ${params.tipoRelacionPrincipal},
-        true,
-        1
-      )
-      ON CONFLICT (expediente_id, documento_id)
-      DO UPDATE SET
-        tipo_relacion = EXCLUDED.tipo_relacion,
-        es_principal = true,
-        orden = 1
-    `;
+    if (ocr.documento_id) {
+      await sql`
+        INSERT INTO documentos.expediente_documentos (
+          expediente_id,
+          documento_id,
+          tipo_relacion,
+          es_principal,
+          orden
+        )
+        VALUES (
+          ${expediente.id},
+          ${ocr.documento_id},
+          ${params.tipoRelacionPrincipal},
+          true,
+          1
+        )
+        ON CONFLICT (expediente_id, documento_id)
+        DO UPDATE SET
+          tipo_relacion = EXCLUDED.tipo_relacion,
+          es_principal = true,
+          orden = 1
+      `;
+    }
 
     return expediente;
   }
@@ -555,42 +576,12 @@ export class DocumentosRepository {
       return null;
     }
 
-    if (!ocr.clave_documental) {
-      return {
-        ocr,
-        sugerencia: {
-          accion: 'SIN_SUGERENCIA',
-          motivo: 'OCR_SIN_CLAVE_DOCUMENTAL',
-          confidence: 0,
-        },
-      };
-    }
-
-    const expedienteRows = await sql`
-      SELECT *
-      FROM documentos.expedientes
-      WHERE clave_principal = ${ocr.clave_documental}
-      LIMIT 1
-    `;
-
-    if (expedienteRows[0]) {
-      return {
-        ocr,
-        sugerencia: {
-          accion: 'USAR_EXPEDIENTE_EXISTENTE',
-          expediente: expedienteRows[0],
-          motivo: 'MISMA_CLAVE_PRINCIPAL',
-          confidence: 100,
-        },
-      };
-    }
-
     return {
       ocr,
       sugerencia: {
-        accion: 'CREAR_EXPEDIENTE',
-        motivo: 'NO_EXISTE_EXPEDIENTE_PARA_CLAVE',
-        confidence: 100,
+        accion: 'SELECCIONAR_EXPEDIENTE',
+        motivo: 'EXPEDIENTE_ES_ENTIDAD_PRINCIPAL_Y_DEBE_SER_SELECCIONADO_O_RESUELTO_POR_UI',
+        confidence: 0,
       },
     };
   }
@@ -613,6 +604,14 @@ export class DocumentosRepository {
 
     if (!ocr) {
       return null;
+    }
+
+    if (params.esPrincipal) {
+      await sql`
+        UPDATE documentos.expediente_documentos
+        SET es_principal = false
+        WHERE expediente_id = ${params.expedienteId}
+      `;
     }
 
     const vinculoExistente = await sql`
@@ -722,15 +721,15 @@ export class DocumentosRepository {
     motivo: string,
     usuarioId?: number,
   ) {
-    const motivoFinal = motivo?.trim() || 'Rechazado por usuario';
-    const usuarioIdFinal = usuarioId ?? null;
+    const motivoFinal: string = motivo?.trim() || 'Rechazado por usuario';
+    const usuarioIdFinal: number | null = usuarioId ?? null;
 
     const rows = await sql`
       UPDATE documentos.ocr_resultados
       SET
         estado = 'rechazado',
         validado_en = now(),
-        validado_por = ${usuarioIdFinal}::integer,
+        validado_por = ${usuarioIdFinal},
         metadata =
           jsonb_set(
             COALESCE(metadata, '{}'::jsonb),
@@ -742,10 +741,10 @@ export class DocumentosRepository {
             'rechazo',
             jsonb_build_object(
               'fecha', now(),
-              'motivo', ${motivoFinal}::text
+              'motivo', ${motivoFinal}
             )
           )
-      WHERE id = ${id}::integer
+      WHERE id = ${id}
       RETURNING *
     `;
 

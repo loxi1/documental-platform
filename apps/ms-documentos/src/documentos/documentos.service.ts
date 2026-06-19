@@ -181,12 +181,11 @@ export class DocumentosService {
   async crearExpedienteDesdeOcr(
     id: number,
     body: {
-      correlativo: string;
+      clienteDestinoId: number;
       empresaCodigo: string;
-      tipoExpediente: string;
+      codigoExpediente: string;
       descripcion?: string | null;
-      codigoCentroCosto?: string | null;
-      codigoOp?: string | null;
+      metadata?: Record<string, any> | null;
       tipoRelacionPrincipal?: string;
     },
   ) {
@@ -206,18 +205,15 @@ export class DocumentosService {
       body.tipoRelacionPrincipal ??
       `principal_${String(result.tipo_propuesto ?? 'documento').toLowerCase()}`;
 
-    const expediente =
-      await this.repo.createExpedienteDesdeOcr({
-        ocrResultadoId: id,
-        correlativo: body.correlativo,
-        empresaCodigo: body.empresaCodigo,
-        tipoExpediente: body.tipoExpediente,
-        descripcion: body.descripcion,
-        codigoCentroCosto: body.codigoCentroCosto,
-        codigoOp: body.codigoOp,
-        clavePrincipal: result.clave_documental,
-        tipoRelacionPrincipal,
-      });
+    const expediente = await this.repo.createExpedienteDesdeOcr({
+      ocrResultadoId: id,
+      clienteDestinoId: body.clienteDestinoId,
+      empresaCodigo: body.empresaCodigo,
+      codigoExpediente: body.codigoExpediente,
+      descripcion: body.descripcion,
+      metadata: body.metadata,
+      tipoRelacionPrincipal,
+    });
 
     if (!expediente) {
       throw new NotFoundException(`No se pudo crear expediente desde OCR ${id}`);

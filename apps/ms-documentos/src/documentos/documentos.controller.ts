@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, ParseIntPipe, Query, Post, Patch } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseIntPipe, Query, Post, Patch, Put } from '@nestjs/common';
 import { ApiOperation, ApiQuery, ApiTags, ApiParam, } from '@nestjs/swagger';
 import { DocumentosService } from './documentos.service';
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
@@ -168,6 +168,18 @@ export class DocumentosController {
       id,
       body?.motivo,
     );
+  }
+
+  @Put('ocr-resultados/:id/editar')
+  editarOcrResultadoPut(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: {
+      tipoPropuesto?: string;
+      metadata?: Record<string, any>;
+      observacion?: string;
+    },
+  ) {
+    return this.service.editarOcrResultado(id, body);
   }
 
   @Patch('ocr-resultados/:id/editar')

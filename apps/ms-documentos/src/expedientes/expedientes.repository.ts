@@ -1,17 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { sql } from '@documental/database';
 
-type ExpedienteWriteInput = {
-  correlativo?: string;
-  empresaCodigo?: string;
-  tipoExpediente?: string;
-  codigoExpediente?: string | null;
-  clavePrincipal?: string | null;
-  descripcion?: string | null;
-  estado?: string | null;
-  metadata?: Record<string, any> | null;
-};
-
 @Injectable()
 export class ExpedientesRepository {
   async findAll(filters: {
@@ -20,37 +9,63 @@ export class ExpedientesRepository {
     limit?: number;
     offset?: number;
   }) {
-    const empresa = filters.empresa?.trim().toUpperCase() || null;
-    const estado = filters.estado?.trim().toLowerCase() || null;
     const limit = filters.limit ?? 20;
     const offset = filters.offset ?? 0;
 
-    return sql`
+    const data = await sql`
       SELECT
-        id,
-        correlativo,
-        empresa_codigo,
-        tipo_expediente,
-        codigo_expediente,
-        descripcion,
-        estado,
-        metadata,
-        creado_en,
-        actualizado_en,
-        clave_principal
-      FROM documentos.expedientes
-      WHERE (${empresa}::text IS NULL OR empresa_codigo = ${empresa})
-        AND (${estado}::text IS NULL OR estado = ${estado})
-      ORDER BY id DESC
+        e.id,
+        e.cliente_destino_id,
+        cd.nombre_oficial AS cliente_nombre,
+        cd.abreviatura AS cliente_abreviatura,
+        cd.ruc AS cliente_ruc,
+        e.empresa_codigo,
+        e.codigo_expediente,
+        e.descripcion,
+        e.estado,
+        e.metadata,
+        e.creado_en,
+        e.actualizado_en
+      FROM documentos.expedientes e
+      LEFT JOIN core.clientes_destino cd
+        ON cd.id = e.cliente_destino_id
+      WHERE (${filters.empresa ?? null}::text IS NULL OR e.empresa_codigo = ${filters.empresa ?? null})
+        AND (${filters.estado ?? null}::text IS NULL OR e.estado = ${filters.estado ?? null})
+      ORDER BY e.id DESC
       LIMIT ${limit}
       OFFSET ${offset}
     `;
+
+    const countRows = await sql`
+      SELECT COUNT(*)::int AS total
+      FROM documentos.expedientes e
+      WHERE (${filters.empresa ?? null}::text IS NULL OR e.empresa_codigo = ${filters.empresa ?? null})
+        AND (${filters.estado ?? null}::text IS NULL OR e.estado = ${filters.estado ?? null})
+    `;
+
+    return {
+      total: countRows[0]?.total ?? 0,
+      limit,
+      offset,
+      data,
+    };
   }
 
   async findById(id: number) {
     const rows = await sql`
       SELECT
-        e.*,
+        e.id,
+        e.cliente_destino_id,
+        cd.nombre_oficial AS cliente_nombre,
+        cd.abreviatura AS cliente_abreviatura,
+        cd.ruc AS cliente_ruc,
+        e.empresa_codigo,
+        e.codigo_expediente,
+        e.descripcion,
+        e.estado,
+        e.metadata,
+        e.creado_en,
+        e.actualizado_en,
         COALESCE(
           json_agg(
             json_build_object(
@@ -63,145 +78,53 @@ export class ExpedientesRepository {
               'estado', d.estado,
               'tipoRelacion', ed.tipo_relacion,
               'esPrincipal', ed.es_principal,
-              'orden', ed.orden,
-              'claveDocumental', d.clave_documental
+              'orden', ed.orden
             )
-              ORDER BY ed.es_principal DESC, ed.orden ASC, d.id ASC
+            ORDER BY ed.es_principal DESC, ed.orden ASC, d.id ASC
           ) FILTER (WHERE d.id IS NOT NULL),
           '[]'
         ) AS documentos
       FROM documentos.expedientes e
+      LEFT JOIN core.clientes_destino cd
+        ON cd.id = e.cliente_destino_id
       LEFT JOIN documentos.expediente_documentos ed
         ON ed.expediente_id = e.id
       LEFT JOIN documentos.documentos d
         ON d.id = ed.documento_id
       WHERE e.id = ${id}
-      GROUP BY e.id
+      GROUP BY e.id, cd.id
       LIMIT 1
     `;
 
     return rows[0] ?? null;
   }
 
-  async create(data: ExpedienteWriteInput) {
-    const correlativo = String(data.correlativo ?? '').trim();
-    const empresaCodigo = String(data.empresaCodigo ?? '').trim().toUpperCase();
-    const tipoExpediente = String(data.tipoExpediente ?? '').trim().toUpperCase();
-    const codigoExpediente = data.codigoExpediente?.trim() || null;
-    const clavePrincipal = data.clavePrincipal?.trim() || null;
-    const descripcion = data.descripcion ?? null;
-    const estado = data.estado?.trim().toLowerCase() || 'abierto';
-    const metadata = JSON.stringify(data.metadata ?? {});
-
+  async create(data: {
+    clienteDestinoId: number;
+    empresaCodigo: string;
+    codigoExpediente: string;
+    descripcion?: string | null;
+    metadata?: Record<string, any> | null;
+  }) {
     const rows = await sql`
       INSERT INTO documentos.expedientes (
-        correlativo,
+        cliente_destino_id,
         empresa_codigo,
-        tipo_expediente,
         codigo_expediente,
-        clave_principal,
         descripcion,
-        estado,
         metadata
       )
       VALUES (
-        ${correlativo},
-        ${empresaCodigo},
-        ${tipoExpediente},
-        ${codigoExpediente},
-        ${clavePrincipal},
-        ${descripcion},
-        ${estado},
-        ${metadata}::jsonb
+        ${data.clienteDestinoId},
+        ${data.empresaCodigo},
+        ${data.codigoExpediente},
+        ${data.descripcion ?? null},
+        ${JSON.stringify(data.metadata ?? {})}::jsonb
       )
       RETURNING *
     `;
 
-    return rows[0] ?? null;
-  }
-
-  async patch(id: number, data: ExpedienteWriteInput) {
-    const correlativo = data.correlativo?.trim() || null;
-    const empresaCodigo = data.empresaCodigo?.trim().toUpperCase() || null;
-    const tipoExpediente = data.tipoExpediente?.trim().toUpperCase() || null;
-    const codigoExpediente = data.codigoExpediente === undefined
-      ? null
-      : data.codigoExpediente?.trim() || null;
-    const clavePrincipal = data.clavePrincipal === undefined
-      ? null
-      : data.clavePrincipal?.trim() || null;
-    const descripcion = data.descripcion === undefined ? null : data.descripcion;
-    const estado = data.estado?.trim().toLowerCase() || null;
-    const metadata = data.metadata === undefined ? null : JSON.stringify(data.metadata ?? {});
-
-    const rows = await sql`
-      UPDATE documentos.expedientes
-      SET
-        correlativo = COALESCE(${correlativo}, correlativo),
-        empresa_codigo = COALESCE(${empresaCodigo}, empresa_codigo),
-        tipo_expediente = COALESCE(${tipoExpediente}, tipo_expediente),
-        codigo_expediente = CASE
-          WHEN ${data.codigoExpediente === undefined}::boolean THEN codigo_expediente
-          ELSE ${codigoExpediente}
-        END,
-        clave_principal = CASE
-          WHEN ${data.clavePrincipal === undefined}::boolean THEN clave_principal
-          ELSE ${clavePrincipal}
-        END,
-        descripcion = CASE
-          WHEN ${data.descripcion === undefined}::boolean THEN descripcion
-          ELSE ${descripcion}
-        END,
-        estado = COALESCE(${estado}, estado),
-        metadata = CASE
-          WHEN ${metadata}::text IS NULL THEN metadata
-          ELSE ${metadata}::jsonb
-        END,
-        actualizado_en = now()
-      WHERE id = ${id}
-      RETURNING *
-    `;
-
-    return rows[0] ?? null;
-  }
-
-  async replace(id: number, data: ExpedienteWriteInput) {
-    const correlativo = String(data.correlativo ?? '').trim();
-    const empresaCodigo = String(data.empresaCodigo ?? '').trim().toUpperCase();
-    const tipoExpediente = String(data.tipoExpediente ?? '').trim().toUpperCase();
-    const codigoExpediente = data.codigoExpediente?.trim() || null;
-    const clavePrincipal = data.clavePrincipal?.trim() || null;
-    const descripcion = data.descripcion ?? null;
-    const estado = data.estado?.trim().toLowerCase() || 'abierto';
-    const metadata = JSON.stringify(data.metadata ?? {});
-
-    const rows = await sql`
-      UPDATE documentos.expedientes
-      SET
-        correlativo = ${correlativo},
-        empresa_codigo = ${empresaCodigo},
-        tipo_expediente = ${tipoExpediente},
-        codigo_expediente = ${codigoExpediente},
-        clave_principal = ${clavePrincipal},
-        descripcion = ${descripcion},
-        estado = ${estado},
-        metadata = ${metadata}::jsonb,
-        actualizado_en = now()
-      WHERE id = ${id}
-      RETURNING *
-    `;
-
-    return rows[0] ?? null;
-  }
-
-  async remove(id: number) {
-    const rows = await sql`
-      DELETE FROM documentos.expedientes
-      WHERE id = ${id}
-      RETURNING *
-    `;
-
-    return rows[0] ?? null;
+    return rows[0];
   }
 
   async addDocumento(data: {
@@ -211,18 +134,6 @@ export class ExpedientesRepository {
     esPrincipal?: boolean;
     orden?: number;
   }) {
-    const tipoRelacion = data.tipoRelacion ?? null;
-    const esPrincipal = data.esPrincipal ?? false;
-    const orden = data.orden ?? 0;
-
-    if (esPrincipal) {
-      await sql`
-        UPDATE documentos.expediente_documentos
-        SET es_principal = false
-        WHERE expediente_id = ${data.expedienteId}
-      `;
-    }
-
     const vinculoExistente = await sql`
       SELECT expediente_id
       FROM documentos.expediente_documentos
@@ -249,9 +160,9 @@ export class ExpedientesRepository {
       VALUES (
         ${data.expedienteId},
         ${data.documentoId},
-        ${tipoRelacion},
-        ${esPrincipal},
-        ${orden}
+        ${data.tipoRelacion ?? null},
+        ${data.esPrincipal ?? false},
+        ${data.orden ?? 0}
       )
       ON CONFLICT (expediente_id, documento_id)
       DO UPDATE SET
@@ -261,28 +172,27 @@ export class ExpedientesRepository {
       RETURNING *
     `;
 
-    return rows[0] ?? null;
+    return rows[0];
   }
 
   async getResumen(id: number) {
     const rows = await sql`
       SELECT
         e.id,
-        e.correlativo,
+        e.cliente_destino_id,
+        cd.nombre_oficial AS cliente_nombre,
+        cd.abreviatura AS cliente_abreviatura,
+        cd.ruc AS cliente_ruc,
         e.empresa_codigo,
-        e.tipo_expediente,
         e.codigo_expediente,
-        e.clave_principal,
         e.descripcion,
-        e.metadata,
         e.estado,
+        e.metadata,
         COUNT(ed.documento_id)::int AS total_documentos,
         COUNT(*) FILTER (WHERE d.tipo_documental = 'FACTURA')::int AS total_facturas,
         COUNT(*) FILTER (WHERE d.tipo_documental = 'GUIA_REMISION')::int AS total_guias,
         COUNT(*) FILTER (WHERE d.tipo_documental = 'NOTA_INGRESO')::int AS total_notas_ingreso,
-        COUNT(*) FILTER (
-          WHERE d.tipo_documental IN ('PAGO_TRANSFERENCIA', 'PAGO_DETRACCION')
-        )::int AS total_pagos,
+        COUNT(*) FILTER (WHERE d.tipo_documental IN ('PAGO_TRANSFERENCIA', 'PAGO_DETRACCION'))::int AS total_pagos,
         COALESCE(
           json_agg(
             json_build_object(
@@ -299,12 +209,14 @@ export class ExpedientesRepository {
           '[]'
         ) AS documentos
       FROM documentos.expedientes e
+      LEFT JOIN core.clientes_destino cd
+        ON cd.id = e.cliente_destino_id
       LEFT JOIN documentos.expediente_documentos ed
         ON ed.expediente_id = e.id
       LEFT JOIN documentos.documentos d
         ON d.id = ed.documento_id
       WHERE e.id = ${id}
-      GROUP BY e.id
+      GROUP BY e.id, cd.id
       LIMIT 1
     `;
 
@@ -327,18 +239,15 @@ export class ExpedientesRepository {
       JOIN documentos.documentos d
         ON d.id = ed.documento_id
       WHERE ed.expediente_id = ${expedienteId}
-      ORDER BY
-        d.fecha_emision NULLS LAST,
-        ed.orden ASC,
-        d.id ASC
+      ORDER BY d.fecha_emision NULLS LAST, ed.orden ASC, d.id ASC
     `;
   }
 
-  async findByClavePrincipal(clave: string) {
+  async findByCodigoExpediente(codigo: string) {
     const rows = await sql`
       SELECT *
       FROM documentos.expedientes
-      WHERE clave_principal = ${clave}
+      WHERE codigo_expediente = ${codigo}
       LIMIT 1
     `;
 
@@ -350,10 +259,10 @@ export class ExpedientesRepository {
     anio: number;
     mes: number;
   }) {
-    const rows = await sql`
+    return sql`
       SELECT
         e.id AS expediente_id,
-        e.correlativo,
+        e.codigo_expediente,
         e.estado AS expediente_estado,
         d.id AS documento_id,
         d.tipo_documental,
@@ -376,39 +285,25 @@ export class ExpedientesRepository {
         ON d.id = ed.documento_id
       LEFT JOIN documentos.documento_alertas a
         ON a.documento_id = d.id
-      AND a.estado = 'activa'
+       AND a.estado = 'activa'
       WHERE e.empresa_codigo = ${filters.empresa}
         AND d.tipo_documental = 'FACTURA'
         AND d.periodo_anio = ${filters.anio}
         AND d.periodo_mes = ${filters.mes}
-      GROUP BY
-        e.id,
-        e.correlativo,
-        e.estado,
-        d.id,
-        d.tipo_documental,
-        d.fecha_emision,
-        d.periodo_anio,
-        d.periodo_mes,
-        d.serie,
-        d.numero,
-        d.ruc_emisor,
-        d.razon_social_emisor,
-        d.monto_total,
-        d.estado,
-        d.alerta_contable,
-        d.observacion_contable
+      GROUP BY e.id, d.id
       ORDER BY d.fecha_emision ASC, e.id ASC
     `;
-
-    return rows;
   }
 
   async getEstadoDocumental(expedienteId: number) {
     const expedienteRows = await sql`
-      SELECT id, correlativo, empresa_codigo, estado
-      FROM documentos.expedientes
-      WHERE id = ${expedienteId}
+      SELECT
+        e.id,
+        e.codigo_expediente,
+        e.empresa_codigo,
+        e.estado
+      FROM documentos.expedientes e
+      WHERE e.id = ${expedienteId}
       LIMIT 1
     `;
 
@@ -420,13 +315,13 @@ export class ExpedientesRepository {
 
     const rows = await sql`
       SELECT
-        d.tipo_documental,
+        COALESCE(ed.tipo_relacion, d.tipo_documental) AS tipo,
         COUNT(*)::int AS cantidad
       FROM documentos.expediente_documentos ed
       JOIN documentos.documentos d
         ON d.id = ed.documento_id
       WHERE ed.expediente_id = ${expedienteId}
-      GROUP BY d.tipo_documental
+      GROUP BY COALESCE(ed.tipo_relacion, d.tipo_documental)
     `;
 
     const alertaRows = await sql`
@@ -441,18 +336,19 @@ export class ExpedientesRepository {
     const alertasActivas = Number(alertaRows[0]?.total ?? 0);
 
     const base: Record<string, number> = {
-      FACTURA: 0,
-      GUIA_REMISION: 0,
-      NOTA_INGRESO: 0,
-      PAGO_TRANSFERENCIA: 0,
-      PAGO_DETRACCION: 0,
-      RECIBO_HONORARIO: 0,
-      OC: 0,
-      OS: 0,
+      principal_oc: 0,
+      principal_os: 0,
+      principal_factura: 0,
+      adjunto_guia: 0,
+      adjunto_nota_ingreso: 0,
+      adjunto_transferencia: 0,
+      adjunto_detraccion: 0,
+      adjunto_recibo_honorario: 0,
+      adjunto_otro: 0,
     };
 
     for (const row of rows) {
-      base[String(row.tipo_documental)] = Number(row.cantidad);
+      base[row.tipo] = Number(row.cantidad);
     }
 
     return {
@@ -480,13 +376,13 @@ export class ExpedientesRepository {
         ON d.id = ed.documento_id
       LEFT JOIN documentos.documento_alertas a
         ON a.documento_id = d.id
-      AND a.estado = 'activa'
+       AND a.estado = 'activa'
       WHERE e.empresa_codigo = ${filters.empresa}
         AND d.tipo_documental = 'FACTURA'
         AND d.periodo_anio = ${filters.anio}
         AND d.periodo_mes = ${filters.mes}
     `;
 
-    return rows[0] ?? null;
+    return rows[0];
   }
 }
