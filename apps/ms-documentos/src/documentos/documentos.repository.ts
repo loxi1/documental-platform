@@ -181,7 +181,8 @@ export class DocumentosRepository {
       SET
         tipo_documental = ${params.tipoDocumental},
         estado = ${params.estado},
-        ruc_emisor = COALESCE(${extracted.ruc ?? null}, ruc_emisor),
+        ruc_emisor = COALESCE(${extracted.ruc ?? extracted.rucProveedor ?? null}, ruc_emisor),
+        razon_social_emisor = COALESCE(${extracted.razonSocial ?? extracted.proveedor ?? null}, razon_social_emisor),
         serie = COALESCE(${extracted.serie ?? null}, serie),
         numero = COALESCE(${extracted.numero ?? null}, numero),
         fecha_emision = COALESCE(${extracted.fechaEmision ?? null}::date, fecha_emision),
@@ -262,8 +263,12 @@ export class DocumentosRepository {
         `
       : [];
 
+    const metadataSanitizada = this.limpiarCamposLegacyOcr(
+      (params.metadata ?? {}) as Record<string, any>,
+    );
+
     const metadataFinal = {
-      ...(params.metadata as object),
+      ...metadataSanitizada,
       duplicado: documentoExistente[0]
         ? {
             existeDocumento: true,
@@ -295,8 +300,17 @@ export class DocumentosRepository {
       RETURNING *
     `;
 
+    const vinculo = await this.vincularOcrAExpedienteExistente({
+      ocrResultadoId: rows[0].id,
+      documentoId: params.documentoId,
+      clienteAbreviatura: metadataSanitizada.clienteAbreviatura,
+      codigoExpediente: metadataSanitizada.metadata?.codigoExpediente,
+      tipoPropuesto: params.tipoPropuesto,
+    });
+
     return {
-      row: rows[0],
+      row: vinculo?.ocr ?? rows[0],
+      expediente: vinculo?.expediente ?? null,
       yaExistia: false,
       motivo: documentoExistente[0] ? 'MISMA_CLAVE_DOCUMENTAL' : null,
     };
@@ -393,7 +407,8 @@ export class DocumentosRepository {
         SET
           tipo_documental = datos.tipo_documental_final,
           estado = 'confirmado',
-          ruc_emisor = COALESCE(datos.meta->>'ruc', d.ruc_emisor),
+          ruc_emisor = COALESCE(datos.meta->>'ruc', datos.meta->>'rucProveedor', d.ruc_emisor),
+          razon_social_emisor = COALESCE(datos.meta->>'razonSocial', datos.meta->>'proveedor', d.razon_social_emisor),
           serie = COALESCE(datos.meta->>'serie', d.serie),
           numero = COALESCE(datos.meta->>'numero', d.numero),
           fecha_emision = COALESCE(NULLIF(datos.meta->>'fechaEmision', '')::date, d.fecha_emision),
@@ -773,10 +788,10 @@ export class DocumentosRepository {
 
     const metadataActual = current.metadata?.metadata ?? {};
 
-    const metadataNueva = {
+    const metadataNueva = this.limpiarCamposLegacyOcr({
       ...metadataActual,
       ...(input.metadata ?? {}),
-    };
+    });
 
     const metadataSourceActual = current.metadata?.metadataSource ?? {};
 
@@ -838,6 +853,133 @@ export class DocumentosRepository {
     `;
 
     return rows[0] ?? null;
+  }
+
+  private limpiarCamposLegacyOcr<T extends Record<string, any>>(metadata: T): T {
+    const legacyKeys = new Set([
+      'tipoCodigoExpediente',
+      'codigoOp',
+      'codigoCentroCosto',
+    ]);
+
+    const clean = (value: any): any => {
+      if (Array.isArray(value)) {
+        return value.map((item) => clean(item));
+      }
+
+      if (value && typeof value === 'object') {
+        return Object.fromEntries(
+          Object.entries(value)
+            .filter(([key]) => !legacyKeys.has(key))
+            .map(([key, item]) => [key, clean(item)]),
+        );
+      }
+
+      return value;
+    };
+
+    return clean(metadata) as T;
+  }
+
+  private tipoRelacionParaExpediente(tipo: string | null): string {
+    const tipoKey = String(tipo ?? '').trim().toUpperCase();
+
+    if (tipoKey === 'OC') return 'principal_oc';
+    if (tipoKey === 'OS') return 'principal_os';
+    if (tipoKey === 'FACTURA') return 'principal_factura';
+    if (tipoKey === 'GUIA' || tipoKey === 'GUIA_REMISION') return 'adjunto_guia';
+    if (tipoKey === 'NOTA_INGRESO') return 'adjunto_nota_ingreso';
+    if (tipoKey === 'RECIBO_HONORARIO') return 'adjunto_recibo_honorario';
+
+    return 'adjunto_documento';
+  }
+
+  private async vincularOcrAExpedienteExistente(params: {
+    ocrResultadoId: number;
+    documentoId: number | null;
+    clienteAbreviatura?: string | null;
+    codigoExpediente?: string | null;
+    tipoPropuesto?: string | null;
+  }) {
+    const clienteAbreviatura = String(params.clienteAbreviatura ?? '')
+      .trim()
+      .toUpperCase();
+    const codigoExpediente = String(params.codigoExpediente ?? '').trim();
+
+    if (!params.documentoId || !clienteAbreviatura || !codigoExpediente) {
+      return null;
+    }
+
+    const expedienteRows = await sql`
+      SELECT
+        e.id,
+        e.cliente_destino_id,
+        e.empresa_codigo,
+        e.codigo_expediente,
+        e.descripcion
+      FROM core.clientes_destino cd
+      JOIN documentos.expedientes e
+        ON e.cliente_destino_id = cd.id
+      WHERE UPPER(cd.abreviatura) = ${clienteAbreviatura}
+        AND e.codigo_expediente = ${codigoExpediente}
+      LIMIT 1
+    `;
+
+    const expediente = expedienteRows[0];
+
+    if (!expediente) {
+      return null;
+    }
+
+    const tipoRelacion = this.tipoRelacionParaExpediente(params.tipoPropuesto ?? null);
+    const esPrincipal = tipoRelacion.startsWith('principal_');
+
+    await sql`
+      INSERT INTO documentos.expediente_documentos (
+        expediente_id,
+        documento_id,
+        tipo_relacion,
+        es_principal,
+        orden
+      )
+      VALUES (
+        ${expediente.id},
+        ${params.documentoId},
+        ${tipoRelacion},
+        ${esPrincipal},
+        ${esPrincipal ? 1 : 0}
+      )
+      ON CONFLICT (expediente_id, documento_id)
+      DO UPDATE SET
+        tipo_relacion = EXCLUDED.tipo_relacion,
+        es_principal = EXCLUDED.es_principal,
+        orden = EXCLUDED.orden
+    `;
+
+    const ocrRows = await sql`
+      UPDATE documentos.ocr_resultados
+      SET
+        expediente_id = ${expediente.id},
+        vinculado_en = now(),
+        metadata = COALESCE(metadata, '{}'::jsonb)
+          || jsonb_build_object(
+            'vinculoExpediente',
+            jsonb_build_object(
+              'expedienteId', ${expediente.id},
+              'clienteDestinoId', ${expediente.cliente_destino_id},
+              'codigoExpediente', ${expediente.codigo_expediente},
+              'tipoRelacion', ${tipoRelacion},
+              'vinculadoEn', now()
+            )
+          )
+      WHERE id = ${params.ocrResultadoId}
+      RETURNING *
+    `;
+
+    return {
+      expediente,
+      ocr: ocrRows[0],
+    };
   }
 
   private buildClaveDocumental(

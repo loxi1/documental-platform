@@ -54,13 +54,12 @@ def extract_orden_numero_from_filename(filename: str | None, tipo_documental: st
     return extract_numero_from_filename(filename, prefix)
 
 
-def extract_codigo_expediente(text: str) -> dict[str, str | None]:
-    """Extrae código de expediente desde textos de OC/OS.
+def extract_codigo_expediente(text: str) -> str | None:
+    """Extrae únicamente el código de expediente vigente desde textos de OC/OS.
 
-    Reglas acordadas:
-    - Códigos que empiezan con 05 => OP.
-    - Códigos que empiezan con 03 => CENTRO_COSTO.
-    - Soporta `CENTRO DE COSTOS: 050101 - ...` y OCR con salto de línea.
+    Modelo actual: documentos.expedientes se vincula por cliente_destino_id +
+    codigo_expediente. No se persiste ni se devuelve tipo de código, OP o centro
+    de costo como metadata OCR.
     """
     raw = normalize_ocr_text(text).replace("\\n", "\n")
     t = normalize_for_search(raw)
@@ -72,32 +71,50 @@ def extract_codigo_expediente(text: str) -> dict[str, str | None]:
         r"\b(?:OP|ORDEN\s+DE\s+PRODUCCION)\s*:?\s*([0-9]{6})\b",
     ]
 
-    codigo = None
     for pattern in patterns:
         match = re.search(pattern, t, flags=re.DOTALL)
         if match:
-            codigo = match.group(1)
-            break
+            return match.group(1)
 
-    if not codigo:
-        return {"codigoExpediente": None, "tipoCodigoExpediente": None}
+    return None
 
-    tipo = None
-    if codigo.startswith("05"):
-        tipo = "OP"
-    elif codigo.startswith("03"):
-        tipo = "CENTRO_COSTO"
 
-    return {"codigoExpediente": codigo, "tipoCodigoExpediente": tipo}
+def extract_all_rucs(text: str) -> list[str]:
+    t = normalize_for_search(text)
+    rucs: list[str] = []
+    for match in re.findall(r"\b((?:10|20)\d{9})\b", t):
+        if match not in rucs:
+            rucs.append(match)
+    return rucs
+
+
+def extract_orden_comprador_ruc(text: str) -> str | None:
+    """Extrae RUC del comprador/receptor de la OC/OS.
+
+    En formatos BBTI, el comprador es BBTI S.A.C. y su RUC es 20565747356.
+    En la extracción PDF este RUC puede aparecer junto a la etiqueta R.U.C.,
+    por eso no debe asumirse automáticamente como proveedor.
+    """
+    t = normalize_for_search(text)
+    if "BBTI" in t and "20565747356" in t:
+        return "20565747356"
+    return None
 
 
 def extract_orden_proveedor_ruc(text: str) -> str | None:
-    t = normalize_for_search(text)
+    rucs = extract_all_rucs(text)
+    comprador_ruc = extract_orden_comprador_ruc(text)
 
+    # Si existe comprador conocido, el proveedor debe ser el primer RUC distinto.
+    if comprador_ruc:
+        for ruc in rucs:
+            if ruc != comprador_ruc:
+                return ruc
+
+    t = normalize_for_search(text)
     patterns = [
         r"R\.U\.C\.\s*(?:\n|\s)*((?:10|20)\d{9})",
         r"((?:10|20)\d{9})\s*(?:\n|\s)*R\.U\.C\.",
-        r"\b((?:10|20)\d{9})\b",
     ]
 
     for pattern in patterns:
@@ -105,7 +122,7 @@ def extract_orden_proveedor_ruc(text: str) -> str | None:
         if match:
             return match.group(1)
 
-    return None
+    return rucs[0] if rucs else None
 
 
 def normalize_orden_proveedor(value: str | None) -> str | None:
@@ -133,28 +150,39 @@ def normalize_orden_proveedor(value: str | None) -> str | None:
 
 def extract_orden_proveedor(text: str) -> str | None:
     raw = normalize_ocr_text(text)
+    lines = [line.strip() for line in raw.splitlines() if line.strip()]
 
-    # Formato frecuente de OC/OS BBTI:
-    # COTIZACION :
-    # PROVEEDOR RAZON SOCIAL
-    # 10/06/2026
-    match = re.search(
-        r"COTIZACION\s*:\s*\n\s*(.+?)\s*\n\s*\d{1,2}/\d{1,2}/\d{4}",
-        raw,
-        flags=re.IGNORECASE | re.DOTALL,
-    )
-    if match:
-        value = normalize_orden_proveedor(match.group(1))
-        if value:
-            return value
+    # Prioridad 1: en OC/OS BBTI el proveedor viene en SEÑOR(ES).
+    # Evita confundir la cotización (ej. AA510317037-1) con razón social.
+    for line in lines[:25]:
+        match = re.search(
+            r"SEÑOR\(ES\)\s*:\s*(.+)$",
+            line,
+            flags=re.IGNORECASE,
+        )
+        if match:
+            value = normalize_orden_proveedor(match.group(1))
+            if value and not re.fullmatch(r"[A-Z]{1,5}\d[\d\-_/]*", normalize_for_search(value)):
+                return value
 
-    # Si SENOR(ES) tiene contenido en la misma línea, usar extractor genérico.
+    # Formato OS alternativo: razón social antes de fecha después de datos de cabecera.
+    for idx, line in enumerate(lines[:35]):
+        upper = normalize_for_search(line)
+        if "SOCIEDAD ANONIMA CERRADA" in upper or " S.A.C" in upper or " S.A." in upper:
+            value = normalize_orden_proveedor(line)
+            if value:
+                return value
+
+    # Si SENOR(ES) tiene contenido reconocible por el extractor genérico.
     proveedor = normalize_orden_proveedor(extract_proveedor(text))
     if proveedor:
-        return proveedor
+        proveedor_upper = normalize_for_search(proveedor)
+        es_codigo = re.fullmatch(r"[A-Z]{1,5}\d[\d\-_/]*", proveedor_upper)
+        es_label = proveedor_upper in ["TELEFONO", "ATENCION", "FECHA", "DIRECCION", "MONEDA", "COTIZACION"]
+        if not es_codigo and not es_label:
+            return proveedor
 
-    # Respaldo: línea posterior al RUC que no sea dirección ni etiqueta.
-    lines = [line.strip() for line in raw.splitlines() if line.strip()]
+    # Respaldo: línea posterior al RUC proveedor que no sea dirección ni etiqueta.
     for idx, line in enumerate(lines):
         if re.fullmatch(r"(?:10|20)\d{9}", line.strip()):
             for candidate in lines[idx + 1: idx + 8]:
@@ -162,7 +190,7 @@ def extract_orden_proveedor(text: str) -> str | None:
                 upper = normalize_for_search(c)
                 if not c:
                     continue
-                if any(label in upper for label in ["R.U.C", "DIRECCION", "TELEFONO", "CONDICION", "FECHA", "CAL.", "LIMA"]):
+                if any(label in upper for label in ["R.U.C", "DIRECCION", "TELEFONO", "CONDICION", "FECHA", "CAL.", "LIMA", "COTIZACION"]):
                     continue
                 if re.search(r"[A-ZÁÉÍÓÚÑ]{3,}", c, flags=re.IGNORECASE):
                     return normalize_orden_proveedor(c)
@@ -171,13 +199,25 @@ def extract_orden_proveedor(text: str) -> str | None:
 
 
 def extract_orden_total(text: str) -> float | None:
-    t = normalize_for_search(text)
+    raw = normalize_ocr_text(text)
+    t = normalize_for_search(raw)
 
-    # En OS/OC puede venir como bloque: Total S/ ... Sub-total ... 2,569.00 ... IGV.
-    if "TOTAL" in t:
-        tail = t[t.find("TOTAL"): t.find("TOTAL") + 500]
-        amounts = [parse_amount(x) for x in re.findall(r"\b\d{1,3}(?:,\d{3})*(?:\.\d{2})\b|\b\d+(?:\.\d{2})\b", tail)]
-        amounts = [x for x in amounts if x is not None]
+    amount_pattern = r"\b\d{1,3}(?:,\d{3})*(?:\.\d{2})\b|\b\d+(?:\.\d{2})\b"
+
+    # En OC/OS BBTI PyMuPDF suele separar etiquetas y montos:
+    # IGV / Total / Sub-total / 3,544.00 / 4,181.92 / 0.00.
+    # Se toma el mayor monto monetario del bloque de totales, excluyendo percepción 0.
+    start_positions = [pos for token in ["IGV", "TOTAL"] if (pos := t.find(token)) >= 0]
+    if start_positions:
+        start = min(start_positions)
+        stop_candidates = [
+            pos for token in ["BBTI S.A.C.", "PRESENTACION", "PRESENTACIÓN"]
+            if (pos := t.find(token, start)) > start
+        ]
+        stop = min(stop_candidates) if stop_candidates else start + 700
+        window = t[start:stop]
+        amounts = [parse_amount(x) for x in re.findall(amount_pattern, window)]
+        amounts = [x for x in amounts if x is not None and x > 0]
         if amounts:
             return max(amounts)
 
@@ -193,6 +233,12 @@ def extract_orden_moneda(text: str) -> str | None:
         value = match.group(1).strip()
         if value in ["SOLES", "DOLARES", "USD", "PEN"]:
             return value
+
+    if "DOLARES AMERICANOS" in t:
+        return "DOLARES AMERICANOS"
+
+    if "DOLARES" in t:
+        return "DOLARES"
 
     if " SOLES" in t or "SOLES" in t:
         return "SOLES"
@@ -236,8 +282,9 @@ def extract_orden_metadata(
         or extract_orden_numero_from_filename(filename, tipo)
     )
 
-    codigo = extract_codigo_expediente(text)
+    codigo_expediente = extract_codigo_expediente(text)
     ruc_proveedor = extract_orden_proveedor_ruc(text)
+    ruc_comprador = extract_orden_comprador_ruc(text)
 
     return {
         "numero": numero,
@@ -246,8 +293,9 @@ def extract_orden_metadata(
         "proveedor": extract_orden_proveedor(text),
         "rucProveedor": ruc_proveedor,
         "proveedorRuc": ruc_proveedor,
+        "rucComprador": ruc_comprador,
+        "compradorRuc": ruc_comprador,
         "moneda": extract_orden_moneda(text),
         "cotizacion": extract_orden_cotizacion(text),
-        "codigoExpediente": codigo.get("codigoExpediente"),
-        "tipoCodigoExpediente": codigo.get("tipoCodigoExpediente"),
+        "codigoExpediente": codigo_expediente,
     }

@@ -88,8 +88,10 @@ export class DocumentosService {
       canalIngreso: contexto.canalIngreso ?? null,
     };
 
-    const result = await firstValueFrom(
-      this.nats.send(NatsSubjects.OcrProcesarArchivo, payload),
+    const result = this.limpiarCamposLegacyOcr(
+      await firstValueFrom(
+        this.nats.send(NatsSubjects.OcrProcesarArchivo, payload),
+      ),
     );
 
     if (result?.ok) {
@@ -106,6 +108,8 @@ export class DocumentosService {
 
       return {
         ...result,
+        expedienteId: saved?.row?.expediente_id ?? saved?.expediente?.id ?? null,
+        expedienteVinculado: saved?.expediente ?? null,
         ocrResultadoId: saved?.row?.id,
         ocrResultadoYaExistia: saved?.yaExistia ?? false,
         ocrResultadoMotivo: saved?.motivo ?? null,
@@ -353,4 +357,26 @@ export class DocumentosService {
       audit: editado.metadata?.audit ?? [],
     };
   }
+  private limpiarCamposLegacyOcr<T>(value: T): T {
+    const legacyKeys = new Set([
+      'tipoCodigoExpediente',
+      'codigoOp',
+      'codigoCentroCosto',
+    ]);
+
+    if (Array.isArray(value)) {
+      return value.map((item) => this.limpiarCamposLegacyOcr(item)) as T;
+    }
+
+    if (value && typeof value === 'object') {
+      return Object.fromEntries(
+        Object.entries(value as Record<string, unknown>)
+          .filter(([key]) => !legacyKeys.has(key))
+          .map(([key, item]) => [key, this.limpiarCamposLegacyOcr(item)]),
+      ) as T;
+    }
+
+    return value;
+  }
+
 }
