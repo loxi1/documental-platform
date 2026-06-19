@@ -362,6 +362,8 @@ export class DocumentosService {
       'tipoCodigoExpediente',
       'codigoOp',
       'codigoCentroCosto',
+      'proveedorRuc',
+      'compradorRuc',
     ]);
 
     if (Array.isArray(value)) {

@@ -903,6 +903,7 @@ export class DocumentosRepository {
     const clienteAbreviatura = String(params.clienteAbreviatura ?? '')
       .trim()
       .toUpperCase();
+
     const codigoExpediente = String(params.codigoExpediente ?? '').trim();
 
     if (!params.documentoId || !clienteAbreviatura || !codigoExpediente) {
@@ -919,8 +920,8 @@ export class DocumentosRepository {
       FROM core.clientes_destino cd
       JOIN documentos.expedientes e
         ON e.cliente_destino_id = cd.id
-      WHERE UPPER(cd.abreviatura) = ${clienteAbreviatura}
-        AND e.codigo_expediente = ${codigoExpediente}
+      WHERE UPPER(cd.abreviatura) = ${clienteAbreviatura}::text
+        AND e.codigo_expediente = ${codigoExpediente}::text
       LIMIT 1
     `;
 
@@ -930,35 +931,39 @@ export class DocumentosRepository {
       return null;
     }
 
-    const tipoRelacion = this.tipoRelacionParaExpediente(params.tipoPropuesto ?? null);
+    const tipoRelacion = this.tipoRelacionParaExpediente(
+      params.tipoPropuesto ?? null,
+    );
+
     const esPrincipal = tipoRelacion.startsWith('principal_');
+    const orden = esPrincipal ? 1 : 0;
 
     const vinculo = await this.upsertExpedienteDocumento({
-      expedienteId: expediente.id,
-      documentoId: params.documentoId,
+      expedienteId: Number(expediente.id),
+      documentoId: Number(params.documentoId),
       tipoRelacion,
       esPrincipal,
-      orden: esPrincipal ? 1 : 0,
+      orden,
     });
 
     const ocrRows = await sql`
       UPDATE documentos.ocr_resultados
-      SET
-        metadata = COALESCE(metadata, '{}'::jsonb)
-          || jsonb_build_object(
-            'vinculoExpediente',
-            jsonb_build_object(
-              'expedienteId', ${expediente.id},
-              'documentoId', ${params.documentoId},
-              'clienteDestinoId', ${expediente.cliente_destino_id},
-              'codigoExpediente', ${expediente.codigo_expediente},
-              'tipoRelacion', ${tipoRelacion},
-              'esPrincipal', ${esPrincipal},
-              'orden', ${esPrincipal ? 1 : 0},
-              'vinculadoEn', now()
-            )
+      SET metadata = COALESCE(metadata, '{}'::jsonb)
+        || jsonb_build_object(
+          'vinculoExpediente',
+          jsonb_build_object(
+            'expedienteId', ${Number(expediente.id)}::bigint,
+            'documentoId', ${Number(params.documentoId)}::int,
+            'clienteDestinoId', ${Number(expediente.cliente_destino_id)}::int,
+            'empresaCodigo', ${String(expediente.empresa_codigo ?? '')}::text,
+            'codigoExpediente', ${String(expediente.codigo_expediente ?? '')}::text,
+            'tipoRelacion', ${tipoRelacion}::text,
+            'esPrincipal', ${esPrincipal}::boolean,
+            'orden', ${orden}::int,
+            'vinculadoEn', now()
           )
-      WHERE id = ${params.ocrResultadoId}
+        )
+      WHERE id = ${params.ocrResultadoId}::int
       RETURNING *
     `;
 
