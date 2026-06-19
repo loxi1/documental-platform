@@ -300,13 +300,28 @@ export class DocumentosRepository {
       RETURNING *
     `;
 
-    const vinculo = await this.vincularOcrAExpedienteExistente({
-      ocrResultadoId: rows[0].id,
-      documentoId: params.documentoId,
-      clienteAbreviatura: metadataSanitizada.clienteAbreviatura,
-      codigoExpediente: metadataSanitizada.metadata?.codigoExpediente,
-      tipoPropuesto: params.tipoPropuesto,
-    });
+    let vinculo: any = null;
+
+    try {
+      vinculo = await this.vincularOcrAExpedienteExistente({
+        ocrResultadoId: rows[0].id,
+        documentoId: params.documentoId,
+        clienteAbreviatura: metadataSanitizada.clienteAbreviatura,
+        codigoExpediente: metadataSanitizada.metadata?.codigoExpediente,
+        tipoPropuesto: params.tipoPropuesto,
+      });
+    } catch (error) {
+      console.error(
+        '[OCR] Error posterior al guardado vinculando expediente existente',
+        {
+          ocrResultadoId: rows[0].id,
+          documentoId: params.documentoId,
+          clienteAbreviatura: metadataSanitizada.clienteAbreviatura,
+          codigoExpediente: metadataSanitizada.metadata?.codigoExpediente,
+          error,
+        },
+      );
+    }
 
     return {
       row: vinculo?.ocr ?? rows[0],
@@ -338,12 +353,15 @@ export class DocumentosRepository {
         da.nombre_archivo,
         da.storage_provider,
         da.storage_key,
-        o.expediente_id
+        NULLIF(o.metadata #>> '{vinculoExpediente,expedienteId}', '')::int AS expediente_id
       FROM documentos.ocr_resultados o
       LEFT JOIN documentos.documentos_archivos da
         ON da.id = o.archivo_id
       WHERE (${filters.estado ?? null}::text IS NULL OR o.estado = ${filters.estado ?? null})
-        AND (${filters.soloNoVinculados ?? false}::boolean = false OR o.expediente_id IS NULL)
+        AND (
+          ${filters.soloNoVinculados ?? false}::boolean = false
+          OR o.metadata->'vinculoExpediente' IS NULL
+        )
       ORDER BY o.id DESC
       LIMIT ${limit}
       OFFSET ${offset}
