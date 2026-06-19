@@ -338,8 +338,7 @@ export class DocumentosRepository {
         da.nombre_archivo,
         da.storage_provider,
         da.storage_key,
-        o.expediente_id,
-        o.vinculado_en
+        o.expediente_id
       FROM documentos.ocr_resultados o
       LEFT JOIN documentos.documentos_archivos da
         ON da.id = o.archivo_id
@@ -551,27 +550,13 @@ export class DocumentosRepository {
     const expediente = expedienteRows[0];
 
     if (ocr.documento_id) {
-      await sql`
-        INSERT INTO documentos.expediente_documentos (
-          expediente_id,
-          documento_id,
-          tipo_relacion,
-          es_principal,
-          orden
-        )
-        VALUES (
-          ${expediente.id},
-          ${ocr.documento_id},
-          ${params.tipoRelacionPrincipal},
-          true,
-          1
-        )
-        ON CONFLICT (expediente_id, documento_id)
-        DO UPDATE SET
-          tipo_relacion = EXCLUDED.tipo_relacion,
-          es_principal = true,
-          orden = 1
-      `;
+      await this.upsertExpedienteDocumento({
+        expedienteId: expediente.id,
+        documentoId: ocr.documento_id,
+        tipoRelacion: params.tipoRelacionPrincipal,
+        esPrincipal: true,
+        orden: 1,
+      });
     }
 
     return expediente;
@@ -646,40 +631,36 @@ export class DocumentosRepository {
       };
     }
 
-    const rows = await sql`
-      INSERT INTO documentos.expediente_documentos (
-        expediente_id,
-        documento_id,
-        tipo_relacion,
-        es_principal,
-        orden
-      )
-      VALUES (
-        ${params.expedienteId},
-        ${ocr.documento_id},
-        ${params.tipoRelacion},
-        ${params.esPrincipal ?? false},
-        ${params.orden ?? 0}
-      )
-      ON CONFLICT (expediente_id, documento_id)
-      DO UPDATE SET
-        tipo_relacion = EXCLUDED.tipo_relacion,
-        es_principal = EXCLUDED.es_principal,
-        orden = EXCLUDED.orden
-      RETURNING *
-    `;
-    
-    await sql`
+    const vinculo = await this.upsertExpedienteDocumento({
+      expedienteId: params.expedienteId,
+      documentoId: ocr.documento_id,
+      tipoRelacion: params.tipoRelacion,
+      esPrincipal: params.esPrincipal ?? false,
+      orden: params.orden ?? 0,
+    });
+
+    const ocrUpdatedRows = await sql`
       UPDATE documentos.ocr_resultados
       SET
-        expediente_id = ${params.expedienteId},
-        vinculado_en = now()
+        metadata = COALESCE(metadata, '{}'::jsonb)
+          || jsonb_build_object(
+            'vinculoExpediente',
+            jsonb_build_object(
+              'expedienteId', ${params.expedienteId},
+              'documentoId', ${ocr.documento_id},
+              'tipoRelacion', ${params.tipoRelacion},
+              'esPrincipal', ${params.esPrincipal ?? false},
+              'orden', ${params.orden ?? 0},
+              'vinculadoEn', now()
+            )
+          )
       WHERE id = ${params.ocrResultadoId}
+      RETURNING *
     `;
 
     return {
-      ocr,
-      vinculo: rows[0],
+      ocr: ocrUpdatedRows[0] ?? ocr,
+      vinculo,
     };
   }
 
@@ -934,41 +915,28 @@ export class DocumentosRepository {
     const tipoRelacion = this.tipoRelacionParaExpediente(params.tipoPropuesto ?? null);
     const esPrincipal = tipoRelacion.startsWith('principal_');
 
-    await sql`
-      INSERT INTO documentos.expediente_documentos (
-        expediente_id,
-        documento_id,
-        tipo_relacion,
-        es_principal,
-        orden
-      )
-      VALUES (
-        ${expediente.id},
-        ${params.documentoId},
-        ${tipoRelacion},
-        ${esPrincipal},
-        ${esPrincipal ? 1 : 0}
-      )
-      ON CONFLICT (expediente_id, documento_id)
-      DO UPDATE SET
-        tipo_relacion = EXCLUDED.tipo_relacion,
-        es_principal = EXCLUDED.es_principal,
-        orden = EXCLUDED.orden
-    `;
+    const vinculo = await this.upsertExpedienteDocumento({
+      expedienteId: expediente.id,
+      documentoId: params.documentoId,
+      tipoRelacion,
+      esPrincipal,
+      orden: esPrincipal ? 1 : 0,
+    });
 
     const ocrRows = await sql`
       UPDATE documentos.ocr_resultados
       SET
-        expediente_id = ${expediente.id},
-        vinculado_en = now(),
         metadata = COALESCE(metadata, '{}'::jsonb)
           || jsonb_build_object(
             'vinculoExpediente',
             jsonb_build_object(
               'expedienteId', ${expediente.id},
+              'documentoId', ${params.documentoId},
               'clienteDestinoId', ${expediente.cliente_destino_id},
               'codigoExpediente', ${expediente.codigo_expediente},
               'tipoRelacion', ${tipoRelacion},
+              'esPrincipal', ${esPrincipal},
+              'orden', ${esPrincipal ? 1 : 0},
               'vinculadoEn', now()
             )
           )
@@ -979,7 +947,66 @@ export class DocumentosRepository {
     return {
       expediente,
       ocr: ocrRows[0],
+      vinculo,
     };
+  }
+
+  private async upsertExpedienteDocumento(params: {
+    expedienteId: number;
+    documentoId: number;
+    tipoRelacion: string;
+    esPrincipal: boolean;
+    orden: number;
+  }) {
+    const updatedRows = await sql`
+      UPDATE documentos.expediente_documentos
+      SET
+        tipo_relacion = ${params.tipoRelacion},
+        es_principal = ${params.esPrincipal},
+        orden = ${params.orden}
+      WHERE expediente_id = ${params.expedienteId}
+        AND documento_id = ${params.documentoId}
+      RETURNING
+        expediente_id,
+        documento_id,
+        tipo_relacion,
+        es_principal,
+        orden
+    `;
+
+    if (updatedRows[0]) {
+      return updatedRows[0];
+    }
+
+    const insertedRows = await sql`
+      INSERT INTO documentos.expediente_documentos (
+        expediente_id,
+        documento_id,
+        tipo_relacion,
+        es_principal,
+        orden
+      )
+      SELECT
+        ${params.expedienteId},
+        ${params.documentoId},
+        ${params.tipoRelacion},
+        ${params.esPrincipal},
+        ${params.orden}
+      WHERE NOT EXISTS (
+        SELECT 1
+        FROM documentos.expediente_documentos
+        WHERE expediente_id = ${params.expedienteId}
+          AND documento_id = ${params.documentoId}
+      )
+      RETURNING
+        expediente_id,
+        documento_id,
+        tipo_relacion,
+        es_principal,
+        orden
+    `;
+
+    return insertedRows[0] ?? null;
   }
 
   private buildClaveDocumental(
