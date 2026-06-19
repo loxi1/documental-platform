@@ -19,6 +19,27 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useExpedientes } from "@/hooks/useExpedientes";
 import type { Expediente, ExpedienteDocumento } from "@/types/expediente";
 
+type ExpedientesApiResponse = {
+  total?: number;
+  limit?: number;
+  offset?: number;
+  data?: Expediente[];
+};
+
+function normalizeExpedientes(input: unknown): Expediente[] {
+  if (Array.isArray(input)) return input as Expediente[];
+
+  if (
+    input &&
+    typeof input === "object" &&
+    "data" in input &&
+    Array.isArray((input as ExpedientesApiResponse).data)
+  ) {
+    return (input as ExpedientesApiResponse).data ?? [];
+  }
+
+  return [];
+}
 
 function text(value: unknown, fallback = "") {
   if (value === null || value === undefined) return fallback;
@@ -26,48 +47,86 @@ function text(value: unknown, fallback = "") {
   return normalized || fallback;
 }
 
+function field<T = unknown>(source: unknown, key: string): T | undefined {
+  if (!source || typeof source !== "object") return undefined;
+  return (source as unknown as Record<string, T | undefined>)[key];
+}
+
 function getEmpresa(expediente: Expediente) {
-  return text(expediente.empresa_codigo ?? expediente.empresaCodigo, "-");
+  return text(
+    field(expediente, "empresa_codigo") ?? field(expediente, "empresaCodigo"),
+    "-",
+  );
 }
 
 function getCodigoExpediente(expediente: Expediente) {
-  return text(expediente.codigo_expediente ?? expediente.codigoExpediente, "");
+  return text(
+    field(expediente, "codigo_expediente") ?? field(expediente, "codigoExpediente"),
+    "",
+  );
 }
 
-function shouldHideDescription(description?: string | null) {
-  const value = text(description).toLowerCase();
-
-  if (!value) return true;
-
-  return [
-    "expediente documental de prueba",
-    "expediente creado desde ocr confirmado",
-    "expediente creado desde ocr",
-  ].some((technicalText) => value.includes(technicalText));
+function getClienteNombre(expediente: Expediente) {
+  return text(
+    field(expediente, "cliente_nombre") ??
+      field(expediente, "clienteNombre") ??
+      field(expediente, "cliente_abreviatura") ??
+      field(expediente, "clienteAbreviatura") ??
+      getEmpresa(expediente),
+    "-",
+  );
 }
 
-function getDescripcionAmigable(expediente: Expediente) {
-  if (!shouldHideDescription(expediente.descripcion)) return expediente.descripcion ?? "";
+function getDescripcion(expediente: Expediente) {
+  return text(field(expediente, "descripcion"), "Pendiente de descripción");
+}
 
-
-  return "Pendiente de descripción";
+function getEstado(expediente: Expediente) {
+  return text(field(expediente, "estado"), "abierto");
 }
 
 function getPrincipal(expediente: Expediente): ExpedienteDocumento | null {
-  if (expediente.documentoPrincipal) return expediente.documentoPrincipal;
+  const documentoPrincipal = field<ExpedienteDocumento | null>(
+    expediente,
+    "documentoPrincipal",
+  );
+
+  if (documentoPrincipal) return documentoPrincipal;
+
+  const documentosPrincipales = field<ExpedienteDocumento[]>(
+    expediente,
+    "documentosPrincipales",
+  );
+  const documentos = field<ExpedienteDocumento[]>(expediente, "documentos");
+  const documentosAdjuntos = field<ExpedienteDocumento[]>(
+    expediente,
+    "documentosAdjuntos",
+  );
 
   return (
-    expediente.documentos?.find((documento) => documento.esPrincipal) ??
-    expediente.documentosAdjuntos?.find((documento) => documento.esPrincipal) ??
+    documentosPrincipales?.[0] ??
+    documentos?.find((documento) => Boolean(field(documento, "esPrincipal"))) ??
+    documentosAdjuntos?.find((documento) => Boolean(field(documento, "esPrincipal"))) ??
     null
   );
 }
 
 function getAllDocuments(expediente: Expediente) {
+  const documentos = field<ExpedienteDocumento[]>(expediente, "documentos") ?? [];
+  const documentosPrincipales =
+    field<ExpedienteDocumento[]>(expediente, "documentosPrincipales") ?? [];
+  const documentoPrincipal = field<ExpedienteDocumento | null>(
+    expediente,
+    "documentoPrincipal",
+  );
+  const documentosAdjuntos =
+    field<ExpedienteDocumento[]>(expediente, "documentosAdjuntos") ?? [];
+
   return [
-    ...(expediente.documentos ?? []),
-    ...(expediente.documentoPrincipal ? [expediente.documentoPrincipal] : []),
-    ...(expediente.documentosAdjuntos ?? []),
+    ...documentos,
+    ...documentosPrincipales,
+    ...(documentoPrincipal ? [documentoPrincipal] : []),
+    ...documentosAdjuntos,
   ];
 }
 
@@ -75,8 +134,9 @@ function hasDocument(expediente: Expediente, aliases: string[]) {
   const normalizedAliases = aliases.map((alias) => alias.toUpperCase());
 
   return getAllDocuments(expediente).some((documento) => {
-    const tipo = String(documento.tipoDocumental ?? "").toUpperCase();
-    const relacion = String(documento.tipoRelacion ?? "").toUpperCase();
+    const doc = documento as unknown as Record<string, unknown>;
+    const tipo = String(doc.tipoDocumental ?? doc.tipo_documental ?? "").toUpperCase();
+    const relacion = String(doc.tipoRelacion ?? doc.tipo_relacion ?? "").toUpperCase();
 
     return normalizedAliases.some(
       (alias) => tipo.includes(alias) || relacion.includes(alias),
@@ -84,40 +144,23 @@ function hasDocument(expediente: Expediente, aliases: string[]) {
   });
 }
 
-function getPrincipalFromClave(expediente: Expediente) {
-  const clave = getClavePrincipal(expediente);
-  if (!clave) return "Sin principal";
-
-  const parts = clave.split("|").filter(Boolean);
-  const tipo = parts.find((part) => ["FACTURA", "OC", "OS"].includes(part.toUpperCase()));
-
-  if (tipo?.toUpperCase() === "FACTURA") {
-    const serie = parts.at(-2);
-    const numero = parts.at(-1);
-    return serie && numero ? `FACTURA ${serie}-${numero}` : "FACTURA";
-  }
-
-  if (tipo?.toUpperCase() === "OC" || tipo?.toUpperCase() === "OS") {
-    const numero = parts.at(-1);
-    return numero ? `${tipo.toUpperCase()} ${numero}` : tipo.toUpperCase();
-  }
-
-  return clave;
-}
-
 function principalLabel(expediente: Expediente) {
   const principal = getPrincipal(expediente);
 
-  if (!principal) return getPrincipalFromClave(expediente);
+  if (!principal) return "Sin principal";
 
-  const tipo = text(principal.tipoDocumental ?? principal.tipoRelacion, "DOC")
+  const doc = principal as unknown as Record<string, unknown>;
+  const tipo = text(doc.tipoDocumental ?? doc.tipo_documental ?? doc.tipoRelacion ?? doc.tipo_relacion, "DOC")
     .replace("PRINCIPAL_", "")
     .replace("ADJUNTO_", "")
     .replaceAll("_", " ")
     .toUpperCase();
-  const numero = [principal.serie, principal.numero].filter(Boolean).join("-");
 
-  return numero ? `${tipo} ${numero}` : tipo;
+  const serie = text(doc.serie);
+  const numero = text(doc.numero);
+  const labelNumero = [serie, numero].filter(Boolean).join("-");
+
+  return labelNumero ? `${tipo} ${labelNumero}` : tipo;
 }
 
 function AdjuntosBadge({ label, active }: { label: string; active: boolean }) {
@@ -135,7 +178,7 @@ function AdjuntosBadge({ label, active }: { label: string; active: boolean }) {
 
 function ExpedienteCell({ expediente }: { expediente: Expediente }) {
   const codigo = getCodigoExpediente(expediente);
-  const descripcion = "";
+  const descripcion = getDescripcion(expediente);
 
   return (
     <div className="space-y-1">
@@ -183,49 +226,37 @@ export function ComprasBandeja() {
     offset: 0,
   });
 
+  const expedientes = useMemo(() => normalizeExpedientes(data), [data]);
+
   const rows = useMemo(() => {
     const value = search.trim().toLowerCase();
-    const expedientes = (() => {
-      const payload = data as any;
-
-      if (Array.isArray(payload)) {
-        return payload;
-      }
-
-      if (Array.isArray(payload?.data)) {
-        return payload.data;
-      }
-
-      return [];
-    })();
 
     if (!value) return expedientes;
 
     return expedientes.filter((expediente) =>
       [
-        expediente.correlativo,
         getEmpresa(expediente),
+        getClienteNombre(expediente),
         getCodigoExpediente(expediente),
-        getDescripcionAmigable(expediente),
-        expediente.descripcion,
+        getDescripcion(expediente),
         principalLabel(expediente),
-        getClavePrincipal(expediente),
+        getEstado(expediente),
       ]
         .filter(Boolean)
         .join(" ")
         .toLowerCase()
         .includes(value),
     );
-  }, [data, search]);
+  }, [expedientes, search]);
 
   const metrics = useMemo(() => {
-    const expedientes = data ?? [];
     const abiertos = expedientes.length;
-    const conPrincipal = expedientes.filter((expediente) => principalLabel(expediente) !== "Sin principal").length;
-    const gastosDirectos = expedientes.filter((expediente) => inferTipoCalculado(expediente) === "GASTO_DIRECTO").length;
+    const conPrincipal = expedientes.filter(
+      (expediente) => principalLabel(expediente) !== "Sin principal",
+    ).length;
 
-    return { abiertos, conPrincipal, gastosDirectos };
-  }, [data]);
+    return { abiertos, conPrincipal };
+  }, [expedientes]);
 
   if (isLoading) {
     return (
@@ -252,7 +283,7 @@ export function ComprasBandeja() {
         <div>
           <h1 className="text-2xl font-bold">Compras</h1>
           <p className="text-sm text-muted-foreground">
-            Bandeja operativa de expedientes, principales y adjuntos.
+            Bandeja operativa de expedientes, documentos principales y adjuntos.
           </p>
         </div>
 
@@ -264,7 +295,7 @@ export function ComprasBandeja() {
         </Button>
       </div>
 
-      <div className="grid gap-3 md:grid-cols-3">
+      <div className="grid gap-3 md:grid-cols-2">
         <Card>
           <CardContent className="py-4">
             <div className="text-xs text-muted-foreground">Expedientes abiertos</div>
@@ -273,7 +304,7 @@ export function ComprasBandeja() {
         </Card>
         <Card>
           <CardContent className="py-4">
-            <div className="text-xs text-muted-foreground">Con principal</div>
+            <div className="text-xs text-muted-foreground">Con documento principal</div>
             <div className="text-2xl font-bold">{metrics.conPrincipal}</div>
           </CardContent>
         </Card>
@@ -309,7 +340,7 @@ export function ComprasBandeja() {
             </select>
 
             <Input
-              placeholder="Buscar por expediente, descripción, principal o proveedor..."
+              placeholder="Buscar por expediente, descripción, principal o empresa..."
               value={search}
               onChange={(event) => setSearch(event.target.value)}
             />
@@ -339,8 +370,10 @@ export function ComprasBandeja() {
                 <thead>
                   <tr className="border-b text-left text-muted-foreground">
                     <th className="py-2">Expediente</th>
+                    <th>Empresa</th>
                     <th>Documento principal</th>
                     <th>Adjuntos</th>
+                    <th>Estado</th>
                     <th className="text-right">Acciones</th>
                   </tr>
                 </thead>
@@ -356,17 +389,26 @@ export function ComprasBandeja() {
 
                     return (
                       <tr key={expediente.id} className="border-b align-top hover:bg-muted/30">
-                        <td className="w-[40%] py-3 pr-4">
+                        <td className="w-[32%] py-3 pr-4">
                           <ExpedienteCell expediente={expediente} />
                         </td>
-                        <td className="w-[30%] py-3 pr-4">
+                        <td className="w-[18%] py-3 pr-4">
+                          <div className="font-medium">{getEmpresa(expediente)}</div>
+                          <div className="line-clamp-1 text-xs text-muted-foreground">
+                            {getClienteNombre(expediente)}
+                          </div>
+                        </td>
+                        <td className="w-[24%] py-3 pr-4">
                           <div className="font-medium">{principalLabel(expediente)}</div>
                         </td>
-                        <td className="w-[20%] py-3 pr-4">
+                        <td className="w-[14%] py-3 pr-4">
                           <div className="flex flex-wrap gap-1.5">
                             <AdjuntosBadge label="FAC" active={tieneFactura} />
                             <AdjuntosBadge label="GUÍA" active={tieneGuia} />
                           </div>
+                        </td>
+                        <td className="w-[8%] py-3 pr-4">
+                          <Badge variant="secondary">{getEstado(expediente)}</Badge>
                         </td>
                         <td className="w-[10%] py-3 text-right">
                           <ActionsCell expediente={expediente} />
