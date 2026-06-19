@@ -19,7 +19,6 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useExpedientes } from "@/hooks/useExpedientes";
 import type { Expediente, ExpedienteDocumento } from "@/types/expediente";
 
-type TipoCalculado = "OP" | "CENTRO_COSTO" | "GASTO_DIRECTO" | "SIN_CLASIFICAR";
 
 function text(value: unknown, fallback = "") {
   if (value === null || value === undefined) return fallback;
@@ -33,20 +32,6 @@ function getEmpresa(expediente: Expediente) {
 
 function getCodigoExpediente(expediente: Expediente) {
   return text(expediente.codigo_expediente ?? expediente.codigoExpediente, "");
-}
-
-function getClavePrincipal(expediente: Expediente) {
-  return text(expediente.clave_principal ?? expediente.clavePrincipal, "");
-}
-
-function inferTipoCalculado(expediente: Expediente): TipoCalculado {
-  const codigo = getCodigoExpediente(expediente);
-
-  if (codigo.startsWith("05")) return "OP";
-  if (codigo.startsWith("03")) return "CENTRO_COSTO";
-  if (!codigo && getClavePrincipal(expediente)) return "GASTO_DIRECTO";
-
-  return "SIN_CLASIFICAR";
 }
 
 function shouldHideDescription(description?: string | null) {
@@ -64,11 +49,6 @@ function shouldHideDescription(description?: string | null) {
 function getDescripcionAmigable(expediente: Expediente) {
   if (!shouldHideDescription(expediente.descripcion)) return expediente.descripcion ?? "";
 
-  const tipo = inferTipoCalculado(expediente);
-
-  if (tipo === "OP") return "Orden de Producción";
-  if (tipo === "CENTRO_COSTO") return "Centro de costo";
-  if (tipo === "GASTO_DIRECTO") return "Factura directa";
 
   return "Pendiente de descripción";
 }
@@ -155,7 +135,7 @@ function AdjuntosBadge({ label, active }: { label: string; active: boolean }) {
 
 function ExpedienteCell({ expediente }: { expediente: Expediente }) {
   const codigo = getCodigoExpediente(expediente);
-  const descripcion = getDescripcionAmigable(expediente);
+  const descripcion = "";
 
   return (
     <div className="space-y-1">
@@ -205,7 +185,19 @@ export function ComprasBandeja() {
 
   const rows = useMemo(() => {
     const value = search.trim().toLowerCase();
-    const expedientes = data ?? [];
+    const expedientes = (() => {
+      const payload = data as any;
+
+      if (Array.isArray(payload)) {
+        return payload;
+      }
+
+      if (Array.isArray(payload?.data)) {
+        return payload.data;
+      }
+
+      return [];
+    })();
 
     if (!value) return expedientes;
 
@@ -283,12 +275,6 @@ export function ComprasBandeja() {
           <CardContent className="py-4">
             <div className="text-xs text-muted-foreground">Con principal</div>
             <div className="text-2xl font-bold">{metrics.conPrincipal}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="py-4">
-            <div className="text-xs text-muted-foreground">Facturas directas</div>
-            <div className="text-2xl font-bold">{metrics.gastosDirectos}</div>
           </CardContent>
         </Card>
       </div>
