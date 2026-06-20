@@ -1,24 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import type { ReactNode } from "react";
 import { useMemo, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { useOcrResultados } from "@/hooks/useOcrResultados";
 import {
-  crearExpedienteDesdeOcr,
   getOcrResultado,
   sugerirExpedienteOcr,
   vincularOcrAExpediente,
 } from "@/services/ocr-resultados";
-import { OcrResultado, SugerenciaExpediente } from "@/types/ocr";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import type { OcrResultado, SugerenciaExpediente } from "@/types/ocr";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -30,91 +22,305 @@ const RELACIONES_DOCUMENTALES = [
   "adjunto_factura",
   "adjunto_guia",
   "adjunto_nota_ingreso",
-  "adjunto_pago_transferencia",
-  "adjunto_pago_detraccion",
+  "adjunto_transferencia",
+  "adjunto_detraccion",
   "adjunto_recibo_honorario",
-];
+  "adjunto_otro",
+] as const;
 
-function parseClienteFromClave(clave?: string | null) {
-  return clave?.split("|")?.[0] || "BBTI";
+type MetadataOcr = Record<string, unknown> & {
+  numero?: string | null;
+  fechaEmision?: string | null;
+  proveedor?: string | null;
+  rucProveedor?: string | null;
+  montoTotal?: number | string | null;
+  moneda?: string | null;
+  codigoExpediente?: string | null;
+  expedienteId?: string | number | null;
+  expedienteVinculado?: ExpedienteVinculado | null;
+  vinculoExpediente?: ExpedienteVinculado | null;
+};
+
+type ExpedienteVinculado = {
+  id?: string | number | null;
+  expedienteId?: string | number | null;
+  expediente_id?: string | number | null;
+  cliente_destino_id?: string | number | null;
+  clienteDestinoId?: string | number | null;
+  empresa_codigo?: string | null;
+  empresaCodigo?: string | null;
+  cliente_abreviatura?: string | null;
+  clienteAbreviatura?: string | null;
+  codigo_expediente?: string | null;
+  codigoExpediente?: string | null;
+  descripcion?: string | null;
+  nombre?: string | null;
+  detalle?: string | null;
+};
+
+type OcrResultadoView = OcrResultado & {
+  id: number;
+  documento_id?: number | null;
+  documentoId?: number | null;
+  archivo_id?: number | null;
+  archivoId?: number | null;
+  tipo_propuesto?: string | null;
+  tipoPropuesto?: string | null;
+  tipo_documental?: string | null;
+  tipoDocumental?: string | null;
+  estado?: string | null;
+  confidence?: number | string | null;
+  confianza?: number | string | null;
+  clave_documental?: string | null;
+  claveDocumental?: string | null;
+  expediente_id?: string | number | null;
+  expedienteId?: string | number | null;
+  expediente_vinculado?: ExpedienteVinculado | null;
+  expedienteVinculado?: ExpedienteVinculado | null;
+  vinculoExpediente?: ExpedienteVinculado | null;
+  nombre_archivo?: string | null;
+  nombreArchivo?: string | null;
+  storage_key?: string | null;
+  storageKey?: string | null;
+  metadata?: MetadataOcr | string | null;
+  creado_en?: string | null;
+  creadoEn?: string | null;
+  vinculado_en?: string | null;
+  vinculadoEn?: string | null;
+};
+
+type MetadataRow = {
+  key: string;
+  value: string;
+};
+
+function texto(value: unknown, fallback = "—") {
+  if (value === null || value === undefined || value === "") return fallback;
+  return String(value);
 }
 
-function parseYearFromOcr(item: OcrResultado | null) {
-  const fecha = item?.metadata?.fechaEmision;
+function fecha(value: unknown) {
+  if (!value) return "—";
 
-  if (typeof fecha === "string" && /^\d{4}-\d{2}-\d{2}$/.test(fecha)) {
-    return fecha.slice(0, 4);
+  const date = new Date(String(value));
+  if (Number.isNaN(date.getTime())) return String(value);
+
+  return date.toLocaleString("es-PE");
+}
+
+function porcentaje(value: unknown) {
+  if (value === null || value === undefined || value === "") return "—";
+
+  const numberValue = Number(value);
+  if (Number.isNaN(numberValue)) return String(value);
+
+  if (numberValue <= 1) return `${Math.round(numberValue * 100)}%`;
+  return `${Math.round(numberValue)}%`;
+}
+
+function parseMaybeJson<T = any>(value: unknown): T | null {
+  if (!value) return null;
+  if (typeof value === "object") return value as T;
+
+  if (typeof value === "string") {
+    try {
+      return JSON.parse(value) as T;
+    } catch {
+      return null;
+    }
   }
 
-  return new Date().getFullYear().toString();
+  return null;
 }
 
-function defaultRelacion(item: OcrResultado | null) {
-  const tipo = item?.tipo_propuesto?.toLowerCase();
+function getMetadata(item?: OcrResultadoView | null): MetadataOcr {
+  const raw = item as any;
+
+  return (
+    parseMaybeJson<MetadataOcr>(raw?.metadata) ??
+    parseMaybeJson<MetadataOcr>(raw?.metadata_completa) ??
+    parseMaybeJson<MetadataOcr>(raw?.metadataCompleta) ??
+    {}
+  );
+}
+
+function getTipo(item?: OcrResultadoView | null) {
+  return texto(
+    item?.tipo_propuesto ??
+      item?.tipoPropuesto ??
+      item?.tipo_documental ??
+      item?.tipoDocumental,
+  );
+}
+
+function getClave(item?: OcrResultadoView | null) {
+  return texto(item?.clave_documental ?? item?.claveDocumental);
+}
+
+function getExpedienteVinculado(
+  item?: OcrResultadoView | null,
+): ExpedienteVinculado | null {
+  const raw = item as any;
+  const metadata = getMetadata(item);
+
+  const vinculo =
+    raw?.expedienteVinculado ??
+    raw?.expediente_vinculado ??
+    raw?.vinculoExpediente ??
+    raw?.vinculo_expediente ??
+    metadata?.expedienteVinculado ??
+    (metadata as any)?.expediente_vinculado ??
+    metadata?.vinculoExpediente ??
+    (metadata as any)?.vinculo_expediente ??
+    null;
+
+  return parseMaybeJson<ExpedienteVinculado>(vinculo) ?? vinculo;
+}
+
+function getExpedienteId(item?: OcrResultadoView | null) {
+  const metadata = getMetadata(item);
+  const expedienteVinculado = getExpedienteVinculado(item);
+
+  return (
+    item?.expediente_id ??
+    item?.expedienteId ??
+    metadata.expedienteId ??
+    expedienteVinculado?.id ??
+    expedienteVinculado?.expedienteId ??
+    expedienteVinculado?.expediente_id ??
+    null
+  );
+}
+
+function getCodigoExpediente(item?: OcrResultadoView | null) {
+  const metadata = getMetadata(item);
+  const expedienteVinculado = getExpedienteVinculado(item);
+
+  return (
+    expedienteVinculado?.codigoExpediente ??
+    expedienteVinculado?.codigo_expediente ??
+    metadata.codigoExpediente ??
+    (metadata as any)?.codigo_expediente ??
+    null
+  );
+}
+
+function getDescripcionExpediente(item?: OcrResultadoView | null) {
+  const expedienteVinculado = getExpedienteVinculado(item);
+
+  return (
+    expedienteVinculado?.descripcion ??
+    expedienteVinculado?.nombre ??
+    expedienteVinculado?.detalle ??
+    null
+  );
+}
+
+function getEmpresaExpediente(item?: OcrResultadoView | null) {
+  const raw = item as any;
+  const metadata = getMetadata(item);
+  const expedienteVinculado = getExpedienteVinculado(item);
+
+  return (
+    expedienteVinculado?.empresaCodigo ??
+    expedienteVinculado?.empresa_codigo ??
+    expedienteVinculado?.clienteAbreviatura ??
+    expedienteVinculado?.cliente_abreviatura ??
+    raw?.clienteAbreviatura ??
+    raw?.cliente_abreviatura ??
+    metadata?.clienteAbreviatura ??
+    (metadata as any)?.cliente_abreviatura ??
+    null
+  );
+}
+
+function estadoVinculacion(item: OcrResultadoView) {
+  if (getExpedienteId(item)) return "Vinculado";
+  if (item.estado === "confirmado") return "Pendiente vínculo";
+  return "Pendiente revisión";
+}
+
+function defaultRelacion(item: OcrResultadoView | null) {
+  const tipo = String(
+    item?.tipo_propuesto ??
+      item?.tipoPropuesto ??
+      item?.tipo_documental ??
+      item?.tipoDocumental ??
+      "",
+  ).toLowerCase();
 
   if (tipo === "oc") return "principal_oc";
   if (tipo === "os") return "principal_os";
   if (tipo === "factura") return "principal_factura";
-  if (tipo === "guia_remision") return "adjunto_guia";
+  if (tipo === "guia" || tipo === "guia_remision") return "adjunto_guia";
   if (tipo === "nota_ingreso") return "adjunto_nota_ingreso";
   if (tipo === "recibo_honorario") return "adjunto_recibo_honorario";
 
   return "adjunto_factura";
 }
 
-function metadataToRows(metadata?: Record<string, unknown> | null) {
+function metadataToRows(metadata?: MetadataOcr | null): MetadataRow[] {
   if (!metadata) return [];
 
   return Object.entries(metadata).map(([key, value]) => ({
     key,
-    value:
-      typeof value === "object"
-        ? JSON.stringify(value)
-        : String(value ?? ""),
+    value: typeof value === "object" ? JSON.stringify(value) : String(value ?? ""),
   }));
 }
 
-function estadoVinculacion(item: OcrResultado) {
-  if (item.expediente_id) return "Vinculado";
-  if (item.estado === "confirmado") return "Pendiente vínculo";
-  return "Pendiente confirmación";
+function asOcrResultadoView(item: OcrResultado): OcrResultadoView {
+  return item as OcrResultadoView;
+}
+
+function getDocumentoId(item?: OcrResultadoView | null) {
+  return item?.documento_id ?? item?.documentoId ?? null;
+}
+
+function getArchivoId(item?: OcrResultadoView | null) {
+  return item?.archivo_id ?? item?.archivoId ?? null;
+}
+
+function getNombreArchivo(item?: OcrResultadoView | null) {
+  return item?.nombre_archivo ?? item?.nombreArchivo ?? null;
 }
 
 export default function OcrResultadosPage() {
   const queryClient = useQueryClient();
   const { data, isLoading, error } = useOcrResultados();
 
-  const [selected, setSelected] = useState<OcrResultado | null>(null);
+  const resultados: OcrResultadoView[] = useMemo(
+    () => (Array.isArray(data) ? data.map(asOcrResultadoView) : []),
+    [data],
+  );
+
+  const [selected, setSelected] = useState<OcrResultadoView | null>(null);
   const [sugerencia, setSugerencia] = useState<SugerenciaExpediente | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [expedienteId, setExpedienteId] = useState("");
   const [tipoRelacion, setTipoRelacion] = useState("adjunto_factura");
-  const [correlativo, setCorrelativo] = useState("");
-  const [tipoExpediente, setTipoExpediente] = useState("OP");
-  const [codigoOp, setCodigoOp] = useState("");
-  const [codigoCentroCosto, setCodigoCentroCosto] = useState("");
 
-  const metadataRows = useMemo(
-    () => metadataToRows(selected?.metadata),
-    [selected],
-  );
+  const metadata = getMetadata(selected);
+  const metadataRows = useMemo(() => metadataToRows(metadata), [metadata]);
 
-  const selectedYaVinculado = Boolean(selected?.expediente_id);
+  const selectedExpedienteId = getExpedienteId(selected);
+  const selectedCodigoExpediente = getCodigoExpediente(selected);
+  const selectedDescripcionExpediente = getDescripcionExpediente(selected);
+  const selectedEmpresaExpediente = getEmpresaExpediente(selected);
+  const selectedYaVinculado = Boolean(selectedExpedienteId);
 
   const refreshList = () => {
     queryClient.invalidateQueries({ queryKey: ["ocr-resultados"] });
   };
 
   const hydrateSelected = (ocr: OcrResultado) => {
-    setSelected(ocr);
+    const view = asOcrResultadoView(ocr);
+    const nextExpedienteId = getExpedienteId(view);
+
+    setSelected(view);
     setSugerencia(null);
     setFeedback(null);
-    setTipoRelacion(defaultRelacion(ocr));
-    setExpedienteId(ocr.expediente_id ? String(ocr.expediente_id) : "");
-
-    const cliente = parseClienteFromClave(ocr.clave_documental);
-    const year = parseYearFromOcr(ocr);
-    setCorrelativo(`${cliente}-${year}-OCR-${ocr.id}`);
+    setTipoRelacion(defaultRelacion(view));
+    setExpedienteId(nextExpedienteId ? String(nextExpedienteId) : "");
   };
 
   const detalleMutation = useMutation({
@@ -128,37 +334,10 @@ export default function OcrResultadosPage() {
       setSugerencia(result);
       setFeedback(null);
 
-      if (result.expediente?.id) {
-        setExpedienteId(String(result.expediente.id));
+      const expediente = result.expediente as any;
+      if (expediente?.id) {
+        setExpedienteId(String(expediente.id));
         setTipoRelacion("adjunto_factura");
-      }
-    },
-  });
-
-  const crearMutation = useMutation({
-    mutationFn: async () => {
-      if (!selected) throw new Error("Seleccione un OCR primero");
-
-      const relacion = tipoRelacion || defaultRelacion(selected);
-      const cliente = parseClienteFromClave(selected.clave_documental);
-
-      return crearExpedienteDesdeOcr(selected.id, {
-        correlativo,
-        empresaCodigo: cliente,
-        tipoExpediente,
-        codigoOp: codigoOp || null,
-        codigoCentroCosto: codigoCentroCosto || null,
-        descripcion: `Expediente creado desde OCR ${selected.id}`,
-        tipoRelacionPrincipal: relacion,
-      });
-    },
-    onSuccess: async () => {
-      setFeedback("Expediente creado correctamente desde OCR.");
-      refreshList();
-
-      if (selected) {
-        const updated = await getOcrResultado(selected.id);
-        hydrateSelected(updated);
       }
     },
   });
@@ -186,90 +365,141 @@ export default function OcrResultadosPage() {
     },
   });
 
-  const abrirDetalle = (item: OcrResultado) => {
+  const abrirDetalle = (item: OcrResultadoView) => {
     detalleMutation.mutate(item.id);
   };
 
-  const sugerir = async (item: OcrResultado) => {
+  const sugerir = (item: OcrResultadoView) => {
     hydrateSelected(item);
     sugerirMutation.mutate(item.id);
   };
 
   if (isLoading) {
-    return <div className="p-6">Cargando OCR resultados...</div>;
+    return (
+      <div className="space-y-6">
+        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+          Cargando OCR resultados...
+        </section>
+      </div>
+    );
   }
 
   if (error) {
     return (
-      <div className="p-6 text-red-600">
-        Error cargando OCR resultados
+      <div className="space-y-6">
+        <section className="rounded-2xl border border-red-200 bg-red-50 p-5 text-red-700 shadow-sm dark:border-red-900 dark:bg-red-950/40 dark:text-red-200">
+          Error cargando OCR resultados.
+        </section>
       </div>
     );
   }
 
   return (
-    <main className="space-y-4">
-      <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+    <div className="space-y-6">
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold">OCR Resultados</h1>
-          <p className="text-sm text-muted-foreground">
-            Propuestas OCR generadas por el worker. Desde aquí se revisan,
-            sugieren y vinculan a expedientes.
+          <p className="text-sm text-slate-400">Documental Platform</p>
+          <h1 className="text-2xl font-semibold text-slate-950 dark:text-slate-100">
+            OCR Resultados
+          </h1>
+          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+            Revisión de resultados OCR, expediente vinculado y acceso directo a Compras 360°.
           </p>
         </div>
 
-        <div className="rounded-lg border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
-          Prioridad: confirmar, sugerir y vincular a expediente.
+        <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-right shadow-sm dark:border-slate-800 dark:bg-slate-900">
+          <p className="text-xs uppercase tracking-wide text-slate-400">Total</p>
+          <p className="text-lg font-semibold text-slate-950 dark:text-slate-100">
+            {resultados.length} resultados
+          </p>
         </div>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Listado</CardTitle>
-        </CardHeader>
+      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <div className="mb-4">
+          <h2 className="text-lg font-semibold text-slate-950 dark:text-slate-100">
+            Listado
+          </h2>
+          <p className="text-sm text-slate-500 dark:text-slate-400">
+            Selecciona un OCR para revisar metadata y vínculo de expediente.
+          </p>
+        </div>
 
-        <CardContent>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b text-left">
-                  <th className="py-2">ID</th>
-                  <th>Tipo</th>
-                  <th>Estado</th>
-                  <th>Vínculo</th>
-                  <th>Confianza</th>
-                  <th>Clave documental</th>
-                  <th>Archivo</th>
-                  <th className="text-right">Acciones</th>
-                </tr>
-              </thead>
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[1040px] text-left text-sm">
+            <thead className="border-b border-slate-200 text-xs uppercase text-slate-500 dark:border-slate-800">
+              <tr>
+                <th className="px-3 py-2">ID</th>
+                <th className="px-3 py-2">Tipo</th>
+                <th className="px-3 py-2">Estado</th>
+                <th className="px-3 py-2">Vínculo</th>
+                <th className="px-3 py-2">Expediente</th>
+                <th className="px-3 py-2">Confianza</th>
+                <th className="px-3 py-2">Clave documental</th>
+                <th className="px-3 py-2">Archivo</th>
+                <th className="px-3 py-2 text-right">Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              {resultados.map((item) => {
+                const itemExpedienteId = getExpedienteId(item);
+                const itemCodigoExpediente = getCodigoExpediente(item);
+                const itemDescripcionExpediente = getDescripcionExpediente(item);
+                const itemEmpresaExpediente = getEmpresaExpediente(item);
+                const vinculado = Boolean(itemExpedienteId);
 
-              <tbody>
-                {data?.map((item) => {
-                  const vinculado = Boolean(item.expediente_id);
-
-                  return (
-                    <tr key={item.id} className="border-b">
-                      <td className="py-2">{item.id}</td>
-                      <td>{item.tipo_propuesto}</td>
-                      <td>
-                        <Badge variant="secondary">
-                          {item.estado}
-                        </Badge>
-                      </td>
-                      <td>
-                        <Badge variant={vinculado ? "default" : "outline"}>
-                          {estadoVinculacion(item)}
-                        </Badge>
-                      </td>
-                      <td>{Number(item.confidence).toFixed(2)}</td>
-                      <td className="font-mono text-xs">
-                        {item.clave_documental}
-                      </td>
-                      <td className="max-w-80 truncate" title={item.nombre_archivo}>
-                        {item.nombre_archivo}
-                      </td>
-                      <td className="space-x-2 text-right">
+                return (
+                  <tr
+                    key={item.id}
+                    className="border-b border-slate-100 last:border-0 dark:border-slate-800"
+                  >
+                    <td className="px-3 py-3 font-medium text-slate-950 dark:text-slate-100">
+                      {item.id}
+                    </td>
+                    <td className="px-3 py-3">{getTipo(item)}</td>
+                    <td className="px-3 py-3">
+                      <Badge variant="outline">{texto(item.estado)}</Badge>
+                    </td>
+                    <td className="px-3 py-3">
+                      <Badge variant={vinculado ? "secondary" : "outline"}>
+                        {estadoVinculacion(item)}
+                      </Badge>
+                    </td>
+                    <td className="px-3 py-3">
+                      {vinculado ? (
+                        <div className="space-y-1">
+                          <Link
+                            href={`/compras/${itemExpedienteId}/ver`}
+                            className="font-semibold text-slate-950 underline-offset-4 hover:underline dark:text-slate-100"
+                          >
+                            #{String(itemExpedienteId)}
+                            {itemCodigoExpediente ? ` · ${itemCodigoExpediente}` : ""}
+                          </Link>
+                          {itemDescripcionExpediente ? (
+                            <p className="text-xs text-slate-500 dark:text-slate-400">
+                              {itemDescripcionExpediente}
+                            </p>
+                          ) : null}
+                          {itemEmpresaExpediente ? (
+                            <p className="text-xs text-slate-400">
+                              {itemEmpresaExpediente}
+                            </p>
+                          ) : null}
+                        </div>
+                      ) : (
+                        <div className="space-y-1">
+                          <span className="text-slate-400">—</span>
+                          <p className="text-xs text-slate-400">Sin expediente</p>
+                        </div>
+                      )}
+                    </td>
+                    <td className="px-3 py-3">
+                      {porcentaje(item.confidence ?? item.confianza)}
+                    </td>
+                    <td className="px-3 py-3">{getClave(item)}</td>
+                    <td className="px-3 py-3">{texto(getNombreArchivo(item))}</td>
+                    <td className="px-3 py-3">
+                      <div className="flex flex-wrap justify-end gap-2">
                         <Button
                           size="sm"
                           variant="outline"
@@ -277,276 +507,309 @@ export default function OcrResultadosPage() {
                         >
                           Ver
                         </Button>
-
-                        {!vinculado && (
+                        {!vinculado ? (
                           <Button
                             size="sm"
+                            variant="outline"
                             onClick={() => sugerir(item)}
                           >
                             Sugerir
                           </Button>
-                        )}
-
-                        {vinculado && (
-                          <Button size="sm" variant="outline" asChild>
-                            <Link href={`/expedientes/${item.expediente_id}`}>
-                              Expediente
+                        ) : null}
+                        {vinculado ? (
+                          <Button asChild size="sm" variant="default">
+                            <Link href={`/compras/${itemExpedienteId}/ver`}>
+                              Ver expediente
                             </Link>
                           </Button>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-
-            {!data?.length && (
-              <div className="py-8 text-center text-sm text-muted-foreground">
-                No hay resultados OCR.
-              </div>
-            )}
-          </div>
-        </CardContent>
-      </Card>
-
-      {selected && (
-        <Card>
-          <CardHeader>
-            <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
-              <div>
-                <CardTitle>Detalle OCR #{selected.id}</CardTitle>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  {selected.nombre_archivo} · {selected.clave_documental}
-                </p>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {selectedYaVinculado && (
-                  <Button size="sm" asChild>
-                    <Link href={`/expedientes/${selected.expediente_id}`}>
-                      Ir al expediente
-                    </Link>
-                  </Button>
-                )}
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    setSelected(null);
-                    setSugerencia(null);
-                    setFeedback(null);
-                  }}
-                >
-                  Cerrar
-                </Button>
-              </div>
-            </div>
-          </CardHeader>
-
-          <CardContent className="space-y-5">
-            {selectedYaVinculado && (
-              <div className="rounded-lg border border-green-200 bg-green-50 p-3 text-sm text-green-800 dark:border-green-900/60 dark:bg-green-950/30 dark:text-green-200">
-                Este OCR ya está vinculado al expediente #{selected.expediente_id}.
-                {selected.vinculado_en ? ` Vinculado en: ${selected.vinculado_en}.` : ""}
-              </div>
-            )}
-
-            <div className="grid gap-3 md:grid-cols-4">
-              <Info label="Tipo" value={selected.tipo_propuesto} />
-              <Info label="Estado" value={selected.estado} />
-              <Info label="Confianza" value={Number(selected.confidence).toFixed(2)} />
-              <Info label="Documento ID" value={selected.documento_id ?? "-"} />
-              <Info label="Expediente ID" value={selected.expediente_id ?? "-"} />
-              <Info label="Vinculado en" value={selected.vinculado_en ?? "-"} />
-              <Info label="Storage" value={selected.storage_provider} />
-              <Info label="Creado en" value={selected.creado_en} />
-            </div>
-
-            <div>
-              <h3 className="mb-2 font-semibold">Metadata detectada</h3>
-              <div className="overflow-x-auto rounded-lg border">
-                <table className="w-full text-sm">
-                  <tbody>
-                    {metadataRows.map((row) => (
-                      <tr key={row.key} className="border-b last:border-0">
-                        <td className="w-52 bg-muted/40 px-3 py-2 font-medium">
-                          {row.key}
-                        </td>
-                        <td className="px-3 py-2 font-mono text-xs">
-                          {row.value}
-                        </td>
-                      </tr>
-                    ))}
-
-                    {!metadataRows.length && (
-                      <tr>
-                        <td className="px-3 py-4 text-muted-foreground">
-                          Sin metadata disponible.
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            {!selectedYaVinculado && (
-              <>
-                <div className="grid gap-4 lg:grid-cols-2">
-                  <div className="rounded-lg border p-4">
-                    <h3 className="font-semibold">Sugerencia</h3>
-                    <p className="mt-1 text-sm text-muted-foreground">
-                      Busca si ya existe un expediente con la misma clave principal.
-                    </p>
-
-                    <Button
-                      className="mt-3"
-                      size="sm"
-                      onClick={() => sugerirMutation.mutate(selected.id)}
-                      disabled={sugerirMutation.isPending}
-                    >
-                      {sugerirMutation.isPending ? "Consultando..." : "Sugerir expediente"}
-                    </Button>
-
-                    {sugerencia && (
-                      <div className="mt-4 space-y-2 rounded-lg bg-muted/40 p-3 text-sm">
-                        <Info label="Acción" value={sugerencia.accion} />
-                        <Info label="Motivo" value={sugerencia.motivo} />
-                        <Info label="Confianza" value={`${sugerencia.confidence}%`} />
-                        {sugerencia.expediente && (
-                          <>
-                            <Info label="Expediente ID" value={sugerencia.expediente.id} />
-                            <Info label="Correlativo" value={sugerencia.expediente.correlativo} />
-                          </>
-                        )}
+                        ) : null}
                       </div>
-                    )}
-                  </div>
+                    </td>
+                  </tr>
+                );
+              })}
 
-                  <div className="rounded-lg border p-4">
-                    <h3 className="font-semibold">Vincular a expediente</h3>
-                    <p className="mt-1 text-sm text-muted-foreground">
-                      Usa la sugerencia o ingresa manualmente el ID del expediente.
+              {!resultados.length ? (
+                <tr>
+                  <td colSpan={9} className="px-3 py-8 text-center text-slate-400">
+                    No hay resultados OCR.
+                  </td>
+                </tr>
+              ) : null}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section className="grid gap-4 xl:grid-cols-[1fr_360px]">
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+          <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-semibold text-slate-950 dark:text-slate-100">
+                Detalle OCR
+              </h2>
+              <p className="text-sm text-slate-500 dark:text-slate-400">
+                Metadata OCR y datos útiles para validar el documento.
+              </p>
+            </div>
+
+            {selected ? (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setSelected(null);
+                  setSugerencia(null);
+                  setFeedback(null);
+                }}
+              >
+                Cerrar
+              </Button>
+            ) : null}
+          </div>
+
+          {selected ? (
+            <div className="space-y-5">
+              <div className="grid gap-3 md:grid-cols-3">
+                {[
+                  ["OCR ID", selected.id],
+                  ["Documento ID", getDocumentoId(selected)],
+                  ["Archivo ID", getArchivoId(selected)],
+                  ["Tipo", getTipo(selected)],
+                  ["Estado", selected.estado],
+                  ["Confianza", porcentaje(selected.confidence ?? selected.confianza)],
+                  ["Número", metadata.numero],
+                  ["Fecha emisión", metadata.fechaEmision],
+                  ["Código expediente", metadata.codigoExpediente],
+                  ["Proveedor", metadata.proveedor],
+                  ["RUC proveedor", metadata.rucProveedor],
+                  ["Monto", metadata.montoTotal],
+                  ["Moneda", metadata.moneda],
+                  ["Clave documental", getClave(selected)],
+                  ["Archivo", getNombreArchivo(selected)],
+                ].map(([label, value]) => (
+                  <div
+                    key={String(label)}
+                    className="rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-950"
+                  >
+                    <p className="text-xs uppercase tracking-wide text-slate-400">
+                      {label}
                     </p>
+                    <p className="mt-1 break-words text-sm font-semibold text-slate-950 dark:text-slate-100">
+                      {texto(value)}
+                    </p>
+                  </div>
+                ))}
+              </div>
 
-                    <div className="mt-3 grid gap-3 md:grid-cols-2">
-                      <label className="space-y-1 text-sm">
-                        <span className="font-medium">Expediente ID</span>
-                        <Input
-                          value={expedienteId}
-                          onChange={(event) => setExpedienteId(event.target.value)}
-                          placeholder="Ej. 1"
-                        />
-                      </label>
+              <section className="rounded-xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950">
+                <h3 className="text-sm font-semibold text-slate-950 dark:text-slate-100">
+                  Expediente vinculado
+                </h3>
 
-                      <label className="space-y-1 text-sm">
-                        <span className="font-medium">Tipo relación</span>
-                        <select
-                          className="h-9 w-full rounded-lg border border-input bg-background px-2 text-sm"
-                          value={tipoRelacion}
-                          onChange={(event) => setTipoRelacion(event.target.value)}
-                        >
-                          {RELACIONES_DOCUMENTALES.map((relacion) => (
-                            <option key={relacion} value={relacion}>
-                              {relacion}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
+                {selectedYaVinculado ? (
+                  <div className="mt-3 flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-slate-400">
+                        Expediente
+                      </p>
+                      <p className="mt-1 text-sm font-semibold text-slate-950 dark:text-slate-100">
+                        #{String(selectedExpedienteId)}
+                        {selectedCodigoExpediente
+                          ? ` · ${selectedCodigoExpediente}`
+                          : ""}
+                      </p>
+                      {selectedDescripcionExpediente ? (
+                        <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
+                          {selectedDescripcionExpediente}
+                        </p>
+                      ) : null}
+                      {selectedEmpresaExpediente ? (
+                        <p className="mt-1 text-xs text-slate-400">
+                          {selectedEmpresaExpediente}
+                        </p>
+                      ) : null}
                     </div>
 
-                    <Button
-                      className="mt-3"
-                      size="sm"
-                      onClick={() => vincularMutation.mutate()}
-                      disabled={vincularMutation.isPending || !expedienteId}
-                    >
-                      {vincularMutation.isPending ? "Vinculando..." : "Vincular expediente"}
+                    <Button asChild size="sm" variant="outline">
+                      <Link href={`/compras/${selectedExpedienteId}/ver`}>
+                        Ver expediente
+                      </Link>
                     </Button>
                   </div>
-                </div>
-
-                {!sugerencia?.expediente && (
-                  <div className="rounded-lg border p-4">
-                    <h3 className="font-semibold">Crear expediente desde OCR</h3>
-                    <p className="mt-1 text-sm text-muted-foreground">
-                      Úsalo cuando la sugerencia indique que no existe expediente para la clave documental.
-                    </p>
-
-                    <div className="mt-3 grid gap-3 md:grid-cols-2 lg:grid-cols-4">
-                      <label className="space-y-1 text-sm">
-                        <span className="font-medium">Correlativo</span>
-                        <Input
-                          value={correlativo}
-                          onChange={(event) => setCorrelativo(event.target.value)}
-                        />
-                      </label>
-
-                      <label className="space-y-1 text-sm">
-                        <span className="font-medium">Tipo expediente</span>
-                        <Input
-                          value={tipoExpediente}
-                          onChange={(event) => setTipoExpediente(event.target.value)}
-                        />
-                      </label>
-
-                      <label className="space-y-1 text-sm">
-                        <span className="font-medium">Código OP</span>
-                        <Input
-                          value={codigoOp}
-                          onChange={(event) => setCodigoOp(event.target.value)}
-                          placeholder="Ej. 050001"
-                        />
-                      </label>
-
-                      <label className="space-y-1 text-sm">
-                        <span className="font-medium">Centro costo</span>
-                        <Input
-                          value={codigoCentroCosto}
-                          onChange={(event) => setCodigoCentroCosto(event.target.value)}
-                          placeholder="Ej. 030001"
-                        />
-                      </label>
-                    </div>
-
-                    <Button
-                      className="mt-3"
-                      size="sm"
-                      onClick={() => crearMutation.mutate()}
-                      disabled={crearMutation.isPending || !correlativo}
-                    >
-                      {crearMutation.isPending ? "Creando..." : "Crear expediente"}
-                    </Button>
-                  </div>
+                ) : (
+                  <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
+                    Este resultado OCR aún no tiene expediente vinculado.
+                  </p>
                 )}
-              </>
-            )}
+              </section>
 
-            {feedback && (
-              <div className="rounded-lg border border-green-200 bg-green-50 p-3 text-sm text-green-800 dark:border-green-900/60 dark:bg-green-950/30 dark:text-green-200">
-                {feedback}
+              <div>
+                <h3 className="mb-3 text-sm font-semibold text-slate-950 dark:text-slate-100">
+                  Metadata completa
+                </h3>
+                <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800">
+                  <table className="w-full min-w-[760px] text-left text-xs">
+                    <thead className="bg-slate-50 uppercase text-slate-500 dark:bg-slate-950">
+                      <tr>
+                        <th className="px-3 py-2">Campo</th>
+                        <th className="px-3 py-2">Valor</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {metadataRows.map((row) => (
+                        <tr
+                          key={row.key}
+                          className="border-t border-slate-100 dark:border-slate-800"
+                        >
+                          <td className="px-3 py-2 font-semibold text-slate-700 dark:text-slate-200">
+                            {row.key}
+                          </td>
+                          <td className="px-3 py-2 text-slate-500 dark:text-slate-400">
+                            {row.value}
+                          </td>
+                        </tr>
+                      ))}
+
+                      {!metadataRows.length ? (
+                        <tr>
+                          <td colSpan={2} className="px-3 py-4 text-slate-400">
+                            Sin metadata disponible.
+                          </td>
+                        </tr>
+                      ) : null}
+                    </tbody>
+                  </table>
+                </div>
               </div>
-            )}
+            </div>
+          ) : (
+            <p className="text-sm text-slate-500 dark:text-slate-400">
+              Selecciona un resultado OCR del listado para revisar el detalle.
+            </p>
+          )}
+        </div>
 
-            {(detalleMutation.error || sugerirMutation.error || crearMutation.error || vincularMutation.error) && (
-              <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-200">
-                Ocurrió un error ejecutando la acción. Revisa consola o backend.
+        <aside className="space-y-4">
+          <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+            <h2 className="text-lg font-semibold text-slate-950 dark:text-slate-100">
+              Vincular a expediente
+            </h2>
+            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+              Usa un expediente existente. No crea expedientes nuevos desde esta vista.
+            </p>
+
+            <div className="mt-4 space-y-3">
+              <div>
+                <label className="text-xs uppercase tracking-wide text-slate-400">
+                  Expediente ID
+                </label>
+                <Input
+                  value={expedienteId}
+                  onChange={(event) => setExpedienteId(event.target.value)}
+                  placeholder="Ejemplo: 41"
+                />
               </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
-    </main>
-  );
-}
 
-function Info({ label, value }: { label: string; value: ReactNode }) {
-  return (
-    <div className="space-y-1">
-      <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-        {label}
-      </div>
-      <div className="break-all text-sm">{value}</div>
+              <div>
+                <label className="text-xs uppercase tracking-wide text-slate-400">
+                  Relación documental
+                </label>
+                <select
+                  className="mt-1 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm dark:border-slate-800 dark:bg-slate-950"
+                  value={tipoRelacion}
+                  onChange={(event) => setTipoRelacion(event.target.value)}
+                >
+                  {RELACIONES_DOCUMENTALES.map((relacion) => (
+                    <option key={relacion} value={relacion}>
+                      {relacion}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <Button
+                className="w-full"
+                disabled={
+                  vincularMutation.isPending || !selected || !expedienteId
+                }
+                onClick={() => vincularMutation.mutate()}
+              >
+                {vincularMutation.isPending ? "Vinculando..." : "Vincular OCR"}
+              </Button>
+            </div>
+          </section>
+
+          <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+            <h2 className="text-lg font-semibold text-slate-950 dark:text-slate-100">
+              Sugerencia de expediente
+            </h2>
+            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+              Consulta la sugerencia del backend y completa el ID para vincular.
+            </p>
+
+            <Button
+              className="mt-4 w-full"
+              variant="outline"
+              disabled={!selected || sugerirMutation.isPending}
+              onClick={() => selected && sugerirMutation.mutate(selected.id)}
+            >
+              {sugerirMutation.isPending
+                ? "Consultando..."
+                : "Sugerir expediente"}
+            </Button>
+
+            {sugerencia ? (
+              <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm dark:border-slate-800 dark:bg-slate-950">
+                <p className="font-semibold text-slate-950 dark:text-slate-100">
+                  Resultado
+                </p>
+                {sugerencia.expediente ? (
+                  <div className="mt-2 space-y-1 text-slate-500 dark:text-slate-400">
+                    {(() => {
+                      const expediente = sugerencia.expediente as any;
+
+                      return (
+                        <>
+                          <p>
+                            ID: {texto(expediente?.id)}
+                          </p>
+                          <p>
+                            Código: {texto(
+                              expediente?.codigoExpediente ??
+                                expediente?.codigo_expediente ??
+                                expediente?.codigo,
+                            )}
+                          </p>
+                          <p>
+                            Descripción: {texto(expediente?.descripcion)}
+                          </p>
+                        </>
+                      );
+                    })()}
+                  </div>
+                ) : (
+                  <p className="mt-2 text-slate-500 dark:text-slate-400">
+                    No se encontró expediente sugerido.
+                  </p>
+                )}
+              </div>
+            ) : null}
+          </section>
+
+          {feedback ? (
+            <section className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-200">
+              {feedback}
+            </section>
+          ) : null}
+
+          {(detalleMutation.error || sugerirMutation.error || vincularMutation.error) ? (
+            <section className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200">
+              Ocurrió un error ejecutando la acción. Revisa consola o backend.
+            </section>
+          ) : null}
+        </aside>
+      </section>
     </div>
   );
 }
