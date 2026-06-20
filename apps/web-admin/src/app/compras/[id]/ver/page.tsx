@@ -7,6 +7,8 @@ import {
   getExpediente,
   getExpedienteAlertas,
   getExpedienteDocumentos,
+  getExpedienteEstadoDocumental,
+  getExpedienteResumen,
   getExpedienteTimeline,
 } from "@/services/expedientes";
 

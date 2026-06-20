@@ -56,13 +56,19 @@ export async function getExpediente(id: number | string) {
 }
 
 export async function getExpedienteResumen(id: number | string) {
-  const { data } = await api.get(`/expedientes/${id}/resumen`);
-  return unwrapDeep(data);
+  const { data } = await api.get<ApiEnvelope<ExpedienteResumen>>(
+    `/expedientes/${id}/resumen`,
+  );
+
+  return unwrapDeep<ExpedienteResumen>(data);
 }
 
 export async function getExpedienteTimeline(id: number | string) {
-  const { data } = await api.get(`/expedientes/${id}/timeline`);
-  return unwrapDeep(data);
+  const { data } = await api.get<ApiEnvelope<any>>(
+    `/expedientes/${id}/timeline`,
+  );
+
+  return unwrapDeep<any>(data);
 }
 
 export async function getExpedienteAlertas(_id: number | string) {
@@ -70,13 +76,20 @@ export async function getExpedienteAlertas(_id: number | string) {
 }
 
 export async function getExpedienteEstadoDocumental(id: number | string) {
-  const { data } = await api.get(`/expedientes/${id}/estado-documental`);
-  return unwrapDeep(data);
+  const { data } = await api.get<ApiEnvelope<ExpedienteEstadoDocumental>>(
+    `/expedientes/${id}/estado-documental`,
+  );
+
+  return unwrapDeep<ExpedienteEstadoDocumental>(data);
 }
 
+
 export async function getExpedienteDocumentos(id: number | string) {
-  const { data } = await api.get(`/expedientes/${id}/documentos`);
-  return unwrapDeep(data);
+  const { data } = await api.get<ApiEnvelope<any[]>>(
+    `/expedientes/${id}/documentos`,
+  );
+
+  return unwrapDeep<any[]>(data);
 }
 
 function arrayFromApi(value: unknown): any[] {
@@ -104,8 +117,8 @@ function sameId(a: unknown, b: unknown) {
   return String(a ?? "") === String(b ?? "");
 }
 
-function unwrapDeep(value: any): any {
-  let current = value;
+function unwrapDeep<T = any>(payload: unknown): T {
+  let current = payload as any;
 
   while (
     current &&
@@ -116,6 +129,6 @@ function unwrapDeep(value: any): any {
     current = current.data;
   }
 
-  return current;
+  return current as T;
 }
 
