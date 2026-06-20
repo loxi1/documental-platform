@@ -55,52 +55,28 @@ export async function getExpediente(id: number | string) {
   return unwrap<Expediente>(data);
 }
 
-export async function getExpedienteResumen(_id: number | string) {
-  return {
-    documentoPrincipal: null,
-    documentosAdjuntos: [],
-    alertasActivas: 0,
-  } as ExpedienteResumen;
+export async function getExpedienteResumen(id: number | string) {
+  const { data } = await api.get(`/expedientes/${id}/resumen`);
+  return unwrapDeep(data);
 }
 
-export async function getExpedienteTimeline(
-  _id: number | string,
-): Promise<ExpedienteTimelineItem[]> {
-  return [];
+export async function getExpedienteTimeline(id: number | string) {
+  const { data } = await api.get(`/expedientes/${id}/timeline`);
+  return unwrapDeep(data);
 }
 
 export async function getExpedienteAlertas(_id: number | string) {
   return [];
 }
 
-export async function getExpedienteEstadoDocumental(
-  _id: number | string,
-): Promise<ExpedienteEstadoDocumental> {
-  return {
-    presentes: [],
-    faltantes: [],
-    documentosPresentes: [],
-    documentosFaltantes: [],
-  };
+export async function getExpedienteEstadoDocumental(id: number | string) {
+  const { data } = await api.get(`/expedientes/${id}/estado-documental`);
+  return unwrapDeep(data);
 }
 
 export async function getExpedienteDocumentos(id: number | string) {
-  const { data } = await api.get("/documentos");
-  const documentos = arrayFromApi(unwrap(data));
-
-  return documentos.filter((doc: any) => {
-    const vinculo =
-      doc?.metadata?.vinculoExpediente ??
-      doc?.metadata?.metadata?.vinculoExpediente ??
-      doc?.ocr?.metadata?.vinculoExpediente;
-
-    return (
-      sameId(doc?.expedienteId, id) ||
-      sameId(doc?.expediente_id, id) ||
-      sameId(doc?.expediente?.id, id) ||
-      sameId(vinculo?.expedienteId, id)
-    );
-  });
+  const { data } = await api.get(`/expedientes/${id}/documentos`);
+  return unwrapDeep(data);
 }
 
 function arrayFromApi(value: unknown): any[] {
@@ -126,5 +102,20 @@ function arrayFromApi(value: unknown): any[] {
 
 function sameId(a: unknown, b: unknown) {
   return String(a ?? "") === String(b ?? "");
+}
+
+function unwrapDeep(value: any): any {
+  let current = value;
+
+  while (
+    current &&
+    typeof current === "object" &&
+    "data" in current &&
+    current.data !== current
+  ) {
+    current = current.data;
+  }
+
+  return current;
 }
 

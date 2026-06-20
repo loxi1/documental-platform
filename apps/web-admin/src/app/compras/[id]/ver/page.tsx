@@ -72,6 +72,18 @@ export default function CompraExpedienteVerPage() {
     enabled: Boolean(id),
   });
 
+  const estadoDocumentalQuery = useQuery({
+    queryKey: ["expediente-estado-documental", id],
+    queryFn: () => getExpedienteEstadoDocumental(id),
+    enabled: Boolean(id),
+  });
+
+  const resumenQuery = useQuery({
+    queryKey: ["expediente-resumen", id],
+    queryFn: () => getExpedienteResumen(id),
+    enabled: Boolean(id),
+  });
+
   const documentosQuery = useQuery({
     queryKey: ["expediente-documentos", id],
     queryFn: () => getExpedienteDocumentos(id),
@@ -89,10 +101,17 @@ export default function CompraExpedienteVerPage() {
     queryFn: () => getExpedienteAlertas(id),
     enabled: Boolean(id),
   });
-
-  const expediente = expedienteQuery.data as any;
-  const documentos = getArray(documentosQuery.data);
-  const timeline = getArray(timelineQuery.data);
+  
+  const resumen = resumenQuery.data as any;
+  const expediente = resumen?.expediente;
+  const documentos = Array.isArray(documentosQuery.data)
+    ? documentosQuery.data
+    : resumen?.documentos ?? [];
+  const documentosPrincipales = resumen?.documentosPrincipales ?? [];
+  const documentosAdjuntos = resumen?.documentosAdjuntos ?? [];
+  const estadoDocumental = estadoDocumentalQuery.data as any;
+  const timelineData = timelineQuery.data as any;
+  const timeline = timelineData?.timeline ?? [];
   const alertas = getArray(alertasQuery.data);
 
   const principal =
@@ -130,7 +149,7 @@ export default function CompraExpedienteVerPage() {
 
           <Link
             href="/compras"
-            className="rounded-xl border border-slate-300 px-4 dark:border-slate-700 dark:border-slate-700 py-2 text-sm text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-900"
+            className="rounded-xl border border-slate-300 px-4 dark:border-slate-700 py-2 text-sm text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-900"
           >
             Volver
           </Link>
@@ -150,14 +169,14 @@ export default function CompraExpedienteVerPage() {
 
         <section className="grid gap-4 md:grid-cols-4">
           <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 dark:border-slate-800 dark:bg-slate-900 dark:border-slate-800 dark:bg-slate-900">
-            <p className="rounded-xl border border-slate-300 px-4 dark:border-slate-700 dark:border-slate-700 py-2 text-sm text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-900 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-900">Empresa</p>
+            <p className="rounded-xl border border-slate-300 px-4 dark:border-slate-700 py-2 text-sm text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-900 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-900">Empresa</p>
             <p className="mt-1 font-medium">
               {texto(expediente?.empresa_codigo ?? expediente?.empresaCodigo)}
             </p>
           </div>
 
           <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 dark:border-slate-800 dark:bg-slate-900 dark:border-slate-800 dark:bg-slate-900">
-            <p className="rounded-xl border border-slate-300 px-4 dark:border-slate-700 dark:border-slate-700 py-2 text-sm text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-900 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-900">Cliente destino</p>
+            <p className="rounded-xl border border-slate-300 px-4 dark:border-slate-700 py-2 text-sm text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-900 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-900">Cliente destino</p>
             <p className="mt-1 font-medium">
               {texto(
                 expediente?.cliente_destino_id ?? expediente?.clienteDestinoId,
@@ -166,12 +185,12 @@ export default function CompraExpedienteVerPage() {
           </div>
 
           <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 dark:border-slate-800 dark:bg-slate-900 dark:border-slate-800 dark:bg-slate-900">
-            <p className="rounded-xl border border-slate-300 px-4 dark:border-slate-700 dark:border-slate-700 py-2 text-sm text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-900 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-900">Estado</p>
+            <p className="rounded-xl border border-slate-300 px-4 dark:border-slate-700 py-2 text-sm text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-900 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-900">Estado</p>
             <p className="mt-1 font-medium">{texto(expediente?.estado)}</p>
           </div>
 
           <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 dark:border-slate-800 dark:bg-slate-900 dark:border-slate-800 dark:bg-slate-900">
-            <p className="rounded-xl border border-slate-300 px-4 dark:border-slate-700 dark:border-slate-700 py-2 text-sm text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-900 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-900">Documentos</p>
+            <p className="rounded-xl border border-slate-300 px-4 dark:border-slate-700 py-2 text-sm text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-900 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-900">Documentos</p>
             <p className="mt-1 font-medium">{documentos.length}</p>
           </div>
         </section>
@@ -189,19 +208,19 @@ export default function CompraExpedienteVerPage() {
           {principal ? (
             <div className="grid gap-4 md:grid-cols-3">
               <div>
-                <p className="rounded-xl border border-slate-300 px-4 dark:border-slate-700 dark:border-slate-700 py-2 text-sm text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-900 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-900">Tipo</p>
+                <p className="rounded-xl border border-slate-300 px-4 dark:border-slate-700 py-2 text-sm text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-900 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-900">Tipo</p>
                 <p>{texto(principal.tipo_documental ?? principal.tipoDocumental)}</p>
               </div>
               <div>
-                <p className="rounded-xl border border-slate-300 px-4 dark:border-slate-700 dark:border-slate-700 py-2 text-sm text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-900 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-900">Clave documental</p>
+                <p className="rounded-xl border border-slate-300 px-4 dark:border-slate-700 py-2 text-sm text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-900 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-900">Clave documental</p>
                 <p>{texto(principal.clave_documental ?? principal.claveDocumental)}</p>
               </div>
               <div>
-                <p className="rounded-xl border border-slate-300 px-4 dark:border-slate-700 dark:border-slate-700 py-2 text-sm text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-900 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-900">Relación</p>
+                <p className="rounded-xl border border-slate-300 px-4 dark:border-slate-700 py-2 text-sm text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-900 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-900">Relación</p>
                 <p>{texto(principal.tipo_relacion ?? principal.tipoRelacion)}</p>
               </div>
               <div>
-                <p className="rounded-xl border border-slate-300 px-4 dark:border-slate-700 dark:border-slate-700 py-2 text-sm text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-900 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-900">Proveedor</p>
+                <p className="rounded-xl border border-slate-300 px-4 dark:border-slate-700 py-2 text-sm text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-900 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-900">Proveedor</p>
                 <p>
                   {texto(
                     principal.razon_social_emisor ??
@@ -211,7 +230,7 @@ export default function CompraExpedienteVerPage() {
                 </p>
               </div>
               <div>
-                <p className="rounded-xl border border-slate-300 px-4 dark:border-slate-700 dark:border-slate-700 py-2 text-sm text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-900 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-900">RUC</p>
+                <p className="rounded-xl border border-slate-300 px-4 dark:border-slate-700 py-2 text-sm text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-900 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-900">RUC</p>
                 <p>
                   {texto(
                     principal.ruc_emisor ??
@@ -221,7 +240,7 @@ export default function CompraExpedienteVerPage() {
                 </p>
               </div>
               <div>
-                <p className="rounded-xl border border-slate-300 px-4 dark:border-slate-700 dark:border-slate-700 py-2 text-sm text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-900 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-900">Monto</p>
+                <p className="rounded-xl border border-slate-300 px-4 dark:border-slate-700 py-2 text-sm text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-900 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-900">Monto</p>
                 <p>
                   {texto(
                     principal.monto_total ??
@@ -297,7 +316,7 @@ export default function CompraExpedienteVerPage() {
                   key={index}
                   className="rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-950 dark:border-slate-800 dark:bg-slate-950 dark:border-slate-800 dark:bg-slate-950"
                 >
-                  <p className="rounded-xl border border-slate-300 px-4 dark:border-slate-700 dark:border-slate-700 py-2 text-sm text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-900 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-900">
+                  <p className="rounded-xl border border-slate-300 px-4 dark:border-slate-700 py-2 text-sm text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-900 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-900">
                     {fecha(item.fecha ?? item.creado_en ?? item.creadoEn)}
                   </p>
                   <p className="mt-1 font-medium">
