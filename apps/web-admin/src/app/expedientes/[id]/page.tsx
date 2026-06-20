@@ -364,8 +364,11 @@ export default function ExpedienteDetallePage() {
   const documentoPrincipal =
     expediente?.documentoPrincipal ?? resumen?.documentoPrincipal ?? null;
 
-  const documentosAdjuntos =
-    expediente?.documentosAdjuntos ?? resumen?.documentosAdjuntos ?? [];
+  const documentosAdjuntos: ExpedienteDocumento[] = (
+    expediente?.documentosAdjuntos ??
+    resumen?.documentosAdjuntos ??
+    []
+  ) as ExpedienteDocumento[];
 
   const documentosDelExpediente = [
     documentoPrincipal,
