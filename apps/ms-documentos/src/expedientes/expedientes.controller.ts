@@ -52,6 +52,12 @@ export class ExpedientesController {
     return this.service.getTimeline(id);
   }
   
+  @Get(':id/documentos')
+  findDocumentos(
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.service.findDocumentos(id);
+  }
 
   @Post(':id/documentos')
   addDocumento(

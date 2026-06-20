@@ -385,4 +385,50 @@ export class ExpedientesRepository {
 
     return rows[0];
   }
+
+  async findDocumentosByExpedienteId(id: number) {
+    const rows = await sql`
+      SELECT
+        ed.expediente_id,
+        ed.documento_id,
+        ed.tipo_relacion,
+        ed.es_principal,
+        ed.orden,
+        ed.creado_en,
+        d.cliente_abreviatura,
+        d.tipo_documental,
+        d.ruc_emisor,
+        d.razon_social_emisor,
+        d.serie,
+        d.numero,
+        d.clave_documental,
+        d.estado,
+        d.fecha_emision,
+        d.moneda,
+        d.monto_total,
+        d.metadata,
+        da.id AS archivo_id,
+        da.nombre_archivo,
+        da.storage_provider,
+        da.storage_bucket,
+        da.storage_key,
+        da.estado AS archivo_estado,
+        da.area_origen
+      FROM documentos.expediente_documentos ed
+      JOIN documentos.documentos d
+        ON d.id = ed.documento_id
+      LEFT JOIN LATERAL (
+        SELECT da.*
+        FROM documentos.documentos_archivos da
+        WHERE da.documento_id = d.id
+        ORDER BY da.id DESC
+        LIMIT 1
+      ) da ON true
+      WHERE ed.expediente_id = ${id}
+      ORDER BY ed.es_principal DESC, ed.orden ASC, ed.creado_en ASC
+    `;
+
+    return rows;
+  }
 }
+

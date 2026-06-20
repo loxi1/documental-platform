@@ -153,6 +153,21 @@ export class ExpedientesGatewayController {
     });
   }
 
+  @ApiOperation({ summary: 'Listar documentos de expediente vía API Gateway' })
+  @Get(':id/documentos')
+  findDocumentos(
+    @Headers('authorization') authorization: string | undefined,
+    @Headers(REQUEST_ID_HEADER) requestId: string | undefined,
+    @Param('id') id: string,
+  ) {
+    return this.proxy({
+      method: 'GET',
+      path: `/expedientes/${id}/documentos`,
+      authorization,
+      requestId,
+    });
+  }
+
   @ApiOperation({ summary: 'Agregar documento a expediente vía API Gateway' })
   @Post(':id/documentos')
   addDocumento(

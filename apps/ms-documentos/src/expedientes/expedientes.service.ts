@@ -170,4 +170,8 @@ export class ExpedientesService {
       },
     };
   }
+
+  async findDocumentos(id: number) {
+    return this.repository.findDocumentosByExpedienteId(id);
+  }
 }
