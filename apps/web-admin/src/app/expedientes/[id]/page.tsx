@@ -399,11 +399,17 @@ export default function ExpedienteDetallePage() {
     (alerta) => estadoAlerta(alerta) !== "resuelta",
   );
 
-  const presentes =
-    estadoDocumental?.presentes ?? estadoDocumental?.documentosPresentes ?? [];
+  const presentes: string[] = (
+    estadoDocumental?.presentes ??
+    estadoDocumental?.documentosPresentes ??
+    []
+  ) as string[];
 
-  const faltantes =
-    estadoDocumental?.faltantes ?? estadoDocumental?.documentosFaltantes ?? [];
+  const faltantes: string[] = (
+    estadoDocumental?.faltantes ??
+    estadoDocumental?.documentosFaltantes ??
+    []
+  ) as string[];
 
   if (expedienteQuery.isLoading) {
     return <div className="p-6">Cargando expediente...</div>;
@@ -582,15 +588,11 @@ export default function ExpedienteDetallePage() {
                 <CheckCircle2 className="h-4 w-4" /> Presentes
               </div>
               <div className="flex flex-wrap gap-2">
-                {presentes.length ? (
-                  presentes.map((item) => (
-                    <Badge key={item} variant="secondary">
-                      {item}
-                    </Badge>
-                  ))
-                ) : (
-                  <span className="text-sm text-muted-foreground">Sin datos.</span>
-                )}
+                {presentes.map((item: string) => (
+                  <Badge key={item} variant="secondary">
+                    {item}
+                  </Badge>
+                ))}
               </div>
             </div>
 
@@ -599,17 +601,11 @@ export default function ExpedienteDetallePage() {
                 <XCircle className="h-4 w-4" /> Faltantes
               </div>
               <div className="flex flex-wrap gap-2">
-                {faltantes.length ? (
-                  faltantes.map((item) => (
-                    <Badge key={item} variant="outline">
-                      {item}
-                    </Badge>
-                  ))
-                ) : (
-                  <span className="text-sm text-muted-foreground">
-                    No hay faltantes reportados.
-                  </span>
-                )}
+                {faltantes.map((item: string) => (
+                  <Badge key={item} variant="outline">
+                    {item}
+                  </Badge>
+                ))}
               </div>
             </div>
           </CardContent>
