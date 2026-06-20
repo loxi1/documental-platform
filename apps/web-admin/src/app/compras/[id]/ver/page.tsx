@@ -130,14 +130,14 @@ export default function CompraExpedienteVerPage() {
 
           <Link
             href="/compras"
-            className="rounded-xl border border-slate-700 px-4 py-2 text-sm text-slate-200 hover:bg-slate-900"
+            className="rounded-xl border border-slate-300 px-4 dark:border-slate-700 dark:border-slate-700 py-2 text-sm text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-900"
           >
             Volver
           </Link>
         </div>
 
         {cargando ? (
-          <section className="rounded-2xl border border-slate-800 bg-slate-900 p-5">
+          <section className="rounded-2xl border border-slate-200 bg-white shadow-sm p-5">
             Cargando expediente...
           </section>
         ) : null}
@@ -149,15 +149,15 @@ export default function CompraExpedienteVerPage() {
         ) : null}
 
         <section className="grid gap-4 md:grid-cols-4">
-          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-            <p className="text-slate-900">Empresa</p>
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 dark:border-slate-800 dark:bg-slate-900 dark:border-slate-800 dark:bg-slate-900">
+            <p className="rounded-xl border border-slate-300 px-4 dark:border-slate-700 dark:border-slate-700 py-2 text-sm text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-900 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-900">Empresa</p>
             <p className="mt-1 font-medium">
               {texto(expediente?.empresa_codigo ?? expediente?.empresaCodigo)}
             </p>
           </div>
 
-          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-            <p className="text-slate-900">Cliente destino</p>
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 dark:border-slate-800 dark:bg-slate-900 dark:border-slate-800 dark:bg-slate-900">
+            <p className="rounded-xl border border-slate-300 px-4 dark:border-slate-700 dark:border-slate-700 py-2 text-sm text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-900 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-900">Cliente destino</p>
             <p className="mt-1 font-medium">
               {texto(
                 expediente?.cliente_destino_id ?? expediente?.clienteDestinoId,
@@ -165,18 +165,18 @@ export default function CompraExpedienteVerPage() {
             </p>
           </div>
 
-          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-            <p className="text-slate-900">Estado</p>
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 dark:border-slate-800 dark:bg-slate-900 dark:border-slate-800 dark:bg-slate-900">
+            <p className="rounded-xl border border-slate-300 px-4 dark:border-slate-700 dark:border-slate-700 py-2 text-sm text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-900 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-900">Estado</p>
             <p className="mt-1 font-medium">{texto(expediente?.estado)}</p>
           </div>
 
-          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-            <p className="text-slate-900">Documentos</p>
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 dark:border-slate-800 dark:bg-slate-900 dark:border-slate-800 dark:bg-slate-900">
+            <p className="rounded-xl border border-slate-300 px-4 dark:border-slate-700 dark:border-slate-700 py-2 text-sm text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-900 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-900">Documentos</p>
             <p className="mt-1 font-medium">{documentos.length}</p>
           </div>
         </section>
 
-        <section className="rounded-2xl border border-slate-800 bg-slate-900 p-5">
+        <section className="rounded-2xl border border-slate-200 bg-white shadow-sm p-5">
           <div className="mb-4 flex items-center justify-between">
             <div>
               <h2 className="text-lg font-semibold">Documento principal</h2>
@@ -189,19 +189,19 @@ export default function CompraExpedienteVerPage() {
           {principal ? (
             <div className="grid gap-4 md:grid-cols-3">
               <div>
-                <p className="text-slate-900">Tipo</p>
+                <p className="rounded-xl border border-slate-300 px-4 dark:border-slate-700 dark:border-slate-700 py-2 text-sm text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-900 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-900">Tipo</p>
                 <p>{texto(principal.tipo_documental ?? principal.tipoDocumental)}</p>
               </div>
               <div>
-                <p className="text-slate-900">Clave documental</p>
+                <p className="rounded-xl border border-slate-300 px-4 dark:border-slate-700 dark:border-slate-700 py-2 text-sm text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-900 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-900">Clave documental</p>
                 <p>{texto(principal.clave_documental ?? principal.claveDocumental)}</p>
               </div>
               <div>
-                <p className="text-slate-900">Relación</p>
+                <p className="rounded-xl border border-slate-300 px-4 dark:border-slate-700 dark:border-slate-700 py-2 text-sm text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-900 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-900">Relación</p>
                 <p>{texto(principal.tipo_relacion ?? principal.tipoRelacion)}</p>
               </div>
               <div>
-                <p className="text-slate-900">Proveedor</p>
+                <p className="rounded-xl border border-slate-300 px-4 dark:border-slate-700 dark:border-slate-700 py-2 text-sm text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-900 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-900">Proveedor</p>
                 <p>
                   {texto(
                     principal.razon_social_emisor ??
@@ -211,7 +211,7 @@ export default function CompraExpedienteVerPage() {
                 </p>
               </div>
               <div>
-                <p className="text-slate-900">RUC</p>
+                <p className="rounded-xl border border-slate-300 px-4 dark:border-slate-700 dark:border-slate-700 py-2 text-sm text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-900 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-900">RUC</p>
                 <p>
                   {texto(
                     principal.ruc_emisor ??
@@ -221,7 +221,7 @@ export default function CompraExpedienteVerPage() {
                 </p>
               </div>
               <div>
-                <p className="text-slate-900">Monto</p>
+                <p className="rounded-xl border border-slate-300 px-4 dark:border-slate-700 dark:border-slate-700 py-2 text-sm text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-900 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-900">Monto</p>
                 <p>
                   {texto(
                     principal.monto_total ??
@@ -238,7 +238,7 @@ export default function CompraExpedienteVerPage() {
           )}
         </section>
 
-        <section className="rounded-2xl border border-slate-800 bg-slate-900 p-5">
+        <section className="rounded-2xl border border-slate-200 bg-white shadow-sm p-5">
           <h2 className="text-lg font-semibold">Adjuntos</h2>
 
           <div className="mt-4 overflow-x-auto">
@@ -288,16 +288,16 @@ export default function CompraExpedienteVerPage() {
         </section>
 
         <section className="grid gap-4 lg:grid-cols-2">
-          <div className="rounded-2xl border border-slate-800 bg-slate-900 p-5">
+          <div className="rounded-2xl border border-slate-200 bg-white shadow-sm p-5">
             <h2 className="text-lg font-semibold">Timeline</h2>
 
             <div className="mt-4 space-y-3">
               {timeline.map((item, index) => (
                 <div
                   key={index}
-                  className="rounded-xl border border-slate-800 bg-slate-950 p-3"
+                  className="rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-950 dark:border-slate-800 dark:bg-slate-950 dark:border-slate-800 dark:bg-slate-950"
                 >
-                  <p className="text-slate-900">
+                  <p className="rounded-xl border border-slate-300 px-4 dark:border-slate-700 dark:border-slate-700 py-2 text-sm text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-900 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-900">
                     {fecha(item.fecha ?? item.creado_en ?? item.creadoEn)}
                   </p>
                   <p className="mt-1 font-medium">
@@ -317,20 +317,20 @@ export default function CompraExpedienteVerPage() {
             </div>
           </div>
 
-          <div className="rounded-2xl border border-slate-800 bg-slate-900 p-5">
+          <div className="rounded-2xl border border-slate-200 bg-white shadow-sm p-5">
             <h2 className="text-lg font-semibold">Alertas</h2>
 
             <div className="mt-4 space-y-3">
               {alertas.map((alerta, index) => (
                 <div
                   key={index}
-                  className="rounded-xl border border-slate-800 bg-slate-950 p-3"
+                  className="rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-950 dark:border-slate-800 dark:bg-slate-950 dark:border-slate-800 dark:bg-slate-950"
                 >
                   <div className="flex items-center justify-between gap-3">
                     <p className="font-medium">
                       {texto(alerta.titulo ?? alerta.tipo ?? "Alerta")}
                     </p>
-                    <span className="rounded-full border border-slate-700 px-2 py-1 text-xs text-slate-300">
+                    <span className="rounded-full border border-slate-300 px-2 py-1 text-xs text-slate-300">
                       {texto(alerta.prioridad ?? alerta.estado)}
                     </span>
                   </div>
