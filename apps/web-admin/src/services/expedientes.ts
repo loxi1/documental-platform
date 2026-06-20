@@ -78,3 +78,20 @@ export async function getExpedienteEstadoDocumental(id: number | string) {
 
   return unwrap<ExpedienteEstadoDocumental>(data);
 }
+
+export async function getExpedienteDocumentos(id: number | string) {
+  const { data } = await api.get<ApiEnvelope<unknown[]>>(
+    `/expedientes/${id}/documentos`,
+  );
+
+  return unwrap(data);
+}
+
+export async function getExpedienteAlertas(id: number | string) {
+  const { data } = await api.get<ApiEnvelope<unknown[]>>(
+    `/expedientes/${id}/alertas`,
+  );
+
+  return unwrap(data);
+}
+
