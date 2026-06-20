@@ -12,6 +12,78 @@ import {
   getExpedienteTimeline,
 } from "@/services/expedientes";
 
+type ExpedienteDocumento360 = {
+  expediente_id?: string | number;
+  expedienteId?: string | number;
+  documento_id?: number;
+  documentoId?: number;
+  tipo_relacion?: string | null;
+  tipoRelacion?: string | null;
+  es_principal?: boolean | null;
+  esPrincipal?: boolean | null;
+  orden?: number | null;
+  creado_en?: string | null;
+  creadoEn?: string | null;
+  cliente_abreviatura?: string | null;
+  tipo_documental?: string | null;
+  tipoDocumental?: string | null;
+  ruc_emisor?: string | null;
+  rucEmisor?: string | null;
+  razon_social_emisor?: string | null;
+  razonSocialEmisor?: string | null;
+  serie?: string | null;
+  numero?: string | null;
+  clave_documental?: string | null;
+  claveDocumental?: string | null;
+  estado?: string | null;
+  fecha_emision?: string | null;
+  fechaEmision?: string | null;
+  moneda?: string | null;
+  monto_total?: number | string | null;
+  montoTotal?: number | string | null;
+  archivo_id?: number | null;
+  archivoId?: number | null;
+  nombre_archivo?: string | null;
+  nombreArchivo?: string | null;
+  storage_provider?: string | null;
+  storageProvider?: string | null;
+  storage_bucket?: string | null;
+  storageBucket?: string | null;
+  storage_key?: string | null;
+  storageKey?: string | null;
+  archivo_estado?: string | null;
+  archivoEstado?: string | null;
+  area_origen?: string | null;
+  areaOrigen?: string | null;
+  metadata?: Record<string, any> | null;
+};
+
+type TimelineItem360 = {
+  id?: string | number;
+  fecha?: string | null;
+  creado_en?: string | null;
+  creadoEn?: string | null;
+  tipo?: string | null;
+  tipo_evento?: string | null;
+  tipoEvento?: string | null;
+  tipo_documental?: string | null;
+  descripcion?: string | null;
+  mensaje?: string | null;
+  estado?: string | null;
+};
+
+type Alerta360 = {
+  id?: string | number;
+  titulo?: string | null;
+  tipo?: string | null;
+  prioridad?: string | null;
+  estado?: string | null;
+  mensaje?: string | null;
+  descripcion?: string | null;
+  creado_en?: string | null;
+  creadoEn?: string | null;
+};
+
 function texto(value: unknown, fallback = "—") {
   if (value === null || value === undefined || value === "") return fallback;
   return String(value);
@@ -26,8 +98,8 @@ function fecha(value: unknown) {
   }
 }
 
-function getArray(value: unknown): any[] {
-  if (Array.isArray(value)) return value;
+function getArray(value: unknown): ExpedienteDocumento360[] {
+  if (Array.isArray(value)) return value as ExpedienteDocumento360[];
   if (
     value &&
     typeof value === "object" &&
@@ -106,15 +178,13 @@ export default function CompraExpedienteVerPage() {
   
   const resumen = resumenQuery.data as any;
   const expediente = resumen?.expediente;
-  const documentos = Array.isArray(documentosQuery.data)
-    ? documentosQuery.data
-    : resumen?.documentos ?? [];
+  const documentos: ExpedienteDocumento360[] = getArray(documentosQuery.data);
   const documentosPrincipales = resumen?.documentosPrincipales ?? [];
   const documentosAdjuntos = resumen?.documentosAdjuntos ?? [];
   const estadoDocumental = estadoDocumentalQuery.data as any;
   const timelineData = timelineQuery.data as any;
-  const timeline = timelineData?.timeline ?? [];
-  const alertas = getArray(alertasQuery.data);
+  const timeline: TimelineItem360[] = getArray(timelineQuery.data) as TimelineItem360[];
+  const alertas: Alerta360[] = getArray(alertasQuery.data) as Alerta360[];
 
   const principal =
     documentos.find((doc) => doc.es_principal || doc.esPrincipal) ??
