@@ -139,12 +139,6 @@ export default function CompraExpedienteVerPage() {
   const params = useParams();
   const id = String(params.id);
 
-  const expedienteQuery = useQuery({
-    queryKey: ["expediente", id],
-    queryFn: () => getExpediente(id),
-    enabled: Boolean(id),
-  });
-
   const estadoDocumentalQuery = useQuery({
     queryKey: ["expediente-estado-documental", id],
     queryFn: () => getExpedienteEstadoDocumental(id),
@@ -182,30 +176,26 @@ export default function CompraExpedienteVerPage() {
     ? (documentosQuery.data as ExpedienteDocumento360[])
     : ((resumen?.documentos ?? []) as ExpedienteDocumento360[]);
 
-  const documentosPrincipales: ExpedienteDocumento360[] =
-    documentos.filter(
-      (doc) =>
-        doc.es_principal ||
-        doc.esPrincipal ||
-        String(doc.tipo_relacion ?? doc.tipoRelacion ?? "").startsWith(
-          "principal_",
-        ),
-    );
-
-  const documentosAdjuntos: ExpedienteDocumento360[] = documentos.filter(
-    (doc) =>
-      !doc.es_principal &&
-      !doc.esPrincipal &&
-      !String(doc.tipo_relacion ?? doc.tipoRelacion ?? "").startsWith(
-        "principal_",
-      ),
-  );
-
+  
   const estadoDocumental = estadoDocumentalQuery.data as any;
   const conteoDocumental = estadoDocumental?.documentos ?? {};
 
   const timelineData = timelineQuery.data as any;
   const timeline: TimelineItem360[] = (timelineData?.timeline ?? []) as TimelineItem360[];
+
+  const documentosPrincipales: ExpedienteDocumento360[] = documentos.filter(
+    (doc) =>
+      doc.es_principal ||
+      doc.esPrincipal ||
+      String(doc.tipo_relacion ?? doc.tipoRelacion ?? "").startsWith("principal_"),
+  );
+
+  const documentosAdjuntos: ExpedienteDocumento360[] = documentos.filter(
+    (doc) =>
+      !doc.es_principal &&
+      !doc.esPrincipal &&
+      !String(doc.tipo_relacion ?? doc.tipoRelacion ?? "").startsWith("principal_"),
+  );
 
   const alertas: Alerta360[] = getArray(alertasQuery.data) as Alerta360[];
 
@@ -213,15 +203,14 @@ export default function CompraExpedienteVerPage() {
     documentosPrincipales[0] ??
     documentos.find((doc) => doc.es_principal || doc.esPrincipal) ??
     documentos.find((doc) =>
-      String(doc.tipo_relacion ?? doc.tipoRelacion ?? "").startsWith(
-        "principal_",
-      ),
+      String(doc.tipo_relacion ?? doc.tipoRelacion ?? "").startsWith("principal_"),
     ) ??
     documentos[0];
 
   const cargando =
-    expedienteQuery.isLoading ||
+    resumenQuery.isLoading ||
     documentosQuery.isLoading ||
+    estadoDocumentalQuery.isLoading ||
     timelineQuery.isLoading ||
     alertasQuery.isLoading;
 
@@ -257,7 +246,7 @@ export default function CompraExpedienteVerPage() {
           </section>
         ) : null}
 
-        {expedienteQuery.isError ? (
+        {resumenQuery.isError ? (
           <section className="rounded-2xl border border-red-900 bg-red-950/40 p-5 text-red-200">
             No se pudo cargar el expediente.
           </section>
