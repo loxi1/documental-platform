@@ -63,14 +63,13 @@ export async function getExpedienteResumen(id: number | string) {
   return unwrap<ExpedienteResumen>(data);
 }
 
-export async function getExpedienteTimeline(id: number | string) {
-  const { data } = await api.get<
-    ApiEnvelope<ExpedienteTimelineItem[]> | ExpedienteTimelineItem[]
-  >(`/expedientes/${id}/timeline`);
-
-  return unwrap<ExpedienteTimelineItem[]>(data);
+export async function getExpedienteTimeline(_id: number | string) {
+  return [];
 }
 
+export async function getExpedienteAlertas(_id: number | string) {
+  return [];
+}
 export async function getExpedienteEstadoDocumental(id: number | string) {
   const { data } = await api.get<
     ApiEnvelope<ExpedienteEstadoDocumental> | ExpedienteEstadoDocumental
@@ -96,14 +95,6 @@ export async function getExpedienteDocumentos(id: number | string) {
       sameId(vinculo?.expedienteId, id)
     );
   });
-}
-
-export async function getExpedienteAlertas(id: number | string) {
-  const { data } = await api.get<ApiEnvelope<unknown[]>>(
-    `/expedientes/${id}/alertas`,
-  );
-
-  return unwrap(data);
 }
 
 function arrayFromApi(value: unknown): any[] {
