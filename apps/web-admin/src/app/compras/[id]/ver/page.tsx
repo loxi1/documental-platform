@@ -139,12 +139,6 @@ export default function CompraExpedienteVerPage() {
   const params = useParams();
   const id = String(params.id);
 
-  const estadoDocumentalQuery = useQuery({
-    queryKey: ["expediente-estado-documental", id],
-    queryFn: () => getExpedienteEstadoDocumental(id),
-    enabled: Boolean(id),
-  });
-
   const resumenQuery = useQuery({
     queryKey: ["expediente-resumen", id],
     queryFn: () => getExpedienteResumen(id),
@@ -154,6 +148,12 @@ export default function CompraExpedienteVerPage() {
   const documentosQuery = useQuery({
     queryKey: ["expediente-documentos", id],
     queryFn: () => getExpedienteDocumentos(id),
+    enabled: Boolean(id),
+  });
+
+  const estadoDocumentalQuery = useQuery({
+    queryKey: ["expediente-estado-documental", id],
+    queryFn: () => getExpedienteEstadoDocumental(id),
     enabled: Boolean(id),
   });
 
@@ -168,7 +168,7 @@ export default function CompraExpedienteVerPage() {
     queryFn: () => getExpedienteAlertas(id),
     enabled: Boolean(id),
   });
-  
+
   const resumen = resumenQuery.data as any;
   const expediente = resumen?.expediente;
 
@@ -176,26 +176,30 @@ export default function CompraExpedienteVerPage() {
     ? (documentosQuery.data as ExpedienteDocumento360[])
     : ((resumen?.documentos ?? []) as ExpedienteDocumento360[]);
 
-  
-  const estadoDocumental = estadoDocumentalQuery.data as any;
-  const conteoDocumental = estadoDocumental?.documentos ?? {};
-
-  const timelineData = timelineQuery.data as any;
-  const timeline: TimelineItem360[] = (timelineData?.timeline ?? []) as TimelineItem360[];
-
   const documentosPrincipales: ExpedienteDocumento360[] = documentos.filter(
     (doc) =>
       doc.es_principal ||
       doc.esPrincipal ||
-      String(doc.tipo_relacion ?? doc.tipoRelacion ?? "").startsWith("principal_"),
+      String(doc.tipo_relacion ?? doc.tipoRelacion ?? "").startsWith(
+        "principal_",
+      ),
   );
 
   const documentosAdjuntos: ExpedienteDocumento360[] = documentos.filter(
     (doc) =>
       !doc.es_principal &&
       !doc.esPrincipal &&
-      !String(doc.tipo_relacion ?? doc.tipoRelacion ?? "").startsWith("principal_"),
+      !String(doc.tipo_relacion ?? doc.tipoRelacion ?? "").startsWith(
+        "principal_",
+      ),
   );
+
+  const estadoDocumental = estadoDocumentalQuery.data as any;
+  const conteoDocumental = estadoDocumental?.documentos ?? {};
+
+  const timelineData = timelineQuery.data as any;
+  const timeline: TimelineItem360[] = (timelineData?.timeline ??
+    []) as TimelineItem360[];
 
   const alertas: Alerta360[] = getArray(alertasQuery.data) as Alerta360[];
 
@@ -203,7 +207,9 @@ export default function CompraExpedienteVerPage() {
     documentosPrincipales[0] ??
     documentos.find((doc) => doc.es_principal || doc.esPrincipal) ??
     documentos.find((doc) =>
-      String(doc.tipo_relacion ?? doc.tipoRelacion ?? "").startsWith("principal_"),
+      String(doc.tipo_relacion ?? doc.tipoRelacion ?? "").startsWith(
+        "principal_",
+      ),
     ) ??
     documentos[0];
 

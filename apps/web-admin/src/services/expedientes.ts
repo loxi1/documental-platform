@@ -56,40 +56,33 @@ export async function getExpediente(id: number | string) {
 }
 
 export async function getExpedienteResumen(id: number | string) {
-  const { data } = await api.get<ApiEnvelope<ExpedienteResumen>>(
-    `/expedientes/${id}/resumen`,
-  );
-
-  return unwrapDeep<ExpedienteResumen>(data);
+  const { data } = await api.get(`/expedientes/${id}/resumen`);
+  return unwrapDeep(data);
 }
 
 export async function getExpedienteTimeline(id: number | string) {
-  const { data } = await api.get<ApiEnvelope<any>>(
-    `/expedientes/${id}/timeline`,
-  );
-
-  return unwrapDeep<any>(data);
+  const { data } = await api.get(`/expedientes/${id}/timeline`);
+  return unwrapDeep(data);
 }
 
-export async function getExpedienteAlertas(_id: number | string) {
-  return [];
+export async function getExpedienteAlertas(id: number | string) {
+  try {
+    const { data } = await api.get(`/expedientes/${id}/alertas`);
+    return unwrapDeep(data);
+  } catch {
+    return [];
+  }
 }
 
 export async function getExpedienteEstadoDocumental(id: number | string) {
-  const { data } = await api.get<ApiEnvelope<ExpedienteEstadoDocumental>>(
-    `/expedientes/${id}/estado-documental`,
-  );
-
-  return unwrapDeep<ExpedienteEstadoDocumental>(data);
+  const { data } = await api.get(`/expedientes/${id}/estado-documental`);
+  return unwrapDeep(data);
 }
 
 
 export async function getExpedienteDocumentos(id: number | string) {
-  const { data } = await api.get<ApiEnvelope<any[]>>(
-    `/expedientes/${id}/documentos`,
-  );
-
-  return unwrapDeep<any[]>(data);
+  const { data } = await api.get(`/expedientes/${id}/documentos`);
+  return unwrapDeep(data);
 }
 
 function arrayFromApi(value: unknown): any[] {
