@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import {
-  getExpediente,
   getExpedienteAlertas,
   getExpedienteDocumentos,
   getExpedienteEstadoDocumental,
@@ -178,15 +177,40 @@ export default function CompraExpedienteVerPage() {
   
   const resumen = resumenQuery.data as any;
   const expediente = resumen?.expediente;
-  const documentos: ExpedienteDocumento360[] = getArray(documentosQuery.data);
-  const documentosPrincipales = resumen?.documentosPrincipales ?? [];
-  const documentosAdjuntos = resumen?.documentosAdjuntos ?? [];
+
+  const documentos: ExpedienteDocumento360[] = Array.isArray(documentosQuery.data)
+    ? (documentosQuery.data as ExpedienteDocumento360[])
+    : ((resumen?.documentos ?? []) as ExpedienteDocumento360[]);
+
+  const documentosPrincipales: ExpedienteDocumento360[] =
+    documentos.filter(
+      (doc) =>
+        doc.es_principal ||
+        doc.esPrincipal ||
+        String(doc.tipo_relacion ?? doc.tipoRelacion ?? "").startsWith(
+          "principal_",
+        ),
+    );
+
+  const documentosAdjuntos: ExpedienteDocumento360[] = documentos.filter(
+    (doc) =>
+      !doc.es_principal &&
+      !doc.esPrincipal &&
+      !String(doc.tipo_relacion ?? doc.tipoRelacion ?? "").startsWith(
+        "principal_",
+      ),
+  );
+
   const estadoDocumental = estadoDocumentalQuery.data as any;
+  const conteoDocumental = estadoDocumental?.documentos ?? {};
+
   const timelineData = timelineQuery.data as any;
-  const timeline: TimelineItem360[] = getArray(timelineQuery.data) as TimelineItem360[];
+  const timeline: TimelineItem360[] = (timelineData?.timeline ?? []) as TimelineItem360[];
+
   const alertas: Alerta360[] = getArray(alertasQuery.data) as Alerta360[];
 
   const principal =
+    documentosPrincipales[0] ??
     documentos.find((doc) => doc.es_principal || doc.esPrincipal) ??
     documentos.find((doc) =>
       String(doc.tipo_relacion ?? doc.tipoRelacion ?? "").startsWith(
@@ -263,7 +287,43 @@ export default function CompraExpedienteVerPage() {
 
           <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 dark:border-slate-800 dark:bg-slate-900 dark:border-slate-800 dark:bg-slate-900">
             <p className="rounded-xl border border-slate-300 px-4 dark:border-slate-700 py-2 text-sm text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-900 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-900">Documentos</p>
-            <p className="mt-1 font-medium">{documentos.length}</p>
+            <p className="mt-1 font-medium">{resumen?.totales?.documentos ?? documentos.length}</p>
+          </div>
+        </section>
+
+        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+          <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+            Estado documental
+          </h2>
+          <p className="mt-1 text-sm text-slate-400">
+            Completitud del expediente según documentos vinculados.
+          </p>
+
+          <div className="mt-4 grid gap-3 md:grid-cols-3 lg:grid-cols-4">
+            {[
+              ["OC", "principal_oc"],
+              ["OS", "principal_os"],
+              ["Factura", "principal_factura"],
+              ["Guía", "adjunto_guia"],
+              ["Nota ingreso", "adjunto_nota_ingreso"],
+              ["Transferencia", "adjunto_transferencia"],
+              ["Detracción", "adjunto_detraccion"],
+              ["Recibo honorario", "adjunto_recibo_honorario"],
+            ].map(([label, key]) => {
+              const total = Number(conteoDocumental?.[key] ?? 0);
+
+              return (
+                <div
+                  key={key}
+                  className="rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-950"
+                >
+                  <p className="text-xs text-slate-500">{label}</p>
+                  <p className="mt-1 text-sm font-semibold text-slate-900 dark:text-slate-100">
+                    {total > 0 ? `✓ ${total}` : "— 0"}
+                  </p>
+                </div>
+              );
+            })}
           </div>
         </section>
 
@@ -345,7 +405,7 @@ export default function CompraExpedienteVerPage() {
                 </tr>
               </thead>
               <tbody>
-                {documentos.map((doc, index) => (
+                {documentosAdjuntos.map((doc, index) => (
                   <tr key={index} className="border-t border-slate-800">
                     <td className="py-3">
                       {texto(doc.tipo_documental ?? doc.tipoDocumental)}
