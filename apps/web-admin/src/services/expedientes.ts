@@ -55,27 +55,33 @@ export async function getExpediente(id: number | string) {
   return unwrap<Expediente>(data);
 }
 
-export async function getExpedienteResumen(id: number | string) {
-  const { data } = await api.get<
-    ApiEnvelope<ExpedienteResumen> | ExpedienteResumen
-  >(`/expedientes/${id}/resumen`);
-
-  return unwrap<ExpedienteResumen>(data);
+export async function getExpedienteResumen(_id: number | string) {
+  return {
+    documentoPrincipal: null,
+    documentosAdjuntos: [],
+    alertasActivas: 0,
+  } as ExpedienteResumen;
 }
 
-export async function getExpedienteTimeline(_id: number | string) {
+export async function getExpedienteTimeline(
+  _id: number | string,
+): Promise<ExpedienteTimelineItem[]> {
   return [];
 }
 
 export async function getExpedienteAlertas(_id: number | string) {
   return [];
 }
-export async function getExpedienteEstadoDocumental(id: number | string) {
-  const { data } = await api.get<
-    ApiEnvelope<ExpedienteEstadoDocumental> | ExpedienteEstadoDocumental
-  >(`/expedientes/${id}/estado-documental`);
 
-  return unwrap<ExpedienteEstadoDocumental>(data);
+export async function getExpedienteEstadoDocumental(
+  _id: number | string,
+): Promise<ExpedienteEstadoDocumental> {
+  return {
+    presentes: [],
+    faltantes: [],
+    documentosPresentes: [],
+    documentosFaltantes: [],
+  };
 }
 
 export async function getExpedienteDocumentos(id: number | string) {

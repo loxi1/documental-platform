@@ -358,7 +358,7 @@ export default function ExpedienteDetallePage() {
 
   const expediente = expedienteQuery.data;
   const resumen = resumenQuery.data;
-  const timeline = timelineQuery.data ?? [];
+  const timeline: ExpedienteTimelineItem[] = (timelineQuery.data as ExpedienteTimelineItem[] | undefined) ?? [];
   const estadoDocumental = estadoDocumentalQuery.data;
 
   const documentoPrincipal =
