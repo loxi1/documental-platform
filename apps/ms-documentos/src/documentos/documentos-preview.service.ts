@@ -4,7 +4,7 @@ import { GetObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { sql } from '@documental/database';
 
-const PREVIEW_EXPIRES_IN_SECONDS = 300;
+const DEFAULT_PREVIEW_EXPIRES_IN_SECONDS = 300;
 
 type ArchivoPreviewRow = {
   id: number;
@@ -92,6 +92,10 @@ export class DocumentosPreviewService {
     const endpoint = firstNonEmpty(
       this.config.get<string>('R2_ENDPOINT'),
       process.env.R2_ENDPOINT,
+      this.config.get<string>('R2_ENDPOINT_URL'),
+      process.env.R2_ENDPOINT_URL,
+      this.config.get<string>('CLOUDFLARE_R2_ENDPOINT'),
+      process.env.CLOUDFLARE_R2_ENDPOINT,
       accountId ? `https://${accountId}.r2.cloudflarestorage.com` : null,
     );
 
@@ -122,7 +126,12 @@ export class DocumentosPreviewService {
     if (!endpoint || !accessKeyId || !secretAccessKey || !bucket) {
       throw new BadRequestException({
         message: 'Configuración R2 incompleta para generar signed URL',
-        required: ['R2_ENDPOINT o R2_ACCOUNT_ID', 'R2_ACCESS_KEY_ID', 'R2_SECRET_ACCESS_KEY', 'R2_BUCKET o storage_bucket'],
+        required: [
+          'R2_ENDPOINT o R2_ENDPOINT_URL o R2_ACCOUNT_ID',
+          'R2_ACCESS_KEY_ID',
+          'R2_SECRET_ACCESS_KEY',
+          'R2_BUCKET o storage_bucket',
+        ],
         archivoId,
       });
     }
@@ -130,8 +139,26 @@ export class DocumentosPreviewService {
     const filename = archivo.nombre_archivo || storageKey.split('/').pop() || `archivo-${archivoId}`;
     const contentType = inferContentType(filename, storageKey);
 
+    const region = firstNonEmpty(
+      this.config.get<string>('R2_REGION'),
+      process.env.R2_REGION,
+    ) ?? 'auto';
+
+    const expiresIn = Number(
+      firstNonEmpty(
+        this.config.get<string>('R2_SIGNED_URL_EXPIRES'),
+        process.env.R2_SIGNED_URL_EXPIRES,
+        this.config.get<string>('R2_SIGNED_URL_EXPIRES_SECONDS'),
+        process.env.R2_SIGNED_URL_EXPIRES_SECONDS,
+      ) ?? DEFAULT_PREVIEW_EXPIRES_IN_SECONDS.toString(),
+    );
+
+    const safeExpiresIn = Number.isFinite(expiresIn) && expiresIn > 0
+      ? expiresIn
+      : DEFAULT_PREVIEW_EXPIRES_IN_SECONDS;
+
     const client = new S3Client({
-      region: 'auto',
+      region,
       endpoint,
       credentials: {
         accessKeyId,
@@ -147,11 +174,11 @@ export class DocumentosPreviewService {
         ResponseContentType: contentType,
         ResponseContentDisposition: `inline; filename="${filename.replace(/"/g, '')}"`,
       }),
-      { expiresIn: PREVIEW_EXPIRES_IN_SECONDS },
+      { expiresIn: safeExpiresIn },
     );
 
     const expiresAt = new Date(
-      Date.now() + PREVIEW_EXPIRES_IN_SECONDS * 1000,
+      Date.now() + safeExpiresIn * 1000,
     ).toISOString();
 
     return {
@@ -162,7 +189,7 @@ export class DocumentosPreviewService {
       storageBucket: bucket,
       storageKey,
       signedUrl,
-      expiresIn: PREVIEW_EXPIRES_IN_SECONDS,
+      expiresIn: safeExpiresIn,
       expiresAt,
     };
   }

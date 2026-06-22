@@ -419,6 +419,20 @@ export class DocumentosGatewayController {
     });
   }
 
+  @Get('archivos/:archivoId/preview-url')
+  async obtenerPreviewUrl(
+    @Param('archivoId') archivoId: string,
+    @Headers('authorization') authorization?: string,
+    @Headers(REQUEST_ID_HEADER) requestId?: string,
+  ) {
+    return this.proxy({
+      method: 'GET',
+      path: `/documentos/archivos/${archivoId}/preview-url`,
+      authorization,
+      requestId,
+    });
+  }
+
   @ApiOperation({ summary: 'Obtener documento por ID vía API Gateway' })
   @Get(':id')
   findById(
