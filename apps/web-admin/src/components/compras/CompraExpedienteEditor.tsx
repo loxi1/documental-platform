@@ -52,16 +52,19 @@ const ADJUNTOS_COMPRAS = [
     label: "Factura",
     description: "Comprobante asociado al documento principal.",
     tipoEsperado: "OC",
+    tipoRelacionSugerida: "adjunto_factura",
   },
   {
     label: "Guía",
     description: "Documento de referencia cuando Compras lo tenga disponible.",
     tipoEsperado: "OC",
+    tipoRelacionSugerida: "adjunto_guia",
   },
   {
     label: "Sustento adicional",
     description: "Cotización, correo, orden interna u otro soporte de compras.",
     tipoEsperado: "OC",
+    tipoRelacionSugerida: "adjunto_otro",
   },
 ] as const;
 
@@ -273,12 +276,7 @@ export function CompraExpedienteEditor({ id }: { id: string | number }) {
                     iniciarValidacionOcr({
                       label: item.label,
                       tipoEsperado: item.tipoEsperado,
-                      tipoRelacionSugerida:
-                        item.tipoEsperado === "FACTURA"
-                          ? "adjunto_factura"
-                          : item.tipoEsperado === "GUIA"
-                            ? "adjunto_guia"
-                            : "adjunto_otro",
+                      tipoRelacionSugerida: item.tipoRelacionSugerida,
                     })
                   }
                 >
