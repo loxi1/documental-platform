@@ -1,6 +1,6 @@
 import { Body, Controller, Get, Param, ParseIntPipe, Query, Post, Patch, Put } from '@nestjs/common';
 import { ApiOperation, ApiQuery, ApiTags, ApiParam, } from '@nestjs/swagger';
-import { DocumentosService } from './documentos.service';
+import { DocumentosService } from './documentos.service'; import { DocumentosPreviewService } from './documentos-preview.service';
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
 import { documentosQuerySchema } from '../common/schemas/documentos-query.schema';
 import type { DocumentosQueryDto } from '../common/schemas/documentos-query.schema';
@@ -8,7 +8,7 @@ import type { DocumentosQueryDto } from '../common/schemas/documentos-query.sche
 @ApiTags('documentos')
 @Controller('documentos')
 export class DocumentosController {
-  constructor(private readonly service: DocumentosService) {}
+  constructor(private readonly service: DocumentosService, private readonly preview: DocumentosPreviewService) {}
 
   @ApiOperation({ summary: 'Listar documentos con filtros y paginación' })
   @ApiQuery({ name: 'cliente', required: false, example: 'BBTI' })
@@ -53,7 +53,7 @@ export class DocumentosController {
     );
   }
 
-  @Post('archivos/:archivoId/procesar-ocr')
+  @ApiOperation({ summary: 'Generar URL temporal de preview para archivo privado R2' }) @Get('archivos/:archivoId/preview-url') getArchivoPreviewUrl( @Param('archivoId', ParseIntPipe) archivoId: number, ) { return this.preview.getArchivoPreviewUrl(archivoId); } @Post('archivos/:archivoId/procesar-ocr')
   procesarOcrArchivo(
     @Param('archivoId', ParseIntPipe) archivoId: number,
     @Body() body: {
