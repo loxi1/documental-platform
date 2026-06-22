@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { getDocumentoArchivoPreviewUrl, type DocumentoArchivoPreview } from "@/services/documentos-preview";
 
 const TIPOS_DOCUMENTALES = [
   "OC",
@@ -342,15 +343,60 @@ export function OcrValidationModal({
 }: OcrValidationModalProps) {
   const [form, setForm] = useState<FormState>(() => buildInitialForm(resultado));
   const [localMessage, setLocalMessage] = useState<string | null>(null);
+  const [preview, setPreview] = useState<DocumentoArchivoPreview | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
 
   useEffect(() => {
     if (open) {
       setForm(buildInitialForm(resultado));
       setLocalMessage(null);
+      setPreview(null);
+      setPreviewError(null);
     }
   }, [open, resultado]);
 
-  const archivo = useMemo(() => getArchivoInfo(resultado), [resultado]);
+  useEffect(() => {
+    if (!open || !fallbackArchivoId) return;
+
+    let active = true;
+    setPreviewLoading(true);
+    setPreviewError(null);
+
+    getDocumentoArchivoPreviewUrl(fallbackArchivoId)
+      .then((data) => {
+        if (!active) return;
+        setPreview(data);
+      })
+      .catch((error) => {
+        if (!active) return;
+        setPreview(null);
+        setPreviewError(
+          error?.response?.data?.message ??
+            error?.message ??
+            "No se pudo cargar la vista previa firmada.",
+        );
+      })
+      .finally(() => {
+        if (!active) return;
+        setPreviewLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [open, fallbackArchivoId]);
+
+  const archivoBase = useMemo(() => getArchivoInfo(resultado), [resultado]);
+  const archivo = useMemo(() => ({
+    ...archivoBase,
+    nombre: preview?.filename ?? archivoBase.nombre,
+    storageProvider: preview?.storageProvider ?? archivoBase.storageProvider,
+    storageBucket: preview?.storageBucket ?? archivoBase.storageBucket,
+    storageKey: preview?.storageKey ?? archivoBase.storageKey,
+    previewUrl: preview?.signedUrl ?? archivoBase.previewUrl,
+    contentType: preview?.contentType ?? null,
+  }), [archivoBase, preview]);
   const expediente = useMemo(() => getExpedienteInfo(resultado), [resultado]);
   const campos = useMemo(() => camposPorTipo(form.tipoDocumental), [form.tipoDocumental]);
 
@@ -401,7 +447,15 @@ export function OcrValidationModal({
 
         <section className="grid min-h-0 flex-1 overflow-hidden lg:grid-cols-[1.05fr_0.95fr]">
           <div className="min-h-[520px] overflow-auto border-b border-slate-200 bg-slate-50 p-5 dark:border-slate-800 dark:bg-slate-900/60 lg:border-b-0 lg:border-r">
-            {archivo.previewUrl ? (
+            {archivo.previewUrl && String(archivo.contentType ?? "").startsWith("image/") ? (
+              <div className="flex h-full min-h-[620px] items-center justify-center rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-950">
+                <img
+                  src={archivo.previewUrl}
+                  alt={`Vista previa ${archivo.nombre}`}
+                  className="max-h-full max-w-full rounded-lg object-contain"
+                />
+              </div>
+            ) : archivo.previewUrl ? (
               <iframe
                 src={archivo.previewUrl}
                 title={`Vista previa ${archivo.nombre}`}
@@ -413,10 +467,12 @@ export function OcrValidationModal({
                   📄
                 </div>
                 <h3 className="text-base font-semibold text-slate-950 dark:text-slate-100">
-                  Vista previa pendiente
+                  {previewLoading ? "Generando vista previa..." : "Vista previa pendiente"}
                 </h3>
                 <p className="mt-2 max-w-md text-sm text-slate-500 dark:text-slate-400">
-                  Aún no hay URL firmada o pública para visualizar el documento. El diseño queda listo para reemplazar este bloque por un visor PDF/imagen.
+                  {previewError
+                    ? `No se pudo cargar la URL firmada: ${previewError}`
+                    : "Aún no hay URL firmada disponible para visualizar el documento. Si el endpoint falla o expira, este placeholder se mantiene."}
                 </p>
 
                 <div className="mt-6 w-full max-w-xl rounded-xl border border-slate-200 bg-slate-50 p-4 text-left text-xs dark:border-slate-800 dark:bg-slate-900">
