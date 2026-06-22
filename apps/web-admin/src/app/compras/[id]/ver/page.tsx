@@ -65,7 +65,7 @@ type ExpedienteDocumento360 = {
   archivoEstado?: string | null;
   area_origen?: string | null;
   areaOrigen?: string | null;
-  metadata?: (Record<string, unknown> & OcrMetadata360) | null;
+  metadata?: (Record<string, unknown> & OcrMetadata360) | string | null;
 };
 
 type TimelineItem360 = {
@@ -107,19 +107,15 @@ function texto(value: unknown, fallback = "—") {
 
 function fecha(value: unknown) {
   if (!value) return "—";
-
   const parsed = new Date(String(value));
   if (Number.isNaN(parsed.getTime())) return String(value);
-
   return parsed.toLocaleString("es-PE");
 }
 
 function moneda(value: unknown, currency?: string | null) {
   if (value === null || value === undefined || value === "") return "—";
-
   const numericValue = Number(value);
   if (Number.isNaN(numericValue)) return String(value);
-
   const code = String(currency ?? "").toUpperCase();
   const currencyCode = code.includes("DOLAR") || code === "USD" ? "USD" : "PEN";
 
@@ -131,11 +127,9 @@ function moneda(value: unknown, currency?: string | null) {
 
 function getArray<T>(value: unknown, key?: string): T[] {
   if (Array.isArray(value)) return value as T[];
-
   if (!value || typeof value !== "object") return [];
 
   const record = value as Record<string, unknown>;
-
   if (key && Array.isArray(record[key])) return record[key] as T[];
   if (Array.isArray(record.items)) return record.items as T[];
   if (Array.isArray(record.documentos)) return record.documentos as T[];
@@ -145,18 +139,33 @@ function getArray<T>(value: unknown, key?: string): T[] {
   return [];
 }
 
+function parseMaybeJson(value: unknown): Record<string, unknown> | null {
+  if (!value) return null;
+  if (typeof value === "object") return value as Record<string, unknown>;
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value) as unknown;
+      return parsed && typeof parsed === "object"
+        ? (parsed as Record<string, unknown>)
+        : null;
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
 function isPrincipal(doc: ExpedienteDocumento360) {
   return Boolean(
     doc.es_principal ||
       doc.esPrincipal ||
-      String(doc.tipo_relacion ?? doc.tipoRelacion ?? "").startsWith(
-        "principal_",
-      ),
+      String(doc.tipo_relacion ?? doc.tipoRelacion ?? "").startsWith("principal_"),
   );
 }
 
 function metadataRecord(doc?: ExpedienteDocumento360) {
-  return (doc?.metadata ?? {}) as Record<string, unknown> & OcrMetadata360;
+  return (parseMaybeJson(doc?.metadata) ?? {}) as Record<string, unknown> &
+    OcrMetadata360;
 }
 
 function nestedMetadata(doc?: ExpedienteDocumento360) {
@@ -170,18 +179,47 @@ function nestedMetadata(doc?: ExpedienteDocumento360) {
   ];
 
   for (const candidate of candidates) {
-    if (candidate && typeof candidate === "object") {
-      return candidate as Record<string, unknown> & OcrMetadata360;
-    }
+    const parsed = parseMaybeJson(candidate);
+    if (parsed) return parsed as Record<string, unknown> & OcrMetadata360;
   }
 
   return metadata;
 }
 
+function badgeTone(value: unknown) {
+  const text = String(value ?? "").toLowerCase();
+  if (text.includes("pendiente")) return "border-amber-200 bg-amber-50 text-amber-700";
+  if (text.includes("validado") || text.includes("confirmado")) {
+    return "border-emerald-200 bg-emerald-50 text-emerald-700";
+  }
+  if (text.includes("rechaz")) return "border-red-200 bg-red-50 text-red-700";
+  return "border-slate-200 bg-slate-50 text-slate-600";
+}
+
+function StatusBadge({ value }: { value: unknown }) {
+  return (
+    <span
+      className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-medium ${badgeTone(
+        value,
+      )}`}
+    >
+      {texto(value)}
+    </span>
+  );
+}
+
+function RelationBadge({ value }: { value: unknown }) {
+  return (
+    <span className="inline-flex rounded-full border border-slate-200 bg-white px-2 py-0.5 text-xs font-medium text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
+      {texto(value)}
+    </span>
+  );
+}
+
 function InfoCard({ label, value }: { label: string; value: unknown }) {
   return (
     <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-      <p className="text-xs font-medium uppercase tracking-wide text-slate-400">
+      <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
         {label}
       </p>
       <p className="mt-2 text-lg font-semibold text-slate-950 dark:text-slate-100">
@@ -194,7 +232,7 @@ function InfoCard({ label, value }: { label: string; value: unknown }) {
 function DetailItem({ label, value }: { label: string; value: unknown }) {
   return (
     <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-950">
-      <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+      <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
         {label}
       </p>
       <p className="mt-1 break-words text-sm font-semibold text-slate-950 dark:text-slate-100">
@@ -217,7 +255,8 @@ const estadoItems: EstadoDocumentalItem[] = [
 
 export default function CompraExpedienteVerPage() {
   const params = useParams();
-  const id = String(params.id);
+  const rawId = params?.id;
+  const id = Array.isArray(rawId) ? rawId[0] : String(rawId ?? "");
 
   const resumenQuery = useQuery({
     queryKey: ["expediente-resumen", id],
@@ -249,23 +288,25 @@ export default function CompraExpedienteVerPage() {
     enabled: Boolean(id),
   });
 
-  const resumen = resumenQuery.data as Record<string, any> | undefined;
-  const expediente = resumen?.expediente as Record<string, any> | undefined;
-
+  const resumen = resumenQuery.data as Record<string, unknown> | undefined;
+  const expediente = resumen?.expediente as Record<string, unknown> | undefined;
   const documentos = Array.isArray(documentosQuery.data)
     ? (documentosQuery.data as ExpedienteDocumento360[])
     : ((resumen?.documentos ?? []) as ExpedienteDocumento360[]);
 
   const documentosPrincipales = documentos.filter(isPrincipal);
   const documentosAdjuntos = documentos.filter((doc) => !isPrincipal(doc));
-  const totalDocumentos = resumen?.totales?.documentos ?? documentos.length;
+  const totalDocumentos =
+    (resumen?.totales as Record<string, unknown> | undefined)?.documentos ??
+    documentos.length;
 
   const estadoDocumental = estadoDocumentalQuery.data as
-    | Record<string, any>
+    | Record<string, unknown>
     | undefined;
-  const conteoDocumental = estadoDocumental?.documentos ?? {};
+  const conteoDocumental =
+    (estadoDocumental?.documentos as Record<string, unknown> | undefined) ?? {};
 
-  const timelineData = timelineQuery.data as Record<string, any> | undefined;
+  const timelineData = timelineQuery.data as Record<string, unknown> | undefined;
   const timeline = getArray<TimelineItem360>(timelineData, "timeline");
   const alertas = getArray<Alerta360>(alertasQuery.data, "alertas");
 
@@ -305,42 +346,44 @@ export default function CompraExpedienteVerPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <header className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
         <div>
-          <p className="text-sm text-slate-400">Compras 360°</p>
-          <h1 className="text-2xl font-semibold text-slate-950 dark:text-slate-100">
-            {texto(
-              expediente?.codigo_expediente ?? expediente?.codigoExpediente ?? id,
-            )}
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-500 shadow-sm dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300">
+              Compras 360° MVP
+            </span>
+            <StatusBadge value={expediente?.estado} />
+          </div>
+          <p className="mt-4 text-xs font-medium text-slate-400">Expediente</p>
+          <h1 className="text-3xl font-bold tracking-tight text-slate-950 dark:text-slate-50">
+            {texto(expediente?.codigo_expediente ?? expediente?.codigoExpediente ?? id)}
           </h1>
-          <p className="mt-1 text-sm text-slate-400">
+          <p className="mt-1 text-sm font-medium uppercase text-slate-400">
             {texto(expediente?.descripcion)}
           </p>
         </div>
 
         <Link
           href="/compras"
-          className="rounded-xl border border-slate-300 px-4 py-2 text-sm text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-900"
+          className="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
         >
           Volver
         </Link>
-      </div>
+      </header>
 
       {cargando ? (
-        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-          <p className="text-sm text-slate-500 dark:text-slate-400">
-            Cargando expediente...
-          </p>
+        <section className="rounded-2xl border border-slate-200 bg-white p-5 text-sm text-slate-500 shadow-sm dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">
+          Cargando expediente...
         </section>
       ) : null}
 
       {resumenQuery.isError ? (
-        <section className="rounded-2xl border border-red-200 bg-red-50 p-5 text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200">
+        <section className="rounded-2xl border border-red-200 bg-red-50 p-5 text-sm text-red-700 shadow-sm dark:border-red-900 dark:bg-red-950/40 dark:text-red-200">
           No se pudo cargar el expediente.
         </section>
       ) : null}
 
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <InfoCard
           label="Empresa"
           value={expediente?.empresa_codigo ?? expediente?.empresaCodigo}
@@ -356,29 +399,45 @@ export default function CompraExpedienteVerPage() {
         />
         <InfoCard label="Estado" value={expediente?.estado} />
         <InfoCard label="Documentos" value={totalDocumentos} />
-      </section>
+      </div>
 
       <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-        <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
-          Estado documental
-        </h2>
-        <p className="mt-1 text-sm text-slate-400">
-          Completitud del expediente según documentos vinculados.
-        </p>
+        <div className="flex flex-col gap-1 md:flex-row md:items-end md:justify-between">
+          <div>
+            <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+              Estado documental
+            </h2>
+            <p className="mt-1 text-sm text-slate-400">
+              Completitud del expediente según documentos vinculados.
+            </p>
+          </div>
+          <span className="text-xs font-semibold text-slate-400">
+            Alertas activas: {texto((estadoDocumental?.alertasActivas as unknown) ?? 0)}
+          </span>
+        </div>
 
-        <div className="mt-4 grid gap-3 md:grid-cols-3 lg:grid-cols-4">
+        <div className="mt-4 grid gap-3 md:grid-cols-3 xl:grid-cols-4">
           {estadoItems.map(([label, key]) => {
             const total = Number(conteoDocumental?.[key] ?? 0);
-
             return (
               <div
                 key={key}
-                className="rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-950"
+                className={`rounded-xl border p-3 ${
+                  total > 0
+                    ? "border-emerald-200 bg-emerald-50 dark:border-emerald-900 dark:bg-emerald-950/30"
+                    : "border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-950"
+                }`}
               >
-                <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
                   {label}
                 </p>
-                <p className="mt-1 text-sm font-semibold text-slate-900 dark:text-slate-100">
+                <p
+                  className={`mt-1 text-sm font-bold ${
+                    total > 0
+                      ? "text-emerald-700 dark:text-emerald-300"
+                      : "text-slate-700 dark:text-slate-300"
+                  }`}
+                >
                   {total > 0 ? `✓ ${total}` : "— 0"}
                 </p>
               </div>
@@ -388,110 +447,130 @@ export default function CompraExpedienteVerPage() {
       </section>
 
       <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-        <div className="mb-4 flex items-center justify-between">
+        <div className="flex flex-col gap-1 md:flex-row md:items-start md:justify-between">
           <div>
             <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
               Documento principal
             </h2>
-            <p className="text-sm text-slate-400">
+            <p className="mt-1 text-sm text-slate-400">
               Documento base del expediente.
             </p>
           </div>
+          {principal ? (
+            <RelationBadge value={principal.tipo_relacion ?? principal.tipoRelacion} />
+          ) : null}
         </div>
 
         {principal ? (
-          <div className="grid gap-4 md:grid-cols-3">
-            <DetailItem
-              label="Tipo"
-              value={principal.tipo_documental ?? principal.tipoDocumental}
-            />
-            <DetailItem
-              label="Archivo"
-              value={principal.nombre_archivo ?? principal.nombreArchivo}
-            />
-            <DetailItem
-              label="Relación"
-              value={principal.tipo_relacion ?? principal.tipoRelacion}
-            />
-            <DetailItem label="Número" value={principalNumero} />
-            <DetailItem label="Fecha emisión" value={fecha(principalFechaEmision)} />
-            <DetailItem label="Proveedor" value={principalProveedor} />
-            <DetailItem label="RUC proveedor" value={principalRucProveedor} />
-            <DetailItem
-              label="Monto"
-              value={moneda(principalMonto, texto(principalMoneda, ""))}
-            />
-            <DetailItem label="Moneda" value={principalMoneda} />
-            <DetailItem label="Estado" value={principal.estado} />
-            <DetailItem
-              label="Archivo ID"
-              value={principal.archivo_id ?? principal.archivoId}
-            />
-            <DetailItem
-              label="Storage"
-              value={principal.storage_provider ?? principal.storageProvider}
-            />
+          <div className="mt-5 grid gap-4 lg:grid-cols-[1.1fr_2fr]">
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5 dark:border-slate-800 dark:bg-slate-950">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                Archivo principal
+              </p>
+              <p className="mt-2 break-words text-xl font-bold text-slate-950 dark:text-slate-100">
+                {texto(principal.nombre_archivo ?? principal.nombreArchivo)}
+              </p>
+              <div className="mt-4 flex flex-wrap gap-2">
+                <RelationBadge value={principal.tipo_documental ?? principal.tipoDocumental} />
+                <StatusBadge value={principal.estado} />
+                <RelationBadge value={principal.storage_provider ?? principal.storageProvider} />
+              </div>
+              <dl className="mt-5 grid gap-3 text-sm">
+                <div>
+                  <dt className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                    Archivo ID
+                  </dt>
+                  <dd className="mt-1 font-semibold text-slate-900 dark:text-slate-100">
+                    {texto(principal.archivo_id ?? principal.archivoId)}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                    Área origen
+                  </dt>
+                  <dd className="mt-1 font-semibold text-slate-900 dark:text-slate-100">
+                    {texto(principal.area_origen ?? principal.areaOrigen)}
+                  </dd>
+                </div>
+              </dl>
+            </div>
+
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              <DetailItem label="Tipo" value={principal.tipo_documental ?? principal.tipoDocumental} />
+              <DetailItem label="Relación" value={principal.tipo_relacion ?? principal.tipoRelacion} />
+              <DetailItem label="Número" value={principalNumero} />
+              <DetailItem label="Fecha emisión" value={principalFechaEmision} />
+              <DetailItem label="Proveedor" value={principalProveedor} />
+              <DetailItem label="RUC proveedor" value={principalRucProveedor} />
+              <DetailItem label="Monto" value={moneda(principalMonto, texto(principalMoneda, ""))} />
+              <DetailItem label="Moneda" value={principalMoneda} />
+              <DetailItem label="Clave documental" value={principal.clave_documental ?? principal.claveDocumental} />
+            </div>
           </div>
         ) : (
-          <p className="text-sm text-slate-400">
+          <p className="mt-4 text-sm text-slate-400">
             No hay documento principal vinculado.
           </p>
         )}
       </section>
 
       <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-        <div className="flex items-center justify-between gap-3">
+        <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
           <div>
             <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
               Documentos vinculados
             </h2>
-            <p className="text-sm text-slate-400">
+            <p className="mt-1 text-sm text-slate-400">
               Incluye documento principal y adjuntos del expediente.
             </p>
           </div>
-          <span className="rounded-full border border-slate-200 px-3 py-1 text-xs font-medium text-slate-500 dark:border-slate-700 dark:text-slate-300">
+          <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300">
             Adjuntos: {documentosAdjuntos.length}
           </span>
         </div>
 
         <div className="mt-4 overflow-x-auto">
-          <table className="w-full min-w-[760px] text-left text-sm">
-            <thead className="text-xs uppercase text-slate-500">
+          <table className="w-full min-w-[860px] text-left text-sm">
+            <thead className="border-b border-slate-200 text-xs uppercase text-slate-400 dark:border-slate-800">
               <tr>
-                <th className="py-2">Tipo</th>
-                <th className="py-2">Relación</th>
-                <th className="py-2">Archivo</th>
-                <th className="py-2">Estado</th>
-                <th className="py-2">Área</th>
-                <th className="py-2">Fecha</th>
+                <th className="py-3 pr-4">Tipo</th>
+                <th className="py-3 pr-4">Relación</th>
+                <th className="py-3 pr-4">Archivo</th>
+                <th className="py-3 pr-4">Estado</th>
+                <th className="py-3 pr-4">Área</th>
+                <th className="py-3 pr-4">Archivo ID</th>
+                <th className="py-3 pr-4">Fecha</th>
               </tr>
             </thead>
-            <tbody>
+            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
               {documentos.map((doc, index) => (
-                <tr
-                  key={`${doc.documento_id ?? doc.documentoId ?? index}`}
-                  className="border-t border-slate-200 dark:border-slate-800"
-                >
-                  <td className="py-3">
+                <tr key={doc.documento_id ?? doc.documentoId ?? index}>
+                  <td className="py-3 pr-4 font-semibold text-slate-900 dark:text-slate-100">
                     {texto(doc.tipo_documental ?? doc.tipoDocumental)}
                   </td>
-                  <td className="py-3">
-                    {texto(doc.tipo_relacion ?? doc.tipoRelacion)}
+                  <td className="py-3 pr-4">
+                    <RelationBadge value={doc.tipo_relacion ?? doc.tipoRelacion} />
                   </td>
-                  <td className="py-3">
+                  <td className="py-3 pr-4 font-medium text-slate-700 dark:text-slate-200">
                     {texto(doc.nombre_archivo ?? doc.nombreArchivo)}
                   </td>
-                  <td className="py-3">{texto(doc.estado)}</td>
-                  <td className="py-3">
+                  <td className="py-3 pr-4">
+                    <StatusBadge value={doc.estado} />
+                  </td>
+                  <td className="py-3 pr-4 text-slate-600 dark:text-slate-300">
                     {texto(doc.area_origen ?? doc.areaOrigen)}
                   </td>
-                  <td className="py-3">{fecha(doc.creado_en ?? doc.creadoEn)}</td>
+                  <td className="py-3 pr-4 text-slate-600 dark:text-slate-300">
+                    {texto(doc.archivo_id ?? doc.archivoId)}
+                  </td>
+                  <td className="py-3 pr-4 text-slate-500">
+                    {fecha(doc.creado_en ?? doc.creadoEn)}
+                  </td>
                 </tr>
               ))}
-
               {!documentos.length ? (
                 <tr>
-                  <td colSpan={6} className="py-4 text-slate-400">
+                  <td className="py-4 text-sm text-slate-400" colSpan={7}>
                     No hay documentos vinculados.
                   </td>
                 </tr>
@@ -501,22 +580,21 @@ export default function CompraExpedienteVerPage() {
         </div>
       </section>
 
-      <section className="grid gap-4 lg:grid-cols-2">
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      <div className="grid gap-4 lg:grid-cols-2">
+        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
           <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
             Timeline
           </h2>
-
           <div className="mt-4 space-y-3">
             {timeline.map((item, index) => (
               <div
-                key={`${item.id ?? index}`}
+                key={item.id ?? index}
                 className="rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-950"
               >
-                <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                <p className="text-xs text-slate-400">
                   {fecha(item.fecha ?? item.creado_en ?? item.creadoEn)}
                 </p>
-                <p className="mt-1 font-medium text-slate-950 dark:text-slate-100">
+                <p className="mt-1 font-semibold text-slate-900 dark:text-slate-100">
                   {texto(
                     item.tipo ??
                       item.tipo_evento ??
@@ -525,7 +603,7 @@ export default function CompraExpedienteVerPage() {
                       item.tipoDocumental,
                   )}
                 </p>
-                <p className="mt-1 text-sm text-slate-400">
+                <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
                   {texto(
                     item.descripcion ??
                       item.mensaje ??
@@ -536,49 +614,42 @@ export default function CompraExpedienteVerPage() {
                 </p>
               </div>
             ))}
-
             {!timeline.length ? (
-              <p className="text-sm text-slate-400">
-                No hay eventos registrados.
-              </p>
+              <p className="text-sm text-slate-400">No hay eventos registrados.</p>
             ) : null}
           </div>
-        </div>
+        </section>
 
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
           <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
             Alertas
           </h2>
-
           <div className="mt-4 space-y-3">
             {alertas.map((alerta, index) => (
               <div
-                key={`${alerta.id ?? index}`}
+                key={alerta.id ?? index}
                 className="rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-950"
               >
-                <div className="flex items-center justify-between gap-3">
-                  <p className="font-medium text-slate-950 dark:text-slate-100">
+                <div className="flex items-start justify-between gap-3">
+                  <p className="font-semibold text-slate-900 dark:text-slate-100">
                     {texto(alerta.titulo ?? alerta.tipo ?? "Alerta")}
                   </p>
-                  <span className="rounded-full border border-slate-300 px-2 py-1 text-xs text-slate-500 dark:border-slate-700 dark:text-slate-300">
-                    {texto(alerta.prioridad ?? alerta.estado)}
-                  </span>
+                  <StatusBadge value={alerta.prioridad ?? alerta.estado} />
                 </div>
-                <p className="mt-2 text-sm text-slate-400">
+                <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
                   {texto(alerta.mensaje ?? alerta.descripcion)}
                 </p>
-                <p className="mt-2 text-xs text-slate-500">
+                <p className="mt-2 text-xs text-slate-400">
                   {fecha(alerta.creado_en ?? alerta.creadoEn)}
                 </p>
               </div>
             ))}
-
             {!alertas.length ? (
               <p className="text-sm text-slate-400">No hay alertas activas.</p>
             ) : null}
           </div>
-        </div>
-      </section>
+        </section>
+      </div>
     </div>
   );
 }
