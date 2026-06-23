@@ -3,6 +3,10 @@ import { api } from "./api";
 export type ProcesarOcrPayload = {
   tipoEsperado?: string;
   areaOrigen?: string;
+  clienteAbreviatura?: string;
+  expedienteId?: number | string;
+  documentoBaseId?: number | string | null;
+  tipoRelacionSugerida?: string;
   canalIngreso?: string;
   reprocesar?: boolean;
 };
@@ -23,8 +27,26 @@ export type ProcesarOcrResultado = {
   expediente_id?: number | string | null;
   expedienteVinculado?: Record<string, unknown> | null;
   expediente_vinculado?: Record<string, unknown> | null;
+  contextoCarga?: Record<string, unknown> | null;
   metadata?: Record<string, unknown> | string | null;
+  metadataSource?: Record<string, unknown> | null;
+  ocrResultadoId?: number | string | null;
+  ocr_resultado_id?: number | string | null;
+  id?: number | string | null;
   [key: string]: unknown;
+};
+
+export type EditarOcrResultadoPayload = {
+  tipoPropuesto?: string;
+  metadata?: Record<string, unknown>;
+  observacion?: string;
+};
+
+export type VincularOcrExpedientePayload = {
+  expedienteId: number | string;
+  tipoRelacion: string;
+  esPrincipal?: boolean;
+  orden?: number;
 };
 
 function unwrapDeep<T = unknown>(payload: unknown): T {
@@ -52,4 +74,32 @@ export async function procesarArchivoOcr(
   );
 
   return unwrapDeep<ProcesarOcrResultado>(data);
+}
+
+export async function editarOcrResultado(
+  id: number | string,
+  payload: EditarOcrResultadoPayload,
+) {
+  const { data } = await api.put(`/documentos/ocr-resultados/${id}/editar`, payload);
+  return unwrapDeep(data);
+}
+
+export async function confirmarOcrResultado(id: number | string) {
+  const { data } = await api.post(`/documentos/ocr-resultados/${id}/confirmar`, {});
+  return unwrapDeep(data);
+}
+
+export async function rechazarOcrResultado(id: number | string, motivo?: string) {
+  const { data } = await api.post(`/documentos/ocr-resultados/${id}/rechazar`, {
+    motivo: motivo?.trim() || "Rechazado por usuario",
+  });
+  return unwrapDeep(data);
+}
+
+export async function vincularOcrAExpediente(
+  id: number | string,
+  payload: VincularOcrExpedientePayload,
+) {
+  const { data } = await api.post(`/documentos/ocr-resultados/${id}/vincular-expediente`, payload);
+  return unwrapDeep(data);
 }

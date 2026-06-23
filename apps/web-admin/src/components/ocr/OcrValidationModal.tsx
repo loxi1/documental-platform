@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import { api } from "@/services/api";
 import { useEffect, useMemo, useState } from "react";
-import { getDocumentoArchivoPreviewUrl, type DocumentoArchivoPreview } from "@/services/documentos-preview";
 
 const TIPOS_DOCUMENTALES = [
   "OC",
@@ -34,14 +34,23 @@ type FormState = {
   documentoRelacionado: string;
 };
 
+export type OcrValidationExpedienteContexto = {
+  id?: string | number | null;
+  codigo?: string | null;
+  descripcion?: string | null;
+  empresa?: string | null;
+  rucComprador?: string | null;
+};
+
 type OcrValidationModalProps = {
   open: boolean;
   resultado: unknown;
   fallbackArchivoId?: string | number;
   onClose: () => void;
-  onSave?: (form: FormState) => void;
-  onConfirm?: (form: FormState) => void;
-  onReject?: (form: FormState) => void;
+  expedienteContexto?: OcrValidationExpedienteContexto;
+  onSave?: (form: FormState) => void | Promise<void>;
+  onConfirm?: (form: FormState) => void | Promise<void>;
+  onReject?: (form: FormState) => void | Promise<void>;
 };
 
 function texto(value: unknown, fallback = "—") {
@@ -174,17 +183,21 @@ function getExpedienteVinculado(resultado: unknown) {
   );
 }
 
-function getExpedienteInfo(resultado: unknown) {
+function getExpedienteInfo(resultado: unknown, expedienteContexto?: OcrValidationExpedienteContexto) {
   const raw = getRaw(resultado);
   const metadata = getMetadata(resultado);
   const vinculado = getExpedienteVinculado(resultado);
+  const contextoCarga = parseMaybeJson(raw.contextoCarga) ?? getRecord(metadata, "contextoCarga");
 
   const id =
+    expedienteContexto?.id ??
     raw.expedienteId ??
     raw.expediente_id ??
     vinculado?.id ??
     vinculado?.expedienteId ??
     vinculado?.expediente_id ??
+    contextoCarga?.expedienteId ??
+    contextoCarga?.expediente_id ??
     metadata.expedienteId ??
     metadata.expediente_id ??
     null;
@@ -192,20 +205,24 @@ function getExpedienteInfo(resultado: unknown) {
   return {
     id: id ? String(id) : "",
     codigo: texto(
-      vinculado?.codigoExpediente ??
+      expedienteContexto?.codigo ??
+        vinculado?.codigoExpediente ??
         vinculado?.codigo_expediente ??
         raw.codigoExpediente ??
         raw.codigo_expediente ??
+        contextoCarga?.codigoExpediente ??
+        contextoCarga?.codigo_expediente ??
         metadata.codigoExpediente ??
         metadata.codigo_expediente,
       "",
     ),
     descripcion: texto(
-      vinculado?.descripcion ?? vinculado?.nombre ?? vinculado?.detalle,
+      expedienteContexto?.descripcion ?? vinculado?.descripcion ?? vinculado?.nombre ?? vinculado?.detalle,
       "",
     ),
     empresa: texto(
-      vinculado?.empresaCodigo ??
+      expedienteContexto?.empresa ??
+        vinculado?.empresaCodigo ??
         vinculado?.empresa_codigo ??
         raw.empresaCodigo ??
         raw.empresa_codigo ??
@@ -216,9 +233,10 @@ function getExpedienteInfo(resultado: unknown) {
   };
 }
 
-function buildInitialForm(resultado: unknown): FormState {
+function buildInitialForm(resultado: unknown, expedienteContexto?: OcrValidationExpedienteContexto): FormState {
   const raw = getRaw(resultado);
   const metadata = getMetadata(resultado);
+  const contextoCarga = parseMaybeJson(raw.contextoCarga) ?? getRecord(metadata, "contextoCarga");
 
   return {
     tipoDocumental: texto(
@@ -230,13 +248,22 @@ function buildInitialForm(resultado: unknown): FormState {
     fechaEmision: texto(raw.fechaEmision ?? raw.fecha_emision ?? metadata.fechaEmision ?? metadata.fecha_emision, ""),
     proveedor: texto(raw.proveedor ?? raw.razonSocialEmisor ?? metadata.proveedor ?? metadata.razonSocialEmisor, ""),
     rucProveedor: texto(raw.rucProveedor ?? raw.ruc_proveedor ?? metadata.rucProveedor ?? metadata.ruc_proveedor, ""),
-    rucComprador: texto(raw.rucComprador ?? raw.ruc_comprador ?? metadata.rucComprador ?? metadata.ruc_comprador, ""),
-    rucEmisor: texto(raw.rucEmisor ?? raw.ruc_emisor ?? metadata.rucEmisor ?? metadata.ruc_emisor, ""),
+    rucComprador: texto(raw.rucComprador ?? raw.ruc_comprador ?? metadata.rucComprador ?? metadata.ruc_comprador ?? expedienteContexto?.rucComprador, ""),
+    rucEmisor: texto(raw.rucEmisor ?? raw.ruc_emisor ?? metadata.rucEmisor ?? metadata.ruc_emisor ?? raw.ruc ?? metadata.ruc, ""),
     razonSocial: texto(raw.razonSocial ?? raw.razon_social ?? metadata.razonSocial ?? metadata.razon_social, ""),
     montoTotal: texto(raw.montoTotal ?? raw.monto_total ?? metadata.montoTotal ?? metadata.monto_total, ""),
     moneda: texto(raw.moneda ?? metadata.moneda, ""),
     cotizacion: texto(raw.cotizacion ?? metadata.cotizacion, ""),
-    codigoExpediente: texto(raw.codigoExpediente ?? raw.codigo_expediente ?? metadata.codigoExpediente ?? metadata.codigo_expediente, ""),
+    codigoExpediente: texto(
+      raw.codigoExpediente ??
+        raw.codigo_expediente ??
+        metadata.codigoExpediente ??
+        metadata.codigo_expediente ??
+        contextoCarga?.codigoExpediente ??
+        contextoCarga?.codigo_expediente ??
+        expedienteContexto?.codigo,
+      "",
+    ),
     claveDocumental: texto(raw.claveDocumental ?? raw.clave_documental ?? metadata.claveDocumental ?? metadata.clave_documental, ""),
     documentoRelacionado: texto(raw.documentoRelacionado ?? raw.documento_relacionado ?? metadata.documentoRelacionado ?? metadata.documento_relacionado, ""),
   };
@@ -251,6 +278,7 @@ function camposPorTipo(tipo: string): Array<keyof FormState> {
       "numero",
       "fechaEmision",
       "rucEmisor",
+      "rucComprador",
       "razonSocial",
       "montoTotal",
       "moneda",
@@ -336,68 +364,83 @@ export function OcrValidationModal({
   open,
   resultado,
   fallbackArchivoId,
+  expedienteContexto,
   onClose,
   onSave,
   onConfirm,
   onReject,
 }: OcrValidationModalProps) {
-  const [form, setForm] = useState<FormState>(() => buildInitialForm(resultado));
+  const [form, setForm] = useState<FormState>(() => buildInitialForm(resultado, expedienteContexto));
   const [localMessage, setLocalMessage] = useState<string | null>(null);
-  const [preview, setPreview] = useState<DocumentoArchivoPreview | null>(null);
-  const [previewLoading, setPreviewLoading] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [submittingAction, setSubmittingAction] = useState<null | "save" | "confirm" | "reject">(null);
+  const [previewUrlFromApi, setPreviewUrlFromApi] = useState<string | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
 
   useEffect(() => {
     if (open) {
-      setForm(buildInitialForm(resultado));
+      setForm(buildInitialForm(resultado, expedienteContexto));
       setLocalMessage(null);
-      setPreview(null);
+      setActionError(null);
+      setPreviewUrlFromApi(null);
       setPreviewError(null);
     }
-  }, [open, resultado]);
+  }, [open, resultado, expedienteContexto]);
 
   useEffect(() => {
-    if (!open || !fallbackArchivoId) return;
+    if (!open) return;
 
-    let active = true;
-    setPreviewLoading(true);
-    setPreviewError(null);
+    const rawArchivo = getArchivoInfo(resultado);
+    if (rawArchivo.previewUrl) {
+      setPreviewUrlFromApi(rawArchivo.previewUrl);
+      setPreviewError(null);
+      return;
+    }
 
-    getDocumentoArchivoPreviewUrl(fallbackArchivoId)
-      .then((data) => {
-        if (!active) return;
-        setPreview(data);
-      })
-      .catch((error) => {
-        if (!active) return;
-        setPreview(null);
-        setPreviewError(
-          error?.response?.data?.message ??
-            error?.message ??
-            "No se pudo cargar la vista previa firmada.",
-        );
-      })
-      .finally(() => {
-        if (!active) return;
-        setPreviewLoading(false);
-      });
+    if (!fallbackArchivoId) {
+      setPreviewUrlFromApi(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    async function loadPreviewUrl() {
+      try {
+        setPreviewError(null);
+        const response = await api.get(`/documentos/archivos/${fallbackArchivoId}/preview-url`);
+        const payload = response.data?.data ?? response.data;
+        const signedUrl =
+          payload?.signedUrl ??
+          payload?.signed_url ??
+          payload?.publicUrl ??
+          payload?.public_url ??
+          null;
+
+        if (!cancelled) {
+          setPreviewUrlFromApi(signedUrl ? String(signedUrl) : null);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setPreviewUrlFromApi(null);
+          setPreviewError(
+            error instanceof Error
+              ? error.message
+              : "No se pudo preparar la vista previa del documento.",
+          );
+        }
+      }
+    }
+
+    void loadPreviewUrl();
 
     return () => {
-      active = false;
+      cancelled = true;
     };
-  }, [open, fallbackArchivoId]);
+  }, [open, resultado, fallbackArchivoId]);
 
-  const archivoBase = useMemo(() => getArchivoInfo(resultado), [resultado]);
-  const archivo = useMemo(() => ({
-    ...archivoBase,
-    nombre: preview?.filename ?? archivoBase.nombre,
-    storageProvider: preview?.storageProvider ?? archivoBase.storageProvider,
-    storageBucket: preview?.storageBucket ?? archivoBase.storageBucket,
-    storageKey: preview?.storageKey ?? archivoBase.storageKey,
-    previewUrl: preview?.signedUrl ?? archivoBase.previewUrl,
-    contentType: preview?.contentType ?? null,
-  }), [archivoBase, preview]);
-  const expediente = useMemo(() => getExpedienteInfo(resultado), [resultado]);
+  const archivo = useMemo(() => getArchivoInfo(resultado), [resultado]);
+  const previewUrl = previewUrlFromApi ?? archivo.previewUrl;
+  const expediente = useMemo(() => getExpedienteInfo(resultado, expedienteContexto), [resultado, expedienteContexto]);
   const campos = useMemo(() => camposPorTipo(form.tipoDocumental), [form.tipoDocumental]);
 
   if (!open) return null;
@@ -406,17 +449,44 @@ export function OcrValidationModal({
     setForm((current) => ({ ...current, [name]: value }));
   }
 
+  async function runAction(action: "save" | "confirm" | "reject", callback?: (form: FormState) => void | Promise<void>) {
+    if (!callback) return;
+
+    setSubmittingAction(action);
+    setActionError(null);
+    setLocalMessage(null);
+
+    try {
+      await callback(form);
+      if (action === "save") {
+        setLocalMessage("Cambios guardados correctamente.");
+      }
+    } catch (error) {
+      setActionError(
+        error instanceof Error
+          ? error.message
+          : "No se pudo completar la acción solicitada.",
+      );
+    } finally {
+      setSubmittingAction(null);
+    }
+  }
+
   function handleSave() {
-    onSave?.(form);
-    setLocalMessage("Cambios guardados localmente. Pendiente de conectar confirmación final.");
+    void runAction("save", onSave);
   }
 
   function handleConfirm() {
-    onConfirm?.(form);
+    if (!expediente.id && !form.codigoExpediente.trim()) {
+      setActionError("Selecciona o completa el expediente antes de guardar y confirmar.");
+      return;
+    }
+
+    void runAction("confirm", onConfirm);
   }
 
   function handleReject() {
-    onReject?.(form);
+    void runAction("reject", onReject);
   }
 
   return (
@@ -447,17 +517,9 @@ export function OcrValidationModal({
 
         <section className="grid min-h-0 flex-1 overflow-hidden lg:grid-cols-[1.05fr_0.95fr]">
           <div className="min-h-[520px] overflow-auto border-b border-slate-200 bg-slate-50 p-5 dark:border-slate-800 dark:bg-slate-900/60 lg:border-b-0 lg:border-r">
-            {archivo.previewUrl && String(archivo.contentType ?? "").startsWith("image/") ? (
-              <div className="flex h-full min-h-[620px] items-center justify-center rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-950">
-                <img
-                  src={archivo.previewUrl}
-                  alt={`Vista previa ${archivo.nombre}`}
-                  className="max-h-full max-w-full rounded-lg object-contain"
-                />
-              </div>
-            ) : archivo.previewUrl ? (
+            {previewUrl ? (
               <iframe
-                src={archivo.previewUrl}
+                src={previewUrl}
                 title={`Vista previa ${archivo.nombre}`}
                 className="h-full min-h-[620px] w-full rounded-xl border border-slate-200 bg-white dark:border-slate-800"
               />
@@ -467,12 +529,12 @@ export function OcrValidationModal({
                   📄
                 </div>
                 <h3 className="text-base font-semibold text-slate-950 dark:text-slate-100">
-                  {previewLoading ? "Generando vista previa..." : "Vista previa pendiente"}
+                  Vista previa pendiente
                 </h3>
                 <p className="mt-2 max-w-md text-sm text-slate-500 dark:text-slate-400">
                   {previewError
-                    ? `No se pudo cargar la URL firmada: ${previewError}`
-                    : "Aún no hay URL firmada disponible para visualizar el documento. Si el endpoint falla o expira, este placeholder se mantiene."}
+                    ? `No se pudo obtener la vista previa: ${previewError}`
+                    : "Preparando URL firmada para visualizar el documento. Si demora, puedes cerrar y abrir nuevamente la validación."}
                 </p>
 
                 <div className="mt-6 w-full max-w-xl rounded-xl border border-slate-200 bg-slate-50 p-4 text-left text-xs dark:border-slate-800 dark:bg-slate-900">
@@ -547,14 +609,20 @@ export function OcrValidationModal({
                   </div>
                 ) : (
                   <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
-                    Sin expediente vinculado. Puedes guardar la validación y vincular luego desde la bandeja OCR.
+                    Sin expediente vinculado. Completa el código de expediente antes de guardar y confirmar.
                   </p>
                 )}
               </div>
 
               {localMessage ? (
-                <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-300">
+                <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-300">
                   {localMessage}
+                </div>
+              ) : null}
+
+              {actionError ? (
+                <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-300">
+                  {actionError}
                 </div>
               ) : null}
             </div>
@@ -563,15 +631,16 @@ export function OcrValidationModal({
 
         <footer className="flex flex-col gap-3 border-t border-slate-200 px-5 py-4 dark:border-slate-800 md:flex-row md:items-center md:justify-between">
           <p className="text-xs text-slate-500 dark:text-slate-400">
-            MVP frontend-only: los botones dejan preparado el flujo para conectar confirmar/rechazar sin crear endpoints nuevos.
+            El OCR propone datos. El usuario puede corregirlos manualmente antes de guardar o confirmar.
           </p>
           <div className="flex flex-wrap justify-end gap-2">
             <button
               type="button"
               onClick={handleReject}
-              className="inline-flex h-9 items-center justify-center rounded-lg border border-red-200 bg-white px-3 text-sm font-medium text-red-600 transition hover:bg-red-50 dark:border-red-900/60 dark:bg-slate-950 dark:hover:bg-red-950/30"
+              disabled={submittingAction !== null}
+              className="inline-flex h-9 items-center justify-center rounded-lg border border-red-200 bg-white px-3 text-sm font-medium text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-red-900/60 dark:bg-slate-950 dark:hover:bg-red-950/30"
             >
-              Rechazar OCR
+              {submittingAction === "reject" ? "Rechazando..." : "Rechazar OCR"}
             </button>
             <button
               type="button"
@@ -583,16 +652,18 @@ export function OcrValidationModal({
             <button
               type="button"
               onClick={handleSave}
-              className="inline-flex h-9 items-center justify-center rounded-lg border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100 dark:hover:bg-slate-900"
+              disabled={submittingAction !== null}
+              className="inline-flex h-9 items-center justify-center rounded-lg border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100 dark:hover:bg-slate-900"
             >
-              Guardar cambios
+              {submittingAction === "save" ? "Guardando..." : "Guardar cambios"}
             </button>
             <button
               type="button"
               onClick={handleConfirm}
-              className="inline-flex h-9 items-center justify-center rounded-lg bg-slate-950 px-3 text-sm font-semibold text-white transition hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-950 dark:hover:bg-white"
+              disabled={submittingAction !== null}
+              className="inline-flex h-9 items-center justify-center rounded-lg bg-slate-950 px-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-slate-100 dark:text-slate-950 dark:hover:bg-white"
             >
-              Guardar y confirmar
+              {submittingAction === "confirm" ? "Confirmando..." : "Guardar y confirmar"}
             </button>
           </div>
         </footer>

@@ -9,10 +9,14 @@ import {
   Put,
   Query,
   UnauthorizedException,
+  UploadedFiles,
+  UseInterceptors,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
 import axios, { Method } from 'axios';
+import FormData from 'form-data';
+import { FileFieldsInterceptor } from '@nestjs/platform-express';
 import { firstValueFrom } from 'rxjs';
 import { ClientProxy } from '@nestjs/microservices';
 import { Inject } from '@nestjs/common';
@@ -112,6 +116,64 @@ export class DocumentosGatewayController {
       requestId,
       query,
     });
+  }
+
+
+  @ApiOperation({ summary: 'Carga guiada de archivo vía API Gateway' })
+  @ApiConsumes('multipart/form-data')
+  @Post('carga-guiada')
+  @UseInterceptors(FileFieldsInterceptor([
+    { name: 'file', maxCount: 1 },
+    { name: 'archivo', maxCount: 1 },
+  ]))
+  async cargaGuiada(
+    @Headers('authorization') authorization: string | undefined,
+    @Headers(REQUEST_ID_HEADER) requestId: string | undefined,
+    @UploadedFiles() files: Record<string, any[]>,
+    @Body() body: Record<string, any>,
+  ) {
+    await this.validateAuthorization(authorization);
+
+    const file = files?.file?.[0] ?? files?.archivo?.[0];
+
+    if (!file?.buffer) {
+      throw new Error('Archivo requerido en el campo file o archivo');
+    }
+
+    const form = new FormData();
+    form.append('file', file.buffer, {
+      filename: file.originalname,
+      contentType: file.mimetype,
+      knownLength: file.size,
+    });
+    form.append('archivo', file.buffer, {
+      filename: file.originalname,
+      contentType: file.mimetype,
+      knownLength: file.size,
+    });
+
+    for (const [key, value] of Object.entries(body ?? {})) {
+      if (value === undefined || value === null) continue;
+      if (Array.isArray(value)) {
+        value.forEach((item) => form.append(key, String(item)));
+      } else {
+        form.append(key, String(value));
+      }
+    }
+
+    const response = await axios.request({
+      method: 'POST',
+      url: `${this.getBaseUrl()}/documentos/carga-guiada`,
+      data: form,
+      headers: {
+        ...this.buildForwardHeaders(authorization, requestId),
+        ...form.getHeaders(),
+      },
+      maxBodyLength: Infinity,
+      maxContentLength: Infinity,
+    });
+
+    return this.unwrap(response);
   }
 
   @ApiOperation({ summary: 'Procesar OCR de archivo vía API Gateway' })

@@ -1,21 +1,36 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { type ChangeEvent, useMemo, useRef, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, FilePlus2, Save } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { OcrValidationModal } from "@/components/ocr/OcrValidationModal";
-import { useExpediente } from "@/hooks/useExpedientes";
+import { OcrValidationModal, type OcrValidationFormState } from "@/components/ocr/OcrValidationModal";
+import { OcrProcessingDialog, type OcrProcessingStep } from "@/components/ocr/OcrProcessingDialog";
 import {
+  DOCUMENTO_ADJUNTO_OPTIONS,
+  DOCUMENTO_PRINCIPAL_OPTIONS,
+  getConfiabilidadLabel,
+  getDocumentoSummary,
+  getDocumentoVisualState,
+  type DocumentoCargaOption,
+} from "../../constants/documentos";
+import { useExpediente } from "@/hooks/useExpedientes";
+import { subirDocumentoGuiado } from "@/services/carga-guiada";
+import { api } from "@/services/api";
+import {
+  confirmarOcrResultado,
+  editarOcrResultado,
   procesarArchivoOcr,
-  type ProcesarOcrPayload,
+  rechazarOcrResultado,
+  vincularOcrAExpediente,
   type ProcesarOcrResultado,
 } from "@/services/ocr-procesamiento";
+import type { CargaGuiadaPayloadPreview } from "@/types/carga-guiada";
 
 function text(value: unknown, fallback = "") {
   if (value === null || value === undefined) return fallback;
@@ -45,38 +60,316 @@ function descripcionAmigable(expediente: any) {
   return "";
 }
 
-const ARCHIVO_DEMO_ID = "3788";
-
-const ADJUNTOS_COMPRAS = [
-  {
-    label: "Factura",
-    description: "Comprobante asociado al documento principal.",
-    tipoEsperado: "OC",
-    tipoRelacionSugerida: "adjunto_factura",
-  },
-  {
-    label: "Guía",
-    description: "Documento de referencia cuando Compras lo tenga disponible.",
-    tipoEsperado: "OC",
-    tipoRelacionSugerida: "adjunto_guia",
-  },
-  {
-    label: "Sustento adicional",
-    description: "Cotización, correo, orden interna u otro soporte de compras.",
-    tipoEsperado: "OC",
-    tipoRelacionSugerida: "adjunto_otro",
-  },
-] as const;
-
-type AccionCargaDemo = {
-  label: string;
-  tipoEsperado: string;
-  tipoRelacionSugerida: string;
+type AccionCargaGuiada = DocumentoCargaOption & {
+  grupo: "principal" | "adjunto";
 };
+
+type UploadYProcesarArgs = {
+  accion: AccionCargaGuiada;
+  file: File;
+};
+
+type DocumentoVinculado = Record<string, any>;
+
+type ExpedienteDocumentosResponse = {
+  success?: boolean;
+  data?: DocumentoVinculado[] | { data?: DocumentoVinculado[] };
+};
+
+function unwrapDocumentos(payload: ExpedienteDocumentosResponse | DocumentoVinculado[] | any): DocumentoVinculado[] {
+  if (Array.isArray(payload)) return payload;
+  if (Array.isArray(payload?.data)) return payload.data;
+  if (Array.isArray(payload?.data?.data)) return payload.data.data;
+  return [];
+}
+
+function pickDocValue(doc: DocumentoVinculado | undefined, keys: string[], fallback = "—") {
+  if (!doc) return fallback;
+
+  for (const key of keys) {
+    const value = doc[key];
+    if (value !== null && value !== undefined && String(value).trim() !== "") {
+      return String(value);
+    }
+  }
+
+  return fallback;
+}
+
+function getRelacion(doc: DocumentoVinculado) {
+  return text(doc.tipo_relacion ?? doc.tipoRelacion ?? doc.relacion, "");
+}
+
+function getDocumentosPorRelacion(documentos: DocumentoVinculado[]) {
+  const map = new Map<string, DocumentoVinculado[]>();
+
+  for (const doc of documentos) {
+    const relacion = getRelacion(doc);
+    if (!relacion) continue;
+    const current = map.get(relacion) ?? [];
+    current.push(doc);
+    map.set(relacion, current);
+  }
+
+  return map;
+}
+
+function isTipoRelacionPrincipal(relacion: string) {
+  return relacion.startsWith("principal_");
+}
+
+const ESTADO_VISUAL_PRIORIDAD: Record<string, number> = {
+  error: 70,
+  rechazado: 60,
+  pendiente_validacion: 50,
+  validado: 40,
+  confirmado: 40,
+  pendiente_ocr: 30,
+  subido: 20,
+  pendiente_carga: 10,
+};
+
+function getCreatedTime(doc: DocumentoVinculado) {
+  const raw = String(doc.creado_en ?? doc.creadoEn ?? doc.createdAt ?? doc.actualizado_en ?? "");
+  const time = raw ? new Date(raw.replace(" ", "T")).getTime() : 0;
+  return Number.isFinite(time) ? time : 0;
+}
+
+function pickDocumentoPrincipalActual(
+  documentosPorRelacion: Map<string, DocumentoVinculado[]>,
+) {
+  const candidatos = DOCUMENTO_PRINCIPAL_OPTIONS
+    .map((option) => {
+      const documentos = documentosPorRelacion.get(option.tipoRelacionSugerida) ?? [];
+      const doc = documentos[0];
+      if (!doc) return null;
+      const visual = getDocumentoVisualState(doc);
+      const estado = String((visual as any).state ?? doc.estado ?? doc.archivo_estado ?? "");
+      return {
+        option,
+        documentos,
+        doc,
+        prioridad: ESTADO_VISUAL_PRIORIDAD[estado] ?? 0,
+        createdTime: getCreatedTime(doc),
+      };
+    })
+    .filter(Boolean) as Array<{
+      option: DocumentoCargaOption;
+      documentos: DocumentoVinculado[];
+      doc: DocumentoVinculado;
+      prioridad: number;
+      createdTime: number;
+    }>;
+
+  if (!candidatos.length) return null;
+
+  return candidatos.sort((a, b) => {
+    if (b.prioridad !== a.prioridad) return b.prioridad - a.prioridad;
+    return b.createdTime - a.createdTime;
+  })[0];
+}
+
+function DocumentoExistenteResumen({
+  documentos,
+  option,
+  onVerValidar,
+}: {
+  documentos?: DocumentoVinculado[];
+  option: DocumentoCargaOption;
+  onVerValidar?: (doc: DocumentoVinculado) => void;
+}) {
+  const principal = documentos?.[0];
+
+  if (!principal) {
+    const visual = getDocumentoVisualState(null);
+    return (
+      <div className={`mt-3 rounded-lg border px-3 py-2 text-xs ${visual.className}`}>
+        <div className="font-medium text-muted-foreground">{visual.label}</div>
+      </div>
+    );
+  }
+
+  const total = documentos?.length ?? 0;
+  const visual = getDocumentoVisualState(principal);
+  const summary = getDocumentoSummary(principal, option);
+
+  return (
+    <div className={`mt-3 rounded-lg border px-3 py-2 text-xs ${visual.className}`}>
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <div className="truncate font-semibold text-foreground">{summary.title}</div>
+          <div className="mt-1 truncate text-muted-foreground">{summary.providerLine}</div>
+          {summary.details ? (
+            <div className="mt-1 text-muted-foreground">{summary.details}</div>
+          ) : null}
+        </div>
+        <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] ${visual.badgeClassName}`}>
+          {visual.label}
+        </span>
+      </div>
+
+      <div className="mt-2 border-t pt-2 text-[11px] text-muted-foreground">
+        {summary.archivo ? <div className="truncate">Archivo: {summary.archivo}</div> : null}
+        {summary.archivoId ? <div>Archivo ID: {summary.archivoId}</div> : null}
+        {total > 1 ? <div>Versiones/cargas: {total}</div> : null}
+      </div>
+
+      <div className="mt-2 grid gap-2 sm:grid-cols-2">
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="h-8 text-xs"
+          onClick={() => onVerValidar?.(principal)}
+        >
+          Ver / Validar
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="h-8 text-xs"
+          disabled
+          title="Agregar versión se conectará en el sprint de versionado."
+        >
+          Agregar versión
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+const RUC_COMPRADOR_POR_EMPRESA: Record<string, string> = {
+  BBTEC: "20299922821",
+  BBTI: "20565747356",
+  CIMA: "20613521004",
+  TARMA: "20614307197",
+  HUANCA: "20612122416",
+  KIMBIRI: "20609856140",
+};
+
+function getRucComprador(expediente: any, empresa: string) {
+  return text(
+    expediente?.rucComprador ??
+      expediente?.ruc_comprador ??
+      expediente?.clienteDestinoRuc ??
+      expediente?.cliente_destino_ruc ??
+      expediente?.ruc ??
+      RUC_COMPRADOR_POR_EMPRESA[empresa],
+    "",
+  );
+}
+
+function getArchivoId(source: Record<string, unknown> | null | undefined) {
+  const value =
+    source?.archivoId ??
+    source?.archivo_id ??
+    source?.id;
+
+  if (value === null || value === undefined || value === "") return null;
+  return String(value);
+}
+
+function getOcrResultadoId(source: Record<string, unknown> | null | undefined) {
+  const value =
+    source?.ocrResultadoId ??
+    source?.ocr_resultado_id ??
+    source?.ocrId ??
+    source?.id;
+
+  if (value === null || value === undefined || value === "") return null;
+  return String(value);
+}
+
+function getRecordValue(source: Record<string, unknown> | null | undefined, path: string[]) {
+  let current: unknown = source;
+
+  for (const key of path) {
+    if (!current || typeof current !== "object") return null;
+    current = (current as Record<string, unknown>)[key];
+  }
+
+  return current ?? null;
+}
+
+function getTipoRelacionResultado(resultado: Record<string, unknown> | null, accion: AccionCargaGuiada | null) {
+  return text(
+    accion?.tipoRelacionSugerida ??
+      resultado?.tipoRelacionSugerida ??
+      getRecordValue(resultado, ["contextoCarga", "tipoRelacionSugerida"]) ??
+      getRecordValue(resultado, ["metadata", "contextoCarga", "tipoRelacionSugerida"]),
+    "adjunto_otro",
+  );
+}
+
+function isRelacionPrincipal(tipoRelacion: string) {
+  return isTipoRelacionPrincipal(tipoRelacion);
+}
+
+function normalizeAmount(value: string) {
+  const normalized = value.replace(/,/g, "").trim();
+  return normalized || undefined;
+}
+
+function emptyToUndefined(value: string | null | undefined) {
+  const normalized = String(value ?? "").trim();
+  return normalized || undefined;
+}
+
+function buildMetadataDesdeFormulario(
+  form: OcrValidationFormState,
+  context: {
+    codigoExpediente?: string;
+    rucComprador?: string;
+    clienteAbreviatura?: string;
+    expedienteId?: string | number;
+    tipoRelacion?: string;
+  },
+) {
+  const tipo = String(form.tipoDocumental || "").trim().toUpperCase();
+  const codigoExpediente = emptyToUndefined(form.codigoExpediente) ?? emptyToUndefined(context.codigoExpediente);
+  const rucComprador = emptyToUndefined(form.rucComprador) ?? emptyToUndefined(context.rucComprador);
+  const rucEmisor = emptyToUndefined(form.rucEmisor);
+  const rucProveedor = emptyToUndefined(form.rucProveedor) ?? rucEmisor;
+  const razonSocial = emptyToUndefined(form.razonSocial);
+  const proveedor = emptyToUndefined(form.proveedor) ?? razonSocial;
+
+  return {
+    tipoDocumental: tipo,
+    clienteAbreviatura: emptyToUndefined(context.clienteAbreviatura),
+    numero: emptyToUndefined(form.numero),
+    serie: emptyToUndefined(form.serie),
+    fechaEmision: emptyToUndefined(form.fechaEmision),
+    proveedor,
+    razonSocial,
+    ruc: tipo === "FACTURA" ? rucEmisor ?? rucProveedor : undefined,
+    rucEmisor,
+    rucProveedor,
+    rucComprador,
+    montoTotal: normalizeAmount(form.montoTotal),
+    moneda: emptyToUndefined(form.moneda),
+    cotizacion: emptyToUndefined(form.cotizacion),
+    codigoExpediente,
+    claveDocumental: emptyToUndefined(form.claveDocumental),
+    documentoRelacionado: emptyToUndefined(form.documentoRelacionado),
+    contextoValidacion: {
+      origen: "COMPRAS_EDITAR_MODAL",
+      expedienteId: context.expedienteId,
+      codigoExpediente,
+      tipoRelacionSugerida: context.tipoRelacion,
+      confirmadoDesde: "compras_editar",
+    },
+  };
+}
 
 function buildResultadoConContexto(
   resultado: ProcesarOcrResultado,
-  accion: AccionCargaDemo,
+  accion: AccionCargaGuiada,
+  extra: {
+    archivoId: string;
+    filename: string;
+    uploadResponse: Record<string, unknown>;
+  },
 ) {
   const metadataOriginal = resultado.metadata;
   const metadata =
@@ -86,68 +379,272 @@ function buildResultadoConContexto(
 
   return {
     ...resultado,
+    archivoId: resultado.archivoId ?? extra.archivoId,
     tipoRelacionSugerida: accion.tipoRelacionSugerida,
     contextoCarga: {
-      origen: "COMPRAS_EDITAR_MVP",
+      origen: "COMPRAS_EDITAR_UPLOAD",
+      grupo: accion.grupo,
       accion: accion.label,
-      archivoDemoId: ARCHIVO_DEMO_ID,
+      archivoId: extra.archivoId,
+      filename: extra.filename,
       tipoEsperado: accion.tipoEsperado,
       tipoRelacionSugerida: accion.tipoRelacionSugerida,
+      confiabilidad: accion.confiabilidad,
+      upload: extra.uploadResponse,
     },
     metadata: {
       ...metadata,
       contextoCarga: {
-        origen: "COMPRAS_EDITAR_MVP",
+        origen: "COMPRAS_EDITAR_UPLOAD",
+        grupo: accion.grupo,
         accion: accion.label,
-        archivoDemoId: ARCHIVO_DEMO_ID,
+        archivoId: extra.archivoId,
+        filename: extra.filename,
         tipoEsperado: accion.tipoEsperado,
         tipoRelacionSugerida: accion.tipoRelacionSugerida,
+        confiabilidad: accion.confiabilidad,
+        upload: extra.uploadResponse,
       },
     },
   };
 }
 
 export function CompraExpedienteEditor({ id }: { id: string | number }) {
+  const queryClient = useQueryClient();
   const { data: expediente, isLoading, error } = useExpediente(id);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [modalAbierto, setModalAbierto] = useState(false);
   const [resultadoModal, setResultadoModal] = useState<ProcesarOcrResultado | null>(null);
-  const [accionActual, setAccionActual] = useState<AccionCargaDemo | null>(null);
+  const [accionActual, setAccionActual] = useState<AccionCargaGuiada | null>(null);
   const [mensajeValidacion, setMensajeValidacion] = useState<string | null>(null);
+  const [processingStep, setProcessingStep] = useState<OcrProcessingStep>("idle");
+  const [processingFileName, setProcessingFileName] = useState<string | null>(null);
+  const [processingError, setProcessingError] = useState<string | null>(null);
 
-  const procesarDemoMutation = useMutation<
-    ProcesarOcrResultado,
-    Error,
-    AccionCargaDemo
-  >({
-    mutationFn: async (accion) => {
-      const payload: ProcesarOcrPayload = {
-        tipoEsperado: accion.tipoEsperado,
-        areaOrigen: "COMPRAS",
-        canalIngreso: "COMPRAS_EDITAR_MVP",
-        reprocesar: true,
-      };
-
-      const resultado = await procesarArchivoOcr(ARCHIVO_DEMO_ID, payload);
-      return buildResultadoConContexto(resultado, accion);
-    },
-    onSuccess: (resultado, accion) => {
-      setAccionActual(accion);
-      setResultadoModal(resultado);
-      setMensajeValidacion(null);
-      setModalAbierto(true);
-    },
-    onError: (err, accion) => {
-      setAccionActual(accion);
-      setMensajeValidacion(
-        `No se pudo procesar OCR para ${accion.label}. Revisa Gateway, ms-documentos o el archivo demo ${ARCHIVO_DEMO_ID}. ${err.message}`,
-      );
+  const documentosQuery = useQuery({
+    queryKey: ["expediente-documentos", String(id)],
+    enabled: Boolean(id),
+    queryFn: async () => {
+      const { data } = await api.get(`/expedientes/${id}/documentos`);
+      return unwrapDocumentos(data);
     },
   });
 
-  function iniciarValidacionOcr(accion: AccionCargaDemo) {
+  const documentosPorRelacion = useMemo(
+    () => getDocumentosPorRelacion(documentosQuery.data ?? []),
+    [documentosQuery.data],
+  );
+  const principalActual = useMemo(
+    () => pickDocumentoPrincipalActual(documentosPorRelacion),
+    [documentosPorRelacion],
+  );
+  const opcionesPrincipalVisibles = principalActual
+    ? [principalActual.option]
+    : DOCUMENTO_PRINCIPAL_OPTIONS;
+
+  const cargaRealMutation = useMutation<
+    ProcesarOcrResultado,
+    Error,
+    UploadYProcesarArgs
+  >({
+    mutationFn: async ({ accion, file }) => {
+      setProcessingFileName(file.name);
+      setProcessingError(null);
+      setProcessingStep("uploading");
+      const clienteAbreviatura = text(
+        (expediente as any)?.empresa_codigo ??
+          (expediente as any)?.empresaCodigo ??
+          (expediente as any)?.cliente_abreviatura ??
+          (expediente as any)?.clienteAbreviatura,
+        "",
+      );
+
+      if (!clienteAbreviatura) {
+        throw new Error("No se pudo resolver clienteAbreviatura del expediente.");
+      }
+
+      const uploadPayload: CargaGuiadaPayloadPreview = {
+        areaOrigen: "COMPRAS",
+        clienteAbreviatura,
+        tipoEsperado: accion.tipoEsperado as CargaGuiadaPayloadPreview["tipoEsperado"],
+        expedienteId: id,
+        tipoRelacionSugerida: accion.tipoRelacionSugerida as CargaGuiadaPayloadPreview["tipoRelacionSugerida"],
+        canalIngreso: "COMPRAS_EDITAR_UPLOAD",
+        observacion: `Carga desde Compras Editar: ${accion.grupo} - ${accion.label}`,
+      };
+
+      const uploadResponse = await subirDocumentoGuiado(uploadPayload, file);
+      const archivoId = getArchivoId(uploadResponse as Record<string, unknown>);
+
+      if (!archivoId) {
+        throw new Error("El upload no devolvió archivoId.");
+      }
+
+      setProcessingStep("processing_ocr");
+
+      const ocrPayload = {
+        tipoEsperado: accion.tipoEsperado,
+        areaOrigen: "COMPRAS",
+        clienteAbreviatura,
+        expedienteId: id,
+        tipoRelacionSugerida: accion.tipoRelacionSugerida,
+        canalIngreso: "COMPRAS_EDITAR_UPLOAD",
+        reprocesar: true,
+      };
+
+      const resultado = await procesarArchivoOcr(archivoId, ocrPayload);
+      setProcessingStep("preparing_preview");
+
+      return buildResultadoConContexto(resultado, accion, {
+        archivoId,
+        filename: file.name,
+        uploadResponse: uploadResponse as Record<string, unknown>,
+      });
+    },
+    onSuccess: (resultado, { accion }) => {
+      setAccionActual(accion);
+      setResultadoModal(resultado);
+      setMensajeValidacion(null);
+      setProcessingStep("ready");
+      queryClient.invalidateQueries({ queryKey: ["expediente-documentos", String(id)] });
+
+      window.setTimeout(() => {
+        setProcessingStep("idle");
+        setModalAbierto(true);
+      }, 450);
+    },
+    onError: (err, { accion }) => {
+      setAccionActual(accion);
+      const message = `No se pudo cargar/procesar OCR para ${accion.label}. Revisa Gateway, ms-documentos, R2 o NATS. ${err.message}`;
+      setProcessingStep("error");
+      setProcessingError(message);
+      setMensajeValidacion(message);
+    },
+  });
+
+  function iniciarSeleccionArchivo(option: DocumentoCargaOption, grupo: AccionCargaGuiada["grupo"]) {
+    setAccionActual({
+      ...option,
+      grupo,
+    });
+    setMensajeValidacion(null);
+    fileInputRef.current?.click();
+  }
+
+  function onArchivoSeleccionado(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0] ?? null;
+    event.target.value = "";
+
+    if (!file || !accionActual) return;
+
+    cargaRealMutation.mutate({
+      accion: accionActual,
+      file,
+    });
+  }
+
+
+  async function abrirDocumentoExistente(doc: DocumentoVinculado, option: DocumentoCargaOption) {
+    const archivoId = getArchivoId({
+      archivoId: doc.archivoId ?? doc.archivo_id,
+    });
+
+    if (!archivoId) {
+      setMensajeValidacion("El documento seleccionado no tiene archivo asociado para validar.");
+      return;
+    }
+
+    const accion: AccionCargaGuiada = {
+      ...option,
+      grupo: option.tipoRelacionSugerida.startsWith("principal_") ? "principal" : "adjunto",
+    };
+
+    const clienteAbreviatura = text(
+      (expediente as any)?.empresa_codigo ??
+        (expediente as any)?.empresaCodigo ??
+        (expediente as any)?.cliente_abreviatura ??
+        (expediente as any)?.clienteAbreviatura,
+      "",
+    );
+
+    if (!clienteAbreviatura) {
+      setMensajeValidacion("No se pudo resolver clienteAbreviatura del expediente.");
+      return;
+    }
+
     setAccionActual(accion);
     setMensajeValidacion(null);
-    procesarDemoMutation.mutate(accion);
+    setProcessingFileName(text(doc.nombre_archivo ?? doc.nombreArchivo ?? doc.filename, "Documento existente"));
+    setProcessingError(null);
+    setProcessingStep("processing_ocr");
+
+    try {
+      const ocrPayload = {
+        tipoEsperado: option.tipoEsperado,
+        areaOrigen: "COMPRAS",
+        clienteAbreviatura,
+        expedienteId: id,
+        tipoRelacionSugerida: option.tipoRelacionSugerida,
+        canalIngreso: "COMPRAS_EDITAR_VER_VALIDAR",
+        reprocesar: false,
+      };
+
+      const resultado = await procesarArchivoOcr(archivoId, ocrPayload);
+      setProcessingStep("preparing_preview");
+
+      const metadataOriginal = resultado.metadata;
+      const metadata =
+        metadataOriginal && typeof metadataOriginal === "object" && !Array.isArray(metadataOriginal)
+          ? metadataOriginal
+          : {};
+
+      setResultadoModal({
+        ...resultado,
+        archivoId: resultado.archivoId ?? archivoId,
+        documentoId: resultado.documentoId ?? doc.documento_id ?? doc.documentoId,
+        tipoDocumental: resultado.tipoDocumental ?? String(doc.tipo_documental ?? doc.tipoDocumental ?? option.tipoEsperado),
+        tipoRelacionSugerida: option.tipoRelacionSugerida,
+        metadata: {
+          ...metadata,
+          contextoCarga: {
+            origen: "COMPRAS_EDITAR_VER_VALIDAR",
+            grupo: accion.grupo,
+            accion: accion.label,
+            archivoId,
+            filename: text(doc.nombre_archivo ?? doc.nombreArchivo ?? doc.filename, "Documento existente"),
+            tipoEsperado: option.tipoEsperado,
+            tipoRelacionSugerida: option.tipoRelacionSugerida,
+          },
+        },
+        contextoCarga: {
+          ...(typeof resultado.contextoCarga === "object" && resultado.contextoCarga !== null
+            ? (resultado.contextoCarga as Record<string, unknown>)
+            : {}),
+          origen: "COMPRAS_EDITAR_VER_VALIDAR",
+          grupo: accion.grupo,
+          accion: accion.label,
+          archivoId,
+          filename: text(doc.nombre_archivo ?? doc.nombreArchivo ?? doc.filename, "Documento existente"),
+          tipoEsperado: option.tipoEsperado,
+          tipoRelacionSugerida: option.tipoRelacionSugerida,
+        },
+      } as ProcesarOcrResultado);
+
+      setProcessingStep("ready");
+      queryClient.invalidateQueries({ queryKey: ["expediente-documentos", String(id)] });
+
+      window.setTimeout(() => {
+        setProcessingStep("idle");
+        setModalAbierto(true);
+      }, 350);
+    } catch (err) {
+      const message = err instanceof Error
+        ? err.message
+        : "No se pudo abrir la validación OCR del documento existente.";
+      setProcessingStep("error");
+      setProcessingError(message);
+      setMensajeValidacion(message);
+    }
   }
 
   if (isLoading) {
@@ -165,11 +662,122 @@ export function CompraExpedienteEditor({ id }: { id: string | number }) {
 
   const codigo = text(expediente.codigo_expediente ?? expediente.codigoExpediente, "");
   const empresa = text(expediente.empresa_codigo ?? expediente.empresaCodigo, "");
+  const rucComprador = getRucComprador(expediente, empresa);
+  const descripcion = descripcionAmigable(expediente);
   const clavePrincipal = text(expediente.clave_principal ?? expediente.clavePrincipal, "");
-  const procesando = procesarDemoMutation.isPending;
+  const procesando = cargaRealMutation.isPending;
+  const archivoIdModal = getArchivoId(resultadoModal as Record<string, unknown> | null) ?? undefined;
+
+  async function persistirEdicionOcr(form: OcrValidationFormState, observacion: string) {
+    const resultadoActual = resultadoModal as Record<string, unknown> | null;
+    const ocrResultadoId = getOcrResultadoId(resultadoActual);
+
+    if (!ocrResultadoId) {
+      throw new Error("No se encontró ocrResultadoId para guardar la validación.");
+    }
+
+    const tipoRelacion = getTipoRelacionResultado(resultadoActual, accionActual);
+    const metadata = buildMetadataDesdeFormulario(form, {
+      codigoExpediente: codigo,
+      rucComprador,
+      clienteAbreviatura: empresa,
+      expedienteId: id,
+      tipoRelacion,
+    });
+
+    await editarOcrResultado(ocrResultadoId, {
+      tipoPropuesto: String(form.tipoDocumental || accionActual?.tipoEsperado || "").toUpperCase(),
+      metadata,
+      observacion,
+    });
+
+    queryClient.invalidateQueries({ queryKey: ["ocr-resultados"] });
+    queryClient.invalidateQueries({ queryKey: ["expediente-documentos", String(id)] });
+
+    return {
+      ocrResultadoId,
+      tipoRelacion,
+      metadata,
+    };
+  }
+
+  async function guardarCambiosOcr(form: OcrValidationFormState) {
+    await persistirEdicionOcr(form, "Edición manual desde Compras > Editar");
+    setMensajeValidacion(`Cambios OCR guardados para ${accionActual?.label ?? "documento"}.`);
+  }
+
+  async function confirmarOcrFinal(form: OcrValidationFormState) {
+    const codigoExpedienteFinal = text(form.codigoExpediente, codigo);
+
+    if (!codigoExpedienteFinal) {
+      throw new Error("El expediente es obligatorio antes de confirmar.");
+    }
+
+    const { ocrResultadoId, tipoRelacion } = await persistirEdicionOcr(
+      {
+        ...form,
+        codigoExpediente: codigoExpedienteFinal,
+        rucComprador: text(form.rucComprador, rucComprador),
+      },
+      "Guardar y confirmar desde Compras > Editar",
+    );
+
+    await confirmarOcrResultado(ocrResultadoId);
+
+    let vinculoFallido = false;
+
+    try {
+      await vincularOcrAExpediente(ocrResultadoId, {
+        expedienteId: id,
+        tipoRelacion,
+        esPrincipal: isRelacionPrincipal(tipoRelacion),
+        orden: isRelacionPrincipal(tipoRelacion) ? 1 : 0,
+      });
+    } catch {
+      // El backend actual puede confirmar y actualizar el documento, pero devolver 500 al vincular.
+      // No bloqueamos el cierre del modal; dejamos advertencia para revisar el vínculo en el siguiente sprint backend.
+      vinculoFallido = true;
+    }
+
+    setModalAbierto(false);
+    setMensajeValidacion(
+      vinculoFallido
+        ? `OCR confirmado para el expediente ${codigoExpedienteFinal}. El vínculo automático devolvió error; revisa expediente_documentos en backend.`
+        : `OCR confirmado y vinculado al expediente ${codigoExpedienteFinal}.`,
+    );
+    queryClient.invalidateQueries({ queryKey: ["ocr-resultados"] });
+    queryClient.invalidateQueries({ queryKey: ["expediente-documentos", String(id)] });
+  }
+
+  async function rechazarOcrFinal(form: OcrValidationFormState) {
+    const resultadoActual = resultadoModal as Record<string, unknown> | null;
+    const ocrResultadoId = getOcrResultadoId(resultadoActual);
+
+    if (!ocrResultadoId) {
+      throw new Error("No se encontró ocrResultadoId para rechazar el OCR.");
+    }
+
+    await rechazarOcrResultado(
+      ocrResultadoId,
+      `Rechazado desde Compras > Editar. Tipo: ${form.tipoDocumental}. Documento: ${form.serie ? `${form.serie}-` : ""}${form.numero || "sin número"}`,
+    );
+
+    setModalAbierto(false);
+    setMensajeValidacion(`OCR rechazado para ${accionActual?.label ?? "documento"}.`);
+    queryClient.invalidateQueries({ queryKey: ["ocr-resultados"] });
+    queryClient.invalidateQueries({ queryKey: ["expediente-documentos", String(id)] });
+  }
 
   return (
     <>
+      <input
+        ref={fileInputRef}
+        type="file"
+        className="hidden"
+        accept="application/pdf,image/png,image/jpeg,image/webp"
+        onChange={onArchivoSeleccionado}
+      />
+
       <main className="space-y-4">
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div>
@@ -181,7 +789,9 @@ export function CompraExpedienteEditor({ id }: { id: string | number }) {
             </Button>
             <h1 className="text-2xl font-bold">Editar compras</h1>
             <p className="text-sm text-muted-foreground">
-              Datos del expediente, documento principal y adjuntos gestionados por Compras.
+              Expediente {codigo || "SIN EXPEDIENTE"} · {descripcion || "Sin descripción"}
+              {empresa ? ` · Empresa ${empresa}` : ""}
+              {rucComprador ? ` · RUC comprador ${rucComprador}` : ""}
             </p>
           </div>
 
@@ -201,21 +811,25 @@ export function CompraExpedienteEditor({ id }: { id: string | number }) {
           <CardHeader>
             <CardTitle>Datos del expediente</CardTitle>
           </CardHeader>
-          <CardContent className="grid gap-4 md:grid-cols-2">
-            <div className="space-y-1.5">
+          <CardContent className="grid gap-4 md:grid-cols-10">
+            <div className="space-y-1.5 md:col-span-2">
               <label className="text-xs font-medium text-muted-foreground">Empresa</label>
               <Input value={empresa} readOnly />
             </div>
-            <div className="space-y-1.5">
+            <div className="space-y-1.5 md:col-span-2">
               <label className="text-xs font-medium text-muted-foreground">Expediente</label>
               <Input value={codigo || "SIN EXPEDIENTE"} readOnly />
             </div>
             <div className="space-y-1.5 md:col-span-2">
+              <label className="text-xs font-medium text-muted-foreground">RUC comprador</label>
+              <Input value={rucComprador || "Pendiente"} readOnly />
+            </div>
+            <div className="space-y-1.5 md:col-span-4">
               <label className="text-xs font-medium text-muted-foreground">Descripción</label>
-              <Input defaultValue={descripcionAmigable(expediente)} placeholder="Descripción del expediente" />
+              <Input defaultValue={descripcion} placeholder="Descripción del expediente" />
             </div>
             {clavePrincipal ? (
-              <div className="space-y-1.5 md:col-span-2">
+              <div className="space-y-1.5 md:col-span-10">
                 <label className="text-xs font-medium text-muted-foreground">Clave principal</label>
                 <Input value={clavePrincipal} readOnly />
               </div>
@@ -227,32 +841,58 @@ export function CompraExpedienteEditor({ id }: { id: string | number }) {
           <CardHeader>
             <CardTitle>Documento principal</CardTitle>
           </CardHeader>
-          <CardContent className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <CardContent className="space-y-4">
             <div>
               <div className="font-medium">Principal del expediente</div>
               <div className="text-sm text-muted-foreground">
-                OC, OS o Factura principal. La carga validará OCR antes de guardar.
+                Selecciona si el principal será OC, OS o factura directa. Luego elige el PDF o imagen.
               </div>
-              <p className="mt-2 text-xs text-muted-foreground">
-                MVP: usa archivo demo {ARCHIVO_DEMO_ID} hasta conectar upload real a R2.
-              </p>
+              {principalActual ? (
+                <div className="mt-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-muted-foreground dark:border-slate-800 dark:bg-slate-900/40">
+                  Ya existe un documento principal para este expediente. Para evitar duplicidad, se muestra solo el principal actual.
+                  El cambio formal de principal debe hacerse como reemplazo/versionado en un sprint posterior.
+                </div>
+              ) : null}
             </div>
-            <Button
-              variant="outline"
-              disabled={procesando}
-              onClick={() =>
-                iniciarValidacionOcr({
-                  label: "Reemplazar principal",
-                  tipoEsperado: "OC",
-                  tipoRelacionSugerida: "principal_oc",
-                })
-              }
-            >
-              <FilePlus2 className="h-4 w-4" />
-              {procesando && accionActual?.label === "Reemplazar principal"
-                ? "Procesando..."
-                : "Reemplazar principal"}
-            </Button>
+
+            <div className="grid gap-3 md:grid-cols-3">
+              {opcionesPrincipalVisibles.map((item) => (
+                <div key={item.tipoRelacionSugerida} className="rounded-xl border p-4">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <div className="font-medium">{item.label}</div>
+                      <div className="mt-1 text-xs text-muted-foreground">
+                        {item.description}
+                      </div>
+                    </div>
+                    <span className="rounded-full border px-2 py-0.5 text-[11px] text-muted-foreground">
+                      {item.tipoEsperado}
+                    </span>
+                  </div>
+
+                  <DocumentoExistenteResumen
+                    documentos={documentosPorRelacion.get(item.tipoRelacionSugerida)}
+                    option={item}
+                    onVerValidar={(doc) => abrirDocumentoExistente(doc, item)}
+                  />
+
+                  <Button
+                    className="mt-3 w-full"
+                    variant="outline"
+                    size="sm"
+                    disabled={procesando}
+                    onClick={() => iniciarSeleccionArchivo(item, "principal")}
+                  >
+                    <FilePlus2 className="h-4 w-4" />
+                    {procesando && accionActual?.tipoRelacionSugerida === item.tipoRelacionSugerida
+                      ? "Subiendo/procesando..."
+                      : documentosPorRelacion.get(item.tipoRelacionSugerida)?.length
+                        ? "Reemplazar archivo"
+                        : "Seleccionar archivo"}
+                  </Button>
+                </div>
+              ))}
+            </div>
           </CardContent>
         </Card>
 
@@ -260,30 +900,44 @@ export function CompraExpedienteEditor({ id }: { id: string | number }) {
           <CardHeader>
             <CardTitle>Adjuntos de Compras</CardTitle>
           </CardHeader>
-          <CardContent className="grid gap-3 md:grid-cols-3">
-            {ADJUNTOS_COMPRAS.map((item) => (
-              <div key={item.label} className="rounded-xl border p-4">
-                <div className="font-medium">{item.label}</div>
-                <div className="mt-1 text-xs text-muted-foreground">
-                  {item.description}
+          <CardContent className="grid gap-3 md:grid-cols-3 xl:grid-cols-4">
+            {DOCUMENTO_ADJUNTO_OPTIONS.map((item) => (
+              <div key={item.tipoRelacionSugerida} className="rounded-xl border p-4">
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <div className="font-medium">{item.label}</div>
+                    <div className="mt-1 text-xs text-muted-foreground">
+                      {item.description}
+                    </div>
+                  </div>
+                  <span className="rounded-full border px-2 py-0.5 text-[11px] text-muted-foreground">
+                    {item.tipoEsperado}
+                  </span>
                 </div>
+
+                <DocumentoExistenteResumen
+                  option={item}
+                  documentos={documentosPorRelacion.get(item.tipoRelacionSugerida)}
+                  onVerValidar={(doc) => abrirDocumentoExistente(doc, item)}
+                />
+
+                <div className="mt-3 text-[11px] text-muted-foreground">
+                  {getConfiabilidadLabel(item)}
+                </div>
+
                 <Button
                   className="mt-3 w-full"
                   variant="outline"
                   size="sm"
                   disabled={procesando}
-                  onClick={() =>
-                    iniciarValidacionOcr({
-                      label: item.label,
-                      tipoEsperado: item.tipoEsperado,
-                      tipoRelacionSugerida: item.tipoRelacionSugerida,
-                    })
-                  }
+                  onClick={() => iniciarSeleccionArchivo(item, "adjunto")}
                 >
                   <FilePlus2 className="h-4 w-4" />
-                  {procesando && accionActual?.label === item.label
-                    ? "Procesando..."
-                    : "Adjuntar"}
+                  {procesando && accionActual?.tipoRelacionSugerida === item.tipoRelacionSugerida
+                    ? "Subiendo/procesando..."
+                    : documentosPorRelacion.get(item.tipoRelacionSugerida)?.length
+                      ? "Adjuntar otro"
+                      : "Adjuntar"}
                 </Button>
               </div>
             ))}
@@ -301,28 +955,34 @@ export function CompraExpedienteEditor({ id }: { id: string | number }) {
         </Card>
       </main>
 
+
+      <OcrProcessingDialog
+        open={processingStep !== "idle"}
+        step={processingStep}
+        filename={processingFileName}
+        documentLabel={accionActual?.label}
+        errorMessage={processingError}
+        onClose={() => {
+          setProcessingStep("idle");
+          setProcessingError(null);
+        }}
+      />
+
       <OcrValidationModal
         open={modalAbierto}
         resultado={resultadoModal}
-        fallbackArchivoId={ARCHIVO_DEMO_ID}
+        fallbackArchivoId={archivoIdModal}
+        expedienteContexto={{
+          id,
+          codigo,
+          descripcion,
+          empresa,
+          rucComprador,
+        }}
         onClose={() => setModalAbierto(false)}
-        onSave={() => {
-          setMensajeValidacion(
-            `Cambios OCR guardados localmente para ${accionActual?.label ?? "documento"}. Pendiente conectar guardado real.`,
-          );
-        }}
-        onConfirm={() => {
-          setModalAbierto(false);
-          setMensajeValidacion(
-            `OCR confirmado localmente para ${accionActual?.label ?? "documento"}. Pendiente conectar endpoint de confirmación.`,
-          );
-        }}
-        onReject={() => {
-          setModalAbierto(false);
-          setMensajeValidacion(
-            `OCR rechazado localmente para ${accionActual?.label ?? "documento"}. Pendiente conectar endpoint de rechazo.`,
-          );
-        }}
+        onSave={guardarCambiosOcr}
+        onConfirm={confirmarOcrFinal}
+        onReject={rechazarOcrFinal}
       />
     </>
   );

@@ -1,6 +1,8 @@
-import { Body, Controller, Get, Param, ParseIntPipe, Query, Post, Patch, Put } from '@nestjs/common';
-import { ApiOperation, ApiQuery, ApiTags, ApiParam, } from '@nestjs/swagger';
+import { Body, Controller, Get, Param, ParseIntPipe, Query, Post, Patch, Put, UploadedFiles, UseInterceptors } from '@nestjs/common';
+import { ApiOperation, ApiQuery, ApiTags, ApiParam, ApiConsumes } from '@nestjs/swagger';
+import { FileFieldsInterceptor } from '@nestjs/platform-express';
 import { DocumentosService } from './documentos.service'; import { DocumentosPreviewService } from './documentos-preview.service';
+import { DocumentosUploadService } from './documentos-upload.service';
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
 import { documentosQuerySchema } from '../common/schemas/documentos-query.schema';
 import type { DocumentosQueryDto } from '../common/schemas/documentos-query.schema';
@@ -8,7 +10,7 @@ import type { DocumentosQueryDto } from '../common/schemas/documentos-query.sche
 @ApiTags('documentos')
 @Controller('documentos')
 export class DocumentosController {
-  constructor(private readonly service: DocumentosService, private readonly preview: DocumentosPreviewService) {}
+  constructor(private readonly service: DocumentosService, private readonly preview: DocumentosPreviewService, private readonly upload: DocumentosUploadService) {}
 
   @ApiOperation({ summary: 'Listar documentos con filtros y paginación' })
   @ApiQuery({ name: 'cliente', required: false, example: 'BBTI' })
@@ -51,6 +53,22 @@ export class DocumentosController {
       limit ? Number(limit) : 20,
       offset ? Number(offset) : 0,
     );
+  }
+
+
+  @ApiOperation({ summary: 'Carga guiada de archivo a R2 sin procesar OCR' })
+  @ApiConsumes('multipart/form-data')
+  @Post('carga-guiada')
+  @UseInterceptors(FileFieldsInterceptor([
+    { name: 'file', maxCount: 1 },
+    { name: 'archivo', maxCount: 1 },
+  ]))
+  cargaGuiada(
+    @UploadedFiles() files: Record<string, any[]>,
+    @Body() body: any,
+  ) {
+    const file = files?.file?.[0] ?? files?.archivo?.[0];
+    return this.upload.cargaGuiada(file, body);
   }
 
   @ApiOperation({ summary: 'Generar URL temporal de preview para archivo privado R2' }) @Get('archivos/:archivoId/preview-url') getArchivoPreviewUrl( @Param('archivoId', ParseIntPipe) archivoId: number, ) { return this.preview.getArchivoPreviewUrl(archivoId); } @Post('archivos/:archivoId/procesar-ocr')
