@@ -23,11 +23,10 @@ import { useExpediente } from "@/hooks/useExpedientes";
 import { subirDocumentoGuiado } from "@/services/carga-guiada";
 import { api } from "@/services/api";
 import {
-  confirmarOcrResultado,
+  confirmarOcrConExpediente,
   editarOcrResultado,
   procesarArchivoOcr,
   rechazarOcrResultado,
-  vincularOcrAExpediente,
   type ProcesarOcrResultado,
 } from "@/services/ocr-procesamiento";
 import type { CargaGuiadaPayloadPreview } from "@/types/carga-guiada";
@@ -100,6 +99,10 @@ function getRelacion(doc: DocumentoVinculado) {
   return text(doc.tipo_relacion ?? doc.tipoRelacion ?? doc.relacion, "");
 }
 
+function ordenarDocumentosPorFecha(documentos: DocumentoVinculado[] = []) {
+  return [...documentos].sort((a, b) => getCreatedTime(b) - getCreatedTime(a));
+}
+
 function getDocumentosPorRelacion(documentos: DocumentoVinculado[]) {
   const map = new Map<string, DocumentoVinculado[]>();
 
@@ -109,6 +112,10 @@ function getDocumentosPorRelacion(documentos: DocumentoVinculado[]) {
     const current = map.get(relacion) ?? [];
     current.push(doc);
     map.set(relacion, current);
+  }
+
+  for (const [relacion, docs] of map.entries()) {
+    map.set(relacion, ordenarDocumentosPorFecha(docs));
   }
 
   return map;
@@ -173,23 +180,32 @@ function DocumentoExistenteResumen({
   documentos,
   option,
   onVerValidar,
+  mostrarContenido = true,
 }: {
   documentos?: DocumentoVinculado[];
   option: DocumentoCargaOption;
   onVerValidar?: (doc: DocumentoVinculado) => void;
+  mostrarContenido?: boolean;
 }) {
   const principal = documentos?.[0];
+  const total = documentos?.length ?? 0;
 
-  if (!principal) {
+  if (!principal || !mostrarContenido) {
     const visual = getDocumentoVisualState(null);
     return (
-      <div className={`mt-3 rounded-lg border px-3 py-2 text-xs ${visual.className}`}>
-        <div className="font-medium text-muted-foreground">{visual.label}</div>
+      <div className={`mt-3 rounded-lg border border-dashed px-3 py-2 text-xs ${visual.className}`}>
+        <div className="font-medium text-muted-foreground">
+          {mostrarContenido ? visual.label : "Disponible para carga"}
+        </div>
+        {!mostrarContenido && total > 0 ? (
+          <div className="mt-1 text-[11px] text-muted-foreground">
+            Tiene {total} documento{total > 1 ? "s" : ""} histórico{total > 1 ? "s" : ""}. No se muestra como principal activo.
+          </div>
+        ) : null}
       </div>
     );
   }
 
-  const total = documentos?.length ?? 0;
   const visual = getDocumentoVisualState(principal);
   const summary = getDocumentoSummary(principal, option);
 
@@ -234,6 +250,86 @@ function DocumentoExistenteResumen({
         >
           Agregar versión
         </Button>
+      </div>
+    </div>
+  );
+}
+
+
+function DocumentoAdjuntoRelacionResumen({
+  documentos,
+  option,
+  onVerValidar,
+}: {
+  documentos?: DocumentoVinculado[];
+  option: DocumentoCargaOption;
+  onVerValidar?: (doc: DocumentoVinculado) => void;
+}) {
+  const ordenados = ordenarDocumentosPorFecha(documentos ?? []);
+  const total = ordenados.length;
+
+  if (!total) {
+    const visual = getDocumentoVisualState(null);
+    return (
+      <div className={`mt-3 rounded-lg border border-dashed px-3 py-2 text-xs ${visual.className}`}>
+        <div className="font-medium text-muted-foreground">Pendiente de carga</div>
+        <div className="mt-1 text-[11px] text-muted-foreground">
+          Se vinculará como {option.tipoRelacionSugerida}; no reemplaza el documento principal.
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-3 space-y-2">
+      <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+        <span>
+          {total} adjunto{total > 1 ? "s" : ""} confirmado{total > 1 ? "s" : ""}
+        </span>
+        <span className="rounded-full border px-2 py-0.5 text-[10px]">
+          No principal
+        </span>
+      </div>
+
+      <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
+        {ordenados.map((doc) => {
+          const visual = getDocumentoVisualState(doc);
+          const summary = getDocumentoSummary(doc, option);
+          const key = String(doc.documento_id ?? doc.documentoId ?? doc.archivo_id ?? summary.displayName);
+
+          return (
+            <div key={key} className={`rounded-lg border px-3 py-2 text-xs ${visual.className}`}>
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="truncate font-semibold text-foreground">{summary.title}</div>
+                  <div className="mt-1 truncate text-muted-foreground">{summary.providerLine}</div>
+                  {summary.details ? (
+                    <div className="mt-1 text-muted-foreground">{summary.details}</div>
+                  ) : null}
+                </div>
+                <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] ${visual.badgeClassName}`}>
+                  {visual.label}
+                </span>
+              </div>
+
+              <div className="mt-2 border-t pt-2 text-[11px] text-muted-foreground">
+                {summary.archivo ? <div className="truncate">Archivo: {summary.archivo}</div> : null}
+                {summary.archivoId ? <div>Archivo ID: {summary.archivoId}</div> : null}
+                <div>Relación: {option.tipoRelacionSugerida}</div>
+              </div>
+
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="mt-2 h-8 w-full text-xs"
+                onClick={() => onVerValidar?.(doc)}
+              >
+                Ver / Validar
+              </Button>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -304,6 +400,35 @@ function getTipoRelacionResultado(resultado: Record<string, unknown> | null, acc
 
 function isRelacionPrincipal(tipoRelacion: string) {
   return isTipoRelacionPrincipal(tipoRelacion);
+}
+
+function getTipoRelacionPorTipoDocumental(
+  tipoDocumental: string,
+  grupo: AccionCargaGuiada["grupo"] | undefined,
+  fallback: string,
+) {
+  const tipo = String(tipoDocumental || "").trim().toUpperCase();
+  const isPrincipal = grupo === "principal" || isRelacionPrincipal(fallback);
+
+  if (isPrincipal) {
+    if (tipo === "OC") return "principal_oc";
+    if (tipo === "OS") return "principal_os";
+    if (tipo === "FACTURA") return "principal_factura";
+    return fallback || "principal_factura";
+  }
+
+  if (tipo === "FACTURA") return "adjunto_factura";
+  if (tipo === "GUIA") return "adjunto_guia";
+  if (tipo === "NOTA_INGRESO") return "adjunto_nota_ingreso";
+  if (tipo === "RECIBO_HONORARIO") return "adjunto_recibo_honorario";
+  if (tipo === "TRANSFERENCIA") return "adjunto_transferencia";
+  if (tipo === "DETRACCION") return "adjunto_detraccion";
+
+  return fallback || "adjunto_otro";
+}
+
+function tienePrincipalActivo(documentos?: DocumentoVinculado[]) {
+  return Boolean(documentos?.some((doc) => doc.es_principal === true || String(doc.es_principal).toLowerCase() === "true" || String(doc.es_principal).toLowerCase() === "t"));
 }
 
 function normalizeAmount(value: string) {
@@ -438,9 +563,7 @@ export function CompraExpedienteEditor({ id }: { id: string | number }) {
     () => pickDocumentoPrincipalActual(documentosPorRelacion),
     [documentosPorRelacion],
   );
-  const opcionesPrincipalVisibles = principalActual
-    ? [principalActual.option]
-    : DOCUMENTO_PRINCIPAL_OPTIONS;
+  const principalActualRelacion = principalActual?.option.tipoRelacionSugerida ?? "";
 
   const cargaRealMutation = useMutation<
     ProcesarOcrResultado,
@@ -707,44 +830,56 @@ export function CompraExpedienteEditor({ id }: { id: string | number }) {
   }
 
   async function confirmarOcrFinal(form: OcrValidationFormState) {
+    const resultadoActual = resultadoModal as Record<string, unknown> | null;
+    const ocrResultadoId = getOcrResultadoId(resultadoActual);
+
+    if (!ocrResultadoId) {
+      throw new Error("No se encontró ocrResultadoId para confirmar la validación.");
+    }
+
     const codigoExpedienteFinal = text(form.codigoExpediente, codigo);
 
     if (!codigoExpedienteFinal) {
       throw new Error("El expediente es obligatorio antes de confirmar.");
     }
 
-    const { ocrResultadoId, tipoRelacion } = await persistirEdicionOcr(
+    const tipoRelacionBase = getTipoRelacionResultado(resultadoActual, accionActual);
+    const tipoRelacionFinal = getTipoRelacionPorTipoDocumental(
+      String(form.tipoDocumental || accionActual?.tipoEsperado || ""),
+      accionActual?.grupo,
+      tipoRelacionBase,
+    );
+
+    const metadata = buildMetadataDesdeFormulario(
       {
         ...form,
         codigoExpediente: codigoExpedienteFinal,
         rucComprador: text(form.rucComprador, rucComprador),
       },
-      "Guardar y confirmar desde Compras > Editar",
+      {
+        codigoExpediente: codigoExpedienteFinal,
+        rucComprador,
+        clienteAbreviatura: empresa,
+        expedienteId: id,
+        tipoRelacion: tipoRelacionFinal,
+      },
     );
 
-    await confirmarOcrResultado(ocrResultadoId);
+    const esPrincipalFinal = isRelacionPrincipal(tipoRelacionFinal);
 
-    let vinculoFallido = false;
-
-    try {
-      await vincularOcrAExpediente(ocrResultadoId, {
-        expedienteId: id,
-        tipoRelacion,
-        esPrincipal: isRelacionPrincipal(tipoRelacion),
-        orden: isRelacionPrincipal(tipoRelacion) ? 1 : 0,
-      });
-    } catch {
-      // El backend actual puede confirmar y actualizar el documento, pero devolver 500 al vincular.
-      // No bloqueamos el cierre del modal; dejamos advertencia para revisar el vínculo en el siguiente sprint backend.
-      vinculoFallido = true;
-    }
+    await confirmarOcrConExpediente(ocrResultadoId, {
+      expedienteId: id,
+      tipoRelacion: tipoRelacionFinal,
+      esPrincipal: esPrincipalFinal,
+      orden: esPrincipalFinal ? 1 : 10,
+      metadata,
+      observacion: esPrincipalFinal
+        ? "Guardar y confirmar principal desde Compras > Editar"
+        : "Guardar y confirmar adjunto desde Compras > Editar",
+    });
 
     setModalAbierto(false);
-    setMensajeValidacion(
-      vinculoFallido
-        ? `OCR confirmado para el expediente ${codigoExpedienteFinal}. El vínculo automático devolvió error; revisa expediente_documentos en backend.`
-        : `OCR confirmado y vinculado al expediente ${codigoExpedienteFinal}.`,
-    );
+    setMensajeValidacion(`OCR confirmado y vinculado al expediente ${codigoExpedienteFinal}.`);
     queryClient.invalidateQueries({ queryKey: ["ocr-resultados"] });
     queryClient.invalidateQueries({ queryKey: ["expediente-documentos", String(id)] });
   }
@@ -849,15 +984,21 @@ export function CompraExpedienteEditor({ id }: { id: string | number }) {
               </div>
               {principalActual ? (
                 <div className="mt-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-muted-foreground dark:border-slate-800 dark:bg-slate-900/40">
-                  Ya existe un documento principal para este expediente. Para evitar duplicidad, se muestra solo el principal actual.
-                  El cambio formal de principal debe hacerse como reemplazo/versionado en un sprint posterior.
+                  Principal activo actual: {principalActual.option.label}. Las otras opciones quedan visibles para carga/reemplazo controlado; al confirmar una nueva opción principal, el backend deja un solo principal activo.
                 </div>
               ) : null}
             </div>
 
             <div className="grid gap-3 md:grid-cols-3">
-              {opcionesPrincipalVisibles.map((item) => (
-                <div key={item.tipoRelacionSugerida} className="rounded-xl border p-4">
+              {DOCUMENTO_PRINCIPAL_OPTIONS.map((item) => {
+                const documentosItem = documentosPorRelacion.get(item.tipoRelacionSugerida);
+                const principalActivo = principalActualRelacion === item.tipoRelacionSugerida;
+
+                return (
+                <div
+                  key={item.tipoRelacionSugerida}
+                  className={`rounded-xl border p-4 transition ${principalActivo ? "border-primary bg-primary/5 shadow-sm ring-1 ring-primary/20" : "bg-background"}`}
+                >
                   <div className="flex items-start justify-between gap-2">
                     <div>
                       <div className="font-medium">{item.label}</div>
@@ -865,15 +1006,23 @@ export function CompraExpedienteEditor({ id }: { id: string | number }) {
                         {item.description}
                       </div>
                     </div>
-                    <span className="rounded-full border px-2 py-0.5 text-[11px] text-muted-foreground">
-                      {item.tipoEsperado}
-                    </span>
+                    <div className="flex shrink-0 flex-col items-end gap-1">
+                      <span className="rounded-full border px-2 py-0.5 text-[11px] text-muted-foreground">
+                        {item.tipoEsperado}
+                      </span>
+                      {principalActivo ? (
+                        <span className="rounded-full border border-primary bg-primary px-2 py-0.5 text-[10px] font-medium text-primary-foreground">
+                          Principal actual
+                        </span>
+                      ) : null}
+                    </div>
                   </div>
 
                   <DocumentoExistenteResumen
-                    documentos={documentosPorRelacion.get(item.tipoRelacionSugerida)}
+                    documentos={documentosItem}
                     option={item}
                     onVerValidar={(doc) => abrirDocumentoExistente(doc, item)}
+                    mostrarContenido={principalActivo}
                   />
 
                   <Button
@@ -886,12 +1035,13 @@ export function CompraExpedienteEditor({ id }: { id: string | number }) {
                     <FilePlus2 className="h-4 w-4" />
                     {procesando && accionActual?.tipoRelacionSugerida === item.tipoRelacionSugerida
                       ? "Subiendo/procesando..."
-                      : documentosPorRelacion.get(item.tipoRelacionSugerida)?.length
-                        ? "Reemplazar archivo"
-                        : "Seleccionar archivo"}
+                      : principalActivo
+                        ? "Reemplazar principal"
+                        : "Cargar como principal"}
                   </Button>
                 </div>
-              ))}
+                );
+              })}
             </div>
           </CardContent>
         </Card>
@@ -915,7 +1065,7 @@ export function CompraExpedienteEditor({ id }: { id: string | number }) {
                   </span>
                 </div>
 
-                <DocumentoExistenteResumen
+                <DocumentoAdjuntoRelacionResumen
                   option={item}
                   documentos={documentosPorRelacion.get(item.tipoRelacionSugerida)}
                   onVerValidar={(doc) => abrirDocumentoExistente(doc, item)}

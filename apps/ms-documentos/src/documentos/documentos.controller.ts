@@ -116,6 +116,21 @@ export class DocumentosController {
     return this.service.confirmarOcrResultado(id);
   }
 
+  @Post('ocr-resultados/:id/confirmar-con-expediente')
+  confirmarOcrResultadoConExpediente(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: {
+      expedienteId: number;
+      tipoRelacion?: string;
+      esPrincipal?: boolean;
+      orden?: number;
+      metadata?: Record<string, any>;
+      observacion?: string;
+    },
+  ) {
+    return this.service.confirmarOcrResultadoConExpediente(id, body);
+  }
+
   @Post('relaciones')
   createDocumentoRelacion(@Body() body: any) {
     return this.service.createDocumentoRelacion(body);

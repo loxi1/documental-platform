@@ -1,5 +1,5 @@
 
-import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { ClientProxy } from '@nestjs/microservices';
 import { firstValueFrom } from 'rxjs';
 import { NatsSubjects } from '@documental/shared';
@@ -167,6 +167,63 @@ export class DocumentosService {
       claveDocumental: result.clave_documental,
       metadata: extracted,
     };
+  }
+
+  async confirmarOcrResultadoConExpediente(
+    id: number,
+    input: {
+      expedienteId: number;
+      tipoRelacion?: string;
+      esPrincipal?: boolean;
+      orden?: number;
+      metadata?: Record<string, any>;
+      observacion?: string;
+    },
+    usuarioId?: number,
+  ) {
+    if (!input?.expedienteId) {
+      throw new BadRequestException('El expediente es obligatorio para confirmar el OCR');
+    }
+
+    try {
+      const confirmado = await this.repo.confirmarOcrResultadoConExpediente(
+        id,
+        input,
+        usuarioId,
+      );
+
+      if (!confirmado) {
+        throw new NotFoundException(`Resultado OCR ${id} no encontrado`);
+      }
+
+      return confirmado;
+    } catch (error: any) {
+      if (error?.code === 'DOCUMENTO_DUPLICADO_EN_EXPEDIENTE') {
+        throw new ConflictException({
+          code: error.code,
+          message: error.message,
+          details: error.details ?? null,
+        });
+      }
+
+      if (error?.code === 'OCR_VALIDACION_INVALIDA') {
+        throw new BadRequestException({
+          code: error.code,
+          message: error.message,
+          details: error.details ?? null,
+        });
+      }
+
+      if (error?.code === 'EXPEDIENTE_NO_ENCONTRADO') {
+        throw new NotFoundException({
+          code: error.code,
+          message: error.message,
+          details: error.details ?? null,
+        });
+      }
+
+      throw error;
+    }
   }
 
   createDocumentoRelacion(data: {

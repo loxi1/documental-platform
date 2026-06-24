@@ -243,6 +243,23 @@ export class DocumentosGatewayController {
     });
   }
 
+  @ApiOperation({ summary: 'Confirmar OCR con expediente de forma transaccional vía API Gateway' })
+  @Post('ocr-resultados/:id/confirmar-con-expediente')
+  confirmarOcrResultadoConExpediente(
+    @Headers('authorization') authorization: string | undefined,
+    @Headers(REQUEST_ID_HEADER) requestId: string | undefined,
+    @Param('id') id: string,
+    @Body() body: unknown,
+  ) {
+    return this.proxy({
+      method: 'POST',
+      path: `/documentos/ocr-resultados/${id}/confirmar-con-expediente`,
+      authorization,
+      requestId,
+      body,
+    });
+  }
+
   @ApiOperation({ summary: 'Rechazar resultado OCR vía API Gateway' })
   @Post('ocr-resultados/:id/rechazar')
   rechazarOcrResultado(

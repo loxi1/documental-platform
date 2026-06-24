@@ -449,6 +449,383 @@ export class DocumentosRepository {
     return rows[0] ?? null;
   }
 
+
+  async confirmarOcrResultadoConExpediente(
+    id: number,
+    input: {
+      expedienteId: number;
+      tipoRelacion?: string;
+      esPrincipal?: boolean;
+      orden?: number;
+      metadata?: Record<string, any>;
+      observacion?: string;
+    },
+    usuarioId?: number,
+  ) {
+    return sql.begin(async (tx) => {
+      const ocrRows = await tx`
+        SELECT *
+        FROM documentos.ocr_resultados
+        WHERE id = ${id}::int
+        FOR UPDATE
+        LIMIT 1
+      `;
+
+      const ocr = ocrRows[0];
+
+      if (!ocr) return null;
+
+      if (!ocr.documento_id) {
+        this.throwDomainError(
+          'OCR_VALIDACION_INVALIDA',
+          'El resultado OCR no tiene documento asociado',
+          { ocrResultadoId: id },
+        );
+      }
+
+      const expedienteRows = await tx`
+        SELECT
+          e.id,
+          e.empresa_codigo,
+          e.codigo_expediente,
+          e.descripcion,
+          e.cliente_destino_id,
+          cd.abreviatura AS cliente_abreviatura,
+          cd.ruc AS ruc_comprador
+        FROM documentos.expedientes e
+        JOIN core.clientes_destino cd
+          ON cd.id = e.cliente_destino_id
+        WHERE e.id = ${input.expedienteId}::bigint
+        LIMIT 1
+      `;
+
+      const expediente = expedienteRows[0];
+
+      if (!expediente) {
+        this.throwDomainError(
+          'EXPEDIENTE_NO_ENCONTRADO',
+          `Expediente ${input.expedienteId} no encontrado`,
+          { expedienteId: input.expedienteId },
+        );
+      }
+
+      const metadataActual = ocr.metadata?.metadata ?? {};
+      const metadataEntrada = this.limpiarCamposLegacyOcr({
+        ...metadataActual,
+        ...(input.metadata ?? {}),
+      });
+
+      const tipoDocumental = String(
+        metadataEntrada.tipoDocumental ??
+          input.metadata?.tipoDocumental ??
+          ocr.tipo_propuesto ??
+          '',
+      )
+        .trim()
+        .toUpperCase();
+
+      if (!tipoDocumental) {
+        this.throwDomainError(
+          'OCR_VALIDACION_INVALIDA',
+          'El tipo documental es obligatorio',
+          { campo: 'tipoDocumental' },
+        );
+      }
+
+      const clienteAbreviatura = String(
+        metadataEntrada.clienteAbreviatura ??
+          expediente.cliente_abreviatura ??
+          expediente.empresa_codigo ??
+          '',
+      )
+        .trim()
+        .toUpperCase();
+
+      const metadataFinal = this.limpiarCamposLegacyOcr({
+        ...metadataEntrada,
+        tipoDocumental,
+        clienteAbreviatura,
+        rucComprador: String(expediente.ruc_comprador ?? '').trim(),
+        codigoExpediente: String(expediente.codigo_expediente ?? '').trim(),
+      });
+
+      const metadataSourceOverrides: Record<string, string> = {};
+      await this.completarProveedorDesdeCatalogoTx(
+        tx,
+        tipoDocumental,
+        metadataFinal,
+        metadataSourceOverrides,
+      );
+
+      this.validarMetadataConfirmacion(tipoDocumental, metadataFinal);
+
+      const claveDocumental = this.buildClaveDocumental(
+        clienteAbreviatura,
+        tipoDocumental,
+        metadataFinal,
+      );
+
+      if (!claveDocumental) {
+        this.throwDomainError(
+          'OCR_VALIDACION_INVALIDA',
+          'No se pudo calcular la clave documental con los campos enviados',
+          { tipoDocumental, metadata: metadataFinal },
+        );
+      }
+
+      metadataFinal.claveDocumental = claveDocumental;
+
+      const tipoRelacion = this.normalizarTipoRelacionConfirmacion(
+        tipoDocumental,
+        input.tipoRelacion,
+      );
+      const esPrincipal = tipoRelacion.startsWith('principal_');
+      const orden = esPrincipal ? 1 : Number(input.orden ?? 0);
+
+      const duplicadoRows = await tx`
+        SELECT
+          d.id AS documento_id,
+          d.clave_documental,
+          ed.expediente_id,
+          ed.tipo_relacion,
+          ed.es_principal
+        FROM documentos.documentos d
+        JOIN documentos.expediente_documentos ed
+          ON ed.documento_id = d.id
+        WHERE ed.expediente_id = ${Number(expediente.id)}::bigint
+          AND d.clave_documental = ${claveDocumental}
+          AND d.id <> ${Number(ocr.documento_id)}::bigint
+        LIMIT 1
+      `;
+
+      if (duplicadoRows[0]) {
+        this.throwDomainError(
+          'DOCUMENTO_DUPLICADO_EN_EXPEDIENTE',
+          'Ya existe otro documento con la misma clave documental en el expediente',
+          {
+            expedienteId: Number(expediente.id),
+            documentoIdExistente: duplicadoRows[0].documento_id,
+            documentoIdActual: Number(ocr.documento_id),
+            claveDocumental,
+          },
+        );
+      }
+
+      const metadataSourceActual = ocr.metadata?.metadataSource ?? {};
+      const metadataSourceFinal = {
+        ...metadataSourceActual,
+        ...Object.fromEntries(Object.keys(metadataFinal).map((key) => [key, 'MANUAL'])),
+        ...metadataSourceOverrides,
+      };
+
+      const metadataOcrFinal = this.limpiarCamposLegacyOcr({
+        ...(ocr.metadata ?? {}),
+        estado: 'confirmado',
+        tipoPropuesto: tipoDocumental,
+        tipoDocumental,
+        claveDocumental,
+        metadata: metadataFinal,
+        metadataSource: metadataSourceFinal,
+        audit: [
+          ...(ocr.metadata?.audit ?? []),
+          {
+            accion: 'CONFIRMADO_CON_EXPEDIENTE',
+            fecha: new Date().toISOString(),
+            usuarioId: usuarioId ?? null,
+            observacion: input.observacion ?? null,
+            cambios: {
+              metadata: metadataFinal,
+              tipoPropuesto: tipoDocumental,
+              tipoRelacion,
+              expedienteId: Number(expediente.id),
+            },
+          },
+        ],
+        contextoValidacion: {
+          ...(metadataFinal.contextoValidacion ?? {}),
+          origen: metadataFinal.contextoValidacion?.origen ?? 'COMPRAS_EDITAR_MODAL',
+          confirmadoDesde: metadataFinal.contextoValidacion?.confirmadoDesde ?? 'compras_editar',
+          expedienteId: Number(expediente.id),
+          codigoExpediente: String(expediente.codigo_expediente ?? ''),
+          tipoRelacionSugerida: tipoRelacion,
+        },
+      });
+
+      if (esPrincipal) {
+        await tx`
+          UPDATE documentos.expediente_documentos
+          SET es_principal = false
+          WHERE expediente_id = ${Number(expediente.id)}::bigint
+            AND tipo_relacion LIKE 'principal_%'
+        `;
+      }
+
+      const documentoRows = await tx`
+        UPDATE documentos.documentos d
+        SET
+          cliente_abreviatura = ${clienteAbreviatura}::text,
+          tipo_documental = ${tipoDocumental}::text,
+          estado = 'confirmado',
+          ruc_emisor = COALESCE(
+            ${metadataFinal.rucProveedor ?? metadataFinal.rucEmisor ?? metadataFinal.ruc ?? null}::text,
+            d.ruc_emisor
+          ),
+          razon_social_emisor = COALESCE(
+            ${metadataFinal.proveedor ?? metadataFinal.razonSocial ?? metadataFinal.razonSocialEmisor ?? null}::text,
+            d.razon_social_emisor
+          ),
+          serie = COALESCE(${metadataFinal.serie ?? null}::text, d.serie),
+          numero = COALESCE(${metadataFinal.numero ?? null}::text, d.numero),
+          fecha_emision = COALESCE(NULLIF(${metadataFinal.fechaEmision ?? null}::text, '')::date, d.fecha_emision),
+          moneda = COALESCE(${metadataFinal.moneda ?? null}::text, d.moneda),
+          monto_total = COALESCE(NULLIF(${metadataFinal.montoTotal ?? null}::text, '')::numeric, d.monto_total),
+          clave_documental = ${claveDocumental}::text,
+          metadata = COALESCE(d.metadata, '{}'::jsonb)
+            || jsonb_build_object(
+              'ocr', ${JSON.stringify(metadataOcrFinal)}::jsonb,
+              'rucComprador', ${metadataFinal.rucComprador ?? null}::text,
+              'codigoExpediente', ${metadataFinal.codigoExpediente ?? null}::text,
+              'tipoRelacion', ${tipoRelacion}::text
+            ),
+          actualizado_en = now()
+        WHERE d.id = ${Number(ocr.documento_id)}::bigint
+        RETURNING *
+      `;
+
+      const documento = documentoRows[0];
+
+      if (!documento) {
+        this.throwDomainError(
+          'OCR_VALIDACION_INVALIDA',
+          `Documento ${ocr.documento_id} no encontrado`,
+          { documentoId: ocr.documento_id },
+        );
+      }
+
+      if (tipoDocumental === 'FACTURA') {
+        await tx`
+          INSERT INTO documentos.documentos_factura (
+            documento_id,
+            ruc_emisor,
+            serie,
+            numero,
+            fecha_emision,
+            total
+          )
+          VALUES (
+            ${Number(ocr.documento_id)}::bigint,
+            ${metadataFinal.rucProveedor ?? metadataFinal.rucEmisor ?? metadataFinal.ruc ?? null}::text,
+            ${metadataFinal.serie ?? null}::text,
+            ${metadataFinal.numero ?? null}::text,
+            NULLIF(${metadataFinal.fechaEmision ?? null}::text, '')::date,
+            NULLIF(${metadataFinal.montoTotal ?? null}::text, '')::numeric
+          )
+          ON CONFLICT (documento_id)
+          DO UPDATE SET
+            ruc_emisor = COALESCE(EXCLUDED.ruc_emisor, documentos.documentos_factura.ruc_emisor),
+            serie = COALESCE(EXCLUDED.serie, documentos.documentos_factura.serie),
+            numero = COALESCE(EXCLUDED.numero, documentos.documentos_factura.numero),
+            fecha_emision = COALESCE(EXCLUDED.fecha_emision, documentos.documentos_factura.fecha_emision),
+            total = COALESCE(EXCLUDED.total, documentos.documentos_factura.total)
+        `;
+      }
+
+      const vinculoRows = await tx`
+        UPDATE documentos.expediente_documentos
+        SET
+          tipo_relacion = ${tipoRelacion}::text,
+          es_principal = ${esPrincipal}::boolean,
+          orden = ${orden}::int
+        WHERE expediente_id = ${Number(expediente.id)}::bigint
+          AND documento_id = ${Number(ocr.documento_id)}::bigint
+        RETURNING
+          expediente_id,
+          documento_id,
+          tipo_relacion,
+          es_principal,
+          orden,
+          creado_en
+      `;
+
+      let vinculo = vinculoRows[0] ?? null;
+
+      if (!vinculo) {
+        const insertedRows = await tx`
+          INSERT INTO documentos.expediente_documentos (
+            expediente_id,
+            documento_id,
+            tipo_relacion,
+            es_principal,
+            orden
+          )
+          VALUES (
+            ${Number(expediente.id)}::bigint,
+            ${Number(ocr.documento_id)}::bigint,
+            ${tipoRelacion}::text,
+            ${esPrincipal}::boolean,
+            ${orden}::int
+          )
+          RETURNING
+            expediente_id,
+            documento_id,
+            tipo_relacion,
+            es_principal,
+            orden,
+            creado_en
+        `;
+        vinculo = insertedRows[0] ?? null;
+      }
+
+      const ocrUpdatedRows = await tx`
+        UPDATE documentos.ocr_resultados
+        SET
+          estado = 'confirmado',
+          tipo_propuesto = ${tipoDocumental}::text,
+          clave_documental = ${claveDocumental}::text,
+          validado_en = now(),
+          validado_por = ${usuarioId ?? null}::int,
+          expediente_id = ${Number(expediente.id)}::bigint,
+          vinculado_en = now(),
+          metadata = ${JSON.stringify({
+            ...metadataOcrFinal,
+            vinculoExpediente: {
+              expedienteId: Number(expediente.id),
+              documentoId: Number(ocr.documento_id),
+              clienteDestinoId: Number(expediente.cliente_destino_id),
+              empresaCodigo: String(expediente.empresa_codigo ?? ''),
+              codigoExpediente: String(expediente.codigo_expediente ?? ''),
+              tipoRelacion,
+              esPrincipal,
+              orden,
+              vinculadoEn: new Date().toISOString(),
+            },
+          })}::jsonb
+        WHERE id = ${id}::int
+        RETURNING *
+      `;
+
+      return {
+        ok: true,
+        ocrResultado: ocrUpdatedRows[0],
+        documento,
+        expediente: {
+          id: Number(expediente.id),
+          empresaCodigo: expediente.empresa_codigo,
+          codigoExpediente: expediente.codigo_expediente,
+          descripcion: expediente.descripcion,
+          clienteDestinoId: Number(expediente.cliente_destino_id),
+          clienteAbreviatura,
+          rucComprador: metadataFinal.rucComprador,
+        },
+        vinculo,
+        tipoDocumental,
+        tipoRelacion,
+        claveDocumental,
+        estado: 'confirmado',
+      };
+    });
+  }
+
   async createDocumentoRelacion(params: {
     documentoOrigenId: number;
     documentoDestinoId: number;
@@ -1032,6 +1409,156 @@ export class DocumentosRepository {
     return insertedRows[0] ?? null;
   }
 
+
+  private async completarProveedorDesdeCatalogoTx(
+    tx: any,
+    tipoDocumental: string,
+    metadata: Record<string, any>,
+    metadataSourceOverrides: Record<string, string>,
+  ) {
+    const tipoKey = String(tipoDocumental ?? '').trim().toUpperCase();
+
+    if (!['FACTURA', 'OC', 'OS', 'GUIA_REMISION', 'RECIBO_HONORARIO'].includes(tipoKey)) {
+      return;
+    }
+
+    const proveedorActual = this.cleanText(
+      metadata.proveedor ?? metadata.razonSocial ?? metadata.razonSocialEmisor,
+    );
+
+    if (proveedorActual) {
+      return;
+    }
+
+    const rucProveedor = this.cleanText(
+      metadata.rucProveedor ?? metadata.rucEmisor ?? metadata.ruc,
+    );
+
+    if (!this.isValidRuc(rucProveedor)) {
+      return;
+    }
+
+    const proveedor = await this.findProveedorCatalogoByRucTx(tx, rucProveedor);
+
+    if (!proveedor?.razon_social) {
+      return;
+    }
+
+    const razonSocial = String(proveedor.razon_social).trim();
+
+    metadata.proveedor = razonSocial;
+    metadata.razonSocial = razonSocial;
+    metadata.razonSocialEmisor = razonSocial;
+
+    if (proveedor.direccion) {
+      metadata.direccionProveedor = proveedor.direccion;
+    }
+
+    if (proveedor.tipo_persona) {
+      metadata.tipoPersonaProveedor = proveedor.tipo_persona;
+    }
+
+    metadata.proveedorOrigen = 'CATALOGO_PROVEEDORES';
+
+    metadataSourceOverrides.proveedor = 'CATALOGO_PROVEEDORES';
+    metadataSourceOverrides.razonSocial = 'CATALOGO_PROVEEDORES';
+    metadataSourceOverrides.razonSocialEmisor = 'CATALOGO_PROVEEDORES';
+    metadataSourceOverrides.direccionProveedor = 'CATALOGO_PROVEEDORES';
+    metadataSourceOverrides.tipoPersonaProveedor = 'CATALOGO_PROVEEDORES';
+    metadataSourceOverrides.proveedorOrigen = 'SISTEMA';
+  }
+
+  private async findProveedorCatalogoByRucTx(tx: any, ruc: string) {
+    const rows = await tx`
+      SELECT
+        ruc,
+        razon_social,
+        direccion,
+        tipo_persona
+      FROM core.proveedores
+      WHERE ruc = ${ruc}::text
+      LIMIT 1
+    `;
+
+    return rows[0] ?? null;
+  }
+
+  private cleanText(value: any): string | null {
+    if (value === null || value === undefined) return null;
+    const text = String(value).trim();
+    return text.length ? text : null;
+  }
+
+  private isValidRuc(value: any): value is string {
+    const text = this.cleanText(value);
+    return !!text && /^\d{11}$/.test(text);
+  }
+
+
+  private normalizarTipoRelacionConfirmacion(
+    tipo: string,
+    tipoRelacion?: string | null,
+  ): string {
+    const tipoFinal = String(tipo ?? '').trim().toUpperCase();
+    const tipoRelacionInput = String(tipoRelacion ?? '').trim();
+    const tipoRelacionPorTipo = this.tipoRelacionParaExpediente(tipoFinal);
+
+    if (tipoRelacionInput.startsWith('principal_') && tipoRelacionPorTipo.startsWith('principal_')) {
+      return tipoRelacionPorTipo;
+    }
+
+    if (tipoRelacionInput) {
+      return tipoRelacionInput;
+    }
+
+    return tipoRelacionPorTipo;
+  }
+
+  private validarMetadataConfirmacion(
+    tipo: string,
+    metadata: Record<string, any>,
+  ) {
+    const tipoKey = String(tipo ?? '').trim().toUpperCase();
+    const faltantes: string[] = [];
+    const has = (key: string) => {
+      const value = metadata[key];
+      return value !== null && value !== undefined && String(value).trim() !== '';
+    };
+    const hasAny = (...keys: string[]) => keys.some((key) => has(key));
+
+    if (!has('codigoExpediente')) faltantes.push('codigoExpediente');
+    if (!has('fechaEmision')) faltantes.push('fechaEmision');
+    if (!has('montoTotal')) faltantes.push('montoTotal');
+
+    if (tipoKey === 'OC' || tipoKey === 'OS') {
+      if (!has('numero')) faltantes.push('numero');
+      if (!hasAny('proveedor', 'razonSocial', 'razonSocialEmisor')) faltantes.push('proveedor');
+      if (!hasAny('rucProveedor', 'rucEmisor', 'ruc')) faltantes.push('rucProveedor');
+    }
+
+    if (tipoKey === 'FACTURA') {
+      if (!has('serie')) faltantes.push('serie');
+      if (!has('numero')) faltantes.push('numero');
+      if (!hasAny('rucProveedor', 'rucEmisor', 'ruc')) faltantes.push('rucProveedor');
+      if (!hasAny('proveedor', 'razonSocial', 'razonSocialEmisor')) faltantes.push('proveedor');
+    }
+
+    if (faltantes.length) {
+      this.throwDomainError(
+        'OCR_VALIDACION_INVALIDA',
+        `Faltan campos obligatorios para confirmar ${tipoKey}: ${faltantes.join(', ')}`,
+        { tipoDocumental: tipoKey, faltantes },
+      );
+    }
+  }
+
+  private throwDomainError(code: string, message: string, details?: any): never {
+    const error = new Error(message) as Error & { code?: string; details?: any };
+    error.code = code;
+    error.details = details ?? null;
+    throw error;
+  }
+
   private buildClaveDocumental(
     cliente: string,
     tipo: string | null,
@@ -1046,7 +1573,7 @@ export class DocumentosRepository {
       return text.length ? text : null;
     };
 
-    const ruc = clean(metadata.ruc);
+    const ruc = clean(metadata.ruc ?? metadata.rucProveedor ?? metadata.rucEmisor);
     const serie = clean(metadata.serie);
     const numero = clean(metadata.numero);
     const numeroOperacion = clean(metadata.numeroOperacion);

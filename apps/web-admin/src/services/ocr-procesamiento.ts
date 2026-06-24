@@ -49,6 +49,49 @@ export type VincularOcrExpedientePayload = {
   orden?: number;
 };
 
+export type ConfirmarOcrConExpedientePayload = {
+  expedienteId: number | string;
+  tipoRelacion: string;
+  esPrincipal?: boolean;
+  orden?: number;
+  metadata?: Record<string, unknown>;
+  observacion?: string;
+};
+
+
+function getApiErrorPayload(error: unknown): any {
+  if (!error || typeof error !== "object") return null;
+  const response = (error as any).response;
+  return response?.data ?? null;
+}
+
+function buildApiErrorMessage(error: unknown, fallback: string) {
+  const payload = getApiErrorPayload(error);
+  const apiError = payload?.error;
+  const details = apiError?.details?.details ?? apiError?.details ?? payload?.details;
+
+  const message =
+    apiError?.message ??
+    payload?.message ??
+    (error instanceof Error ? error.message : fallback);
+
+  const duplicateDetails = details?.details ?? details;
+  if (
+    details?.code === "DOCUMENTO_DUPLICADO_EN_EXPEDIENTE" ||
+    duplicateDetails?.code === "DOCUMENTO_DUPLICADO_EN_EXPEDIENTE"
+  ) {
+    const info = duplicateDetails?.details ?? duplicateDetails;
+    return [
+      message,
+      info?.claveDocumental ? `Clave: ${info.claveDocumental}` : null,
+      info?.documentoIdExistente ? `Documento existente: ${info.documentoIdExistente}` : null,
+      info?.documentoIdActual ? `Documento actual: ${info.documentoIdActual}` : null,
+    ].filter(Boolean).join("\n");
+  }
+
+  return message || fallback;
+}
+
 function unwrapDeep<T = unknown>(payload: unknown): T {
   let current = payload as { data?: unknown } | unknown;
 
@@ -102,4 +145,25 @@ export async function vincularOcrAExpediente(
 ) {
   const { data } = await api.post(`/documentos/ocr-resultados/${id}/vincular-expediente`, payload);
   return unwrapDeep(data);
+}
+
+
+export async function confirmarOcrConExpediente(
+  id: number | string,
+  payload: ConfirmarOcrConExpedientePayload,
+) {
+  try {
+    const { data } = await api.post(
+      `/documentos/ocr-resultados/${id}/confirmar-con-expediente`,
+      payload,
+    );
+    return unwrapDeep(data);
+  } catch (error) {
+    throw new Error(
+      buildApiErrorMessage(
+        error,
+        "No se pudo confirmar el OCR con expediente.",
+      ),
+    );
+  }
 }
