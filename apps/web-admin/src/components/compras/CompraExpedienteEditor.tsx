@@ -238,7 +238,7 @@ function DocumentoExistenteResumen({
           className="h-8 text-xs"
           onClick={() => onVerValidar?.(principal)}
         >
-          Ver / Validar
+          {isDocumentoConfirmado(principal) ? "Ver" : "Ver / Validar"}
         </Button>
         <Button
           type="button"
@@ -325,7 +325,7 @@ function DocumentoAdjuntoRelacionResumen({
                 className="mt-2 h-8 w-full text-xs"
                 onClick={() => onVerValidar?.(doc)}
               >
-                Ver / Validar
+                {isDocumentoConfirmado(doc) ? "Ver" : "Ver / Validar"}
               </Button>
             </div>
           );
@@ -366,6 +366,82 @@ function getArchivoId(source: Record<string, unknown> | null | undefined) {
   return String(value);
 }
 
+function parseRecordLocal(value: unknown): Record<string, unknown> | null {
+  if (!value) return null;
+  if (typeof value === "object" && !Array.isArray(value)) return value as Record<string, unknown>;
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        return parsed as Record<string, unknown>;
+      }
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+function isDocumentoConfirmado(doc: DocumentoVinculado | null | undefined) {
+  const estado = text(doc?.estado ?? doc?.documento_estado ?? doc?.ocr_estado, "").toLowerCase();
+  return estado === "confirmado" || estado === "validado";
+}
+
+function buildResultadoLecturaDesdeDocumento(
+  doc: DocumentoVinculado,
+  option: DocumentoCargaOption,
+  accion: AccionCargaGuiada,
+  archivoId: string,
+): ProcesarOcrResultado {
+  const metadataDocumento = parseRecordLocal(doc.metadata) ?? {};
+  const ocrMetadata = parseRecordLocal((metadataDocumento.ocr as Record<string, unknown> | undefined)?.metadata) ?? {};
+  const metadata = {
+    ...ocrMetadata,
+    tipoDocumental: text(doc.tipo_documental ?? doc.tipoDocumental ?? ocrMetadata.tipoDocumental, option.tipoEsperado),
+    clienteAbreviatura: text(doc.cliente_abreviatura ?? doc.clienteAbreviatura ?? ocrMetadata.clienteAbreviatura, ""),
+    serie: text(doc.serie ?? ocrMetadata.serie, ""),
+    numero: text(doc.numero ?? ocrMetadata.numero, ""),
+    fechaEmision: text(doc.fecha_emision ?? doc.fechaEmision ?? ocrMetadata.fechaEmision, ""),
+    proveedor: text(doc.razon_social_emisor ?? doc.razonSocialEmisor ?? ocrMetadata.proveedor ?? ocrMetadata.razonSocial, ""),
+    razonSocial: text(doc.razon_social_emisor ?? doc.razonSocialEmisor ?? ocrMetadata.razonSocial ?? ocrMetadata.proveedor, ""),
+    rucEmisor: text(doc.ruc_emisor ?? doc.rucEmisor ?? ocrMetadata.rucEmisor ?? ocrMetadata.ruc, ""),
+    rucProveedor: text(doc.ruc_emisor ?? doc.rucEmisor ?? ocrMetadata.rucProveedor ?? ocrMetadata.ruc, ""),
+    rucComprador: text(ocrMetadata.rucComprador ?? doc.ruc_comprador ?? doc.rucComprador, ""),
+    montoTotal: text(doc.monto_total ?? doc.montoTotal ?? ocrMetadata.montoTotal, ""),
+    moneda: text(doc.moneda ?? ocrMetadata.moneda, ""),
+    cotizacion: text(ocrMetadata.cotizacion, ""),
+    codigoExpediente: text(ocrMetadata.codigoExpediente, ""),
+    claveDocumental: text(doc.clave_documental ?? doc.claveDocumental ?? ocrMetadata.claveDocumental, ""),
+    archivo: {
+      filename: text(doc.nombre_archivo ?? doc.nombreArchivo ?? doc.filename, "Documento existente"),
+      storageProvider: text(doc.storage_provider ?? doc.storageProvider, "r2"),
+      storageBucket: text(doc.storage_bucket ?? doc.storageBucket, ""),
+      storageKey: text(doc.storage_key ?? doc.storageKey, ""),
+    },
+    contextoCarga: {
+      origen: "COMPRAS_EDITAR_VER_SOLO_LECTURA",
+      grupo: accion.grupo,
+      accion: accion.label,
+      archivoId,
+      filename: text(doc.nombre_archivo ?? doc.nombreArchivo ?? doc.filename, "Documento existente"),
+      tipoEsperado: option.tipoEsperado,
+      tipoRelacionSugerida: option.tipoRelacionSugerida,
+    },
+  };
+
+  return {
+    ok: true,
+    documentoId: doc.documento_id ?? doc.documentoId,
+    archivoId,
+    tipoDocumental: text(doc.tipo_documental ?? doc.tipoDocumental, option.tipoEsperado),
+    estado: text(doc.estado, "confirmado"),
+    claveDocumental: text(doc.clave_documental ?? doc.claveDocumental, ""),
+    tipoRelacionSugerida: option.tipoRelacionSugerida,
+    metadata,
+    contextoCarga: metadata.contextoCarga as Record<string, unknown>,
+  };
+}
+
 function getOcrResultadoId(source: Record<string, unknown> | null | undefined) {
   const value =
     source?.ocrResultadoId ??
@@ -402,12 +478,20 @@ function isRelacionPrincipal(tipoRelacion: string) {
   return isTipoRelacionPrincipal(tipoRelacion);
 }
 
+function normalizeTipoDocumentalParaBackend(tipoDocumental: string) {
+  const tipo = String(tipoDocumental || "").trim().toUpperCase();
+
+  if (tipo === "GUIA" || tipo === "GUÍA") return "GUIA_REMISION";
+
+  return tipo;
+}
+
 function getTipoRelacionPorTipoDocumental(
   tipoDocumental: string,
   grupo: AccionCargaGuiada["grupo"] | undefined,
   fallback: string,
 ) {
-  const tipo = String(tipoDocumental || "").trim().toUpperCase();
+  const tipo = normalizeTipoDocumentalParaBackend(tipoDocumental);
   const isPrincipal = grupo === "principal" || isRelacionPrincipal(fallback);
 
   if (isPrincipal) {
@@ -418,7 +502,7 @@ function getTipoRelacionPorTipoDocumental(
   }
 
   if (tipo === "FACTURA") return "adjunto_factura";
-  if (tipo === "GUIA") return "adjunto_guia";
+  if (tipo === "GUIA_REMISION") return "adjunto_guia";
   if (tipo === "NOTA_INGRESO") return "adjunto_nota_ingreso";
   if (tipo === "RECIBO_HONORARIO") return "adjunto_recibo_honorario";
   if (tipo === "TRANSFERENCIA") return "adjunto_transferencia";
@@ -451,7 +535,7 @@ function buildMetadataDesdeFormulario(
     tipoRelacion?: string;
   },
 ) {
-  const tipo = String(form.tipoDocumental || "").trim().toUpperCase();
+  const tipo = normalizeTipoDocumentalParaBackend(String(form.tipoDocumental || ""));
   const codigoExpediente = emptyToUndefined(form.codigoExpediente) ?? emptyToUndefined(context.codigoExpediente);
   const rucComprador = emptyToUndefined(form.rucComprador) ?? emptyToUndefined(context.rucComprador);
   const rucEmisor = emptyToUndefined(form.rucEmisor);
@@ -467,7 +551,7 @@ function buildMetadataDesdeFormulario(
     fechaEmision: emptyToUndefined(form.fechaEmision),
     proveedor,
     razonSocial,
-    ruc: tipo === "FACTURA" ? rucEmisor ?? rucProveedor : undefined,
+    ruc: tipo === "FACTURA" || tipo === "GUIA_REMISION" ? rucEmisor ?? rucProveedor : undefined,
     rucEmisor,
     rucProveedor,
     rucComprador,
@@ -539,6 +623,7 @@ export function CompraExpedienteEditor({ id }: { id: string | number }) {
   const { data: expediente, isLoading, error } = useExpediente(id);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [modalAbierto, setModalAbierto] = useState(false);
+  const [modalSoloLectura, setModalSoloLectura] = useState(false);
   const [resultadoModal, setResultadoModal] = useState<ProcesarOcrResultado | null>(null);
   const [accionActual, setAccionActual] = useState<AccionCargaGuiada | null>(null);
   const [mensajeValidacion, setMensajeValidacion] = useState<string | null>(null);
@@ -627,6 +712,7 @@ export function CompraExpedienteEditor({ id }: { id: string | number }) {
     onSuccess: (resultado, { accion }) => {
       setAccionActual(accion);
       setResultadoModal(resultado);
+      setModalSoloLectura(false);
       setMensajeValidacion(null);
       setProcessingStep("ready");
       queryClient.invalidateQueries({ queryKey: ["expediente-documentos", String(id)] });
@@ -697,6 +783,17 @@ export function CompraExpedienteEditor({ id }: { id: string | number }) {
 
     setAccionActual(accion);
     setMensajeValidacion(null);
+
+    if (isDocumentoConfirmado(doc)) {
+      setResultadoModal(buildResultadoLecturaDesdeDocumento(doc, option, accion, archivoId));
+      setModalSoloLectura(true);
+      setProcessingStep("idle");
+      setProcessingError(null);
+      setModalAbierto(true);
+      return;
+    }
+
+    setModalSoloLectura(false);
     setProcessingFileName(text(doc.nombre_archivo ?? doc.nombreArchivo ?? doc.filename, "Documento existente"));
     setProcessingError(null);
     setProcessingStep("processing_ocr");
@@ -721,6 +818,7 @@ export function CompraExpedienteEditor({ id }: { id: string | number }) {
           ? metadataOriginal
           : {};
 
+      setModalSoloLectura(false);
       setResultadoModal({
         ...resultado,
         archivoId: resultado.archivoId ?? archivoId,
@@ -809,7 +907,7 @@ export function CompraExpedienteEditor({ id }: { id: string | number }) {
     });
 
     await editarOcrResultado(ocrResultadoId, {
-      tipoPropuesto: String(form.tipoDocumental || accionActual?.tipoEsperado || "").toUpperCase(),
+      tipoPropuesto: normalizeTipoDocumentalParaBackend(String(form.tipoDocumental || accionActual?.tipoEsperado || "")),
       metadata,
       observacion,
     });
@@ -845,7 +943,7 @@ export function CompraExpedienteEditor({ id }: { id: string | number }) {
 
     const tipoRelacionBase = getTipoRelacionResultado(resultadoActual, accionActual);
     const tipoRelacionFinal = getTipoRelacionPorTipoDocumental(
-      String(form.tipoDocumental || accionActual?.tipoEsperado || ""),
+      normalizeTipoDocumentalParaBackend(String(form.tipoDocumental || accionActual?.tipoEsperado || "")),
       accionActual?.grupo,
       tipoRelacionBase,
     );
@@ -1133,6 +1231,7 @@ export function CompraExpedienteEditor({ id }: { id: string | number }) {
         onSave={guardarCambiosOcr}
         onConfirm={confirmarOcrFinal}
         onReject={rechazarOcrFinal}
+        readOnly={modalSoloLectura}
       />
     </>
   );

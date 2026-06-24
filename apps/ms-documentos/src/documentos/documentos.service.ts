@@ -226,6 +226,47 @@ export class DocumentosService {
     }
   }
 
+
+  async agregarArchivoComoVersion(
+    documentoId: number,
+    archivoId: number,
+    input: {
+      tipoVersion?: string;
+      observacion?: string;
+      marcarComoActual?: boolean;
+    } = {},
+    usuarioId?: number,
+  ) {
+    try {
+      return await this.repo.agregarArchivoComoVersion({
+        documentoId,
+        archivoId,
+        tipoVersion: input.tipoVersion ?? 'evidencia',
+        observacion: input.observacion ?? null,
+        marcarComoActual: input.marcarComoActual !== false,
+        usuarioId: usuarioId ?? null,
+      });
+    } catch (error: any) {
+      if (error?.code === 'DOCUMENTO_NO_ENCONTRADO') {
+        throw new NotFoundException({
+          code: error.code,
+          message: error.message,
+          details: error.details ?? null,
+        });
+      }
+
+      if (error?.code === 'ARCHIVO_NO_ENCONTRADO') {
+        throw new NotFoundException({
+          code: error.code,
+          message: error.message,
+          details: error.details ?? null,
+        });
+      }
+
+      throw error;
+    }
+  }
+
   createDocumentoRelacion(data: {
     documentoOrigenId: number;
     documentoDestinoId: number;

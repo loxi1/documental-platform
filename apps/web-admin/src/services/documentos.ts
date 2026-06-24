@@ -58,3 +58,27 @@ export async function getDocumento(id: number | string) {
 
   return unwrap<Documento>(data);
 }
+
+
+export type AgregarArchivoComoVersionPayload = {
+  tipoVersion?: string;
+  observacion?: string;
+  marcarComoActual?: boolean;
+};
+
+export async function agregarArchivoComoVersion(
+  documentoId: number | string,
+  archivoId: number | string,
+  payload: AgregarArchivoComoVersionPayload = {},
+) {
+  const { data } = await api.post(
+    `/documentos/${documentoId}/archivos/${archivoId}/agregar-version`,
+    {
+      tipoVersion: payload.tipoVersion ?? "escaneado",
+      observacion: payload.observacion ?? "Archivo agregado como versión desde Compras > Editar",
+      marcarComoActual: payload.marcarComoActual ?? true,
+    },
+  );
+
+  return unwrap(data);
+}

@@ -51,11 +51,20 @@ type OcrValidationModalProps = {
   onSave?: (form: FormState) => void | Promise<void>;
   onConfirm?: (form: FormState) => void | Promise<void>;
   onReject?: (form: FormState) => void | Promise<void>;
+  readOnly?: boolean;
 };
 
 function texto(value: unknown, fallback = "—") {
   if (value === null || value === undefined || value === "") return fallback;
   return String(value);
+}
+
+function normalizeTipoParaUi(value: unknown, fallback: TipoDocumental = "OC"): TipoDocumental {
+  const tipo = String(value ?? "").trim().toUpperCase();
+
+  if (tipo === "GUIA_REMISION" || tipo === "GUÍA") return "GUIA";
+
+  return (tipo || fallback) as TipoDocumental;
 }
 
 function parseMaybeJson(value: unknown): Record<string, unknown> | null {
@@ -239,7 +248,7 @@ function buildInitialForm(resultado: unknown, expedienteContexto?: OcrValidation
   const contextoCarga = parseMaybeJson(raw.contextoCarga) ?? getRecord(metadata, "contextoCarga");
 
   return {
-    tipoDocumental: texto(
+    tipoDocumental: normalizeTipoParaUi(
       raw.tipoDocumental ?? raw.tipo_documental ?? metadata.tipoDocumental ?? metadata.tipo_documental,
       "OC",
     ),
@@ -287,7 +296,7 @@ function camposPorTipo(tipo: string): Array<keyof FormState> {
     ];
   }
 
-  if (normalizado === "GUIA") {
+  if (normalizado === "GUIA" || normalizado === "GUIA_REMISION") {
     return [
       "serie",
       "numero",
@@ -339,10 +348,12 @@ function FieldInput({
   name,
   value,
   onChange,
+  readOnly = false,
 }: {
   name: keyof FormState;
   value: string;
   onChange: (name: keyof FormState, value: string) => void;
+  readOnly?: boolean;
 }) {
   return (
     <label className="block">
@@ -351,8 +362,15 @@ function FieldInput({
       </span>
       <input
         value={value}
-        onChange={(event) => onChange(name, event.target.value)}
-        className="mt-1 h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-medium text-slate-950 outline-none transition focus:border-slate-400 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100"
+        readOnly={readOnly}
+        onChange={(event) => {
+          if (!readOnly) onChange(name, event.target.value);
+        }}
+        className={`mt-1 h-9 w-full rounded-lg border border-slate-200 px-3 text-sm font-medium text-slate-950 outline-none transition focus:border-slate-400 dark:border-slate-800 dark:text-slate-100 ${
+          readOnly
+            ? "bg-slate-50 text-slate-600 dark:bg-slate-900 dark:text-slate-300"
+            : "bg-white dark:bg-slate-950"
+        }`}
       />
     </label>
   );
@@ -369,6 +387,7 @@ export function OcrValidationModal({
   onSave,
   onConfirm,
   onReject,
+  readOnly = false,
 }: OcrValidationModalProps) {
   const [form, setForm] = useState<FormState>(() => buildInitialForm(resultado, expedienteContexto));
   const [localMessage, setLocalMessage] = useState<string | null>(null);
@@ -446,11 +465,12 @@ export function OcrValidationModal({
   if (!open) return null;
 
   function updateField(name: keyof FormState, value: string) {
+    if (readOnly) return;
     setForm((current) => ({ ...current, [name]: value }));
   }
 
   async function runAction(action: "save" | "confirm" | "reject", callback?: (form: FormState) => void | Promise<void>) {
-    if (!callback) return;
+    if (readOnly || !callback) return;
 
     setSubmittingAction(action);
     setActionError(null);
@@ -498,10 +518,12 @@ export function OcrValidationModal({
               Validación visual documental
             </p>
             <h2 className="mt-1 text-lg font-semibold text-slate-950 dark:text-slate-100">
-              Validación OCR - {archivo.nombre}
+{readOnly ? "Vista documental" : "Validación OCR"} - {archivo.nombre}
             </h2>
             <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-              Compara el documento con la metadata detectada. El modal no se cierra hasta confirmar, rechazar o cerrar manualmente.
+              {readOnly
+                ? "Consulta el documento y su metadata confirmada. Esta vista no modifica el OCR ni genera auditoría."
+                : "Compara el documento con la metadata detectada. El modal no se cierra hasta confirmar, rechazar o cerrar manualmente."}
             </p>
           </div>
 
@@ -556,8 +578,13 @@ export function OcrValidationModal({
                 </span>
                 <select
                   value={form.tipoDocumental}
+                  disabled={readOnly}
                   onChange={(event) => updateField("tipoDocumental", event.target.value)}
-                  className="mt-1 h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-950 outline-none transition focus:border-slate-400 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100"
+                  className={`mt-1 h-10 w-full rounded-lg border border-slate-200 px-3 text-sm font-semibold text-slate-950 outline-none transition focus:border-slate-400 disabled:cursor-not-allowed dark:border-slate-800 dark:text-slate-100 ${
+                    readOnly
+                      ? "bg-slate-50 text-slate-600 dark:bg-slate-900 dark:text-slate-300"
+                      : "bg-white dark:bg-slate-950"
+                  }`}
                 >
                   {TIPOS_DOCUMENTALES.map((tipo) => (
                     <option key={tipo} value={tipo}>
@@ -574,6 +601,7 @@ export function OcrValidationModal({
                     name={campo}
                     value={String(form[campo] ?? "")}
                     onChange={updateField}
+                    readOnly={readOnly}
                   />
                 ))}
               </div>
@@ -614,6 +642,12 @@ export function OcrValidationModal({
                 )}
               </div>
 
+              {readOnly ? (
+                <div className="rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm text-blue-700 dark:border-blue-900/60 dark:bg-blue-950/30 dark:text-blue-300">
+                  Modo consulta: este documento ya está confirmado. Para modificarlo, usa un flujo de edición o carga una nueva versión.
+                </div>
+              ) : null}
+
               {localMessage ? (
                 <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-300">
                   {localMessage}
@@ -631,40 +665,54 @@ export function OcrValidationModal({
 
         <footer className="flex flex-col gap-3 border-t border-slate-200 px-5 py-4 dark:border-slate-800 md:flex-row md:items-center md:justify-between">
           <p className="text-xs text-slate-500 dark:text-slate-400">
-            El OCR propone datos. El usuario puede corregirlos manualmente antes de guardar o confirmar.
+            {readOnly
+              ? "Modo consulta: no se reprocesa ni reconfirma el documento."
+              : "El OCR propone datos. El usuario puede corregirlos manualmente antes de guardar o confirmar."}
           </p>
           <div className="flex flex-wrap justify-end gap-2">
-            <button
-              type="button"
-              onClick={handleReject}
-              disabled={submittingAction !== null}
-              className="inline-flex h-9 items-center justify-center rounded-lg border border-red-200 bg-white px-3 text-sm font-medium text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-red-900/60 dark:bg-slate-950 dark:hover:bg-red-950/30"
-            >
-              {submittingAction === "reject" ? "Rechazando..." : "Rechazar OCR"}
-            </button>
-            <button
-              type="button"
-              onClick={onClose}
-              className="inline-flex h-9 items-center justify-center rounded-lg border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100 dark:hover:bg-slate-900"
-            >
-              Cancelar / Cerrar
-            </button>
-            <button
-              type="button"
-              onClick={handleSave}
-              disabled={submittingAction !== null}
-              className="inline-flex h-9 items-center justify-center rounded-lg border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100 dark:hover:bg-slate-900"
-            >
-              {submittingAction === "save" ? "Guardando..." : "Guardar cambios"}
-            </button>
-            <button
-              type="button"
-              onClick={handleConfirm}
-              disabled={submittingAction !== null}
-              className="inline-flex h-9 items-center justify-center rounded-lg bg-slate-950 px-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-slate-100 dark:text-slate-950 dark:hover:bg-white"
-            >
-              {submittingAction === "confirm" ? "Confirmando..." : "Guardar y confirmar"}
-            </button>
+            {readOnly ? (
+              <button
+                type="button"
+                onClick={onClose}
+                className="inline-flex h-9 items-center justify-center rounded-lg border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100 dark:hover:bg-slate-900"
+              >
+                Cerrar
+              </button>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  onClick={handleReject}
+                  disabled={submittingAction !== null}
+                  className="inline-flex h-9 items-center justify-center rounded-lg border border-red-200 bg-white px-3 text-sm font-medium text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-red-900/60 dark:bg-slate-950 dark:hover:bg-red-950/30"
+                >
+                  {submittingAction === "reject" ? "Rechazando..." : "Rechazar OCR"}
+                </button>
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="inline-flex h-9 items-center justify-center rounded-lg border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100 dark:hover:bg-slate-900"
+                >
+                  Cancelar / Cerrar
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSave}
+                  disabled={submittingAction !== null}
+                  className="inline-flex h-9 items-center justify-center rounded-lg border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100 dark:hover:bg-slate-900"
+                >
+                  {submittingAction === "save" ? "Guardando..." : "Guardar cambios"}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirm}
+                  disabled={submittingAction !== null}
+                  className="inline-flex h-9 items-center justify-center rounded-lg bg-slate-950 px-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-slate-100 dark:text-slate-950 dark:hover:bg-white"
+                >
+                  {submittingAction === "confirm" ? "Confirmando..." : "Guardar y confirmar"}
+                </button>
+              </>
+            )}
           </div>
         </footer>
       </div>

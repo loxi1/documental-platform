@@ -515,14 +515,12 @@ export class DocumentosRepository {
         ...(input.metadata ?? {}),
       });
 
-      const tipoDocumental = String(
+      const tipoDocumental = this.normalizarTipoDocumentalConfirmacion(
         metadataEntrada.tipoDocumental ??
           input.metadata?.tipoDocumental ??
           ocr.tipo_propuesto ??
           '',
-      )
-        .trim()
-        .toUpperCase();
+      );
 
       if (!tipoDocumental) {
         this.throwDomainError(
@@ -822,6 +820,166 @@ export class DocumentosRepository {
         tipoRelacion,
         claveDocumental,
         estado: 'confirmado',
+      };
+    });
+  }
+
+
+  async agregarArchivoComoVersion(params: {
+    documentoId: number;
+    archivoId: number;
+    tipoVersion?: string | null;
+    observacion?: string | null;
+    marcarComoActual?: boolean;
+    usuarioId?: number | null;
+  }) {
+    return sql.begin(async (tx) => {
+      const documentoRows = await tx`
+        SELECT *
+        FROM documentos.documentos
+        WHERE id = ${params.documentoId}::int
+        LIMIT 1
+      `;
+
+      const documento = documentoRows[0];
+      if (!documento) {
+        this.throwDomainError(
+          'DOCUMENTO_NO_ENCONTRADO',
+          `Documento ${params.documentoId} no encontrado`,
+          { documentoId: params.documentoId },
+        );
+      }
+
+      const archivoRows = await tx`
+        SELECT *
+        FROM documentos.documentos_archivos
+        WHERE id = ${params.archivoId}::int
+        FOR UPDATE
+        LIMIT 1
+      `;
+
+      const archivo = archivoRows[0];
+      if (!archivo) {
+        this.throwDomainError(
+          'ARCHIVO_NO_ENCONTRADO',
+          `Archivo ${params.archivoId} no encontrado`,
+          { archivoId: params.archivoId },
+        );
+      }
+
+      const documentoAnteriorId = archivo.documento_id
+        ? Number(archivo.documento_id)
+        : null;
+      const marcarComoActual = params.marcarComoActual !== false;
+      const tipoVersion = String(params.tipoVersion ?? archivo.tipo_version ?? 'evidencia')
+        .trim()
+        .toLowerCase();
+
+      const versionRows = await tx`
+        SELECT COALESCE(MAX(version), 0)::int + 1 AS siguiente_version
+        FROM documentos.documentos_archivos
+        WHERE documento_id = ${params.documentoId}::int
+          AND id <> ${params.archivoId}::int
+      `;
+
+      const siguienteVersion = Number(versionRows[0]?.siguiente_version ?? 1);
+
+      if (marcarComoActual) {
+        await tx`
+          UPDATE documentos.documentos_archivos
+          SET es_version_actual = false
+          WHERE documento_id = ${params.documentoId}::int
+            AND id <> ${params.archivoId}::int
+        `;
+      }
+
+      const archivoActualizadoRows = await tx`
+        UPDATE documentos.documentos_archivos
+        SET
+          documento_id = ${params.documentoId}::int,
+          tipo_version = ${tipoVersion}::text,
+          version = ${siguienteVersion}::int,
+          es_version_actual = ${marcarComoActual}::boolean,
+          estado = 'activo',
+          observacion = COALESCE(${params.observacion ?? null}::text, observacion),
+          metadata = COALESCE(metadata, '{}'::jsonb)
+            || jsonb_build_object(
+              'versionado',
+              jsonb_build_object(
+                'accion', 'AGREGADO_COMO_VERSION'::text,
+                'documentoIdDestino', ${params.documentoId}::int,
+                'documentoIdAnterior', ${documentoAnteriorId ?? null}::int,
+                'archivoId', ${params.archivoId}::int,
+                'tipoVersion', ${tipoVersion}::text,
+                'version', ${siguienteVersion}::int,
+                'esVersionActual', ${marcarComoActual}::boolean,
+                'observacion', ${params.observacion ?? null}::text,
+                'usuarioId', ${params.usuarioId ?? null}::int,
+                'fecha', now()
+              )
+            )
+        WHERE id = ${params.archivoId}::int
+        RETURNING *
+      `;
+
+      const archivoActualizado = archivoActualizadoRows[0];
+
+      if (
+        documentoAnteriorId &&
+        documentoAnteriorId !== Number(params.documentoId)
+      ) {
+        await tx`
+          UPDATE documentos.documentos
+          SET
+            estado = 'duplicado_versionado',
+            metadata = COALESCE(metadata, '{}'::jsonb)
+              || jsonb_build_object(
+                'duplicadoVersionado',
+                jsonb_build_object(
+                  'documentoIdDestino', ${params.documentoId}::int,
+                  'archivoIdMovido', ${params.archivoId}::int,
+                  'fecha', now()
+                )
+              ),
+            actualizado_en = now()
+          WHERE id = ${documentoAnteriorId}::int
+        `;
+      }
+
+      const ocrRows = await tx`
+        UPDATE documentos.ocr_resultados
+        SET
+          documento_id = ${params.documentoId}::int,
+          estado = 'confirmado_como_version',
+          validado_en = COALESCE(validado_en, now()),
+          vinculado_en = COALESCE(vinculado_en, now()),
+          metadata = COALESCE(metadata, '{}'::jsonb)
+            || jsonb_build_object(
+              'documentoId', ${params.documentoId}::int,
+              'versionado',
+              jsonb_build_object(
+                'accion', 'ARCHIVO_AGREGADO_COMO_VERSION'::text,
+                'documentoIdDestino', ${params.documentoId}::int,
+                'documentoIdAnterior', ${documentoAnteriorId ?? null}::int,
+                'archivoId', ${params.archivoId}::int,
+                'fecha', now()
+              )
+            )
+        WHERE archivo_id = ${params.archivoId}::int
+        RETURNING *
+      `;
+
+      return {
+        ok: true,
+        documento,
+        archivo: archivoActualizado,
+        ocrResultado: ocrRows[0] ?? null,
+        documentoId: Number(params.documentoId),
+        archivoId: Number(params.archivoId),
+        documentoAnteriorId,
+        tipoVersion,
+        version: archivoActualizado?.version ?? siguienteVersion,
+        esVersionActual: archivoActualizado?.es_version_actual ?? marcarComoActual,
       };
     });
   }
@@ -1495,11 +1653,19 @@ export class DocumentosRepository {
   }
 
 
+  private normalizarTipoDocumentalConfirmacion(tipo: string | null | undefined): string {
+    const tipoKey = String(tipo ?? '').trim().toUpperCase();
+
+    if (tipoKey === 'GUIA' || tipoKey === 'GUÍA') return 'GUIA_REMISION';
+
+    return tipoKey;
+  }
+
   private normalizarTipoRelacionConfirmacion(
     tipo: string,
     tipoRelacion?: string | null,
   ): string {
-    const tipoFinal = String(tipo ?? '').trim().toUpperCase();
+    const tipoFinal = this.normalizarTipoDocumentalConfirmacion(tipo);
     const tipoRelacionInput = String(tipoRelacion ?? '').trim();
     const tipoRelacionPorTipo = this.tipoRelacionParaExpediente(tipoFinal);
 
@@ -1518,7 +1684,7 @@ export class DocumentosRepository {
     tipo: string,
     metadata: Record<string, any>,
   ) {
-    const tipoKey = String(tipo ?? '').trim().toUpperCase();
+    const tipoKey = this.normalizarTipoDocumentalConfirmacion(tipo);
     const faltantes: string[] = [];
     const has = (key: string) => {
       const value = metadata[key];
@@ -1528,15 +1694,23 @@ export class DocumentosRepository {
 
     if (!has('codigoExpediente')) faltantes.push('codigoExpediente');
     if (!has('fechaEmision')) faltantes.push('fechaEmision');
-    if (!has('montoTotal')) faltantes.push('montoTotal');
 
     if (tipoKey === 'OC' || tipoKey === 'OS') {
       if (!has('numero')) faltantes.push('numero');
       if (!hasAny('proveedor', 'razonSocial', 'razonSocialEmisor')) faltantes.push('proveedor');
       if (!hasAny('rucProveedor', 'rucEmisor', 'ruc')) faltantes.push('rucProveedor');
+      if (!has('montoTotal')) faltantes.push('montoTotal');
     }
 
     if (tipoKey === 'FACTURA') {
+      if (!has('serie')) faltantes.push('serie');
+      if (!has('numero')) faltantes.push('numero');
+      if (!hasAny('rucProveedor', 'rucEmisor', 'ruc')) faltantes.push('rucProveedor');
+      if (!hasAny('proveedor', 'razonSocial', 'razonSocialEmisor')) faltantes.push('proveedor');
+      if (!has('montoTotal')) faltantes.push('montoTotal');
+    }
+
+    if (tipoKey === 'GUIA_REMISION') {
       if (!has('serie')) faltantes.push('serie');
       if (!has('numero')) faltantes.push('numero');
       if (!hasAny('rucProveedor', 'rucEmisor', 'ruc')) faltantes.push('rucProveedor');

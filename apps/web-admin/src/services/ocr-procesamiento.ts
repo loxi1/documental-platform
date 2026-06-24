@@ -59,6 +59,72 @@ export type ConfirmarOcrConExpedientePayload = {
 };
 
 
+
+export type DocumentoDuplicadoEnExpedienteDetails = {
+  code?: string;
+  message?: string;
+  suggestedAction?: string;
+  claveDocumental?: string;
+  documentoIdExistente?: number | string;
+  documentoIdActual?: number | string;
+  archivoIdActual?: number | string;
+  archivoIdExistente?: number | string;
+  tipoRelacion?: string;
+  [key: string]: unknown;
+};
+
+export class OcrApiError extends Error {
+  code?: string;
+  status?: number;
+  details?: unknown;
+
+  constructor(message: string, options?: { code?: string; status?: number; details?: unknown }) {
+    super(message);
+    this.name = "OcrApiError";
+    this.code = options?.code;
+    this.status = options?.status;
+    this.details = options?.details;
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
+function findDocumentoDuplicadoDetails(value: unknown, depth = 0): DocumentoDuplicadoEnExpedienteDetails | null {
+  if (!isRecord(value) || depth > 8) return null;
+
+  const code = value.code;
+  const suggestedAction = value.suggestedAction;
+
+  if (code === "DOCUMENTO_DUPLICADO_EN_EXPEDIENTE" || suggestedAction === "AGREGAR_VERSION") {
+    const nested = isRecord(value.details) ? value.details : {};
+    return {
+      ...(value as DocumentoDuplicadoEnExpedienteDetails),
+      ...(nested as DocumentoDuplicadoEnExpedienteDetails),
+      code: "DOCUMENTO_DUPLICADO_EN_EXPEDIENTE",
+      suggestedAction: String((nested as any).suggestedAction ?? value.suggestedAction ?? "AGREGAR_VERSION"),
+    };
+  }
+
+  for (const key of ["error", "details", "data", "payload", "response"]) {
+    const found = findDocumentoDuplicadoDetails(value[key], depth + 1);
+    if (found) return found;
+  }
+
+  return null;
+}
+
+export function getDocumentoDuplicadoDetailsFromError(error: unknown): DocumentoDuplicadoEnExpedienteDetails | null {
+  if (error instanceof OcrApiError) {
+    return findDocumentoDuplicadoDetails(error.details) ?? null;
+  }
+
+  return findDocumentoDuplicadoDetails((error as any)?.response?.data) ??
+    findDocumentoDuplicadoDetails((error as any)?.details) ??
+    findDocumentoDuplicadoDetails(error);
+}
+
 function getApiErrorPayload(error: unknown): any {
   if (!error || typeof error !== "object") return null;
   const response = (error as any).response;
@@ -159,11 +225,18 @@ export async function confirmarOcrConExpediente(
     );
     return unwrapDeep(data);
   } catch (error) {
-    throw new Error(
-      buildApiErrorMessage(
-        error,
-        "No se pudo confirmar el OCR con expediente.",
-      ),
+    const payload = getApiErrorPayload(error);
+    const apiError = payload?.error;
+    const duplicateDetails = getDocumentoDuplicadoDetailsFromError(error);
+    const message = buildApiErrorMessage(
+      error,
+      "No se pudo confirmar el OCR con expediente.",
     );
+
+    throw new OcrApiError(message, {
+      code: duplicateDetails?.code ?? apiError?.code,
+      status: (error as any)?.response?.status,
+      details: duplicateDetails ?? apiError?.details ?? payload,
+    });
   }
 }

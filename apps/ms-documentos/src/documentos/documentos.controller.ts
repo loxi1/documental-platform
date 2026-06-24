@@ -131,6 +131,20 @@ export class DocumentosController {
     return this.service.confirmarOcrResultadoConExpediente(id, body);
   }
 
+
+  @Post(':documentoId/archivos/:archivoId/agregar-version')
+  agregarArchivoComoVersion(
+    @Param('documentoId', ParseIntPipe) documentoId: number,
+    @Param('archivoId', ParseIntPipe) archivoId: number,
+    @Body() body: {
+      tipoVersion?: string;
+      observacion?: string;
+      marcarComoActual?: boolean;
+    } = {},
+  ) {
+    return this.service.agregarArchivoComoVersion(documentoId, archivoId, body);
+  }
+
   @Post('relaciones')
   createDocumentoRelacion(@Body() body: any) {
     return this.service.createDocumentoRelacion(body);

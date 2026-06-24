@@ -418,6 +418,25 @@ export class DocumentosGatewayController {
   }
 
   @ApiOperation({ summary: 'Crear relación documental vía API Gateway' })
+
+  @ApiOperation({ summary: 'Agregar archivo existente como versión de un documento lógico vía API Gateway' })
+  @Post(':documentoId/archivos/:archivoId/agregar-version')
+  agregarArchivoComoVersion(
+    @Headers('authorization') authorization: string | undefined,
+    @Headers(REQUEST_ID_HEADER) requestId: string | undefined,
+    @Param('documentoId') documentoId: string,
+    @Param('archivoId') archivoId: string,
+    @Body() body: unknown,
+  ) {
+    return this.proxy({
+      method: 'POST',
+      path: `/documentos/${documentoId}/archivos/${archivoId}/agregar-version`,
+      authorization,
+      requestId,
+      body,
+    });
+  }
+
   @Post('relaciones')
   createDocumentoRelacion(
     @Headers('authorization') authorization: string | undefined,
