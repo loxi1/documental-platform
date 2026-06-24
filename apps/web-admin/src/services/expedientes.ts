@@ -19,16 +19,67 @@ export type ExpedientesQuery = {
 };
 
 function unwrap<T>(payload: T | ApiEnvelope<T>): T {
-  if (
-    payload &&
-    typeof payload === "object" &&
-    "data" in payload &&
-    (payload as ApiEnvelope<T>).data !== undefined
+  let current = payload as any;
+
+  while (
+    current &&
+    typeof current === "object" &&
+    "data" in current &&
+    current.data !== undefined &&
+    current.data !== current
   ) {
-    return (payload as ApiEnvelope<T>).data as T;
+    current = current.data;
   }
 
-  return payload as T;
+  return current as T;
+}
+
+
+export type CrearExpedientePayload = {
+  clienteDestinoId: number | string;
+  empresaCodigo: string;
+  codigoExpediente: string;
+  descripcion?: string | null;
+  metadata?: Record<string, unknown> | null;
+};
+
+export async function crearExpediente(payload: CrearExpedientePayload) {
+  const { data } = await api.post<ApiEnvelope<Expediente> | Expediente>(
+    "/expedientes",
+    payload,
+  );
+
+  return unwrap<Expediente>(data);
+}
+
+export type ExpedienteSearchResult = {
+  id: number | string;
+  codigoExpediente: string;
+  descripcion?: string | null;
+  empresaCodigo: string;
+  clienteDestinoId?: number | string | null;
+  clienteNombre?: string | null;
+  clienteAbreviatura?: string | null;
+  clienteRuc?: string | null;
+  estado?: string | null;
+  documentos?: number;
+  alertas?: number;
+};
+
+export async function buscarExpedientes(q: string, limit = 10) {
+  const { data } = await api.get<
+    ApiEnvelope<{ data?: ExpedienteSearchResult[]; total?: number }> | { data?: ExpedienteSearchResult[]; total?: number } | ExpedienteSearchResult[]
+  >("/expedientes/buscar", {
+    params: { q, limit },
+  });
+
+  const unwrapped = unwrap<any>(data);
+
+  if (Array.isArray(unwrapped)) {
+    return unwrapped as ExpedienteSearchResult[];
+  }
+
+  return (unwrapped?.data ?? []) as ExpedienteSearchResult[];
 }
 
 export async function getExpedientes(params: ExpedientesQuery = {}) {
@@ -124,4 +175,3 @@ function unwrapDeep<T = any>(payload: unknown): T {
 
   return current as T;
 }
-

@@ -92,6 +92,39 @@ export class ExpedientesGatewayController {
   }
 
 
+  @ApiOperation({ summary: 'Crear expediente vía API Gateway' })
+  @Post()
+  create(
+    @Headers('authorization') authorization: string | undefined,
+    @Headers(REQUEST_ID_HEADER) requestId: string | undefined,
+    @Body() body: unknown,
+  ) {
+    return this.proxy({
+      method: 'POST',
+      path: '/expedientes',
+      authorization,
+      requestId,
+      body,
+    });
+  }
+
+
+  @ApiOperation({ summary: 'Buscar expedientes vía API Gateway' })
+  @Get('buscar')
+  buscarExpedientes(
+    @Headers('authorization') authorization: string | undefined,
+    @Headers(REQUEST_ID_HEADER) requestId: string | undefined,
+    @Query() query: Record<string, string>,
+  ) {
+    return this.proxy({
+      method: 'GET',
+      path: '/expedientes/buscar',
+      authorization,
+      requestId,
+      query,
+    });
+  }
+
   @ApiOperation({ summary: 'Buscar expediente por código vía API Gateway' })
   @Get('buscar-por-codigo')
   findByCodigoExpediente(

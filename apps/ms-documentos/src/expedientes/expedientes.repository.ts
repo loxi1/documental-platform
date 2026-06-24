@@ -106,6 +106,22 @@ export class ExpedientesRepository {
     descripcion?: string | null;
     metadata?: Record<string, any> | null;
   }) {
+    const existingRows = await sql`
+      SELECT *
+      FROM documentos.expedientes
+      WHERE empresa_codigo = ${data.empresaCodigo}
+        AND codigo_expediente = ${data.codigoExpediente}
+      LIMIT 1
+    `;
+
+    if (existingRows[0]) {
+      return {
+        ...existingRows[0],
+        yaExistia: true,
+        motivo: 'MISMO_CODIGO_EXPEDIENTE',
+      };
+    }
+
     const rows = await sql`
       INSERT INTO documentos.expedientes (
         cliente_destino_id,
@@ -124,7 +140,10 @@ export class ExpedientesRepository {
       RETURNING *
     `;
 
-    return rows[0];
+    return {
+      ...rows[0],
+      yaExistia: false,
+    };
   }
 
   async addDocumento(data: {
@@ -241,6 +260,53 @@ export class ExpedientesRepository {
       WHERE ed.expediente_id = ${expedienteId}
       ORDER BY d.fecha_emision NULLS LAST, ed.orden ASC, d.id ASC
     `;
+  }
+
+
+  async buscarExpedientes(filters: { q: string; limit?: number }) {
+    const q = filters.q.trim();
+    const like = `%${q}%`;
+    const limit = filters.limit ?? 10;
+
+    const rows = await sql`
+      SELECT
+        e.id,
+        e.codigo_expediente AS "codigoExpediente",
+        e.descripcion,
+        e.empresa_codigo AS "empresaCodigo",
+        e.cliente_destino_id AS "clienteDestinoId",
+        cd.nombre_oficial AS "clienteNombre",
+        cd.abreviatura AS "clienteAbreviatura",
+        cd.ruc AS "clienteRuc",
+        e.estado,
+        COUNT(DISTINCT ed.documento_id)::int AS documentos,
+        COUNT(DISTINCT a.id)::int AS alertas
+      FROM documentos.expedientes e
+      LEFT JOIN core.clientes_destino cd
+        ON cd.id = e.cliente_destino_id
+      LEFT JOIN documentos.expediente_documentos ed
+        ON ed.expediente_id = e.id
+      LEFT JOIN documentos.documento_alertas a
+        ON a.documento_id = ed.documento_id
+       AND a.estado = 'activa'
+      WHERE e.estado <> 'eliminado'
+        AND (
+          e.codigo_expediente ILIKE ${like}
+          OR e.descripcion ILIKE ${like}
+          OR e.empresa_codigo ILIKE ${like}
+          OR cd.nombre_oficial ILIKE ${like}
+          OR cd.abreviatura ILIKE ${like}
+          OR cd.ruc ILIKE ${like}
+        )
+      GROUP BY e.id, cd.id
+      ORDER BY
+        CASE WHEN e.codigo_expediente = ${q} THEN 0 ELSE 1 END,
+        e.actualizado_en DESC NULLS LAST,
+        e.id DESC
+      LIMIT ${limit}
+    `;
+
+    return rows;
   }
 
   async findByCodigoExpediente(codigo: string) {

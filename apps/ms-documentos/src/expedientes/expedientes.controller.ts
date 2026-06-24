@@ -30,6 +30,17 @@ export class ExpedientesController {
     });
   }
 
+  @Get('buscar')
+  buscarExpedientes(
+    @Query('q') q?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.service.buscarExpedientes({
+      q,
+      limit: limit ? Number(limit) : 10,
+    });
+  }
+
   @Get('buscar-por-codigo')
   findByCodigoExpediente(@Query('codigo') codigo: string) {
     return this.service.findByCodigoExpediente(codigo);

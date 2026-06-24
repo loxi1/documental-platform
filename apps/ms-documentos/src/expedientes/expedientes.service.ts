@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { ExpedientesRepository } from './expedientes.repository';
 
 @Injectable()
@@ -37,7 +37,32 @@ export class ExpedientesService {
     descripcion?: string | null;
     metadata?: Record<string, any> | null;
   }) {
-    return this.repo.create(data);
+    const empresaCodigo = String(data.empresaCodigo ?? '').trim().toUpperCase();
+    const codigoExpediente = String(data.codigoExpediente ?? '').trim();
+    const clienteDestinoId = Number(data.clienteDestinoId);
+
+    if (!empresaCodigo) {
+      throw new BadRequestException('empresaCodigo es obligatorio');
+    }
+
+    if (!codigoExpediente) {
+      throw new BadRequestException('codigoExpediente es obligatorio');
+    }
+
+    if (!Number.isFinite(clienteDestinoId) || clienteDestinoId <= 0) {
+      throw new BadRequestException('clienteDestinoId es obligatorio');
+    }
+
+    return this.repo.create({
+      clienteDestinoId,
+      empresaCodigo,
+      codigoExpediente,
+      descripcion: data.descripcion?.trim() || null,
+      metadata: {
+        ...(data.metadata ?? {}),
+        origenCreacion: 'COMPRAS_NUEVO',
+      },
+    });
   }
 
   async addDocumento(
@@ -121,6 +146,25 @@ export class ExpedientesService {
         empresaCodigo: expediente.empresa_codigo,
       },
       timeline,
+    };
+  }
+
+  async buscarExpedientes(params: { q?: string; limit?: number }) {
+    const q = String(params.q ?? '').trim();
+    const limit = Math.min(Math.max(Number(params.limit ?? 10), 1), 20);
+
+    if (q.length < 2) {
+      return {
+        total: 0,
+        data: [],
+      };
+    }
+
+    const data = await this.repo.buscarExpedientes({ q, limit });
+
+    return {
+      total: data.length,
+      data,
     };
   }
 
