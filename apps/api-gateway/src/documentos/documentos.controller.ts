@@ -3,6 +3,7 @@ import {
   Controller,
   Get,
   Headers,
+  HttpException,
   Param,
   Patch,
   Post,
@@ -88,18 +89,35 @@ export class DocumentosGatewayController {
   }) {
     await this.validateAuthorization(params.authorization);
 
-    const response = await axios.request({
-      method: params.method,
-      url: `${this.getBaseUrl()}${params.path}`,
-      params: params.query,
-      data: params.body,
-      headers: this.buildForwardHeaders(
-        params.authorization,
-        params.requestId,
-      ),
-    });
+    try {
+      const response = await axios.request({
+        method: params.method,
+        url: `${this.getBaseUrl()}${params.path}`,
+        params: params.query,
+        data: params.body,
+        headers: this.buildForwardHeaders(
+          params.authorization,
+          params.requestId,
+        ),
+      });
 
-    return this.unwrap(response);
+      return this.unwrap(response);
+    } catch (error: any) {
+      if (axios.isAxiosError(error) && error.response) {
+        const status = error.response.status ?? 500;
+        const payload = error.response.data ?? {
+          success: false,
+          error: {
+            code: 'UPSTREAM_ERROR',
+            message: error.message,
+          },
+        };
+
+        throw new HttpException(payload, status);
+      }
+
+      throw error;
+    }
   }
 
   @ApiOperation({ summary: 'Listar documentos vía API Gateway' })
@@ -418,6 +436,22 @@ export class DocumentosGatewayController {
   }
 
   @ApiOperation({ summary: 'Crear relación documental vía API Gateway' })
+
+
+  @ApiOperation({ summary: 'Listar versiones/archivos físicos de un documento lógico vía API Gateway' })
+  @Get(':id/archivos')
+  findArchivosByDocumentoId(
+    @Headers('authorization') authorization: string | undefined,
+    @Headers(REQUEST_ID_HEADER) requestId: string | undefined,
+    @Param('id') id: string,
+  ) {
+    return this.proxy({
+      method: 'GET',
+      path: `/documentos/${id}/archivos`,
+      authorization,
+      requestId,
+    });
+  }
 
   @ApiOperation({ summary: 'Agregar archivo existente como versión de un documento lógico vía API Gateway' })
   @Post(':documentoId/archivos/:archivoId/agregar-version')

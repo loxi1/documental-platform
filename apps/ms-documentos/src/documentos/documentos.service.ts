@@ -32,6 +32,36 @@ export class DocumentosService {
     return doc;
   }
 
+
+  async findArchivosByDocumentoId(documentoId: number) {
+    const doc = await this.repo.findById(documentoId);
+
+    if (!doc) {
+      throw new NotFoundException(`Documento ${documentoId} no encontrado`);
+    }
+
+    const archivos = await this.repo.findArchivosByDocumentoId(documentoId);
+
+    return {
+      documentoId,
+      documento: {
+        id: Number(doc.id),
+        clienteAbreviatura: doc.cliente_abreviatura ?? null,
+        tipoDocumental: doc.tipo_documental ?? null,
+        serie: doc.serie ?? null,
+        numero: doc.numero ?? null,
+        claveDocumental: doc.clave_documental ?? null,
+        estado: doc.estado ?? null,
+        fechaEmision: doc.fecha_emision ?? null,
+        rucEmisor: doc.ruc_emisor ?? null,
+        razonSocialEmisor: doc.razon_social_emisor ?? null,
+      },
+      total: archivos.length,
+      archivos,
+      data: archivos,
+    };
+  }
+
   getTipos() {
     return this.repo.getTipos();
   }

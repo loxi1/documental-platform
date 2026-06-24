@@ -3,12 +3,13 @@
 import Link from "next/link";
 import { type ChangeEvent, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, FilePlus2, Save } from "lucide-react";
+import { ArrowLeft, FilePlus2, History, Save } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Modal } from "@/components/ui/modal";
 import { OcrValidationModal, type OcrValidationFormState } from "@/components/ocr/OcrValidationModal";
 import { OcrProcessingDialog, type OcrProcessingStep } from "@/components/ocr/OcrProcessingDialog";
 import {
@@ -22,6 +23,11 @@ import {
 import { useExpediente } from "@/hooks/useExpedientes";
 import { subirDocumentoGuiado } from "@/services/carga-guiada";
 import { api } from "@/services/api";
+import {
+  agregarArchivoComoVersion,
+  getDocumentoArchivos,
+  type DocumentoArchivoVersion,
+} from "@/services/documentos";
 import {
   confirmarOcrConExpediente,
   editarOcrResultado,
@@ -180,11 +186,13 @@ function DocumentoExistenteResumen({
   documentos,
   option,
   onVerValidar,
+  onVerVersiones,
   mostrarContenido = true,
 }: {
   documentos?: DocumentoVinculado[];
   option: DocumentoCargaOption;
   onVerValidar?: (doc: DocumentoVinculado) => void;
+  onVerVersiones?: (doc: DocumentoVinculado) => void;
   mostrarContenido?: boolean;
 }) {
   const principal = documentos?.[0];
@@ -245,10 +253,10 @@ function DocumentoExistenteResumen({
           variant="outline"
           size="sm"
           className="h-8 text-xs"
-          disabled
-          title="Agregar versión se conectará en el sprint de versionado."
+          onClick={() => onVerVersiones?.(principal)}
         >
-          Agregar versión
+          <History className="h-3.5 w-3.5" />
+          Versiones
         </Button>
       </div>
     </div>
@@ -260,10 +268,12 @@ function DocumentoAdjuntoRelacionResumen({
   documentos,
   option,
   onVerValidar,
+  onVerVersiones,
 }: {
   documentos?: DocumentoVinculado[];
   option: DocumentoCargaOption;
   onVerValidar?: (doc: DocumentoVinculado) => void;
+  onVerVersiones?: (doc: DocumentoVinculado) => void;
 }) {
   const ordenados = ordenarDocumentosPorFecha(documentos ?? []);
   const total = ordenados.length;
@@ -318,20 +328,154 @@ function DocumentoAdjuntoRelacionResumen({
                 <div>Relación: {option.tipoRelacionSugerida}</div>
               </div>
 
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="mt-2 h-8 w-full text-xs"
-                onClick={() => onVerValidar?.(doc)}
-              >
-                {isDocumentoConfirmado(doc) ? "Ver" : "Ver / Validar"}
-              </Button>
+              <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-8 text-xs"
+                  onClick={() => onVerValidar?.(doc)}
+                >
+                  {isDocumentoConfirmado(doc) ? "Ver" : "Ver / Validar"}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-8 text-xs"
+                  onClick={() => onVerVersiones?.(doc)}
+                >
+                  <History className="h-3.5 w-3.5" />
+                  Versiones
+                </Button>
+              </div>
             </div>
           );
         })}
       </div>
     </div>
+  );
+}
+
+type VersionesDocumentoModalState = {
+  documentoId: string;
+  titulo: string;
+  archivos: DocumentoArchivoVersion[];
+};
+
+function VersionesDocumentoModal({
+  state,
+  loading,
+  error,
+  onClose,
+  onPreview,
+}: {
+  state: VersionesDocumentoModalState | null;
+  loading: boolean;
+  error: string | null;
+  onClose: () => void;
+  onPreview: (archivoId: number | string) => void;
+}) {
+  const archivos = state?.archivos ?? [];
+
+  return (
+    <Modal
+      isOpen={Boolean(state)}
+      onClose={onClose}
+      className="mx-4 max-w-5xl p-5 md:p-6"
+    >
+      <div className="space-y-4">
+        <div className="pr-10">
+          <div className="flex items-center gap-2 text-lg font-semibold">
+            <History className="h-5 w-5" />
+            Historial de versiones
+          </div>
+          <div className="mt-1 text-sm text-muted-foreground">
+            Documento {state?.documentoId ?? "—"} · {state?.titulo ?? "Documento"}
+          </div>
+        </div>
+
+        {error ? (
+          <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-300">
+            {error}
+          </div>
+        ) : null}
+
+        {loading ? (
+          <div className="space-y-2">
+            <Skeleton className="h-14 w-full" />
+            <Skeleton className="h-14 w-full" />
+            <Skeleton className="h-14 w-full" />
+          </div>
+        ) : archivos.length ? (
+          <div className="max-h-[60vh] overflow-y-auto rounded-xl border">
+            <table className="w-full text-sm">
+              <thead className="sticky top-0 bg-background text-xs uppercase text-muted-foreground">
+                <tr className="border-b">
+                  <th className="px-3 py-2 text-left">Versión</th>
+                  <th className="px-3 py-2 text-left">Archivo</th>
+                  <th className="px-3 py-2 text-left">Tipo</th>
+                  <th className="px-3 py-2 text-left">Estado</th>
+                  <th className="px-3 py-2 text-left">Fecha</th>
+                  <th className="px-3 py-2 text-right">Acción</th>
+                </tr>
+              </thead>
+              <tbody>
+                {archivos.map((archivo) => {
+                  const actual = archivo.es_version_actual === true || String(archivo.es_version_actual).toLowerCase() === "t";
+                  return (
+                    <tr key={archivo.id} className="border-b last:border-b-0">
+                      <td className="px-3 py-2 align-top">
+                        <div className="font-medium">v{archivo.version ?? "—"}</div>
+                        <div className="text-xs text-muted-foreground">ID {archivo.id}</div>
+                        {actual ? (
+                          <span className="mt-1 inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-300">
+                            Actual
+                          </span>
+                        ) : null}
+                      </td>
+                      <td className="max-w-[260px] px-3 py-2 align-top">
+                        <div className="truncate font-medium">{archivo.nombre_archivo ?? "Archivo"}</div>
+                        <div className="truncate text-xs text-muted-foreground">{archivo.storage_key ?? archivo.ruta_archivo ?? "—"}</div>
+                      </td>
+                      <td className="px-3 py-2 align-top">{archivo.tipo_version ?? "—"}</td>
+                      <td className="px-3 py-2 align-top">
+                        <div>{archivo.estado ?? "—"}</div>
+                        {archivo.ocr_estado ? <div className="text-xs text-muted-foreground">OCR: {archivo.ocr_estado}</div> : null}
+                      </td>
+                      <td className="px-3 py-2 align-top text-xs text-muted-foreground">
+                        {formatFechaVersion(archivo.creado_en)}
+                      </td>
+                      <td className="px-3 py-2 text-right align-top">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="h-8 text-xs"
+                          onClick={() => onPreview(archivo.id)}
+                        >
+                          Ver
+                        </Button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="rounded-xl border border-dashed px-4 py-8 text-center text-sm text-muted-foreground">
+            No hay versiones registradas para este documento.
+          </div>
+        )}
+
+        <div className="flex justify-end">
+          <Button type="button" variant="outline" onClick={onClose}>
+            Cerrar
+          </Button>
+        </div>
+      </div>
+    </Modal>
   );
 }
 
@@ -364,6 +508,30 @@ function getArchivoId(source: Record<string, unknown> | null | undefined) {
 
   if (value === null || value === undefined || value === "") return null;
   return String(value);
+}
+
+function getDocumentoId(source: Record<string, unknown> | null | undefined) {
+  const value =
+    source?.documentoId ??
+    source?.documento_id ??
+    source?.id;
+
+  if (value === null || value === undefined || value === "") return null;
+  return String(value);
+}
+
+function formatFechaVersion(value: unknown) {
+  const raw = text(value, "");
+  if (!raw) return "—";
+  const date = new Date(raw.replace(" ", "T"));
+  if (Number.isNaN(date.getTime())) return raw;
+  return date.toLocaleString("es-PE", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 function parseRecordLocal(value: unknown): Record<string, unknown> | null {
@@ -630,6 +798,9 @@ export function CompraExpedienteEditor({ id }: { id: string | number }) {
   const [processingStep, setProcessingStep] = useState<OcrProcessingStep>("idle");
   const [processingFileName, setProcessingFileName] = useState<string | null>(null);
   const [processingError, setProcessingError] = useState<string | null>(null);
+  const [versionesModal, setVersionesModal] = useState<VersionesDocumentoModalState | null>(null);
+  const [versionesLoading, setVersionesLoading] = useState(false);
+  const [versionesError, setVersionesError] = useState<string | null>(null);
 
   const documentosQuery = useQuery({
     queryKey: ["expediente-documentos", String(id)],
@@ -868,6 +1039,58 @@ export function CompraExpedienteEditor({ id }: { id: string | number }) {
     }
   }
 
+  async function abrirHistorialVersiones(doc: DocumentoVinculado, option: DocumentoCargaOption) {
+    const documentoId = getDocumentoId(doc);
+
+    if (!documentoId) {
+      setMensajeValidacion("No se pudo resolver el documento para consultar versiones.");
+      return;
+    }
+
+    const summary = getDocumentoSummary(doc, option);
+    setVersionesModal({
+      documentoId,
+      titulo: summary.title,
+      archivos: [],
+    });
+    setVersionesLoading(true);
+    setVersionesError(null);
+
+    try {
+      const response = await getDocumentoArchivos(documentoId);
+      setVersionesModal({
+        documentoId,
+        titulo: summary.title,
+        archivos: response.data ?? [],
+      });
+    } catch (err) {
+      const message = err instanceof Error
+        ? err.message
+        : "No se pudo cargar el historial de versiones.";
+      setVersionesError(message);
+    } finally {
+      setVersionesLoading(false);
+    }
+  }
+
+  async function abrirPreviewVersion(archivoId: number | string) {
+    try {
+      const { data } = await api.get(`/documentos/archivos/${archivoId}/preview-url`);
+      const signedUrl = data?.data?.signedUrl ?? data?.signedUrl;
+
+      if (!signedUrl) {
+        throw new Error("No se recibió URL temporal para previsualizar el archivo.");
+      }
+
+      window.open(String(signedUrl), "_blank", "noopener,noreferrer");
+    } catch (err) {
+      const message = err instanceof Error
+        ? err.message
+        : "No se pudo abrir la versión seleccionada.";
+      setVersionesError(message);
+    }
+  }
+
   if (isLoading) {
     return (
       <main className="space-y-4">
@@ -978,6 +1201,26 @@ export function CompraExpedienteEditor({ id }: { id: string | number }) {
 
     setModalAbierto(false);
     setMensajeValidacion(`OCR confirmado y vinculado al expediente ${codigoExpedienteFinal}.`);
+    queryClient.invalidateQueries({ queryKey: ["ocr-resultados"] });
+    queryClient.invalidateQueries({ queryKey: ["expediente-documentos", String(id)] });
+  }
+
+  async function agregarDuplicadoComoVersion(details: { documentoIdExistente?: number | string; archivoIdActual?: number | string }) {
+    const documentoIdExistente = details.documentoIdExistente;
+    const archivoIdActual = details.archivoIdActual;
+
+    if (!documentoIdExistente || !archivoIdActual) {
+      throw new Error("No se encontró el documento existente o el archivo nuevo para agregar como versión.");
+    }
+
+    await agregarArchivoComoVersion(documentoIdExistente, archivoIdActual, {
+      tipoVersion: "escaneado",
+      observacion: "Archivo duplicado agregado como versión desde Compras > Editar",
+      marcarComoActual: true,
+    });
+
+    setModalAbierto(false);
+    setMensajeValidacion(`Archivo agregado como nueva versión del documento ${documentoIdExistente}.`);
     queryClient.invalidateQueries({ queryKey: ["ocr-resultados"] });
     queryClient.invalidateQueries({ queryKey: ["expediente-documentos", String(id)] });
   }
@@ -1120,6 +1363,7 @@ export function CompraExpedienteEditor({ id }: { id: string | number }) {
                     documentos={documentosItem}
                     option={item}
                     onVerValidar={(doc) => abrirDocumentoExistente(doc, item)}
+                    onVerVersiones={(doc) => abrirHistorialVersiones(doc, item)}
                     mostrarContenido={principalActivo}
                   />
 
@@ -1167,6 +1411,7 @@ export function CompraExpedienteEditor({ id }: { id: string | number }) {
                   option={item}
                   documentos={documentosPorRelacion.get(item.tipoRelacionSugerida)}
                   onVerValidar={(doc) => abrirDocumentoExistente(doc, item)}
+                  onVerVersiones={(doc) => abrirHistorialVersiones(doc, item)}
                 />
 
                 <div className="mt-3 text-[11px] text-muted-foreground">
@@ -1216,6 +1461,17 @@ export function CompraExpedienteEditor({ id }: { id: string | number }) {
         }}
       />
 
+      <VersionesDocumentoModal
+        state={versionesModal}
+        loading={versionesLoading}
+        error={versionesError}
+        onClose={() => {
+          setVersionesModal(null);
+          setVersionesError(null);
+        }}
+        onPreview={abrirPreviewVersion}
+      />
+
       <OcrValidationModal
         open={modalAbierto}
         resultado={resultadoModal}
@@ -1231,6 +1487,7 @@ export function CompraExpedienteEditor({ id }: { id: string | number }) {
         onSave={guardarCambiosOcr}
         onConfirm={confirmarOcrFinal}
         onReject={rechazarOcrFinal}
+        onAgregarComoVersion={agregarDuplicadoComoVersion}
         readOnly={modalSoloLectura}
       />
     </>

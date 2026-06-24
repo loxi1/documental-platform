@@ -132,6 +132,14 @@ export class DocumentosController {
   }
 
 
+
+  @ApiOperation({ summary: 'Listar versiones/archivos físicos de un documento lógico' })
+  @ApiParam({ name: 'id', example: 3747 })
+  @Get(':id/archivos')
+  findArchivosByDocumentoId(@Param('id', ParseIntPipe) id: number) {
+    return this.service.findArchivosByDocumentoId(id);
+  }
+
   @Post(':documentoId/archivos/:archivoId/agregar-version')
   agregarArchivoComoVersion(
     @Param('documentoId', ParseIntPipe) documentoId: number,

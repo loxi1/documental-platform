@@ -2,6 +2,10 @@
 
 import Link from "next/link";
 import { api } from "@/services/api";
+import {
+  getDocumentoDuplicadoDetailsFromError,
+  type DocumentoDuplicadoEnExpedienteDetails,
+} from "@/services/ocr-procesamiento";
 import { useEffect, useMemo, useState } from "react";
 
 const TIPOS_DOCUMENTALES = [
@@ -51,6 +55,7 @@ type OcrValidationModalProps = {
   onSave?: (form: FormState) => void | Promise<void>;
   onConfirm?: (form: FormState) => void | Promise<void>;
   onReject?: (form: FormState) => void | Promise<void>;
+  onAgregarComoVersion?: (details: DocumentoDuplicadoEnExpedienteDetails) => void | Promise<void>;
   readOnly?: boolean;
 };
 
@@ -387,12 +392,14 @@ export function OcrValidationModal({
   onSave,
   onConfirm,
   onReject,
+  onAgregarComoVersion,
   readOnly = false,
 }: OcrValidationModalProps) {
   const [form, setForm] = useState<FormState>(() => buildInitialForm(resultado, expedienteContexto));
   const [localMessage, setLocalMessage] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [submittingAction, setSubmittingAction] = useState<null | "save" | "confirm" | "reject">(null);
+  const [duplicadoDetails, setDuplicadoDetails] = useState<DocumentoDuplicadoEnExpedienteDetails | null>(null);
+  const [submittingAction, setSubmittingAction] = useState<null | "save" | "confirm" | "reject" | "version">(null);
   const [previewUrlFromApi, setPreviewUrlFromApi] = useState<string | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
 
@@ -401,6 +408,7 @@ export function OcrValidationModal({
       setForm(buildInitialForm(resultado, expedienteContexto));
       setLocalMessage(null);
       setActionError(null);
+      setDuplicadoDetails(null);
       setPreviewUrlFromApi(null);
       setPreviewError(null);
     }
@@ -474,6 +482,7 @@ export function OcrValidationModal({
 
     setSubmittingAction(action);
     setActionError(null);
+    setDuplicadoDetails(null);
     setLocalMessage(null);
 
     try {
@@ -482,6 +491,10 @@ export function OcrValidationModal({
         setLocalMessage("Cambios guardados correctamente.");
       }
     } catch (error) {
+      const duplicate = getDocumentoDuplicadoDetailsFromError(error);
+      if (action === "confirm" && duplicate) {
+        setDuplicadoDetails(duplicate);
+      }
       setActionError(
         error instanceof Error
           ? error.message
@@ -507,6 +520,27 @@ export function OcrValidationModal({
 
   function handleReject() {
     void runAction("reject", onReject);
+  }
+
+  async function handleAgregarComoVersion() {
+    if (!duplicadoDetails || !onAgregarComoVersion) return;
+
+    setSubmittingAction("version");
+    setActionError(null);
+    setLocalMessage(null);
+
+    try {
+      await onAgregarComoVersion(duplicadoDetails);
+      setLocalMessage("Archivo agregado como nueva versión correctamente.");
+    } catch (error) {
+      setActionError(
+        error instanceof Error
+          ? error.message
+          : "No se pudo agregar el archivo como versión.",
+      );
+    } finally {
+      setSubmittingAction(null);
+    }
   }
 
   return (
@@ -648,6 +682,29 @@ export function OcrValidationModal({
                 </div>
               ) : null}
 
+              {duplicadoDetails ? (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200">
+                  <p className="font-semibold">Este documento ya existe en el expediente.</p>
+                  <div className="mt-2 space-y-1 text-xs">
+                    {duplicadoDetails.claveDocumental ? <p>Clave: {duplicadoDetails.claveDocumental}</p> : null}
+                    {duplicadoDetails.documentoIdExistente ? <p>Documento existente: {duplicadoDetails.documentoIdExistente}</p> : null}
+                    {duplicadoDetails.documentoIdActual ? <p>Documento temporal: {duplicadoDetails.documentoIdActual}</p> : null}
+                    {duplicadoDetails.archivoIdActual ? <p>Archivo nuevo: {duplicadoDetails.archivoIdActual}</p> : null}
+                  </div>
+                  <p className="mt-3 text-xs">
+                    No se creará otro documento lógico. Puedes agregar este archivo como nueva versión del documento existente.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={handleAgregarComoVersion}
+                    disabled={submittingAction !== null || !onAgregarComoVersion || !duplicadoDetails.archivoIdActual || !duplicadoDetails.documentoIdExistente}
+                    className="mt-3 inline-flex h-9 items-center justify-center rounded-lg bg-amber-600 px-3 text-sm font-semibold text-white transition hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {submittingAction === "version" ? "Agregando versión..." : "Agregar como versión"}
+                  </button>
+                </div>
+              ) : null}
+
               {localMessage ? (
                 <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-300">
                   {localMessage}
@@ -695,22 +752,26 @@ export function OcrValidationModal({
                 >
                   Cancelar / Cerrar
                 </button>
-                <button
-                  type="button"
-                  onClick={handleSave}
-                  disabled={submittingAction !== null}
-                  className="inline-flex h-9 items-center justify-center rounded-lg border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100 dark:hover:bg-slate-900"
-                >
-                  {submittingAction === "save" ? "Guardando..." : "Guardar cambios"}
-                </button>
-                <button
-                  type="button"
-                  onClick={handleConfirm}
-                  disabled={submittingAction !== null}
-                  className="inline-flex h-9 items-center justify-center rounded-lg bg-slate-950 px-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-slate-100 dark:text-slate-950 dark:hover:bg-white"
-                >
-                  {submittingAction === "confirm" ? "Confirmando..." : "Guardar y confirmar"}
-                </button>
+                {!duplicadoDetails ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={handleSave}
+                      disabled={submittingAction !== null}
+                      className="inline-flex h-9 items-center justify-center rounded-lg border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100 dark:hover:bg-slate-900"
+                    >
+                      {submittingAction === "save" ? "Guardando..." : "Guardar cambios"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleConfirm}
+                      disabled={submittingAction !== null}
+                      className="inline-flex h-9 items-center justify-center rounded-lg bg-slate-950 px-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-slate-100 dark:text-slate-950 dark:hover:bg-white"
+                    >
+                      {submittingAction === "confirm" ? "Confirmando..." : "Guardar y confirmar"}
+                    </button>
+                  </>
+                ) : null}
               </>
             )}
           </div>

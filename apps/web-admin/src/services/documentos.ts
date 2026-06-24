@@ -82,3 +82,44 @@ export async function agregarArchivoComoVersion(
 
   return unwrap(data);
 }
+
+
+export type DocumentoArchivoVersion = {
+  id: number;
+  documento_id: number;
+  nombre_archivo?: string | null;
+  ruta_archivo?: string | null;
+  hash_sha256?: string | null;
+  tipo_version?: string | null;
+  area_origen?: string | null;
+  estado?: string | null;
+  creado_en?: string | null;
+  origen_archivo?: string | null;
+  observacion?: string | null;
+  storage_provider?: string | null;
+  storage_bucket?: string | null;
+  storage_key?: string | null;
+  version?: number | null;
+  es_version_actual?: boolean | null;
+  versionado?: Record<string, unknown> | null;
+  ocr_resultado_id?: number | null;
+  ocr_estado?: string | null;
+  ocr_validado_en?: string | null;
+  ocr_versionado?: Record<string, unknown> | null;
+};
+
+export type DocumentoArchivosVersionesResponse = {
+  documentoId: number | string;
+  documento?: Record<string, unknown> | null;
+  total: number;
+  archivos?: DocumentoArchivoVersion[];
+  data: DocumentoArchivoVersion[];
+};
+
+export async function getDocumentoArchivos(documentoId: number | string) {
+  const { data } = await api.get<
+    ApiEnvelope<DocumentoArchivosVersionesResponse> | DocumentoArchivosVersionesResponse
+  >(`/documentos/${documentoId}/archivos`);
+
+  return unwrap<DocumentoArchivosVersionesResponse>(data);
+}

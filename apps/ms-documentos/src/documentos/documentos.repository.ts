@@ -88,6 +88,48 @@ export class DocumentosRepository {
     return rows[0] ?? null;
   }
 
+
+  async findArchivosByDocumentoId(documentoId: number) {
+    return sql`
+      SELECT
+        da.id,
+        da.documento_id,
+        da.nombre_archivo,
+        da.tipo_version,
+        da.version,
+        da.es_version_actual,
+        da.estado,
+        da.creado_en,
+        da.area_origen,
+        da.origen_archivo,
+        da.observacion,
+        da.storage_provider,
+        da.storage_bucket,
+        da.storage_key,
+        da.hash_sha256,
+        da.metadata->'versionado' AS versionado,
+        ocr.id AS ocr_resultado_id,
+        ocr.estado AS ocr_estado,
+        ocr.validado_en AS ocr_validado_en,
+        ocr.metadata->'versionado' AS ocr_versionado
+      FROM documentos.documentos_archivos da
+      LEFT JOIN LATERAL (
+        SELECT
+          o.id,
+          o.estado,
+          o.validado_en,
+          o.metadata
+        FROM documentos.ocr_resultados o
+        WHERE o.archivo_id = da.id
+        ORDER BY o.id DESC
+        LIMIT 1
+      ) ocr ON true
+      WHERE da.documento_id = ${documentoId}::int
+        AND da.estado <> 'duplicado_absorbido'
+      ORDER BY COALESCE(da.version, 0) DESC, da.creado_en DESC, da.id DESC
+    `;
+  }
+
   async getTipos() {
     return sql`
       SELECT tipo_documental, COUNT(*)::int AS total
