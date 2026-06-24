@@ -206,6 +206,7 @@ function ExpedienteCell({ expediente }: { expediente: Expediente }) {
 }
 
 function ActionsCell({ expediente }: { expediente: Expediente }) {
+  const tienePrincipal = Boolean(getPrincipal(expediente));
   return (
     <div className="flex justify-end gap-1">
       <Button asChild size="icon" variant="outline" title="Ver expediente">
@@ -218,11 +219,13 @@ function ActionsCell({ expediente }: { expediente: Expediente }) {
           <Pencil className="h-4 w-4" />
         </Link>
       </Button>
-      <Button asChild size="icon" variant="outline" title="Adjuntar documento">
-        <Link href={`/compras/${expediente.id}/editar?accion=adjuntar`} aria-label="Adjuntar documento">
-          <FilePlus2 className="h-4 w-4" />
-        </Link>
-      </Button>
+      {tienePrincipal ? (
+        <Button asChild size="icon" variant="outline" title="Adjuntar documento">
+          <Link href={`/compras/${expediente.id}/editar?accion=adjuntar`} aria-label="Adjuntar documento">
+            <FilePlus2 className="h-4 w-4" />
+          </Link>
+        </Button>
+      ) : null}
     </div>
   );
 }
