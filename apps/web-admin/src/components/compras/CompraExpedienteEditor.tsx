@@ -360,6 +360,7 @@ function DocumentoAdjuntoRelacionResumen({
 type VersionesDocumentoModalState = {
   documentoId: string;
   titulo: string;
+  contextoLabel: string;
   archivos: DocumentoArchivoVersion[];
 };
 
@@ -386,6 +387,9 @@ function VersionesDocumentoModal({
     >
       <div className="space-y-4">
         <div className="pr-10">
+          <div className="mb-2 inline-flex rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-700 dark:border-slate-800 dark:bg-slate-950/40 dark:text-slate-300">
+           {state?.contextoLabel ?? "Documento"}
+          </div>
           <div className="flex items-center gap-2 text-lg font-semibold">
             <History className="h-5 w-5" />
             Historial de versiones
@@ -1048,9 +1052,11 @@ export function CompraExpedienteEditor({ id }: { id: string | number }) {
     }
 
     const summary = getDocumentoSummary(doc, option);
+    const contextoLabel = option.tipoRelacionSugerida.startsWith("principal_") ? `Documento principal · ${option.label}` : `Adjunto de compras · ${option.label}`;
     setVersionesModal({
       documentoId,
       titulo: summary.title,
+      contextoLabel,
       archivos: [],
     });
     setVersionesLoading(true);
@@ -1061,6 +1067,7 @@ export function CompraExpedienteEditor({ id }: { id: string | number }) {
       setVersionesModal({
         documentoId,
         titulo: summary.title,
+        contextoLabel,
         archivos: response.data ?? [],
       });
     } catch (err) {
