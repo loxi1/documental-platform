@@ -148,7 +148,9 @@ export class DocumentosUploadService {
         storage_provider,
         storage_bucket,
         storage_key,
-        public_url
+        public_url,
+        version,
+        es_version_actual
       ) VALUES (
         ${documentoId},
         ${originalFilename},
@@ -177,7 +179,9 @@ export class DocumentosUploadService {
         'r2',
         ${bucket},
         ${storageKey},
-        NULL
+        NULL,
+        1,
+        true
       )
       RETURNING id
     `;

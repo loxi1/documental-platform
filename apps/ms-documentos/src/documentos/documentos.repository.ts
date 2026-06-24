@@ -644,9 +644,11 @@ export class DocumentosRepository {
           'Ya existe otro documento con la misma clave documental en el expediente',
           {
             expedienteId: Number(expediente.id),
-            documentoIdExistente: duplicadoRows[0].documento_id,
+            documentoIdExistente: Number(duplicadoRows[0].documento_id),
             documentoIdActual: Number(ocr.documento_id),
+            archivoIdActual: Number(ocr.archivo_id),
             claveDocumental,
+            suggestedAction: 'AGREGAR_VERSION',
           },
         );
       }
@@ -916,6 +918,31 @@ export class DocumentosRepository {
       const tipoVersion = String(params.tipoVersion ?? archivo.tipo_version ?? 'evidencia')
         .trim()
         .toLowerCase();
+
+      await tx`
+        WITH stats AS (
+          SELECT COALESCE(MAX(version), 0)::int AS max_version
+          FROM documentos.documentos_archivos
+          WHERE documento_id = ${params.documentoId}::int
+            AND id <> ${params.archivoId}::int
+            AND version IS NOT NULL
+        ), null_versions AS (
+          SELECT
+            da.id,
+            stats.max_version + ROW_NUMBER() OVER (ORDER BY da.creado_en ASC, da.id ASC) AS normalized_version
+          FROM documentos.documentos_archivos da
+          CROSS JOIN stats
+          WHERE da.documento_id = ${params.documentoId}::int
+            AND da.id <> ${params.archivoId}::int
+            AND da.version IS NULL
+        )
+        UPDATE documentos.documentos_archivos da
+        SET
+          version = null_versions.normalized_version::int,
+          tipo_version = COALESCE(NULLIF(da.tipo_version, ''), 'original')
+        FROM null_versions
+        WHERE da.id = null_versions.id
+      `;
 
       const versionRows = await tx`
         SELECT COALESCE(MAX(version), 0)::int + 1 AS siguiente_version

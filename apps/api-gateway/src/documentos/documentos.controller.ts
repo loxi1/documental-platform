@@ -105,15 +105,23 @@ export class DocumentosGatewayController {
     } catch (error: any) {
       if (axios.isAxiosError(error) && error.response) {
         const status = error.response.status ?? 500;
-        const payload = error.response.data ?? {
-          success: false,
-          error: {
-            code: 'UPSTREAM_ERROR',
-            message: error.message,
-          },
-        };
+        const payload = error.response.data;
+        const upstreamError = payload?.error ?? payload;
+        const upstreamDetails = upstreamError?.details ?? payload?.details ?? null;
 
-        throw new HttpException(payload, status);
+        throw new HttpException(
+          {
+            message:
+              upstreamError?.message ??
+              payload?.message ??
+              error.message ??
+              'Error del microservicio documentos',
+            code: upstreamError?.code ?? payload?.code ?? 'UPSTREAM_ERROR',
+            details: upstreamDetails,
+            upstream: payload ?? null,
+          },
+          status,
+        );
       }
 
       throw error;
