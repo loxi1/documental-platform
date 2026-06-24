@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Eye, FilePlus2, Pencil, Plus } from "lucide-react";
+import { Eye, FilePlus2, Pencil, Plus, Search, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
@@ -17,6 +17,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useExpedientes } from "@/hooks/useExpedientes";
+import { buscarExpedientes } from "@/services/expedientes";
 import type { Expediente, ExpedienteDocumento } from "@/types/expediente";
 
 type ExpedientesApiResponse = {
@@ -52,6 +53,11 @@ function text(value: unknown, fallback = "") {
 function field<T = unknown>(source: unknown, key: string): T | undefined {
   if (!source || typeof source !== "object") return undefined;
   return (source as unknown as Record<string, T | undefined>)[key];
+}
+
+function listField<T = unknown>(source: unknown, key: string): T[] {
+  const value = field<unknown>(source, key);
+  return Array.isArray(value) ? (value as T[]) : [];
 }
 
 function getEmpresa(expediente: Expediente) {
@@ -114,18 +120,20 @@ function getPrincipal(expediente: Expediente): ExpedienteDocumento | null {
 }
 
 function getAllDocuments(expediente: Expediente) {
-  const documentos = field<ExpedienteDocumento[]>(expediente, "documentos") ?? [];
+  const documentos = listField<ExpedienteDocumento>(expediente, "documentos");
+  const documentosLista = listField<ExpedienteDocumento>(expediente, "documentosLista");
   const documentosPrincipales =
-    field<ExpedienteDocumento[]>(expediente, "documentosPrincipales") ?? [];
+    listField<ExpedienteDocumento>(expediente, "documentosPrincipales");
   const documentoPrincipal = field<ExpedienteDocumento | null>(
     expediente,
     "documentoPrincipal",
   );
   const documentosAdjuntos =
-    field<ExpedienteDocumento[]>(expediente, "documentosAdjuntos") ?? [];
+    listField<ExpedienteDocumento>(expediente, "documentosAdjuntos");
 
   return [
     ...documentos,
+    ...documentosLista,
     ...documentosPrincipales,
     ...(documentoPrincipal ? [documentoPrincipal] : []),
     ...documentosAdjuntos,
@@ -300,6 +308,10 @@ export function ComprasBandeja() {
   const [estado, setEstado] = useState("abierto");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
+  const [remoteRows, setRemoteRows] = useState<Expediente[]>([]);
+  const [searchMode, setSearchMode] = useState(false);
+  const [isSearching, setIsSearching] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
 
   const { data, isLoading, error } = useExpedientes({
     empresa,
@@ -313,6 +325,7 @@ export function ComprasBandeja() {
   const rows = useMemo(() => {
     const value = search.trim().toLowerCase();
 
+    if (searchMode) return remoteRows;
     if (!value) return expedientes;
 
     return expedientes.filter((expediente) =>
@@ -329,7 +342,40 @@ export function ComprasBandeja() {
         .toLowerCase()
         .includes(value),
     );
-  }, [expedientes, search]);
+  }, [expedientes, remoteRows, search, searchMode]);
+
+  async function ejecutarBusqueda() {
+    const value = search.trim();
+
+    if (value.length < 2) {
+      setSearchMode(false);
+      setRemoteRows([]);
+      setSearchError(null);
+      return;
+    }
+
+    setIsSearching(true);
+    setSearchError(null);
+
+    try {
+      const results = await buscarExpedientes(value, 50);
+      setRemoteRows(results as unknown as Expediente[]);
+      setSearchMode(true);
+      setPage(1);
+    } catch {
+      setSearchError("No se pudo buscar expedientes o documentos.");
+    } finally {
+      setIsSearching(false);
+    }
+  }
+
+  function limpiarBusqueda() {
+    setSearch("");
+    setRemoteRows([]);
+    setSearchMode(false);
+    setSearchError(null);
+    setPage(1);
+  }
 
   const totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
   const currentPage = Math.min(page, totalPages);
@@ -341,6 +387,14 @@ export function ComprasBandeja() {
   useEffect(() => {
     setPage(1);
   }, [empresa, estado, search]);
+
+  useEffect(() => {
+    if (!search.trim()) {
+      setSearchMode(false);
+      setRemoteRows([]);
+      setSearchError(null);
+    }
+  }, [search]);
 
   if (isLoading) {
     return (
@@ -382,11 +436,18 @@ export function ComprasBandeja() {
       <Card>
         <CardHeader className="gap-4">
           <CardTitle>Filtro</CardTitle>
-          <div className="grid gap-2 md:grid-cols-[140px_160px_1fr]">
+          <form
+            className="grid gap-2 md:grid-cols-[140px_160px_1fr_auto]"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void ejecutarBusqueda();
+            }}
+          >
             <select
               className="h-8 rounded-lg border border-input bg-background px-2 text-sm"
               value={empresa}
               onChange={(event) => setEmpresa(event.target.value)}
+              disabled={searchMode}
             >
               <option value="BBTI">BBTI</option>
               <option value="BBTEC">BBTEC</option>
@@ -400,6 +461,7 @@ export function ComprasBandeja() {
               className="h-8 rounded-lg border border-input bg-background px-2 text-sm"
               value={estado}
               onChange={(event) => setEstado(event.target.value)}
+              disabled={searchMode}
             >
               <option value="abierto">Abierto</option>
               <option value="en_proceso">En proceso</option>
@@ -409,11 +471,31 @@ export function ComprasBandeja() {
             </select>
 
             <Input
-              placeholder="Buscar por expediente, descripción, principal o empresa..."
+              placeholder="Buscar expediente, factura, guía, OC, RUC o proveedor..."
               value={search}
               onChange={(event) => setSearch(event.target.value)}
             />
-          </div>
+
+            <div className="flex gap-2">
+              <Button type="submit" size="sm" disabled={isSearching}>
+                <Search className="h-4 w-4" />
+                {isSearching ? "Buscando" : "Buscar"}
+              </Button>
+              {searchMode ? (
+                <Button type="button" size="sm" variant="outline" onClick={limpiarBusqueda}>
+                  <X className="h-4 w-4" />
+                  Limpiar
+                </Button>
+              ) : null}
+            </div>
+          </form>
+
+          {searchMode ? (
+            <p className="text-xs text-muted-foreground">
+              Búsqueda global activa: {rows.length} resultado(s). Los filtros de empresa y estado se aplican solo al listado normal.
+            </p>
+          ) : null}
+          {searchError ? <p className="text-xs text-red-600">{searchError}</p> : null}
         </CardHeader>
       </Card>
 
@@ -429,7 +511,9 @@ export function ComprasBandeja() {
                 <EmptyMedia variant="icon">📄</EmptyMedia>
                 <EmptyTitle>Sin expedientes</EmptyTitle>
                 <EmptyDescription>
-                  No se encontraron expedientes con los filtros seleccionados.
+                  {searchMode
+                    ? "No se encontraron expedientes o documentos con esa búsqueda."
+                    : "No se encontraron expedientes con los filtros seleccionados."}
                 </EmptyDescription>
               </EmptyHeader>
             </Empty>

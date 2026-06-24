@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { type ChangeEvent, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, FilePlus2, History, Save } from "lucide-react";
+import { ArrowLeft, FilePlus2, History } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -15,7 +15,6 @@ import { OcrProcessingDialog, type OcrProcessingStep } from "@/components/ocr/Oc
 import {
   DOCUMENTO_ADJUNTO_OPTIONS,
   DOCUMENTO_PRINCIPAL_OPTIONS,
-  getConfiabilidadLabel,
   getDocumentoSummary,
   getDocumentoVisualState,
   type DocumentoCargaOption,
@@ -1115,7 +1114,6 @@ export function CompraExpedienteEditor({ id }: { id: string | number }) {
   const empresa = text(expediente.empresa_codigo ?? expediente.empresaCodigo, "");
   const rucComprador = getRucComprador(expediente, empresa);
   const descripcion = descripcionAmigable(expediente);
-  const clavePrincipal = text(expediente.clave_principal ?? expediente.clavePrincipal, "");
   const procesando = cargaRealMutation.isPending;
   const archivoIdModal = getArchivoId(resultadoModal as Record<string, unknown> | null) ?? undefined;
 
@@ -1262,26 +1260,21 @@ export function CompraExpedienteEditor({ id }: { id: string | number }) {
       />
 
       <main className="space-y-4">
-        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
           <div>
-            <Button asChild variant="ghost" size="sm" className="mb-2 px-0">
+            <Button asChild variant="ghost" size="sm" className="mb-1 px-0">
               <Link href="/compras">
                 <ArrowLeft className="h-4 w-4" />
-                Volver a compras
+                Volver
               </Link>
             </Button>
-            <h1 className="text-2xl font-bold">Editar compras</h1>
-            <p className="text-sm text-muted-foreground">
-              Expediente {codigo || "SIN EXPEDIENTE"} · {descripcion || "Sin descripción"}
-              {empresa ? ` · Empresa ${empresa}` : ""}
-              {rucComprador ? ` · RUC comprador ${rucComprador}` : ""}
-            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="text-2xl font-bold">Compras</h1>
+              <span className="rounded-full border px-2 py-0.5 text-xs font-medium">{codigo || "SIN EXPEDIENTE"}</span>
+              {empresa ? <span className="rounded-full border px-2 py-0.5 text-xs text-muted-foreground">{empresa}</span> : null}
+            </div>
+            {descripcion ? <p className="mt-1 text-sm text-muted-foreground">{descripcion}</p> : null}
           </div>
-
-          <Button disabled title="Pendiente: PATCH /expedientes/:id">
-            <Save className="h-4 w-4" />
-            Guardar cambios
-          </Button>
         </div>
 
         {mensajeValidacion ? (
@@ -1291,52 +1284,34 @@ export function CompraExpedienteEditor({ id }: { id: string | number }) {
         ) : null}
 
         <Card>
-          <CardHeader>
-            <CardTitle>Datos del expediente</CardTitle>
-          </CardHeader>
-          <CardContent className="grid gap-4 md:grid-cols-10">
-            <div className="space-y-1.5 md:col-span-2">
+          <CardContent className="grid gap-3 p-4 md:grid-cols-8">
+            <div className="space-y-1 md:col-span-2">
               <label className="text-xs font-medium text-muted-foreground">Empresa</label>
               <Input value={empresa} readOnly />
             </div>
-            <div className="space-y-1.5 md:col-span-2">
+            <div className="space-y-1 md:col-span-2">
               <label className="text-xs font-medium text-muted-foreground">Expediente</label>
               <Input value={codigo || "SIN EXPEDIENTE"} readOnly />
             </div>
-            <div className="space-y-1.5 md:col-span-2">
-              <label className="text-xs font-medium text-muted-foreground">RUC comprador</label>
-              <Input value={rucComprador || "Pendiente"} readOnly />
-            </div>
-            <div className="space-y-1.5 md:col-span-4">
+            <div className="space-y-1 md:col-span-4">
               <label className="text-xs font-medium text-muted-foreground">Descripción</label>
               <Input defaultValue={descripcion} placeholder="Descripción del expediente" />
             </div>
-            {clavePrincipal ? (
-              <div className="space-y-1.5 md:col-span-10">
-                <label className="text-xs font-medium text-muted-foreground">Clave principal</label>
-                <Input value={clavePrincipal} readOnly />
-              </div>
-            ) : null}
           </CardContent>
         </Card>
 
         <Card>
-          <CardHeader>
-            <CardTitle>Documento principal</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div>
-              <div className="font-medium">Principal del expediente</div>
-              <div className="text-sm text-muted-foreground">
-                Selecciona si el principal será OC, OS o factura directa. Luego elige el PDF o imagen.
-              </div>
+          <CardHeader className="pb-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <CardTitle>Documento principal</CardTitle>
               {principalActual ? (
-                <div className="mt-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-muted-foreground dark:border-slate-800 dark:bg-slate-900/40">
-                  Principal activo actual: {principalActual.option.label}. Las otras opciones quedan visibles para carga/reemplazo controlado; al confirmar una nueva opción principal, el backend deja un solo principal activo.
-                </div>
+                <span className="rounded-full border bg-primary/5 px-2.5 py-1 text-xs font-medium text-primary">
+                  Actual: {principalActual.option.label}
+                </span>
               ) : null}
             </div>
-
+          </CardHeader>
+          <CardContent className="space-y-3">
             <div className="grid gap-3 md:grid-cols-3">
               {DOCUMENTO_PRINCIPAL_OPTIONS.map((item) => {
                 const documentosItem = documentosPorRelacion.get(item.tipoRelacionSugerida);
@@ -1350,9 +1325,6 @@ export function CompraExpedienteEditor({ id }: { id: string | number }) {
                   <div className="flex items-start justify-between gap-2">
                     <div>
                       <div className="font-medium">{item.label}</div>
-                      <div className="mt-1 text-xs text-muted-foreground">
-                        {item.description}
-                      </div>
                     </div>
                     <div className="flex shrink-0 flex-col items-end gap-1">
                       <span className="rounded-full border px-2 py-0.5 text-[11px] text-muted-foreground">
@@ -1399,15 +1371,12 @@ export function CompraExpedienteEditor({ id }: { id: string | number }) {
           <CardHeader>
             <CardTitle>Adjuntos de Compras</CardTitle>
           </CardHeader>
-          <CardContent className="grid gap-3 md:grid-cols-3 xl:grid-cols-4">
+          <CardContent className="grid gap-3 md:grid-cols-3">
             {DOCUMENTO_ADJUNTO_OPTIONS.map((item) => (
               <div key={item.tipoRelacionSugerida} className="rounded-xl border p-4">
                 <div className="flex items-start justify-between gap-2">
                   <div>
                     <div className="font-medium">{item.label}</div>
-                    <div className="mt-1 text-xs text-muted-foreground">
-                      {item.description}
-                    </div>
                   </div>
                   <span className="rounded-full border px-2 py-0.5 text-[11px] text-muted-foreground">
                     {item.tipoEsperado}
@@ -1420,10 +1389,6 @@ export function CompraExpedienteEditor({ id }: { id: string | number }) {
                   onVerValidar={(doc) => abrirDocumentoExistente(doc, item)}
                   onVerVersiones={(doc) => abrirHistorialVersiones(doc, item)}
                 />
-
-                <div className="mt-3 text-[11px] text-muted-foreground">
-                  {getConfiabilidadLabel(item)}
-                </div>
 
                 <Button
                   className="mt-3 w-full"
@@ -1441,16 +1406,6 @@ export function CompraExpedienteEditor({ id }: { id: string | number }) {
                 </Button>
               </div>
             ))}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Vista de otras áreas</CardTitle>
-          </CardHeader>
-          <CardContent className="text-sm text-muted-foreground">
-            Nota de ingreso, pagos, detracciones y recibos por honorarios serán gestionados por sus áreas responsables.
-            Compras podrá verlos luego en modo consulta dentro del expediente 360°.
           </CardContent>
         </Card>
       </main>

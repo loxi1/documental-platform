@@ -27,21 +27,21 @@ export type DocumentoVisualInfo = {
 export const DOCUMENTO_PRINCIPAL_OPTIONS = [
   {
     label: "Orden de compra",
-    description: "OC principal del expediente.",
+    description: "",
     tipoEsperado: "OC",
     tipoRelacionSugerida: "principal_oc",
     confiabilidad: "fuerte",
   },
   {
     label: "Orden de servicio",
-    description: "OS principal del expediente.",
+    description: "",
     tipoEsperado: "OS",
     tipoRelacionSugerida: "principal_os",
     confiabilidad: "fuerte",
   },
   {
     label: "Factura directa",
-    description: "Factura usada como documento principal.",
+    description: "",
     tipoEsperado: "FACTURA",
     tipoRelacionSugerida: "principal_factura",
     confiabilidad: "fuerte",
@@ -51,32 +51,26 @@ export const DOCUMENTO_PRINCIPAL_OPTIONS = [
 export const DOCUMENTO_ADJUNTO_OPTIONS = [
   {
     label: "Factura",
-    description: "Comprobante asociado al documento principal.",
+    description: "",
     tipoEsperado: "FACTURA",
     tipoRelacionSugerida: "adjunto_factura",
     confiabilidad: "fuerte",
   },
   {
     label: "Guía",
-    description: "Guía de remisión o documento de traslado.",
+    description: "",
     tipoEsperado: "GUIA",
     tipoRelacionSugerida: "adjunto_guia",
     confiabilidad: "fuerte",
   },
   {
     label: "Otro sustento",
-    description: "Cotización, correo, orden interna u otro soporte.",
+    description: "",
     tipoEsperado: "OTRO",
     tipoRelacionSugerida: "adjunto_otro",
     confiabilidad: "validacion",
   },
 ] as const satisfies readonly DocumentoCargaOption[];
-
-export function getConfiabilidadLabel(option: DocumentoCargaOption) {
-  return option.confiabilidad === "fuerte"
-    ? "OCR fuerte"
-    : "Requiere validación";
-}
 
 const VISUAL_STATE_MAP: Record<DocumentoVisualState, DocumentoVisualInfo> = {
   pendiente_carga: {

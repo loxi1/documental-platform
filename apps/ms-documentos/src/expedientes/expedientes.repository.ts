@@ -266,6 +266,8 @@ export class ExpedientesRepository {
   async buscarExpedientes(filters: { q: string; limit?: number }) {
     const q = filters.q.trim();
     const like = `%${q}%`;
+    const normalizedDoc = q.replace(/\s+/g, '').replace(/-/g, '').toUpperCase();
+    const likeNormalizedDoc = `%${normalizedDoc}%`;
     const limit = filters.limit ?? 10;
 
     const rows = await sql`
@@ -280,15 +282,57 @@ export class ExpedientesRepository {
         cd.ruc AS "clienteRuc",
         e.estado,
         COUNT(DISTINCT ed.documento_id)::int AS documentos,
-        COUNT(DISTINCT a.id)::int AS alertas
+        COUNT(DISTINCT a.id)::int AS alertas,
+        principal.documento_principal AS "documentoPrincipal",
+        COALESCE(
+          jsonb_agg(
+            DISTINCT jsonb_build_object(
+              'documentoId', d.id,
+              'tipoDocumental', d.tipo_documental,
+              'rucEmisor', d.ruc_emisor,
+              'razonSocialEmisor', d.razon_social_emisor,
+              'serie', d.serie,
+              'numero', d.numero,
+              'estado', d.estado,
+              'tipoRelacion', ed.tipo_relacion,
+              'esPrincipal', ed.es_principal,
+              'orden', ed.orden
+            )
+          ) FILTER (WHERE d.id IS NOT NULL),
+          '[]'::jsonb
+        ) AS "documentosLista"
       FROM documentos.expedientes e
       LEFT JOIN core.clientes_destino cd
         ON cd.id = e.cliente_destino_id
       LEFT JOIN documentos.expediente_documentos ed
         ON ed.expediente_id = e.id
+      LEFT JOIN documentos.documentos d
+        ON d.id = ed.documento_id
       LEFT JOIN documentos.documento_alertas a
         ON a.documento_id = ed.documento_id
        AND a.estado = 'activa'
+      LEFT JOIN LATERAL (
+        SELECT jsonb_build_object(
+          'documentoId', dp.id,
+          'tipoDocumental', dp.tipo_documental,
+          'rucEmisor', dp.ruc_emisor,
+          'razonSocialEmisor', dp.razon_social_emisor,
+          'serie', dp.serie,
+          'numero', dp.numero,
+          'estado', dp.estado,
+          'tipoRelacion', edp.tipo_relacion,
+          'esPrincipal', edp.es_principal,
+          'orden', edp.orden
+        ) AS documento_principal
+        FROM documentos.expediente_documentos edp
+        JOIN documentos.documentos dp
+          ON dp.id = edp.documento_id
+        WHERE edp.expediente_id = e.id
+          AND edp.es_principal = true
+          AND edp.tipo_relacion LIKE 'principal_%'
+        ORDER BY edp.orden ASC, dp.id DESC
+        LIMIT 1
+      ) principal ON true
       WHERE e.estado <> 'eliminado'
         AND (
           e.codigo_expediente ILIKE ${like}
@@ -297,8 +341,25 @@ export class ExpedientesRepository {
           OR cd.nombre_oficial ILIKE ${like}
           OR cd.abreviatura ILIKE ${like}
           OR cd.ruc ILIKE ${like}
+          OR EXISTS (
+            SELECT 1
+            FROM documentos.expediente_documentos eds
+            JOIN documentos.documentos ds
+              ON ds.id = eds.documento_id
+            WHERE eds.expediente_id = e.id
+              AND (
+                ds.clave_documental ILIKE ${like}
+                OR ds.tipo_documental ILIKE ${like}
+                OR ds.serie ILIKE ${like}
+                OR ds.numero ILIKE ${like}
+                OR ds.ruc_emisor ILIKE ${like}
+                OR ds.razon_social_emisor ILIKE ${like}
+                OR CONCAT(COALESCE(ds.serie, ''), COALESCE(ds.numero, '')) ILIKE ${likeNormalizedDoc}
+                OR CONCAT(COALESCE(ds.serie, ''), '-', COALESCE(ds.numero, '')) ILIKE ${like}
+              )
+          )
         )
-      GROUP BY e.id, cd.id
+      GROUP BY e.id, cd.id, principal.documento_principal
       ORDER BY
         CASE WHEN e.codigo_expediente = ${q} THEN 0 ELSE 1 END,
         e.actualizado_en DESC NULLS LAST,
@@ -306,7 +367,12 @@ export class ExpedientesRepository {
       LIMIT ${limit}
     `;
 
-    return rows;
+    return rows.map((row) => ({
+      ...row,
+      documentos: Number(row.documentos ?? 0),
+      documentosLista: row.documentosLista ?? [],
+      documentosAdjuntos: row.documentosLista ?? [],
+    }));
   }
 
   async findByCodigoExpediente(codigo: string) {
