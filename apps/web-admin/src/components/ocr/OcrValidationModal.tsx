@@ -13,6 +13,7 @@ const TIPOS_DOCUMENTALES = [
   "OS",
   "FACTURA",
   "GUIA",
+  "NOTA_INGRESO",
   "RECIBO_HONORARIO",
   "TRANSFERENCIA",
   "DETRACCION",
@@ -56,6 +57,8 @@ type OcrValidationModalProps = {
   onConfirm?: (form: FormState) => void | Promise<void>;
   onReject?: (form: FormState) => void | Promise<void>;
   onAgregarComoVersion?: (details: DocumentoDuplicadoEnExpedienteDetails) => void | Promise<void>;
+  tiposDocumentalesPermitidos?: readonly string[];
+  tipoDocumentalBloqueado?: boolean;
   readOnly?: boolean;
 };
 
@@ -68,6 +71,7 @@ function normalizeTipoParaUi(value: unknown, fallback: TipoDocumental = "OC"): T
   const tipo = String(value ?? "").trim().toUpperCase();
 
   if (tipo === "GUIA_REMISION" || tipo === "GUÍA") return "GUIA";
+  if (tipo === "NI" || tipo === "NOTA INGRESO") return "NOTA_INGRESO";
 
   return (tipo || fallback) as TipoDocumental;
 }
@@ -260,8 +264,24 @@ function buildInitialForm(resultado: unknown, expedienteContexto?: OcrValidation
     numero: texto(raw.numero ?? metadata.numero, ""),
     serie: texto(raw.serie ?? metadata.serie, ""),
     fechaEmision: texto(raw.fechaEmision ?? raw.fecha_emision ?? metadata.fechaEmision ?? metadata.fecha_emision, ""),
-    proveedor: texto(raw.proveedor ?? raw.razonSocialEmisor ?? metadata.proveedor ?? metadata.razonSocialEmisor, ""),
-    rucProveedor: texto(raw.rucProveedor ?? raw.ruc_proveedor ?? metadata.rucProveedor ?? metadata.ruc_proveedor, ""),
+    proveedor: texto(
+      raw.proveedor ??
+        raw.proveedorNombre ??
+        raw.razonSocialEmisor ??
+        metadata.proveedor ??
+        metadata.proveedorNombre ??
+        metadata.razonSocialEmisor,
+      "",
+    ),
+    rucProveedor: texto(
+      raw.rucProveedor ??
+        raw.ruc_proveedor ??
+        raw.proveedorRuc ??
+        metadata.rucProveedor ??
+        metadata.ruc_proveedor ??
+        metadata.proveedorRuc,
+      "",
+    ),
     rucComprador: texto(raw.rucComprador ?? raw.ruc_comprador ?? metadata.rucComprador ?? metadata.ruc_comprador ?? expedienteContexto?.rucComprador, ""),
     rucEmisor: texto(raw.rucEmisor ?? raw.ruc_emisor ?? metadata.rucEmisor ?? metadata.ruc_emisor ?? raw.ruc ?? metadata.ruc, ""),
     razonSocial: texto(raw.razonSocial ?? raw.razon_social ?? metadata.razonSocial ?? metadata.razon_social, ""),
@@ -279,7 +299,17 @@ function buildInitialForm(resultado: unknown, expedienteContexto?: OcrValidation
       "",
     ),
     claveDocumental: texto(raw.claveDocumental ?? raw.clave_documental ?? metadata.claveDocumental ?? metadata.clave_documental, ""),
-    documentoRelacionado: texto(raw.documentoRelacionado ?? raw.documento_relacionado ?? metadata.documentoRelacionado ?? metadata.documento_relacionado, ""),
+    documentoRelacionado: texto(
+      raw.documentoRelacionado ??
+        raw.documento_relacionado ??
+        raw.ordenCompra ??
+        raw.orden_compra ??
+        metadata.documentoRelacionado ??
+        metadata.documento_relacionado ??
+        metadata.ordenCompra ??
+        metadata.orden_compra,
+      "",
+    ),
   };
 }
 
@@ -310,6 +340,18 @@ function camposPorTipo(tipo: string): Array<keyof FormState> {
       "proveedor",
       "documentoRelacionado",
       "codigoExpediente",
+    ];
+  }
+
+  if (normalizado === "NOTA_INGRESO") {
+    return [
+      "numero",
+      "fechaEmision",
+      "proveedor",
+      "rucProveedor",
+      "documentoRelacionado",
+      "codigoExpediente",
+      "claveDocumental",
     ];
   }
 
@@ -393,6 +435,8 @@ export function OcrValidationModal({
   onConfirm,
   onReject,
   onAgregarComoVersion,
+  tiposDocumentalesPermitidos,
+  tipoDocumentalBloqueado = false,
   readOnly = false,
 }: OcrValidationModalProps) {
   const [form, setForm] = useState<FormState>(() => buildInitialForm(resultado, expedienteContexto));
@@ -468,6 +512,13 @@ export function OcrValidationModal({
   const archivo = useMemo(() => getArchivoInfo(resultado), [resultado]);
   const previewUrl = previewUrlFromApi ?? archivo.previewUrl;
   const expediente = useMemo(() => getExpedienteInfo(resultado, expedienteContexto), [resultado, expedienteContexto]);
+  const tiposDisponibles = useMemo(() => {
+    const base = (tiposDocumentalesPermitidos?.length ? tiposDocumentalesPermitidos : TIPOS_DOCUMENTALES)
+      .map((tipo) => normalizeTipoParaUi(tipo))
+      .filter(Boolean);
+
+    return Array.from(new Set([...base, normalizeTipoParaUi(form.tipoDocumental)])).filter(Boolean);
+  }, [form.tipoDocumental, tiposDocumentalesPermitidos]);
   const campos = useMemo(() => camposPorTipo(form.tipoDocumental), [form.tipoDocumental]);
 
   if (!open) return null;
@@ -612,15 +663,15 @@ export function OcrValidationModal({
                 </span>
                 <select
                   value={form.tipoDocumental}
-                  disabled={readOnly}
+                  disabled={readOnly || tipoDocumentalBloqueado}
                   onChange={(event) => updateField("tipoDocumental", event.target.value)}
                   className={`mt-1 h-10 w-full rounded-lg border border-slate-200 px-3 text-sm font-semibold text-slate-950 outline-none transition focus:border-slate-400 disabled:cursor-not-allowed dark:border-slate-800 dark:text-slate-100 ${
-                    readOnly
+                    readOnly || tipoDocumentalBloqueado
                       ? "bg-slate-50 text-slate-600 dark:bg-slate-900 dark:text-slate-300"
                       : "bg-white dark:bg-slate-950"
                   }`}
                 >
-                  {TIPOS_DOCUMENTALES.map((tipo) => (
+                  {tiposDisponibles.map((tipo) => (
                     <option key={tipo} value={tipo}>
                       {tipo}
                     </option>

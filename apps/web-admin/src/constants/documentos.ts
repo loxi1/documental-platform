@@ -72,6 +72,31 @@ export const DOCUMENTO_ADJUNTO_OPTIONS = [
   },
 ] as const satisfies readonly DocumentoCargaOption[];
 
+
+export const DOCUMENTO_ALMACEN_ADJUNTO_OPTIONS = [
+  {
+    label: "Factura escaneada",
+    description: "",
+    tipoEsperado: "FACTURA",
+    tipoRelacionSugerida: "adjunto_factura",
+    confiabilidad: "fuerte",
+  },
+  {
+    label: "Guía escaneada",
+    description: "",
+    tipoEsperado: "GUIA",
+    tipoRelacionSugerida: "adjunto_guia",
+    confiabilidad: "fuerte",
+  },
+  {
+    label: "Nota de ingreso",
+    description: "",
+    tipoEsperado: "NOTA_INGRESO",
+    tipoRelacionSugerida: "adjunto_nota_ingreso",
+    confiabilidad: "fuerte",
+  },
+] as const satisfies readonly DocumentoCargaOption[];
+
 const VISUAL_STATE_MAP: Record<DocumentoVisualState, DocumentoVisualInfo> = {
   pendiente_carga: {
     state: "pendiente_carga",

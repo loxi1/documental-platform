@@ -52,6 +52,11 @@ const navGroups: NavGroup[] = [
         icon: <FolderKanban className="h-4 w-4" />,
       },
       {
+        name: "Almacén",
+        path: "/almacen",
+        icon: <ClipboardList className="h-4 w-4" />,
+      },
+      {
         name: "Documentos",
         path: "/documentos",
         icon: <ClipboardList className="h-4 w-4" />,
@@ -126,7 +131,7 @@ const AppSidebar: React.FC<AppSidebarProps> = ({ userCod }) => {
         if (item.path === "/documentos" || item.path === "/documentos/cargar") return hasPermission("documentos.subir") || hasPermission("documentos.ver");
         if (item.path === "/ocr-resultados")
           return hasPermission("documentos.validar");
-        if (item.path === "/expedientes")
+        if (item.path === "/expedientes" || item.path === "/almacen")
           return hasPermission("documentos.ver");
         if (item.path === "/revision-contable")
           return hasPermission("finanzas.ver");
