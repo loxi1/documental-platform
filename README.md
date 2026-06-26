@@ -3,7 +3,7 @@ levanta proyecto:
 docker exec -it dp_postgres psql -U postgres -d documental_platform
 
 
-pnpm --filter @documental/ms-auth build
+pnpm --filter @documental/api-gateway build
 pnpm --filter @documental/api-gateway start:dev
 
 pnpm --filter @documental/ms-documentos build

@@ -459,6 +459,35 @@ export class DocumentosService {
     );
   }
 
+
+  async actualizarDocumentoManual(
+    id: number,
+    input: {
+      tipoDocumental?: string;
+      metadata?: Record<string, any>;
+      observacion?: string;
+    },
+    usuarioId?: number,
+  ) {
+    const actualizado = await this.repo.actualizarDocumentoManual(id, input, usuarioId);
+
+    if (!actualizado) {
+      throw new NotFoundException(`Documento ${id} no encontrado`);
+    }
+
+    return {
+      id: actualizado.id,
+      estado: actualizado.estado,
+      tipoDocumental: actualizado.tipo_documental,
+      claveDocumental: actualizado.clave_documental,
+      numero: actualizado.numero,
+      fechaEmision: actualizado.fecha_emision,
+      moneda: actualizado.moneda,
+      montoTotal: actualizado.monto_total,
+      metadata: actualizado.metadata?.ocr?.metadata ?? actualizado.metadata ?? {},
+    };
+  }
+
   async editarOcrResultado(
     id: number,
     input: {

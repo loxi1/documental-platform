@@ -123,3 +123,18 @@ export async function getDocumentoArchivos(documentoId: number | string) {
 
   return unwrap<DocumentoArchivosVersionesResponse>(data);
 }
+
+
+export type ActualizarDocumentoManualPayload = {
+  tipoDocumental?: string;
+  metadata?: Record<string, unknown>;
+  observacion?: string;
+};
+
+export async function actualizarDocumentoManual(
+  documentoId: number | string,
+  payload: ActualizarDocumentoManualPayload,
+) {
+  const { data } = await api.patch(`/documentos/${documentoId}/editar`, payload);
+  return unwrap(data);
+}

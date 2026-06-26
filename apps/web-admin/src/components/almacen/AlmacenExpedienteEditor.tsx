@@ -795,6 +795,7 @@ export function AlmacenExpedienteEditor({ id }: { id: string | number }) {
         onAgregarComoVersion={agregarDuplicadoComoVersion}
         tiposDocumentalesPermitidos={ALMACEN_TIPOS_DOCUMENTALES_PERMITIDOS}
         tipoDocumentalBloqueado={Boolean(accionActual?.tipoEsperado)}
+        formularioContexto="ALMACEN"
       />
     </>
   );

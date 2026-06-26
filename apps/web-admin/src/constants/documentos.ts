@@ -97,6 +97,24 @@ export const DOCUMENTO_ALMACEN_ADJUNTO_OPTIONS = [
   },
 ] as const satisfies readonly DocumentoCargaOption[];
 
+export const DOCUMENTO_FINANZAS_ADJUNTO_OPTIONS = [
+  {
+    label: "Pago transferencia",
+    description: "",
+    tipoEsperado: "PAGO_TRANSFERENCIA",
+    tipoRelacionSugerida: "adjunto_transferencia",
+    confiabilidad: "fuerte",
+  },
+  {
+    label: "Pago detracción",
+    description: "",
+    tipoEsperado: "PAGO_DETRACCION",
+    tipoRelacionSugerida: "adjunto_detraccion",
+    confiabilidad: "fuerte",
+  },
+] as const satisfies readonly DocumentoCargaOption[];
+
+
 const VISUAL_STATE_MAP: Record<DocumentoVisualState, DocumentoVisualInfo> = {
   pendiente_carga: {
     state: "pendiente_carga",

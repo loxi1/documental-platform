@@ -1053,6 +1053,155 @@ export class DocumentosRepository {
     });
   }
 
+
+  async actualizarDocumentoManual(
+    id: number,
+    input: {
+      tipoDocumental?: string;
+      metadata?: Record<string, any>;
+      observacion?: string;
+    },
+    usuarioId?: number,
+  ) {
+    const currentRows = await sql`
+      SELECT *
+      FROM documentos.documentos
+      WHERE id = ${id}::integer
+      LIMIT 1
+    `;
+
+    const current = currentRows[0];
+    if (!current) return null;
+
+    const metadataInput = this.limpiarCamposLegacyOcr({ ...(input.metadata ?? {}) });
+    const metadataActual = current.metadata ?? {};
+    const ocrActual = metadataActual.ocr ?? {};
+    const ocrMetadataActual = ocrActual.metadata ?? {};
+
+    const tipoDocumental = String(
+      input.tipoDocumental ??
+        metadataInput.tipoDocumental ??
+        current.tipo_documental ??
+        '',
+    ).trim().toUpperCase();
+
+    const clienteAbreviatura = String(
+      metadataInput.clienteAbreviatura ?? current.cliente_abreviatura ?? 'BBTI',
+    ).trim().toUpperCase();
+
+    const metadataNueva = {
+      ...ocrMetadataActual,
+      ...metadataInput,
+      tipoDocumental,
+      clienteAbreviatura,
+    };
+
+    const claveDocumental =
+      this.buildClaveDocumental(clienteAbreviatura, tipoDocumental, metadataNueva) ??
+      metadataInput.claveDocumental ??
+      current.clave_documental;
+
+    metadataNueva.claveDocumental = claveDocumental;
+
+    const numero =
+      metadataNueva.numero ??
+      metadataNueva.numeroOperacion ??
+      metadataNueva.numeroConstancia ??
+      current.numero ??
+      null;
+
+    const fechaEmision =
+      metadataNueva.fechaEmision ??
+      metadataNueva.fechaPago ??
+      current.fecha_emision ??
+      null;
+
+    const razonSocialEmisor =
+      metadataNueva.proveedor ??
+      metadataNueva.proveedorNombre ??
+      metadataNueva.razonSocial ??
+      metadataNueva.beneficiario ??
+      current.razon_social_emisor ??
+      null;
+
+    const rucEmisor =
+      metadataNueva.rucEmisor ??
+      metadataNueva.rucProveedor ??
+      metadataNueva.ruc ??
+      current.ruc_emisor ??
+      null;
+
+    const montoTotal = metadataNueva.montoTotal ?? current.monto_total ?? null;
+    const moneda = metadataNueva.moneda ?? current.moneda ?? null;
+
+    const auditItem = {
+      accion: 'EDITADO_DOCUMENTO_MANUAL',
+      fecha: new Date().toISOString(),
+      usuarioId: usuarioId ?? null,
+      observacion: input.observacion ?? null,
+      cambios: input,
+    };
+
+    const metadataFinal = {
+      ...metadataActual,
+      ocr: {
+        ...ocrActual,
+        estado: 'confirmado',
+        tipoDocumental,
+        claveDocumental,
+        metadata: metadataNueva,
+        metadataSource: {
+          ...(ocrActual.metadataSource ?? {}),
+          ...Object.fromEntries(Object.keys(metadataInput).map((key) => [key, 'MANUAL'])),
+        },
+        audit: [...(ocrActual.audit ?? []), auditItem],
+      },
+      edicionManual: auditItem,
+      tipoDocumental,
+      claveDocumental,
+    };
+
+    const rows = await sql`
+      UPDATE documentos.documentos
+      SET
+        cliente_abreviatura = ${clienteAbreviatura}::text,
+        tipo_documental = ${tipoDocumental}::text,
+        razon_social_emisor = NULLIF(${razonSocialEmisor ?? ""}::text, ''),
+        serie = NULLIF(${metadataNueva.serie ?? ""}::text, ''),
+        numero = NULLIF(${numero ?? ""}::text, ''),
+        clave_documental = ${claveDocumental}::text,
+        estado = COALESCE(estado, 'confirmado'),
+        moneda = NULLIF(${moneda ?? ""}::text, ''),
+        ruc_emisor = NULLIF(${rucEmisor ?? ""}::text, ''),
+        fecha_emision = NULLIF(${fechaEmision ?? ""}::text, '')::date,
+        monto_total = NULLIF(${montoTotal ?? ""}::text, '')::numeric,
+        metadata = ${JSON.stringify(metadataFinal)}::jsonb,
+        actualizado_en = now()
+      WHERE id = ${id}::integer
+      RETURNING *
+    `;
+
+    await sql`
+      UPDATE documentos.ocr_resultados
+      SET
+        tipo_propuesto = ${tipoDocumental}::text,
+        clave_documental = ${claveDocumental}::text,
+        metadata = COALESCE(metadata, '{}'::jsonb)
+          || jsonb_build_object(
+            'estado', 'confirmado'::text,
+            'tipoDocumental', ${tipoDocumental}::text,
+            'tipoPropuesto', ${tipoDocumental}::text,
+            'claveDocumental', ${claveDocumental}::text,
+            'metadata', ${JSON.stringify(metadataNueva)}::jsonb,
+            'edicionManual', ${JSON.stringify(auditItem)}::jsonb
+          )
+      WHERE documento_id = ${id}::integer
+        AND estado IN ('confirmado', 'editado', 'pendiente_validacion', 'confirmado_como_version')
+    `;
+
+    return rows[0] ?? null;
+  }
+
   async createDocumentoRelacion(params: {
     documentoOrigenId: number;
     documentoDestinoId: number;

@@ -214,6 +214,19 @@ export class DocumentosController {
     );
   }
 
+
+  @Patch(':id/editar')
+  actualizarDocumentoManual(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: {
+      tipoDocumental?: string;
+      metadata?: Record<string, any>;
+      observacion?: string;
+    },
+  ) {
+    return this.service.actualizarDocumentoManual(id, body);
+  }
+
   @Post('ocr-resultados/:id/rechazar')
   rechazarOcrResultado(
     @Param('id', ParseIntPipe) id: number,

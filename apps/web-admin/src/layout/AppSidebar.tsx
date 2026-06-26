@@ -57,6 +57,11 @@ const navGroups: NavGroup[] = [
         icon: <ClipboardList className="h-4 w-4" />,
       },
       {
+        name: "Finanzas",
+        path: "/finanzas",
+        icon: <Scale className="h-4 w-4" />,
+      },
+      {
         name: "Documentos",
         path: "/documentos",
         icon: <ClipboardList className="h-4 w-4" />,
@@ -133,6 +138,8 @@ const AppSidebar: React.FC<AppSidebarProps> = ({ userCod }) => {
           return hasPermission("documentos.validar");
         if (item.path === "/expedientes" || item.path === "/almacen")
           return hasPermission("documentos.ver");
+        if (item.path === "/finanzas")
+          return hasPermission("finanzas.ver") || hasPermission("documentos.ver");
         if (item.path === "/revision-contable")
           return hasPermission("finanzas.ver");
         if (item.path === "/alertas") return hasPermission("documentos.ver");

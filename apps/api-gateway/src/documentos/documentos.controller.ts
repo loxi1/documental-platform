@@ -573,6 +573,23 @@ export class DocumentosGatewayController {
     });
   }
 
+
+  @Patch(':id/editar')
+  actualizarDocumentoManual(
+    @Headers('authorization') authorization: string | undefined,
+    @Headers(REQUEST_ID_HEADER) requestId: string | undefined,
+    @Param('id') id: string,
+    @Body() body: unknown,
+  ) {
+    return this.proxy({
+      method: 'PATCH',
+      path: `/documentos/${id}/editar`,
+      authorization,
+      requestId,
+      body,
+    });
+  }
+
   @ApiOperation({ summary: 'Obtener documento por ID vía API Gateway' })
   @Get(':id')
   findById(

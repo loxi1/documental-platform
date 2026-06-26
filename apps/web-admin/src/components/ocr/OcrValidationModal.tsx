@@ -59,6 +59,12 @@ type OcrValidationModalProps = {
   onAgregarComoVersion?: (details: DocumentoDuplicadoEnExpedienteDetails) => void | Promise<void>;
   tiposDocumentalesPermitidos?: readonly string[];
   tipoDocumentalBloqueado?: boolean;
+  /**
+   * Contexto visual/operativo del formulario.
+   * En Almacén se ocultan campos que el backend ya deriva desde el expediente
+   * o desde catálogos, para mantener el modal compacto.
+   */
+  formularioContexto?: "ALMACEN" | "COMPRAS" | "FINANZAS";
   readOnly?: boolean;
 };
 
@@ -313,10 +319,15 @@ function buildInitialForm(resultado: unknown, expedienteContexto?: OcrValidation
   };
 }
 
-function camposPorTipo(tipo: string): Array<keyof FormState> {
+function camposPorTipo(tipo: string, formularioContexto?: "ALMACEN" | "COMPRAS" | "FINANZAS"): Array<keyof FormState> {
   const normalizado = tipo.toUpperCase();
+  const esAlmacen = formularioContexto === "ALMACEN";
 
   if (normalizado === "FACTURA") {
+    if (esAlmacen) {
+      return ["serie", "numero", "fechaEmision", "rucEmisor", "montoTotal", "moneda"];
+    }
+
     return [
       "serie",
       "numero",
@@ -332,6 +343,10 @@ function camposPorTipo(tipo: string): Array<keyof FormState> {
   }
 
   if (normalizado === "GUIA" || normalizado === "GUIA_REMISION") {
+    if (esAlmacen) {
+      return ["serie", "numero", "fechaEmision", "rucEmisor"];
+    }
+
     return [
       "serie",
       "numero",
@@ -344,6 +359,10 @@ function camposPorTipo(tipo: string): Array<keyof FormState> {
   }
 
   if (normalizado === "NOTA_INGRESO") {
+    if (esAlmacen) {
+      return ["numero", "fechaEmision"];
+    }
+
     return [
       "numero",
       "fechaEmision",
@@ -437,6 +456,7 @@ export function OcrValidationModal({
   onAgregarComoVersion,
   tiposDocumentalesPermitidos,
   tipoDocumentalBloqueado = false,
+  formularioContexto,
   readOnly = false,
 }: OcrValidationModalProps) {
   const [form, setForm] = useState<FormState>(() => buildInitialForm(resultado, expedienteContexto));
@@ -519,7 +539,11 @@ export function OcrValidationModal({
 
     return Array.from(new Set([...base, normalizeTipoParaUi(form.tipoDocumental)])).filter(Boolean);
   }, [form.tipoDocumental, tiposDocumentalesPermitidos]);
-  const campos = useMemo(() => camposPorTipo(form.tipoDocumental), [form.tipoDocumental]);
+  const campos = useMemo(
+    () => camposPorTipo(form.tipoDocumental, formularioContexto),
+    [form.tipoDocumental, formularioContexto],
+  );
+  const ocultarTipoDocumental = formularioContexto === "ALMACEN" && tipoDocumentalBloqueado;
 
   if (!open) return null;
 
@@ -657,27 +681,29 @@ export function OcrValidationModal({
 
           <div className="min-h-0 overflow-auto p-5">
             <div className="space-y-5">
-              <label className="block">
-                <span className="text-[11px] font-medium uppercase tracking-wide text-slate-400">
-                  Tipo documental
-                </span>
-                <select
-                  value={form.tipoDocumental}
-                  disabled={readOnly || tipoDocumentalBloqueado}
-                  onChange={(event) => updateField("tipoDocumental", event.target.value)}
-                  className={`mt-1 h-10 w-full rounded-lg border border-slate-200 px-3 text-sm font-semibold text-slate-950 outline-none transition focus:border-slate-400 disabled:cursor-not-allowed dark:border-slate-800 dark:text-slate-100 ${
-                    readOnly || tipoDocumentalBloqueado
-                      ? "bg-slate-50 text-slate-600 dark:bg-slate-900 dark:text-slate-300"
-                      : "bg-white dark:bg-slate-950"
-                  }`}
-                >
-                  {tiposDisponibles.map((tipo) => (
-                    <option key={tipo} value={tipo}>
-                      {tipo}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              {ocultarTipoDocumental ? null : (
+                <label className="block">
+                  <span className="text-[11px] font-medium uppercase tracking-wide text-slate-400">
+                    Tipo documental
+                  </span>
+                  <select
+                    value={form.tipoDocumental}
+                    disabled={readOnly || tipoDocumentalBloqueado}
+                    onChange={(event) => updateField("tipoDocumental", event.target.value)}
+                    className={`mt-1 h-10 w-full rounded-lg border border-slate-200 px-3 text-sm font-semibold text-slate-950 outline-none transition focus:border-slate-400 disabled:cursor-not-allowed dark:border-slate-800 dark:text-slate-100 ${
+                      readOnly || tipoDocumentalBloqueado
+                        ? "bg-slate-50 text-slate-600 dark:bg-slate-900 dark:text-slate-300"
+                        : "bg-white dark:bg-slate-950"
+                    }`}
+                  >
+                    {tiposDisponibles.map((tipo) => (
+                      <option key={tipo} value={tipo}>
+                        {tipo}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
 
               <div className="grid gap-3 md:grid-cols-2">
                 {campos.map((campo) => (
