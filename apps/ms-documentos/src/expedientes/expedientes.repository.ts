@@ -436,39 +436,176 @@ export class ExpedientesRepository {
     anio: number;
     mes: number;
   }) {
+    /**
+     * Regla contable oficial:
+     * - La FACTURA confirmada es el documento ancla del cierre contable.
+     * - El periodo contable se determina por documentos.documentos.fecha_emision
+     *   de la FACTURA, no por periodo_anio/periodo_mes de carga ni por fecha
+     *   de OC/OS/guía/pago/creación del expediente.
+     */
+    const inicioPeriodo = `${filters.anio}-${String(filters.mes).padStart(2, '0')}-01`;
+    const siguienteMes = filters.mes === 12 ? 1 : filters.mes + 1;
+    const siguienteAnio = filters.mes === 12 ? filters.anio + 1 : filters.anio;
+    const finPeriodo = `${siguienteAnio}-${String(siguienteMes).padStart(2, '0')}-01`;
+
     return sql`
+      WITH facturas_periodo AS (
+        SELECT
+          ed.expediente_id,
+          d.id AS factura_id,
+          d.serie,
+          d.numero,
+          d.fecha_emision,
+          d.moneda,
+          d.monto_total,
+          d.ruc_emisor,
+          d.razon_social_emisor,
+          d.clave_documental,
+          d.estado AS documento_estado,
+          d.alerta_contable,
+          d.observacion_contable
+        FROM documentos.expediente_documentos ed
+        JOIN documentos.documentos d
+          ON d.id = ed.documento_id
+        WHERE d.tipo_documental = 'FACTURA'
+          AND d.estado = 'confirmado'
+          AND d.fecha_emision >= ${inicioPeriodo}::date
+          AND d.fecha_emision < ${finPeriodo}::date
+      )
       SELECT
         e.id AS expediente_id,
+        e.id AS expedienteid,
+        e.empresa_codigo,
+        e.empresa_codigo AS empresacodigo,
         e.codigo_expediente,
+        e.codigo_expediente AS codigoexpediente,
+        e.descripcion,
         e.estado AS expediente_estado,
-        d.id AS documento_id,
-        d.tipo_documental,
-        d.fecha_emision,
-        d.periodo_anio,
-        d.periodo_mes,
-        d.serie,
-        d.numero,
-        d.ruc_emisor,
-        d.razon_social_emisor,
-        d.monto_total,
-        d.estado AS documento_estado,
-        d.alerta_contable,
-        d.observacion_contable,
-        COUNT(a.id)::int AS alertas_activas
-      FROM documentos.expedientes e
-      JOIN documentos.expediente_documentos ed
-        ON ed.expediente_id = e.id
-      JOIN documentos.documentos d
-        ON d.id = ed.documento_id
+        e.estado AS expedienteestado,
+        fp.factura_id AS documento_id,
+        fp.factura_id AS documentoid,
+        fp.factura_id,
+        fp.factura_id AS facturaid,
+        'FACTURA'::text AS tipo_documental,
+        'FACTURA'::text AS tipodocumental,
+        fp.fecha_emision,
+        fp.fecha_emision AS fechaemision,
+        EXTRACT(YEAR FROM fp.fecha_emision)::int AS periodo_anio,
+        EXTRACT(YEAR FROM fp.fecha_emision)::int AS periodoanio,
+        EXTRACT(MONTH FROM fp.fecha_emision)::int AS periodo_mes,
+        EXTRACT(MONTH FROM fp.fecha_emision)::int AS periodomes,
+        fp.serie,
+        fp.numero,
+        fp.ruc_emisor,
+        fp.ruc_emisor AS rucemisor,
+        fp.razon_social_emisor,
+        fp.razon_social_emisor AS razonsocialemisor,
+        fp.moneda,
+        fp.monto_total,
+        fp.monto_total AS montototal,
+        fp.clave_documental,
+        fp.clave_documental AS clavedocumental,
+        fp.documento_estado,
+        fp.documento_estado AS documentoestado,
+        fp.alerta_contable,
+        fp.alerta_contable AS alertacontable,
+        fp.observacion_contable,
+        fp.observacion_contable AS observacioncontable,
+        COUNT(a.id)::int AS alertas_activas,
+        COUNT(a.id)::int AS alertasactivas,
+        principal.documento_principal,
+        principal.documento_principal AS documentoprincipal,
+        COALESCE(docs.documentos, '[]'::jsonb) AS documentos,
+        COALESCE(docs.documentos, '[]'::jsonb) AS documentos_adjuntos,
+        COALESCE(docs.documentos, '[]'::jsonb) AS documentosadjuntos
+      FROM facturas_periodo fp
+      JOIN documentos.expedientes e
+        ON e.id = fp.expediente_id
       LEFT JOIN documentos.documento_alertas a
-        ON a.documento_id = d.id
+        ON a.documento_id = fp.factura_id
        AND a.estado = 'activa'
+      LEFT JOIN LATERAL (
+        SELECT jsonb_build_object(
+          'documentoId', d2.id,
+          'tipoRelacion', ed2.tipo_relacion,
+          'tipoDocumental', d2.tipo_documental,
+          'serie', d2.serie,
+          'numero', d2.numero,
+          'estado', d2.estado,
+          'fechaEmision', d2.fecha_emision,
+          'moneda', d2.moneda,
+          'montoTotal', d2.monto_total,
+          'claveDocumental', d2.clave_documental,
+          'archivoId', da2.id,
+          'nombreArchivo', da2.nombre_archivo,
+          'archivoEstado', da2.estado,
+          'storageProvider', da2.storage_provider
+        ) AS documento_principal
+        FROM documentos.expediente_documentos ed2
+        JOIN documentos.documentos d2
+          ON d2.id = ed2.documento_id
+        LEFT JOIN LATERAL (
+          SELECT da.*
+          FROM documentos.documentos_archivos da
+          WHERE da.documento_id = d2.id
+          ORDER BY da.es_version_actual DESC NULLS LAST, da.version DESC NULLS LAST, da.id DESC
+          LIMIT 1
+        ) da2 ON true
+        WHERE ed2.expediente_id = e.id
+          AND ed2.es_principal = true
+        ORDER BY ed2.orden ASC, d2.id ASC
+        LIMIT 1
+      ) principal ON true
+      LEFT JOIN LATERAL (
+        SELECT jsonb_agg(
+          jsonb_build_object(
+            'documentoId', d2.id,
+            'tipoRelacion', ed2.tipo_relacion,
+            'tipoDocumental', d2.tipo_documental,
+            'serie', d2.serie,
+            'numero', d2.numero,
+            'estado', d2.estado,
+            'fechaEmision', d2.fecha_emision,
+            'moneda', d2.moneda,
+            'montoTotal', d2.monto_total,
+            'claveDocumental', d2.clave_documental,
+            'archivoId', da2.id,
+            'nombreArchivo', da2.nombre_archivo,
+            'archivoEstado', da2.estado,
+            'storageProvider', da2.storage_provider
+          )
+          ORDER BY ed2.es_principal DESC, ed2.orden ASC, d2.id ASC
+        ) AS documentos
+        FROM documentos.expediente_documentos ed2
+        JOIN documentos.documentos d2
+          ON d2.id = ed2.documento_id
+        LEFT JOIN LATERAL (
+          SELECT da.*
+          FROM documentos.documentos_archivos da
+          WHERE da.documento_id = d2.id
+          ORDER BY da.es_version_actual DESC NULLS LAST, da.version DESC NULLS LAST, da.id DESC
+          LIMIT 1
+        ) da2 ON true
+        WHERE ed2.expediente_id = e.id
+      ) docs ON true
       WHERE e.empresa_codigo = ${filters.empresa}
-        AND d.tipo_documental = 'FACTURA'
-        AND d.periodo_anio = ${filters.anio}
-        AND d.periodo_mes = ${filters.mes}
-      GROUP BY e.id, d.id
-      ORDER BY d.fecha_emision ASC, e.id ASC
+      GROUP BY
+        e.id,
+        fp.factura_id,
+        fp.serie,
+        fp.numero,
+        fp.fecha_emision,
+        fp.moneda,
+        fp.monto_total,
+        fp.ruc_emisor,
+        fp.razon_social_emisor,
+        fp.clave_documental,
+        fp.documento_estado,
+        fp.alerta_contable,
+        fp.observacion_contable,
+        principal.documento_principal,
+        docs.documentos
+      ORDER BY fp.fecha_emision ASC, e.codigo_expediente ASC, e.id ASC
     `;
   }
 
@@ -540,6 +677,11 @@ export class ExpedientesRepository {
     anio: number;
     mes: number;
   }) {
+    const inicioPeriodo = `${filters.anio}-${String(filters.mes).padStart(2, '0')}-01`;
+    const siguienteMes = filters.mes === 12 ? 1 : filters.mes + 1;
+    const siguienteAnio = filters.mes === 12 ? filters.anio + 1 : filters.anio;
+    const finPeriodo = `${siguienteAnio}-${String(siguienteMes).padStart(2, '0')}-01`;
+
     const rows = await sql`
       SELECT
         COUNT(DISTINCT e.id)::int AS expedientes,
@@ -556,8 +698,9 @@ export class ExpedientesRepository {
        AND a.estado = 'activa'
       WHERE e.empresa_codigo = ${filters.empresa}
         AND d.tipo_documental = 'FACTURA'
-        AND d.periodo_anio = ${filters.anio}
-        AND d.periodo_mes = ${filters.mes}
+        AND d.estado = 'confirmado'
+        AND d.fecha_emision >= ${inicioPeriodo}::date
+        AND d.fecha_emision < ${finPeriodo}::date
     `;
 
     return rows[0];

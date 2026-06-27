@@ -82,6 +82,16 @@ function monthLabel(month: string | number | undefined) {
   return MESES.find((item) => item.value === String(month))?.label ?? "-";
 }
 
+function getBrowserQueryParam(key: string) {
+  if (typeof window === "undefined") return null;
+
+  return new URLSearchParams(window.location.search).get(key);
+}
+
+function normalizeEmpresa(value: string | null | undefined) {
+  return (value ?? "").trim().toUpperCase();
+}
+
 function pick<T>(...values: T[]) {
   return values.find(
     (value) => value !== null && value !== undefined && value !== "",
@@ -210,6 +220,21 @@ function documentoNombre(item: RevisionContableItem) {
   const serie = pick(item.serie, "-");
   const numero = pick(item.numero, "-");
   return `${pick(item.tipo_documental, item.tipoDocumental, "DOCUMENTO")} ${serie} ${numero}`;
+}
+
+function buildDetalleRevisionHref(
+  expedienteId: string | number,
+  empresa: string,
+  anio: string | number,
+  mes: string | number,
+) {
+  const params = new URLSearchParams({
+    empresa: String(empresa),
+    anio: String(anio),
+    mes: String(mes),
+  });
+
+  return `/revision-contable/${expedienteId}/ver?${params.toString()}`;
 }
 
 function principalDocumento(item: RevisionContableItem) {
@@ -352,9 +377,13 @@ export default function RevisionContablePage() {
   const today = new Date();
   const initialYear = String(Math.max(today.getFullYear(), 2026));
 
-  const [empresa, setEmpresa] = useState(contexto?.empresa ?? "BBTI");
-  const [anio, setAnio] = useState(initialYear);
-  const [mes, setMes] = useState(String(today.getMonth() + 1));
+  const [empresa, setEmpresa] = useState(
+    () => normalizeEmpresa(getBrowserQueryParam("empresa")) || contexto?.empresa || "BBTI",
+  );
+  const [anio, setAnio] = useState(() => getBrowserQueryParam("anio") ?? initialYear);
+  const [mes, setMes] = useState(
+    () => getBrowserQueryParam("mes") ?? String(today.getMonth() + 1),
+  );
   const [busqueda, setBusqueda] = useState("");
   const [filtroAlertas, setFiltroAlertas] = useState("todos");
   const [pageSize, setPageSize] = useState("50");
@@ -362,7 +391,15 @@ export default function RevisionContablePage() {
   const [observandoId, setObservandoId] = useState<number | string | null>(null);
 
   useEffect(() => {
-    if (contexto?.empresa) setEmpresa(contexto.empresa);
+    const empresaUrl = getBrowserQueryParam("empresa");
+    const anioUrl = getBrowserQueryParam("anio");
+    const mesUrl = getBrowserQueryParam("mes");
+
+    if (empresaUrl) setEmpresa(normalizeEmpresa(empresaUrl));
+    else if (contexto?.empresa) setEmpresa(contexto.empresa);
+
+    if (anioUrl) setAnio(anioUrl);
+    if (mesUrl) setMes(mesUrl);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -376,7 +413,7 @@ export default function RevisionContablePage() {
 
   const params = useMemo(
     () => ({
-      empresa: empresa.trim().toUpperCase(),
+      empresa: normalizeEmpresa(empresa),
       anio,
       mes,
     }),
@@ -652,6 +689,17 @@ export default function RevisionContablePage() {
                     const docId = documentoId(item);
                     const alertas = alertasActivas(item);
 
+                    const detalleRevisionHref =
+                    (typeof expId === "string" || typeof expId === "number") &&
+                    expId !== "-"
+                      ? buildDetalleRevisionHref(
+                          expId,
+                          params.empresa,
+                          params.anio,
+                          params.mes,
+                        )
+                      : null;
+
                     return (
                       <tr
                         key={`${expId}-${docId}`}
@@ -715,11 +763,11 @@ export default function RevisionContablePage() {
                           )}
                         </td>
                         <td className="space-x-2 px-4 py-3 text-right">
-                          {expId !== "-" ? (
+                          {detalleRevisionHref ? (
                             <Button asChild size="sm" variant="outline">
-                              <Link href={`/expedientes/${expId}`}>
+                              <Link href={detalleRevisionHref}>
                                 <Eye className="mr-1 h-4 w-4" />
-                                Expediente
+                                Ver
                               </Link>
                             </Button>
                           ) : null}

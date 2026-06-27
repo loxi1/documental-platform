@@ -2,6 +2,8 @@ import { useQuery } from "@tanstack/react-query";
 
 import {
   getExpediente,
+  getExpedienteAlertas,
+  getExpedienteDocumentos,
   getExpedienteEstadoDocumental,
   getExpedienteResumen,
   getExpedientes,
@@ -44,6 +46,23 @@ export function useExpedienteEstadoDocumental(id?: string | number) {
   return useQuery({
     queryKey: ["expedientes", id, "estado-documental"],
     queryFn: () => getExpedienteEstadoDocumental(id as string | number),
+    enabled: Boolean(id),
+  });
+}
+
+
+export function useExpedienteDocumentos(id?: string | number) {
+  return useQuery({
+    queryKey: ["expedientes", id, "documentos"],
+    queryFn: () => getExpedienteDocumentos(id as string | number),
+    enabled: Boolean(id),
+  });
+}
+
+export function useExpedienteAlertas(id?: string | number) {
+  return useQuery({
+    queryKey: ["expedientes", id, "alertas"],
+    queryFn: () => getExpedienteAlertas(id as string | number),
     enabled: Boolean(id),
   });
 }
