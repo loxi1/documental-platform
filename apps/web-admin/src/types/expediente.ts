@@ -16,8 +16,18 @@ export interface ExpedienteDocumento {
   tipoRelacion?: string;
   esPrincipal?: boolean;
   orden?: number;
+  fechaEmision?: string | null;
+  fecha_emision?: string | null;
+  moneda?: string | null;
+  montoTotal?: number | string | null;
+  monto_total?: number | string | null;
   claveDocumental?: string;
+  archivoId?: number | string | null;
+  archivo_id?: number | string | null;
   nombreArchivo?: string;
+  nombre_archivo?: string | null;
+  archivoEstado?: string | null;
+  storageProvider?: string | null;
 }
 
 export interface Expediente {

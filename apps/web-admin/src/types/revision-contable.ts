@@ -20,6 +20,13 @@ export interface RevisionContableItem {
   correlativo?: string;
   expediente_correlativo?: string;
   expedienteCorrelativo?: string;
+  empresa_codigo?: string;
+  empresaCodigo?: string;
+  codigo_expediente?: string;
+  codigoExpediente?: string;
+  descripcion?: string | null;
+  expediente_descripcion?: string | null;
+  expedienteDescripcion?: string | null;
   expediente_estado?: string;
   expedienteEstado?: string;
   tipo_expediente?: string | null;
@@ -33,6 +40,8 @@ export interface RevisionContableItem {
 
   documento_id?: number | string;
   documentoId?: number | string;
+  factura_id?: number | string;
+  facturaId?: number | string;
   tipo_documental?: string;
   tipoDocumental?: string;
   fecha_emision?: string | null;
@@ -47,6 +56,7 @@ export interface RevisionContableItem {
   rucEmisor?: string | null;
   razon_social_emisor?: string | null;
   razonSocialEmisor?: string | null;
+  moneda?: string | null;
   monto_total?: number | string | null;
   montoTotal?: number | string | null;
   documento_estado?: string | null;

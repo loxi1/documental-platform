@@ -75,10 +75,18 @@ export class ExpedientesRepository {
               'razonSocialEmisor', d.razon_social_emisor,
               'serie', d.serie,
               'numero', d.numero,
+              'fechaEmision', d.fecha_emision,
+              'moneda', d.moneda,
+              'montoTotal', d.monto_total,
+              'claveDocumental', d.clave_documental,
               'estado', d.estado,
               'tipoRelacion', ed.tipo_relacion,
               'esPrincipal', ed.es_principal,
-              'orden', ed.orden
+              'orden', ed.orden,
+              'archivoId', da.id,
+              'nombreArchivo', da.nombre_archivo,
+              'archivoEstado', da.estado,
+              'storageProvider', da.storage_provider
             )
             ORDER BY ed.es_principal DESC, ed.orden ASC, d.id ASC
           ) FILTER (WHERE d.id IS NOT NULL),
@@ -91,6 +99,13 @@ export class ExpedientesRepository {
         ON ed.expediente_id = e.id
       LEFT JOIN documentos.documentos d
         ON d.id = ed.documento_id
+      LEFT JOIN LATERAL (
+        SELECT da.*
+        FROM documentos.documentos_archivos da
+        WHERE da.documento_id = d.id
+        ORDER BY da.es_version_actual DESC NULLS LAST, da.version DESC NULLS LAST, da.id DESC
+        LIMIT 1
+      ) da ON true
       WHERE e.id = ${id}
       GROUP BY e.id, cd.id
       LIMIT 1
@@ -219,9 +234,17 @@ export class ExpedientesRepository {
               'tipoDocumental', d.tipo_documental,
               'serie', d.serie,
               'numero', d.numero,
+              'fechaEmision', d.fecha_emision,
+              'moneda', d.moneda,
+              'montoTotal', d.monto_total,
+              'claveDocumental', d.clave_documental,
               'estado', d.estado,
               'tipoRelacion', ed.tipo_relacion,
-              'esPrincipal', ed.es_principal
+              'esPrincipal', ed.es_principal,
+              'archivoId', da.id,
+              'nombreArchivo', da.nombre_archivo,
+              'archivoEstado', da.estado,
+              'storageProvider', da.storage_provider
             )
             ORDER BY ed.es_principal DESC, ed.orden ASC, d.id ASC
           ) FILTER (WHERE d.id IS NOT NULL),
@@ -234,6 +257,13 @@ export class ExpedientesRepository {
         ON ed.expediente_id = e.id
       LEFT JOIN documentos.documentos d
         ON d.id = ed.documento_id
+      LEFT JOIN LATERAL (
+        SELECT da.*
+        FROM documentos.documentos_archivos da
+        WHERE da.documento_id = d.id
+        ORDER BY da.es_version_actual DESC NULLS LAST, da.version DESC NULLS LAST, da.id DESC
+        LIMIT 1
+      ) da ON true
       WHERE e.id = ${id}
       GROUP BY e.id, cd.id
       LIMIT 1
@@ -293,10 +323,18 @@ export class ExpedientesRepository {
               'razonSocialEmisor', d.razon_social_emisor,
               'serie', d.serie,
               'numero', d.numero,
+              'fechaEmision', d.fecha_emision,
+              'moneda', d.moneda,
+              'montoTotal', d.monto_total,
+              'claveDocumental', d.clave_documental,
               'estado', d.estado,
               'tipoRelacion', ed.tipo_relacion,
               'esPrincipal', ed.es_principal,
-              'orden', ed.orden
+              'orden', ed.orden,
+              'archivoId', da.id,
+              'nombreArchivo', da.nombre_archivo,
+              'archivoEstado', da.estado,
+              'storageProvider', da.storage_provider
             )
           ) FILTER (WHERE d.id IS NOT NULL),
           '[]'::jsonb
@@ -308,6 +346,13 @@ export class ExpedientesRepository {
         ON ed.expediente_id = e.id
       LEFT JOIN documentos.documentos d
         ON d.id = ed.documento_id
+      LEFT JOIN LATERAL (
+        SELECT da.*
+        FROM documentos.documentos_archivos da
+        WHERE da.documento_id = d.id
+        ORDER BY da.es_version_actual DESC NULLS LAST, da.version DESC NULLS LAST, da.id DESC
+        LIMIT 1
+      ) da ON true
       LEFT JOIN documentos.documento_alertas a
         ON a.documento_id = ed.documento_id
        AND a.estado = 'activa'
@@ -563,4 +608,3 @@ export class ExpedientesRepository {
     return rows;
   }
 }
-

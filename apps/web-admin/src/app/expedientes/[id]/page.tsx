@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import {
@@ -11,9 +11,11 @@ import {
   CircleDot,
   CreditCard,
   ExternalLink,
+  Eye,
   FileCheck2,
   FileText,
   Link2,
+  Loader2,
   PackageCheck,
   ReceiptText,
   ShoppingCart,
@@ -30,6 +32,7 @@ import {
   EmptyTitle,
 } from "@/components/ui/empty";
 import { Button } from "@/components/ui/button";
+import { Modal } from "@/components/ui/modal";
 import {
   Card,
   CardContent,
@@ -37,6 +40,10 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { useDocumentosAlertas } from "@/hooks/useAlertas";
+import {
+  getDocumentoArchivoPreviewUrl,
+  type DocumentoArchivoPreview,
+} from "@/services/documentos-preview";
 import {
   useExpediente,
   useExpedienteEstadoDocumental,
@@ -121,6 +128,237 @@ function formatTimelineDate(value: string) {
     dateStyle: "short",
     timeStyle: "short",
   }).format(date);
+}
+
+
+function documentoValue(
+  documento: ExpedienteDocumento | null | undefined,
+  ...keys: string[]
+) {
+  if (!documento) return undefined;
+
+  const record = documento as unknown as Record<string, unknown>;
+
+  for (const key of keys) {
+    const value = record[key];
+
+    if (value !== null && value !== undefined && value !== "") {
+      return value;
+    }
+  }
+
+  return undefined;
+}
+
+function getDocumentoArchivoId(documento?: ExpedienteDocumento | null) {
+  const value = documentoValue(
+    documento,
+    "archivoId",
+    "archivo_id",
+    "archivoActualId",
+    "archivo_actual_id",
+    "documentoArchivoId",
+    "documento_archivo_id",
+  );
+
+  if (value === null || value === undefined || value === "") return null;
+
+  return String(value);
+}
+
+function getDocumentoVersionActual(documento?: ExpedienteDocumento | null) {
+  return documentoValue(
+    documento,
+    "versionActual",
+    "version_actual",
+    "version",
+    "numeroVersion",
+    "numero_version",
+  );
+}
+
+function getDocumentoFechaEmision(documento?: ExpedienteDocumento | null) {
+  return documentoValue(documento, "fechaEmision", "fecha_emision");
+}
+
+function getDocumentoMoneda(documento?: ExpedienteDocumento | null) {
+  return documentoValue(documento, "moneda", "monedaCodigo", "moneda_codigo");
+}
+
+function getDocumentoMontoTotal(documento?: ExpedienteDocumento | null) {
+  return documentoValue(documento, "montoTotal", "monto_total");
+}
+
+function getDocumentoRazonSocialEmisor(documento?: ExpedienteDocumento | null) {
+  return documentoValue(
+    documento,
+    "razonSocialEmisor",
+    "razon_social_emisor",
+    "proveedor",
+    "razonSocialProveedor",
+    "razon_social_proveedor",
+  );
+}
+
+function getDocumentoNombreArchivo(
+  documento?: ExpedienteDocumento | null,
+  preview?: DocumentoArchivoPreview | null,
+) {
+  return (
+    documentoValue(
+      documento,
+      "nombreArchivo",
+      "nombre_archivo",
+      "filename",
+      "archivoNombre",
+      "archivo_nombre",
+    ) ?? preview?.filename
+  );
+}
+
+function isPdfPreview(preview?: DocumentoArchivoPreview | null) {
+  const contentType = String(preview?.contentType ?? "").toLowerCase();
+  const filename = String(preview?.filename ?? "").toLowerCase();
+
+  return contentType.includes("pdf") || filename.endsWith(".pdf");
+}
+
+function isImagePreview(preview?: DocumentoArchivoPreview | null) {
+  const contentType = String(preview?.contentType ?? "").toLowerCase();
+  const filename = String(preview?.filename ?? "").toLowerCase();
+
+  return (
+    contentType.startsWith("image/") ||
+    /\.(png|jpe?g|webp|gif|bmp)$/i.test(filename)
+  );
+}
+
+function DetailRow({ label, value }: { label: string; value: unknown }) {
+  return (
+    <div className="rounded-lg border bg-background px-3 py-2">
+      <div className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+        {label}
+      </div>
+      <div className="mt-1 break-words text-sm font-medium text-foreground">
+        {asString(value)}
+      </div>
+    </div>
+  );
+}
+
+function DocumentoPreviewModal({
+  documento,
+  preview,
+  loading,
+  error,
+  onClose,
+}: {
+  documento: ExpedienteDocumento | null;
+  preview: DocumentoArchivoPreview | null;
+  loading: boolean;
+  error: string | null;
+  onClose: () => void;
+}) {
+  const archivoId = getDocumentoArchivoId(documento);
+  const nombreArchivo = getDocumentoNombreArchivo(documento, preview);
+
+  return (
+    <Modal
+      isOpen={Boolean(documento)}
+      onClose={onClose}
+      className="h-[88vh] max-w-[96vw] overflow-hidden p-0"
+    >
+      <div className="flex h-[88vh] flex-col overflow-hidden">
+        <div className="flex items-start justify-between gap-4 border-b px-5 py-4 pr-16">
+          <div>
+            <div className="text-lg font-semibold">{documentoLabel(documento)}</div>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Vista rápida del documento sin salir del expediente.
+            </p>
+          </div>
+          <Badge variant={documento?.esPrincipal ? "default" : "outline"}>
+            {documento?.tipoRelacion ?? (documento?.esPrincipal ? "principal" : "adjunto")}
+          </Badge>
+        </div>
+
+        <div className="grid min-h-0 flex-1 gap-0 lg:grid-cols-[2fr_1fr]">
+          <div className="min-h-0 border-r bg-muted/30 p-4">
+            <div className="flex h-full min-h-[420px] items-center justify-center overflow-hidden rounded-xl border bg-background">
+              {loading ? (
+                <div className="flex flex-col items-center gap-3 text-sm text-muted-foreground">
+                  <Loader2 className="h-6 w-6 animate-spin" />
+                  Cargando vista previa...
+                </div>
+              ) : error ? (
+                <div className="max-w-md px-6 text-center text-sm text-red-600">
+                  {error}
+                </div>
+              ) : preview?.signedUrl && isPdfPreview(preview) ? (
+                <iframe
+                  src={preview.signedUrl}
+                  title={String(nombreArchivo ?? documentoLabel(documento))}
+                  className="h-full w-full border-0"
+                />
+              ) : preview?.signedUrl && isImagePreview(preview) ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={preview.signedUrl}
+                  alt={String(nombreArchivo ?? documentoLabel(documento))}
+                  className="h-full w-full object-contain"
+                />
+              ) : preview?.signedUrl ? (
+                <div className="space-y-3 px-6 text-center text-sm text-muted-foreground">
+                  <p>Este tipo de archivo no se puede previsualizar embebido.</p>
+                  <Button asChild size="sm" variant="outline">
+                    <a href={preview.signedUrl} target="_blank" rel="noreferrer">
+                      Abrir archivo
+                    </a>
+                  </Button>
+                </div>
+              ) : (
+                <div className="px-6 text-center text-sm text-muted-foreground">
+                  No hay vista previa disponible para este documento.
+                </div>
+              )}
+            </div>
+          </div>
+
+          <aside className="min-h-0 overflow-y-auto bg-background p-4">
+            <div className="mb-4">
+              <h3 className="text-sm font-semibold">Datos principales</h3>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Información del documento vinculado al expediente.
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <DetailRow label="Tipo documental" value={documento?.tipoDocumental} />
+              <DetailRow label="Tipo relación" value={documento?.tipoRelacion} />
+              <DetailRow label="Serie" value={documento?.serie} />
+              <DetailRow label="Número" value={documento?.numero} />
+              <DetailRow label="Fecha emisión" value={getDocumentoFechaEmision(documento)} />
+              <DetailRow label="RUC emisor" value={documento?.rucEmisor} />
+              <DetailRow label="Razón social emisor" value={getDocumentoRazonSocialEmisor(documento)} />
+              <DetailRow label="Moneda" value={getDocumentoMoneda(documento)} />
+              <DetailRow label="Monto total" value={getDocumentoMontoTotal(documento)} />
+              <DetailRow label="Estado" value={documento?.estado} />
+              <DetailRow label="Clave documental" value={documento?.claveDocumental} />
+              <DetailRow label="Archivo actual" value={nombreArchivo ?? archivoId} />
+              <DetailRow label="Versión actual" value={getDocumentoVersionActual(documento)} />
+            </div>
+
+            {preview?.signedUrl ? (
+              <Button asChild className="mt-4 w-full" size="sm" variant="outline">
+                <a href={preview.signedUrl} target="_blank" rel="noreferrer">
+                  Abrir en nueva pestaña
+                </a>
+              </Button>
+            ) : null}
+          </aside>
+        </div>
+      </div>
+    </Modal>
+  );
 }
 
 function documentoLabel(documento?: ExpedienteDocumento | null) {
@@ -252,9 +490,11 @@ function findDocumentoByRelation(
 function DocumentoSlotCard({
   slot,
   documento,
+  onVerDocumento,
 }: {
   slot: DocumentoSlot;
   documento?: ExpedienteDocumento;
+  onVerDocumento: (documento: ExpedienteDocumento) => void;
 }) {
   const disponible = Boolean(documento);
 
@@ -303,11 +543,14 @@ function DocumentoSlotCard({
               </div>
             </div>
 
-            <Button asChild size="sm" variant="outline">
-              <Link href={`/documentos/${documento.documentoId}`}>
-                <ExternalLink className="mr-1 h-4 w-4" />
-                Ver
-              </Link>
+            <Button
+              size="sm"
+              type="button"
+              variant="outline"
+              onClick={() => onVerDocumento(documento)}
+            >
+              <Eye className="mr-1 h-4 w-4" />
+              Ver
             </Button>
           </div>
         </div>
@@ -322,7 +565,13 @@ function DocumentoSlotCard({
   );
 }
 
-function DocumentoCard({ documento }: { documento: ExpedienteDocumento }) {
+function DocumentoCard({
+  documento,
+  onVerDocumento,
+}: {
+  documento: ExpedienteDocumento;
+  onVerDocumento: (documento: ExpedienteDocumento) => void;
+}) {
   return (
     <div className="rounded-lg border p-3 text-sm">
       <div className="flex items-start justify-between gap-3">
@@ -333,9 +582,20 @@ function DocumentoCard({ documento }: { documento: ExpedienteDocumento }) {
           </div>
         </div>
 
-        <Badge variant={documento.esPrincipal ? "default" : "outline"}>
-          {documento.tipoRelacion ?? (documento.esPrincipal ? "principal" : "adjunto")}
-        </Badge>
+        <div className="flex shrink-0 items-center gap-2">
+          <Button
+            size="sm"
+            type="button"
+            variant="outline"
+            onClick={() => onVerDocumento(documento)}
+          >
+            <Eye className="mr-1 h-4 w-4" />
+            Ver
+          </Button>
+          <Badge variant={documento.esPrincipal ? "default" : "outline"}>
+            {documento.tipoRelacion ?? (documento.esPrincipal ? "principal" : "adjunto")}
+          </Badge>
+        </div>
       </div>
 
       <div className="mt-3 grid gap-2 text-xs text-muted-foreground md:grid-cols-3">
@@ -413,6 +673,43 @@ export default function ExpedienteDetallePage() {
     estadoDocumental?.documentosFaltantes ??
     []
   ) as string[];
+
+  const [documentoModal, setDocumentoModal] = useState<ExpedienteDocumento | null>(null);
+  const [previewModal, setPreviewModal] = useState<DocumentoArchivoPreview | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+
+  async function abrirDocumentoModal(documento: ExpedienteDocumento) {
+    setDocumentoModal(documento);
+    setPreviewModal(null);
+    setPreviewError(null);
+
+    const archivoId = getDocumentoArchivoId(documento);
+
+    if (!archivoId) {
+      setPreviewError("Este documento no tiene archivo actual asociado para vista previa.");
+      return;
+    }
+
+    setPreviewLoading(true);
+
+    try {
+      const preview = await getDocumentoArchivoPreviewUrl(archivoId);
+      setPreviewModal(preview);
+    } catch (error) {
+      console.error("No se pudo cargar la vista previa del documento", error);
+      setPreviewError("No se pudo cargar la vista previa del documento.");
+    } finally {
+      setPreviewLoading(false);
+    }
+  }
+
+  function cerrarDocumentoModal() {
+    setDocumentoModal(null);
+    setPreviewModal(null);
+    setPreviewError(null);
+    setPreviewLoading(false);
+  }
 
   if (expedienteQuery.isLoading) {
     return <div className="p-6">Cargando expediente...</div>;
@@ -535,6 +832,7 @@ export default function ExpedienteDetallePage() {
                   key={slot.key}
                   slot={slot}
                   documento={findDocumentoByRelation(documentosDelExpediente, slot.relation)}
+                  onVerDocumento={abrirDocumentoModal}
                 />
               ))}
             </div>
@@ -550,6 +848,7 @@ export default function ExpedienteDetallePage() {
                   key={slot.key}
                   slot={slot}
                   documento={findDocumentoByRelation(documentosDelExpediente, slot.relation)}
+                  onVerDocumento={abrirDocumentoModal}
                 />
               ))}
             </div>
@@ -564,7 +863,7 @@ export default function ExpedienteDetallePage() {
           </CardHeader>
           <CardContent>
             {documentoPrincipal ? (
-              <DocumentoCard documento={documentoPrincipal} />
+              <DocumentoCard documento={documentoPrincipal} onVerDocumento={abrirDocumentoModal} />
             ) : (
               <Empty className="p-6">
                 <EmptyHeader>
@@ -626,7 +925,7 @@ export default function ExpedienteDetallePage() {
           <div className="grid gap-3 md:grid-cols-2">
             {documentosAdjuntos.length ? (
               documentosAdjuntos.map((documento) => (
-                <DocumentoCard key={documento.documentoId} documento={documento} />
+                <DocumentoCard key={documento.documentoId} documento={documento} onVerDocumento={abrirDocumentoModal} />
               ))
             ) : (
               <Empty className="md:col-span-2">
@@ -762,6 +1061,14 @@ export default function ExpedienteDetallePage() {
           )}
         </CardContent>
       </Card>
+
+      <DocumentoPreviewModal
+        documento={documentoModal}
+        preview={previewModal}
+        loading={previewLoading}
+        error={previewError}
+        onClose={cerrarDocumentoModal}
+      />
     </main>
   );
 }

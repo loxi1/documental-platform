@@ -218,6 +218,22 @@ export class ExpedientesGatewayController {
     });
   }
 
+  @ApiOperation({ summary: 'Bandeja contable vía API Gateway' })
+  @Get('bandeja-contable')
+  getBandejaContable(
+    @Headers('authorization') authorization: string | undefined,
+    @Headers(REQUEST_ID_HEADER) requestId: string | undefined,
+    @Query() query: Record<string, string>,
+  ) {
+    return this.proxy({
+      method: 'GET',
+      path: '/expedientes/bandeja-contable',
+      authorization,
+      requestId,
+      query,
+    });
+  }
+
   @ApiOperation({ summary: 'Revisión contable vía API Gateway' })
   @Get('revision-contable')
   getRevisionContable(

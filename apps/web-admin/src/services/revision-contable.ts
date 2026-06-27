@@ -9,20 +9,26 @@ import type {
 
 type ApiEnvelope<T> = {
   success?: boolean;
-  data?: T;
+  data?: T | ApiEnvelope<T>;
 };
 
-function unwrap<T>(payload: T | ApiEnvelope<T>): T {
-  if (
-    payload &&
+function isEnvelope(payload: unknown): payload is ApiEnvelope<unknown> {
+  return (
+    !!payload &&
     typeof payload === "object" &&
     "data" in payload &&
-    (payload as ApiEnvelope<T>).data !== undefined
-  ) {
-    return (payload as ApiEnvelope<T>).data as T;
+    (payload as ApiEnvelope<unknown>).data !== undefined
+  );
+}
+
+function unwrap<T>(payload: T | ApiEnvelope<T>): T {
+  let current: unknown = payload;
+
+  while (isEnvelope(current)) {
+    current = current.data;
   }
 
-  return payload as T;
+  return current as T;
 }
 
 function normalizeRevisionContable(

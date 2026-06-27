@@ -132,6 +132,8 @@ function razonSocial(item: RevisionContableItem) {
 
 function codigoExpediente(item: RevisionContableItem) {
   const codigo = pick(
+    item.codigo_expediente,
+    item.codigoExpediente,
     item.codigo_pr,
     item.codigoPr,
     item.codigo_op,
@@ -141,16 +143,11 @@ function codigoExpediente(item: RevisionContableItem) {
     null,
   );
 
-  if (!codigo) return "-";
+  return codigo ? String(codigo) : "-";
+}
 
-  const tipo = String(
-    pick(item.tipo_expediente, item.tipoExpediente, "EXP"),
-  ).toUpperCase();
-
-  if (tipo.includes("CENTRO")) return `CC ${codigo}`;
-  if (tipo.includes("PR") || tipo.includes("OP")) return `PR ${codigo}`;
-
-  return String(codigo);
+function descripcionExpediente(item: RevisionContableItem) {
+  return asText(pick(item.descripcion, item.expediente_descripcion, item.expedienteDescripcion), "Sin descripción");
 }
 
 function fechaEmision(item: RevisionContableItem) {
@@ -190,6 +187,16 @@ function montoTotal(item: RevisionContableItem) {
 
   if (Number.isNaN(value)) {
     return `S/ ${raw}`;
+  }
+
+  const moneda = String(pick(item.moneda, "SOLES") ?? "SOLES").toUpperCase();
+
+  if (moneda.includes("DOLAR")) {
+    return new Intl.NumberFormat("es-PE", {
+      style: "currency",
+      currency: "USD",
+      minimumFractionDigits: 2,
+    }).format(value);
   }
 
   return formatMoney(value);
@@ -324,6 +331,9 @@ function buildSearchText(item: RevisionContableItem) {
     item.correlativo,
     item.expediente_correlativo,
     item.expedienteCorrelativo,
+    item.codigo_expediente,
+    item.codigoExpediente,
+    item.descripcion,
     codigoExpediente(item),
     documentoNombre(item),
     principalDocumento(item),
@@ -540,7 +550,7 @@ export default function RevisionContablePage() {
               {monthLabel(mes)} {anio}
             </span>
             <span>·</span>
-            <span>{totalFacturas} facturas</span>
+            <span>{totalFacturas} expediente{totalFacturas === 1 ? "" : "s"} con factura</span>
             <span>·</span>
             <span>{formatMoney(totalMonto)}</span>
             <span>·</span>
@@ -603,7 +613,7 @@ export default function RevisionContablePage() {
           <div className="flex items-center justify-between border-b px-4 py-3">
             <div className="flex items-center gap-2 font-semibold">
               <FileText className="h-5 w-5" />
-              Facturas del periodo
+              Expedientes del periodo contable
             </div>
             <div className="text-xs text-muted-foreground">
               Mostrando {pageItems.length ? start + 1 : 0}-
@@ -630,7 +640,7 @@ export default function RevisionContablePage() {
                     <th className="min-w-56 px-4 py-2.5">Proveedor</th>
                     <th className="px-4 py-2.5">Fecha</th>
                     <th className="px-4 py-2.5">Monto</th>
-                    <th className="min-w-56 px-4 py-2.5">Documento eje</th>
+                    <th className="min-w-56 px-4 py-2.5">Documento principal</th>
                     <th className="min-w-[580px] px-4 py-2.5">Estado documental</th>
                     <th className="px-4 py-2.5">Alertas</th>
                     <th className="px-4 py-2.5 text-right">Acciones</th>
@@ -649,25 +659,22 @@ export default function RevisionContablePage() {
                       >
                         <td className="px-4 py-3">
                           <div className="font-medium">
-                            {item.correlativo ??
-                              item.expediente_correlativo ??
-                              item.expedienteCorrelativo ??
-                              `Exp. ${expId}`}
+                            Expediente {codigoExpediente(item)}
                           </div>
-                          <div className="text-xs text-muted-foreground">
-                            {codigoExpediente(item)} · ID {expId}
+                          <div
+                            className="max-w-56 truncate text-xs text-muted-foreground"
+                            title={descripcionExpediente(item)}
+                          >
+                            {descripcionExpediente(item)}
                           </div>
                           <Badge className="mt-1" variant="outline">
-                            {asText(
-                              pick(item.tipo_expediente, item.tipoExpediente),
-                              "EXP",
-                            )}
+                            ID {expId}
                           </Badge>
                         </td>
                         <td className="px-4 py-3">
                           <div className="font-medium">{documentoNombre(item)}</div>
                           <div className="text-xs text-muted-foreground">
-                            ID documento: {docId}
+                            Factura ancla · ID {docId}
                           </div>
                           <Badge className="mt-1" variant="secondary">
                             {documentoEstado(item)}
@@ -743,10 +750,10 @@ export default function RevisionContablePage() {
                     <EmptyMedia variant="icon">
                       <FileText className="h-5 w-5" />
                     </EmptyMedia>
-                    <EmptyTitle>Sin facturas para este filtro</EmptyTitle>
+                    <EmptyTitle>Sin expedientes para este periodo</EmptyTitle>
                     <EmptyDescription>
-                      No se encontraron facturas confirmadas con el periodo y
-                      filtros seleccionados.
+                      No se encontraron facturas confirmadas por fecha de emisión
+                      para la empresa, año y mes seleccionados.
                     </EmptyDescription>
                   </EmptyHeader>
                 </Empty>

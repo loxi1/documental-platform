@@ -10,6 +10,7 @@ import {
   FileText,
   Pencil,
   Save,
+  Trash2,
   X,
 } from "lucide-react";
 
@@ -439,16 +440,6 @@ function getTipoDocumentalDoc(doc: DocumentoVinculado) {
   );
 }
 
-function isPagoFinanzas(doc: DocumentoVinculado) {
-  const relacion = getRelacion(doc);
-  const tipo = getTipoDocumentalDoc(doc);
-  return (
-    relacion === "adjunto_transferencia" ||
-    relacion === "adjunto_detraccion" ||
-    tipo === "PAGO_TRANSFERENCIA" ||
-    tipo === "PAGO_DETRACCION"
-  );
-}
 
 function getDocOcrMetadata(doc: DocumentoVinculado) {
   const metadata = doc.metadata;
@@ -517,9 +508,17 @@ function getPagoResumen(doc: DocumentoVinculado) {
 function DocumentoResumen({
   doc,
   option,
+  onVer,
+  onEditar,
+  onQuitar,
+  loadingPreviewId,
 }: {
   doc?: DocumentoVinculado | null;
   option?: DocumentoCargaOption;
+  onVer?: (doc: DocumentoVinculado) => void;
+  onEditar?: (doc: DocumentoVinculado) => void;
+  onQuitar?: (doc: DocumentoVinculado) => void;
+  loadingPreviewId?: string | null;
 }) {
   if (!doc) {
     const visual = getDocumentoVisualState(null);
@@ -536,6 +535,7 @@ function DocumentoResumen({
 
   const visual = getDocumentoVisualState(doc);
   const summary = getDocumentoSummary(doc, option);
+  const archivoId = getArchivoId(doc as Record<string, unknown>);
 
   return (
     <div
@@ -559,11 +559,43 @@ function DocumentoResumen({
           {visual.label}
         </span>
       </div>
-      <div className="mt-2 border-t pt-2 text-[11px] text-muted-foreground">
-        {summary.archivo ? (
-          <div className="truncate">Archivo: {summary.archivo}</div>
-        ) : null}
-        {summary.archivoId ? <div>Archivo ID: {summary.archivoId}</div> : null}
+
+      <div className="mt-2 flex flex-wrap justify-end gap-1 border-t pt-2">
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7"
+          title="Ver"
+          aria-label="Ver documento"
+          onClick={() => onVer?.(doc)}
+          disabled={!archivoId || loadingPreviewId === archivoId}
+        >
+          <Eye className="h-3.5 w-3.5" />
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7"
+          title="Editar"
+          aria-label="Editar documento"
+          onClick={() => onEditar?.(doc)}
+          disabled={!archivoId}
+        >
+          <Pencil className="h-3.5 w-3.5" />
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7 text-destructive hover:text-destructive"
+          title="Quitar del expediente"
+          aria-label="Quitar documento del expediente"
+          onClick={() => onQuitar?.(doc)}
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+        </Button>
       </div>
     </div>
   );
@@ -572,9 +604,17 @@ function DocumentoResumen({
 function DocumentosExistentes({
   documentos,
   option,
+  onVer,
+  onEditar,
+  onQuitar,
+  loadingPreviewId,
 }: {
   documentos?: DocumentoVinculado[];
   option: DocumentoCargaOption;
+  onVer?: (doc: DocumentoVinculado) => void;
+  onEditar?: (doc: DocumentoVinculado) => void;
+  onQuitar?: (doc: DocumentoVinculado) => void;
+  loadingPreviewId?: string | null;
 }) {
   const ordenados = ordenarDocumentosPorFecha(documentos ?? []);
 
@@ -587,6 +627,10 @@ function DocumentosExistentes({
           key={String(doc.documento_id ?? doc.documentoId ?? index)}
           doc={doc}
           option={option}
+          onVer={onVer}
+          onEditar={onEditar}
+          onQuitar={onQuitar}
+          loadingPreviewId={loadingPreviewId}
         />
       ))}
     </div>
@@ -645,11 +689,6 @@ export function FinanzasExpedienteEditor({ id }: { id: string | number }) {
     [documentos],
   );
   const principal = useMemo(() => pickPrincipal(documentos), [documentos]);
-  const pagosFinanzas = useMemo(
-    () => ordenarDocumentosPorFecha(documentos.filter(isPagoFinanzas)),
-    [documentos],
-  );
-
   const actualizarPagoMutation = useMutation({
     mutationFn: async ({
       doc,
@@ -1056,6 +1095,13 @@ export function FinanzasExpedienteEditor({ id }: { id: string | number }) {
     setPagoModalError(null);
   }
 
+  function quitarPagoDelExpediente(doc: DocumentoVinculado) {
+    const resumen = getPagoResumen(doc);
+    setMensajeValidacion(
+      `Quitar del expediente todavía está pendiente de backend. Documento: ${resumen.label} ${resumen.numero}.`,
+    );
+  }
+
   function setPagoField<K extends keyof PagoEditForm>(
     field: K,
     value: PagoEditForm[K],
@@ -1160,77 +1206,6 @@ export function FinanzasExpedienteEditor({ id }: { id: string | number }) {
 
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle>Pagos adjuntados</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {pagosFinanzas.length ? (
-              pagosFinanzas.map((doc) => {
-                const pago = getPagoResumen(doc);
-
-                return (
-                  <div
-                    key={pago.id || pago.archivoId || pago.numero}
-                    className="rounded-xl border p-4"
-                  >
-                    <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                      <div className="min-w-0 space-y-1">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <Badge variant="secondary">{pago.label}</Badge>
-                          <span className="font-semibold">{pago.numero}</span>
-                          <span className="text-sm text-muted-foreground">
-                            {pago.proveedor || "Sin beneficiario"}
-                          </span>
-                        </div>
-                        <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                          {pago.banco ? <span>Banco: {pago.banco}</span> : null}
-                          <span>Fecha: {pago.fecha}</span>
-                          <span>
-                            Monto: {pago.moneda ? `${pago.moneda} ` : ""}
-                            {pago.monto || "—"}
-                          </span>
-                          {pago.archivo ? (
-                            <span>Archivo: {pago.archivo}</span>
-                          ) : null}
-                        </div>
-                      </div>
-
-                      <div className="flex shrink-0 flex-wrap gap-2">
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => abrirPagoModal(doc, "ver")}
-                          disabled={previewLoadingId === pago.archivoId}
-                        >
-                          <Eye className="h-4 w-4" />
-                          {previewLoadingId === pago.archivoId
-                            ? "Abriendo..."
-                            : "Ver"}
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => abrirPagoModal(doc, "editar")}
-                        >
-                          <Pencil className="h-4 w-4" />
-                          Editar
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })
-            ) : (
-              <div className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
-                Aún no hay pagos adjuntados para este expediente.
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-2">
             <CardTitle>Adjuntar pagos</CardTitle>
           </CardHeader>
           <CardContent className="grid gap-3 md:grid-cols-3">
@@ -1253,6 +1228,10 @@ export function FinanzasExpedienteEditor({ id }: { id: string | number }) {
                   <DocumentosExistentes
                     documentos={documentosItem}
                     option={item}
+                    onVer={(doc) => abrirPagoModal(doc, "ver")}
+                    onEditar={(doc) => abrirPagoModal(doc, "editar")}
+                    onQuitar={quitarPagoDelExpediente}
+                    loadingPreviewId={previewLoadingId}
                   />
 
                   <Button

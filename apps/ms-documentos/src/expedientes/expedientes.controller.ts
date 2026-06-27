@@ -78,6 +78,19 @@ export class ExpedientesController {
     return this.service.addDocumento(id, body);
   }
 
+  @Get('bandeja-contable')
+  getBandejaContable(
+    @Query('empresa') empresa: string,
+    @Query('anio') anio: string,
+    @Query('mes') mes: string,
+  ) {
+    return this.service.getRevisionContable({
+      empresa,
+      anio: Number(anio),
+      mes: Number(mes),
+    });
+  }
+
   @Get('revision-contable')
   getRevisionContable(
     @Query('empresa') empresa: string,
