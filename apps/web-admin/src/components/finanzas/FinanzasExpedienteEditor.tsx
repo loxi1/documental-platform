@@ -26,6 +26,7 @@ import {
   OcrValidationModal,
   type OcrValidationFormState,
 } from "@/components/ocr/OcrValidationModal";
+import { BANCO_OPTIONS, MONEDA_OPTIONS, hasCatalogValue } from "@/constants/catalogos";
 import {
   DOCUMENTO_FINANZAS_ADJUNTO_OPTIONS,
   getDocumentoSummary,
@@ -71,15 +72,6 @@ type PagoEditForm = {
   observacion: string;
 };
 
-const BANCO_FINANZAS_OPTIONS = [
-  "BANCO DE LA NACION",
-  "INTERBANK",
-  "BCP",
-  "BBVA",
-  "SCOTIABANK",
-  "YAPE",
-  "PLIN",
-] as const;
 
 const FINANZAS_TIPOS_DOCUMENTALES_PERMITIDOS = [
   "PAGO_TRANSFERENCIA",
@@ -1396,13 +1388,23 @@ export function FinanzasExpedienteEditor({ id }: { id: string | number }) {
                         <label className="text-[11px] font-medium uppercase text-muted-foreground">
                           Moneda
                         </label>
-                        <Input
-                          className="h-8"
+                        <select
+                          className="h-8 w-full rounded-md border border-input bg-background px-3 text-sm"
                           value={pagoEditForm.moneda}
                           onChange={(e) =>
                             setPagoField("moneda", e.target.value)
                           }
-                        />
+                        >
+                          <option value="">Seleccionar moneda</option>
+                          {pagoEditForm.moneda && !hasCatalogValue(MONEDA_OPTIONS, pagoEditForm.moneda) ? (
+                            <option value={pagoEditForm.moneda}>{pagoEditForm.moneda}</option>
+                          ) : null}
+                          {MONEDA_OPTIONS.map((moneda) => (
+                            <option key={moneda.codigo} value={moneda.nombre}>
+                              {moneda.nombre}
+                            </option>
+                          ))}
+                        </select>
                       </div>
                     </div>
                     <div className="space-y-1">
@@ -1415,12 +1417,12 @@ export function FinanzasExpedienteEditor({ id }: { id: string | number }) {
                         onChange={(e) => setPagoField("banco", e.target.value)}
                       >
                         <option value="">Selecciona banco</option>
-                        {pagoEditForm.banco && !BANCO_FINANZAS_OPTIONS.includes(pagoEditForm.banco as any) ? (
+                        {pagoEditForm.banco && !hasCatalogValue(BANCO_OPTIONS, pagoEditForm.banco) ? (
                           <option value={pagoEditForm.banco}>{pagoEditForm.banco}</option>
                         ) : null}
-                        {BANCO_FINANZAS_OPTIONS.map((banco) => (
-                          <option key={banco} value={banco}>
-                            {banco}
+                        {BANCO_OPTIONS.map((banco) => (
+                          <option key={banco.codigo} value={banco.nombre}>
+                            {banco.nombre}
                           </option>
                         ))}
                       </select>
@@ -1538,6 +1540,7 @@ export function FinanzasExpedienteEditor({ id }: { id: string | number }) {
         onAgregarComoVersion={agregarDuplicadoComoVersion}
         tiposDocumentalesPermitidos={FINANZAS_TIPOS_DOCUMENTALES_PERMITIDOS}
         tipoDocumentalBloqueado={Boolean(accionActual?.tipoEsperado)}
+        formularioContexto="FINANZAS"
       />
     </>
   );

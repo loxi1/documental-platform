@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { BANCO_OPTIONS, MONEDA_OPTIONS, hasCatalogValue } from "@/constants/catalogos";
 import { api } from "@/services/api";
 import {
   getDocumentoDuplicadoDetailsFromError,
@@ -37,6 +38,11 @@ type FormState = {
   codigoExpediente: string;
   claveDocumental: string;
   documentoRelacionado: string;
+  numeroOperacion: string;
+  fechaPago: string;
+  banco: string;
+  comprobante: string;
+  observacion: string;
 };
 
 export type OcrValidationExpedienteContexto = {
@@ -316,6 +322,41 @@ function buildInitialForm(resultado: unknown, expedienteContexto?: OcrValidation
         metadata.orden_compra,
       "",
     ),
+    numeroOperacion: texto(
+      raw.numeroOperacion ??
+        raw.numero_operacion ??
+        raw.numeroConstancia ??
+        raw.numero_constancia ??
+        metadata.numeroOperacion ??
+        metadata.numero_operacion ??
+        metadata.numeroConstancia ??
+        metadata.numero_constancia ??
+        raw.numero ??
+        metadata.numero,
+      "",
+    ),
+    fechaPago: texto(
+      raw.fechaPago ??
+        raw.fecha_pago ??
+        metadata.fechaPago ??
+        metadata.fecha_pago ??
+        raw.fechaEmision ??
+        raw.fecha_emision ??
+        metadata.fechaEmision ??
+        metadata.fecha_emision,
+      "",
+    ),
+    banco: texto(raw.banco ?? metadata.banco, ""),
+    comprobante: texto(
+      raw.comprobante ??
+        raw.documentoRelacionado ??
+        raw.documento_relacionado ??
+        metadata.comprobante ??
+        metadata.documentoRelacionado ??
+        metadata.documento_relacionado,
+      "",
+    ),
+    observacion: texto(raw.observacion ?? metadata.observacion, ""),
   };
 }
 
@@ -374,7 +415,24 @@ function camposPorTipo(tipo: string, formularioContexto?: "ALMACEN" | "COMPRAS" 
     ];
   }
 
-  if (normalizado === "TRANSFERENCIA" || normalizado === "DETRACCION") {
+  if (
+    normalizado === "TRANSFERENCIA" ||
+    normalizado === "DETRACCION" ||
+    normalizado === "PAGO_TRANSFERENCIA" ||
+    normalizado === "PAGO_DETRACCION"
+  ) {
+    if (formularioContexto === "FINANZAS") {
+      return [
+        "numeroOperacion",
+        "fechaPago",
+        "banco",
+        "rucProveedor",
+        "montoTotal",
+        "moneda",
+        "comprobante",
+      ];
+    }
+
     return ["numero", "fechaEmision", "proveedor", "rucProveedor", "montoTotal", "moneda", "codigoExpediente"];
   }
 
@@ -408,6 +466,11 @@ const FIELD_LABELS: Record<keyof FormState, string> = {
   codigoExpediente: "Código expediente",
   claveDocumental: "Clave documental",
   documentoRelacionado: "Documento relacionado",
+  numeroOperacion: "Código operación / constancia",
+  fechaPago: "Fecha pago",
+  banco: "Banco",
+  comprobante: "Factura / documento relacionado",
+  observacion: "Observación",
 };
 
 function FieldInput({
@@ -421,23 +484,65 @@ function FieldInput({
   onChange: (name: keyof FormState, value: string) => void;
   readOnly?: boolean;
 }) {
+  const baseClass = `mt-1 h-9 w-full rounded-lg border border-slate-200 px-3 text-sm font-medium text-slate-950 outline-none transition focus:border-slate-400 dark:border-slate-800 dark:text-slate-100 ${
+    readOnly
+      ? "bg-slate-50 text-slate-600 dark:bg-slate-900 dark:text-slate-300"
+      : "bg-white dark:bg-slate-950"
+  }`;
+
+  const inputType = name === "fechaPago" || name === "fechaEmision" ? "date" : "text";
+
   return (
     <label className="block">
       <span className="text-[11px] font-medium uppercase tracking-wide text-slate-400">
         {FIELD_LABELS[name]}
       </span>
-      <input
-        value={value}
-        readOnly={readOnly}
-        onChange={(event) => {
-          if (!readOnly) onChange(name, event.target.value);
-        }}
-        className={`mt-1 h-9 w-full rounded-lg border border-slate-200 px-3 text-sm font-medium text-slate-950 outline-none transition focus:border-slate-400 dark:border-slate-800 dark:text-slate-100 ${
-          readOnly
-            ? "bg-slate-50 text-slate-600 dark:bg-slate-900 dark:text-slate-300"
-            : "bg-white dark:bg-slate-950"
-        }`}
-      />
+
+      {name === "moneda" ? (
+        <select
+          value={value}
+          disabled={readOnly}
+          onChange={(event) => onChange(name, event.target.value)}
+          className={baseClass}
+        >
+          <option value="">Seleccionar moneda</option>
+          {value && !hasCatalogValue(MONEDA_OPTIONS, value) ? (
+            <option value={value}>{value}</option>
+          ) : null}
+          {MONEDA_OPTIONS.map((moneda) => (
+            <option key={moneda.codigo} value={moneda.nombre}>
+              {moneda.nombre}
+            </option>
+          ))}
+        </select>
+      ) : name === "banco" ? (
+        <select
+          value={value}
+          disabled={readOnly}
+          onChange={(event) => onChange(name, event.target.value)}
+          className={baseClass}
+        >
+          <option value="">Seleccionar banco</option>
+          {value && !hasCatalogValue(BANCO_OPTIONS, value) ? (
+            <option value={value}>{value}</option>
+          ) : null}
+          {BANCO_OPTIONS.map((banco) => (
+            <option key={banco.codigo} value={banco.nombre}>
+              {banco.nombre}
+            </option>
+          ))}
+        </select>
+      ) : (
+        <input
+          type={inputType}
+          value={value}
+          readOnly={readOnly}
+          onChange={(event) => {
+            if (!readOnly) onChange(name, event.target.value);
+          }}
+          className={baseClass}
+        />
+      )}
     </label>
   );
 }
@@ -543,7 +648,10 @@ export function OcrValidationModal({
     () => camposPorTipo(form.tipoDocumental, formularioContexto),
     [form.tipoDocumental, formularioContexto],
   );
-  const ocultarTipoDocumental = formularioContexto === "ALMACEN" && tipoDocumentalBloqueado;
+  const ocultarTipoDocumental =
+    (formularioContexto === "ALMACEN" || formularioContexto === "FINANZAS") &&
+    tipoDocumentalBloqueado;
+  const ocultarExpedienteVinculado = formularioContexto === "FINANZAS";
 
   if (!open) return null;
 
@@ -646,7 +754,13 @@ export function OcrValidationModal({
           </button>
         </header>
 
-        <section className="grid min-h-0 flex-1 overflow-hidden lg:grid-cols-[1.05fr_0.95fr]">
+        <section
+          className={`grid min-h-0 flex-1 overflow-hidden ${
+            formularioContexto === "FINANZAS" || formularioContexto === "ALMACEN"
+              ? "lg:grid-cols-[2fr_1fr]"
+              : "lg:grid-cols-[1.05fr_0.95fr]"
+          }`}
+        >
           <div className="min-h-[520px] overflow-auto border-b border-slate-200 bg-slate-50 p-5 dark:border-slate-800 dark:bg-slate-900/60 lg:border-b-0 lg:border-r">
             {previewUrl ? (
               <iframe
@@ -717,6 +831,7 @@ export function OcrValidationModal({
                 ))}
               </div>
 
+              {!ocultarExpedienteVinculado ? (
               <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900">
                 <p className="text-[11px] font-medium uppercase tracking-wide text-slate-400">
                   Expediente vinculado
@@ -752,6 +867,7 @@ export function OcrValidationModal({
                   </p>
                 )}
               </div>
+              ) : null}
 
               {readOnly ? (
                 <div className="rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm text-blue-700 dark:border-blue-900/60 dark:bg-blue-950/30 dark:text-blue-300">

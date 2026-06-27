@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { type ChangeEvent, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, FilePlus2, FileText } from "lucide-react";
+import { ArrowLeft, Eye, FilePlus2, FileText, History, Pencil, Save, Trash2, X } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -21,7 +21,8 @@ import {
 import { useExpediente } from "@/hooks/useExpedientes";
 import { api } from "@/services/api";
 import { subirDocumentoGuiado } from "@/services/carga-guiada";
-import { agregarArchivoComoVersion } from "@/services/documentos";
+import { agregarArchivoComoVersion, actualizarDocumentoManual } from "@/services/documentos";
+import { getDocumentoArchivoPreviewUrl } from "@/services/documentos-preview";
 import {
   confirmarOcrConExpediente,
   editarOcrResultado,
@@ -40,6 +41,16 @@ type AccionAlmacen = DocumentoCargaOption & {
 type UploadYProcesarArgs = {
   accion: AccionAlmacen;
   file: File;
+};
+
+type AlmacenEditForm = {
+  serie: string;
+  numero: string;
+  fechaEmision: string;
+  rucProveedor: string;
+  montoTotal: string;
+  moneda: string;
+  observacion: string;
 };
 const ALMACEN_TIPOS_DOCUMENTALES_PERMITIDOS = ["FACTURA", "GUIA", "NOTA_INGRESO"] as const;
 
@@ -218,6 +229,57 @@ function getTipoRelacionPorTipoDocumental(tipoDocumental: string, fallback: stri
   return fallback || "adjunto_guia";
 }
 
+function getDocumentoId(doc: DocumentoVinculado) {
+  return text(doc.documento_id ?? doc.documentoId ?? doc.id, "");
+}
+
+function getTipoDocumentalDoc(doc: DocumentoVinculado) {
+  return normalizeTipoDocumentalParaBackend(text(doc.tipo_documental ?? doc.tipoDocumental, ""));
+}
+
+function getDocOcrMetadata(doc: DocumentoVinculado) {
+  const metadata = doc.metadata;
+  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) return {};
+  const root = metadata as Record<string, any>;
+  const ocr = root.ocr && typeof root.ocr === "object" ? root.ocr : {};
+  const ocrMetadata = ocr.metadata && typeof ocr.metadata === "object" ? ocr.metadata : {};
+  return { ...root, ...ocrMetadata } as Record<string, any>;
+}
+
+function getAlmacenEditForm(doc: DocumentoVinculado): AlmacenEditForm {
+  const metadata = getDocOcrMetadata(doc);
+  return {
+    serie: text(metadata.serie ?? doc.serie, ""),
+    numero: text(metadata.numero ?? doc.numero, ""),
+    fechaEmision: text(metadata.fechaEmision ?? doc.fecha_emision, ""),
+    rucProveedor: text(metadata.rucProveedor ?? metadata.rucEmisor ?? metadata.ruc ?? metadata.proveedorRuc ?? doc.ruc_emisor, ""),
+    montoTotal: text(metadata.montoTotal ?? doc.monto_total, ""),
+    moneda: text(metadata.moneda ?? doc.moneda, ""),
+    observacion: "",
+  };
+}
+
+function getAlmacenResumen(doc: DocumentoVinculado) {
+  const metadata = getDocOcrMetadata(doc);
+  const tipo = getTipoDocumentalDoc(doc);
+  const tipoLabel =
+    tipo === "NOTA_INGRESO" ? "Nota ingreso" : tipo === "GUIA_REMISION" ? "Guía" : tipo === "FACTURA" ? "Factura" : tipo || "Documento";
+  const numero = text([metadata.serie ?? doc.serie, metadata.numero ?? doc.numero].filter(Boolean).join("-"), "Sin número");
+
+  return {
+    id: getDocumentoId(doc),
+    archivoId: getArchivoId(doc as Record<string, unknown>),
+    tipo,
+    label: tipoLabel,
+    numero,
+    fecha: text(metadata.fechaEmision ?? doc.fecha_emision, "Sin fecha"),
+    proveedor: text(metadata.proveedor ?? metadata.razonSocial ?? metadata.razonSocialEmisor ?? doc.razon_social_emisor, ""),
+    monto: text(metadata.montoTotal ?? doc.monto_total, ""),
+    moneda: text(metadata.moneda ?? doc.moneda, ""),
+    archivo: text(doc.nombre_archivo ?? doc.nombreArchivo, ""),
+  };
+}
+
 function normalizeAmount(value: string) {
   const normalized = value.replace(/,/g, "").trim();
   return normalized || undefined;
@@ -241,10 +303,10 @@ function buildMetadataDesdeFormulario(
   const tipo = normalizeTipoDocumentalParaBackend(String(form.tipoDocumental || ""));
   const codigoExpediente = emptyToUndefined(form.codigoExpediente) ?? emptyToUndefined(context.codigoExpediente);
   const rucComprador = emptyToUndefined(form.rucComprador) ?? emptyToUndefined(context.rucComprador);
-  const rucEmisor = emptyToUndefined(form.rucEmisor);
-  const rucProveedor = emptyToUndefined(form.rucProveedor) ?? rucEmisor;
-  const razonSocial = emptyToUndefined(form.razonSocial);
-  const proveedor = emptyToUndefined(form.proveedor) ?? razonSocial;
+  const rucEmisor = tipo === "NOTA_INGRESO" ? undefined : emptyToUndefined(form.rucEmisor);
+  const rucProveedor = tipo === "NOTA_INGRESO" ? undefined : emptyToUndefined(form.rucProveedor) ?? rucEmisor;
+  const razonSocial = tipo === "NOTA_INGRESO" ? undefined : emptyToUndefined(form.razonSocial);
+  const proveedor = tipo === "NOTA_INGRESO" ? undefined : emptyToUndefined(form.proveedor) ?? razonSocial;
 
   return {
     tipoDocumental: tipo,
@@ -262,8 +324,8 @@ function buildMetadataDesdeFormulario(
     moneda: emptyToUndefined(form.moneda),
     cotizacion: emptyToUndefined(form.cotizacion),
     codigoExpediente,
-    claveDocumental: emptyToUndefined(form.claveDocumental),
-    documentoRelacionado: emptyToUndefined(form.documentoRelacionado),
+    claveDocumental: tipo === "NOTA_INGRESO" ? undefined : emptyToUndefined(form.claveDocumental),
+    documentoRelacionado: tipo === "NOTA_INGRESO" ? undefined : emptyToUndefined(form.documentoRelacionado),
     contextoValidacion: {
       origen: "ALMACEN_EDITAR_MODAL",
       expedienteId: context.expedienteId,
@@ -342,7 +404,23 @@ function getRucComprador(expediente: any, empresa: string) {
   );
 }
 
-function DocumentoResumen({ doc, option }: { doc?: DocumentoVinculado | null; option?: DocumentoCargaOption }) {
+function DocumentoResumen({
+  doc,
+  option,
+  onVer,
+  onEditar,
+  onQuitar,
+  puedeModificar = false,
+  loadingArchivoId,
+}: {
+  doc?: DocumentoVinculado | null;
+  option?: DocumentoCargaOption;
+  onVer?: (doc: DocumentoVinculado) => void;
+  onEditar?: (doc: DocumentoVinculado) => void;
+  onQuitar?: (doc: DocumentoVinculado) => void;
+  puedeModificar?: boolean;
+  loadingArchivoId?: string | null;
+}) {
   if (!doc) {
     const visual = getDocumentoVisualState(null);
     return (
@@ -354,6 +432,9 @@ function DocumentoResumen({ doc, option }: { doc?: DocumentoVinculado | null; op
 
   const visual = getDocumentoVisualState(doc);
   const summary = getDocumentoSummary(doc, option);
+  const documentoId = getDocumentoId(doc);
+  const archivoId = getArchivoId(doc as Record<string, unknown>);
+  const abriendo = Boolean(archivoId && loadingArchivoId === archivoId);
 
   return (
     <div className={`mt-3 rounded-lg border px-3 py-2 text-xs ${visual.className}`}>
@@ -367,15 +448,78 @@ function DocumentoResumen({ doc, option }: { doc?: DocumentoVinculado | null; op
           {visual.label}
         </span>
       </div>
-      <div className="mt-2 border-t pt-2 text-[11px] text-muted-foreground">
-        {summary.archivo ? <div className="truncate">Archivo: {summary.archivo}</div> : null}
-        {summary.archivoId ? <div>Archivo ID: {summary.archivoId}</div> : null}
+
+      <div className="mt-2 flex items-center justify-end gap-1 border-t pt-2">
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7"
+          title="Ver documento"
+          aria-label="Ver documento"
+          onClick={() => onVer?.(doc)}
+          disabled={abriendo}
+        >
+          <Eye className="h-3.5 w-3.5" />
+        </Button>
+
+        {puedeModificar ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7"
+            title="Editar datos"
+            aria-label="Editar datos"
+            onClick={() => onEditar?.(doc)}
+          >
+            <Pencil className="h-3.5 w-3.5" />
+          </Button>
+        ) : null}
+
+        {documentoId ? (
+          <Button asChild type="button" variant="ghost" size="icon" className="h-7 w-7" title="Versiones" aria-label="Versiones">
+            <Link href={`/documentos/${documentoId}`}>
+              <History className="h-3.5 w-3.5" />
+            </Link>
+          </Button>
+        ) : null}
+
+        {puedeModificar ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7 text-destructive hover:text-destructive"
+            title="Quitar del expediente"
+            aria-label="Quitar del expediente"
+            onClick={() => onQuitar?.(doc)}
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
+        ) : null}
       </div>
     </div>
   );
 }
 
-function DocumentosExistentes({ documentos, option }: { documentos?: DocumentoVinculado[]; option: DocumentoCargaOption }) {
+function DocumentosExistentes({
+  documentos,
+  option,
+  onVer,
+  onEditar,
+  onQuitar,
+  puedeModificar = false,
+  loadingArchivoId,
+}: {
+  documentos?: DocumentoVinculado[];
+  option: DocumentoCargaOption;
+  onVer?: (doc: DocumentoVinculado) => void;
+  onEditar?: (doc: DocumentoVinculado) => void;
+  onQuitar?: (doc: DocumentoVinculado) => void;
+  puedeModificar?: boolean;
+  loadingArchivoId?: string | null;
+}) {
   const ordenados = ordenarDocumentosPorFecha(documentos ?? []);
 
   if (!ordenados.length) return <DocumentoResumen option={option} />;
@@ -383,7 +527,16 @@ function DocumentosExistentes({ documentos, option }: { documentos?: DocumentoVi
   return (
     <div className="mt-3 space-y-2">
       {ordenados.map((doc, index) => (
-        <DocumentoResumen key={String(doc.documento_id ?? doc.documentoId ?? index)} doc={doc} option={option} />
+        <DocumentoResumen
+          key={String(doc.documento_id ?? doc.documentoId ?? index)}
+          doc={doc}
+          option={option}
+          onVer={onVer}
+          onEditar={onEditar}
+          onQuitar={onQuitar}
+          puedeModificar={puedeModificar}
+          loadingArchivoId={loadingArchivoId}
+        />
       ))}
     </div>
   );
@@ -400,6 +553,20 @@ export function AlmacenExpedienteEditor({ id }: { id: string | number }) {
   const [processingStep, setProcessingStep] = useState<OcrProcessingStep>("idle");
   const [processingFileName, setProcessingFileName] = useState<string | null>(null);
   const [processingError, setProcessingError] = useState<string | null>(null);
+  const [previewLoadingId, setPreviewLoadingId] = useState<string | null>(null);
+  const [adjuntoModalDoc, setAdjuntoModalDoc] = useState<DocumentoVinculado | null>(null);
+  const [adjuntoModalMode, setAdjuntoModalMode] = useState<"ver" | "editar" | null>(null);
+  const [adjuntoModalUrl, setAdjuntoModalUrl] = useState<string | null>(null);
+  const [adjuntoModalError, setAdjuntoModalError] = useState<string | null>(null);
+  const [adjuntoEditForm, setAdjuntoEditForm] = useState<AlmacenEditForm>({
+    serie: "",
+    numero: "",
+    fechaEmision: "",
+    rucProveedor: "",
+    montoTotal: "",
+    moneda: "",
+    observacion: "",
+  });
 
   const documentosQuery = useQuery({
     queryKey: ["expediente-documentos", String(id)],
@@ -413,6 +580,51 @@ export function AlmacenExpedienteEditor({ id }: { id: string | number }) {
   const documentos = documentosQuery.data ?? [];
   const documentosPorRelacion = useMemo(() => getDocumentosPorRelacion(documentos), [documentos]);
   const principal = useMemo(() => pickPrincipal(documentos), [documentos]);
+
+  const actualizarAdjuntoMutation = useMutation({
+    mutationFn: async ({ doc, form }: { doc: DocumentoVinculado; form: AlmacenEditForm }) => {
+      const documentoId = getDocumentoId(doc);
+      if (!documentoId) throw new Error("No se encontró documentoId del adjunto.");
+
+      const tipoDocumental = getTipoDocumentalDoc(doc) || "NOTA_INGRESO";
+      const esNotaIngreso = tipoDocumental === "NOTA_INGRESO";
+      const metadata = {
+        tipoDocumental,
+        clienteAbreviatura: empresa,
+        serie: esNotaIngreso ? undefined : emptyToUndefined(form.serie),
+        numero: form.numero,
+        fechaEmision: form.fechaEmision,
+        rucProveedor: esNotaIngreso ? undefined : emptyToUndefined(form.rucProveedor),
+        rucEmisor: esNotaIngreso ? undefined : emptyToUndefined(form.rucProveedor),
+        ruc: esNotaIngreso ? undefined : emptyToUndefined(form.rucProveedor),
+        montoTotal: tipoDocumental === "FACTURA" ? normalizeAmount(form.montoTotal) : undefined,
+        moneda: tipoDocumental === "FACTURA" ? emptyToUndefined(form.moneda) : undefined,
+        codigoExpediente: codigo,
+        rucComprador,
+        contextoValidacion: {
+          origen: "ALMACEN_EDITAR_DOCUMENTO",
+          expedienteId: id,
+          codigoExpediente: codigo,
+          tipoRelacionSugerida: getRelacion(doc),
+          confirmadoDesde: "almacen_editar_documento",
+        },
+      };
+
+      return actualizarDocumentoManual(documentoId, {
+        tipoDocumental,
+        metadata,
+        observacion: form.observacion || "Edición de documento desde Almacén",
+      });
+    },
+    onSuccess: () => {
+      setMensajeValidacion("Documento actualizado desde Almacén.");
+      cerrarAdjuntoModal();
+      queryClient.invalidateQueries({ queryKey: ["expediente-documentos", String(id)] });
+    },
+    onError: (err) => {
+      setAdjuntoModalError(`No se pudo guardar. ${(err as Error).message}`);
+    },
+  });
 
   const cargaRealMutation = useMutation<ProcesarOcrResultado, Error, UploadYProcesarArgs>({
     mutationFn: async ({ accion, file }) => {
@@ -650,6 +862,44 @@ export function AlmacenExpedienteEditor({ id }: { id: string | number }) {
     queryClient.invalidateQueries({ queryKey: ["expediente-documentos", String(id)] });
   }
 
+  async function abrirAdjuntoModal(doc: DocumentoVinculado, mode: "ver" | "editar") {
+    const archivoId = getArchivoId(doc as Record<string, unknown>);
+    if (!archivoId) {
+      setMensajeValidacion("Este documento no tiene archivo asociado para visualizar.");
+      return;
+    }
+
+    setAdjuntoModalDoc(doc);
+    setAdjuntoModalMode(mode);
+    setAdjuntoModalUrl(null);
+    setAdjuntoModalError(null);
+
+    if (mode === "editar") {
+      setAdjuntoEditForm(getAlmacenEditForm(doc));
+    }
+
+    try {
+      setPreviewLoadingId(archivoId);
+      const preview = await getDocumentoArchivoPreviewUrl(archivoId);
+      setAdjuntoModalUrl(preview.signedUrl);
+    } catch (err) {
+      setAdjuntoModalError(`No se pudo abrir el documento. ${(err as Error).message}`);
+    } finally {
+      setPreviewLoadingId(null);
+    }
+  }
+
+  function cerrarAdjuntoModal() {
+    setAdjuntoModalDoc(null);
+    setAdjuntoModalMode(null);
+    setAdjuntoModalUrl(null);
+    setAdjuntoModalError(null);
+  }
+
+  function setAdjuntoField<K extends keyof AlmacenEditForm>(field: K, value: AlmacenEditForm[K]) {
+    setAdjuntoEditForm((current) => ({ ...current, [field]: value }));
+  }
+
   return (
     <>
       <input
@@ -742,7 +992,20 @@ export function AlmacenExpedienteEditor({ id }: { id: string | number }) {
                     </span>
                   </div>
 
-                  <DocumentosExistentes documentos={documentosItem} option={item} />
+                  <DocumentosExistentes
+                    documentos={documentosItem}
+                    option={item}
+                    onVer={(doc) => abrirAdjuntoModal(doc, "ver")}
+                    onEditar={(doc) => abrirAdjuntoModal(doc, "editar")}
+                    onQuitar={(doc) => {
+                      const resumen = getAlmacenResumen(doc);
+                      setMensajeValidacion(
+                        `Quitar pendiente de backend: se retirará ${resumen.label} ${resumen.numero} del expediente, conservando el archivo y auditoría.`,
+                      );
+                    }}
+                    puedeModificar
+                    loadingArchivoId={previewLoadingId}
+                  />
 
                   <Button
                     className="mt-3 w-full"
@@ -764,6 +1027,130 @@ export function AlmacenExpedienteEditor({ id }: { id: string | number }) {
           </CardContent>
         </Card>
       </main>
+
+      {adjuntoModalDoc && adjuntoModalMode ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="flex h-[88vh] w-full max-w-[min(1500px,96vw)] flex-col overflow-hidden rounded-2xl border bg-background shadow-2xl">
+            <div className="flex shrink-0 items-center justify-between border-b px-4 py-3">
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h2 className="truncate text-base font-semibold">
+                    {adjuntoModalMode === "editar" ? "Editar documento" : "Ver documento"}
+                  </h2>
+                  <Badge variant="secondary">{getAlmacenResumen(adjuntoModalDoc).label}</Badge>
+                  <span className="text-sm text-muted-foreground">{getAlmacenResumen(adjuntoModalDoc).numero}</span>
+                </div>
+                <p className="truncate text-xs text-muted-foreground">
+                  {getAlmacenResumen(adjuntoModalDoc).proveedor || "Sin proveedor"} · {getAlmacenResumen(adjuntoModalDoc).fecha}
+                </p>
+              </div>
+              <Button type="button" variant="ghost" size="icon" onClick={cerrarAdjuntoModal}>
+                <X className="h-4 w-4" />
+                <span className="sr-only">Cerrar</span>
+              </Button>
+            </div>
+
+            {adjuntoModalMode === "ver" ? (
+              <div className="min-h-0 flex-1 p-4">
+                {adjuntoModalError ? (
+                  <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+                    {adjuntoModalError}
+                  </div>
+                ) : adjuntoModalUrl ? (
+                  <iframe title="Documento de almacén" src={adjuntoModalUrl} className="h-full w-full rounded-xl border bg-muted" />
+                ) : (
+                  <div className="flex h-full items-center justify-center rounded-xl border bg-muted text-sm text-muted-foreground">
+                    Cargando documento...
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="grid min-h-0 flex-1 gap-4 p-4 lg:grid-cols-3">
+                <div className="min-h-0 lg:col-span-2">
+                  {adjuntoModalError ? (
+                    <div className="h-full rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+                      {adjuntoModalError}
+                    </div>
+                  ) : adjuntoModalUrl ? (
+                    <iframe title="Documento de almacén" src={adjuntoModalUrl} className="h-full w-full rounded-xl border bg-muted" />
+                  ) : (
+                    <div className="flex h-full items-center justify-center rounded-xl border bg-muted text-sm text-muted-foreground">
+                      Cargando documento...
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex min-h-0 flex-col rounded-xl border bg-muted/20 p-4">
+                  <div className="shrink-0">
+                    <h3 className="font-semibold">Datos del documento</h3>
+                    <p className="text-xs text-muted-foreground">Corrige solo los valores principales.</p>
+                  </div>
+
+                  <div className="mt-3 grid shrink-0 gap-2">
+                    {getTipoDocumentalDoc(adjuntoModalDoc) !== "NOTA_INGRESO" ? (
+                      <div className="space-y-1">
+                        <label className="text-[11px] font-medium uppercase text-muted-foreground">Serie</label>
+                        <Input className="h-8" value={adjuntoEditForm.serie} onChange={(e) => setAdjuntoField("serie", e.target.value)} />
+                      </div>
+                    ) : null}
+
+                    <div className="space-y-1">
+                      <label className="text-[11px] font-medium uppercase text-muted-foreground">Número</label>
+                      <Input className="h-8" value={adjuntoEditForm.numero} onChange={(e) => setAdjuntoField("numero", e.target.value)} />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[11px] font-medium uppercase text-muted-foreground">Fecha emisión</label>
+                      <Input className="h-8" type="date" value={adjuntoEditForm.fechaEmision} onChange={(e) => setAdjuntoField("fechaEmision", e.target.value)} />
+                    </div>
+
+                    {getTipoDocumentalDoc(adjuntoModalDoc) !== "NOTA_INGRESO" ? (
+                      <>
+                        <div className="space-y-1">
+                          <label className="text-[11px] font-medium uppercase text-muted-foreground">RUC emisor</label>
+                          <Input className="h-8" value={adjuntoEditForm.rucProveedor} onChange={(e) => setAdjuntoField("rucProveedor", e.target.value)} />
+                        </div>
+                        {getTipoDocumentalDoc(adjuntoModalDoc) === "FACTURA" ? (
+                          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
+                            <div className="space-y-1">
+                              <label className="text-[11px] font-medium uppercase text-muted-foreground">Monto total</label>
+                              <Input className="h-8" value={adjuntoEditForm.montoTotal} onChange={(e) => setAdjuntoField("montoTotal", e.target.value)} />
+                            </div>
+                            <div className="space-y-1">
+                              <label className="text-[11px] font-medium uppercase text-muted-foreground">Moneda</label>
+                              <Input className="h-8" value={adjuntoEditForm.moneda} onChange={(e) => setAdjuntoField("moneda", e.target.value)} />
+                            </div>
+                          </div>
+                        ) : null}
+                      </>
+                    ) : null}
+
+                    <div className="space-y-1">
+                      <label className="text-[11px] font-medium uppercase text-muted-foreground">Observación</label>
+                      <Input className="h-8" value={adjuntoEditForm.observacion} onChange={(e) => setAdjuntoField("observacion", e.target.value)} />
+                    </div>
+                  </div>
+
+                  <div className="mt-auto flex shrink-0 justify-end gap-2 pt-4">
+                    <Button type="button" variant="outline" size="sm" onClick={cerrarAdjuntoModal}>
+                      Cancelar
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      disabled={actualizarAdjuntoMutation.isPending}
+                      onClick={() => actualizarAdjuntoMutation.mutate({ doc: adjuntoModalDoc, form: adjuntoEditForm })}
+                    >
+                      <Save className="h-4 w-4" />
+                      {actualizarAdjuntoMutation.isPending ? "Guardando..." : "Guardar"}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      ) : null}
 
       <OcrProcessingDialog
         open={processingStep !== "idle"}
