@@ -15,6 +15,7 @@ import {
   Scale,
   Settings,
   ShieldCheck,
+  UserRound,
   X,
 } from "lucide-react";
 import Image from "next/image";
@@ -97,6 +98,11 @@ const navGroups: NavGroup[] = [
     label: "Sistema",
     items: [
       {
+        name: "Mi Perfil",
+        path: "/mi-perfil",
+        icon: <UserRound className="h-4 w-4" />,
+      },
+      {
         name: "Configuración",
         path: "/configuracion",
         icon: <Settings className="h-4 w-4" />,
@@ -132,17 +138,17 @@ const AppSidebar: React.FC<AppSidebarProps> = ({ userCod }) => {
       items: group.items.filter((item) => {
         if (contexto?.perfil === "admin") return true;
         if (item.path === "/dashboard")
-          return Boolean(contexto?.permisos?.length);
-        if (item.path === "/documentos" || item.path === "/documentos/cargar") return hasPermission("documentos.subir") || hasPermission("documentos.ver");
+          return Boolean(contexto?.permisos?.menus?.length || contexto?.permisos?.actions?.length);
+        if (item.path === "/mi-perfil") return true;
+        if (item.path === "/documentos") return hasPermission("documentos.ver") || hasPermission("documentos.subir");
+        if (item.path === "/documentos/cargar") return hasPermission("documentos.subir");
         if (item.path === "/ocr-resultados")
-          return hasPermission("documentos.validar");
-        if (item.path === "/expedientes" || item.path === "/almacen")
-          return hasPermission("documentos.ver");
-        if (item.path === "/finanzas")
-          return hasPermission("finanzas.ver") || hasPermission("documentos.ver");
-        if (item.path === "/revision-contable")
-          return hasPermission("finanzas.ver");
-        if (item.path === "/alertas") return hasPermission("documentos.ver");
+          return hasPermission("ocr.confirmar") || hasPermission("documentos.validar");
+        if (item.path === "/expedientes") return hasPermission("expedientes.ver") || hasPermission("documentos.ver");
+        if (item.path === "/almacen") return hasPermission("almacen.ver");
+        if (item.path === "/finanzas") return hasPermission("finanzas.ver");
+        if (item.path === "/revision-contable") return hasPermission("revision_contable.ver") || hasPermission("contabilidad.ver");
+        if (item.path === "/alertas") return hasPermission("alertas.crear") || hasPermission("alertas.resolver");
         return false;
       }),
     }))
@@ -267,26 +273,24 @@ const AppSidebar: React.FC<AppSidebarProps> = ({ userCod }) => {
       <div
         className={`border-t border-slate-100 dark:border-white/10 ${isCollapsed ? "p-3" : "p-4"}`}
       >
-        <button
-          type="button"
-          onClick={toggleSidebar}
+        <Link
+          href="/seleccionar-contexto"
+          onClick={handleMobileNavigate}
           className={`flex w-full items-center rounded-lg text-left text-sm text-slate-600 transition-colors hover:bg-slate-50 hover:text-slate-950 dark:text-slate-300 dark:hover:bg-white/5 dark:hover:text-white ${isCollapsed ? "justify-center px-0 py-3" : "gap-3 px-3 py-3"}`}
-          title={
-            contexto ? `${contexto.empresa} · ${contexto.perfil}` : "Contexto"
-          }
+          title={contexto ? `${contexto.empresa} · ${contexto.perfil}` : "Cambiar espacio de trabajo"}
         >
           <ShieldCheck className="h-5 w-5 shrink-0" />
           {!isCollapsed ? (
-            <span className="min-w-0">
+            <span className="min-w-0 flex-1">
               <span className="block truncate font-semibold">
                 {contexto?.empresa || "Sin empresa"}
               </span>
               <span className="block truncate text-xs text-slate-400 dark:text-slate-500">
-                {contexto?.perfil || "sin perfil"}
+                {contexto?.perfil || "sin perfil"} · Cambiar
               </span>
             </span>
           ) : null}
-        </button>
+        </Link>
       </div>
     </aside>
   );

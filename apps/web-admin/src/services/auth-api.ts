@@ -11,7 +11,7 @@ export const authApi = axios.create({
 authApi.interceptors.request.use((config) => {
   const token = getAccessToken();
 
-  if (token) {
+  if (token && !config.headers.Authorization) {
     config.headers.Authorization = `Bearer ${token}`;
   }
 

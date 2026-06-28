@@ -1,10 +1,16 @@
-import { Body, Controller, Inject, Post } from '@nestjs/common';
+import { Body, Controller, Get, Headers, Inject, Post } from '@nestjs/common';
 import { ClientProxy } from '@nestjs/microservices';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { firstValueFrom } from 'rxjs';
 import { NatsSubjects } from '@documental/shared';
 
 import { NATS_CLIENT } from '../nats/nats-client.provider';
+
+function extractBearerToken(authHeader?: string) {
+  if (!authHeader) return '';
+  const [scheme, token] = authHeader.split(' ');
+  return scheme?.toLowerCase() === 'bearer' ? token ?? '' : authHeader;
+}
 
 @ApiTags('auth')
 @Controller('auth')
@@ -22,7 +28,25 @@ export class AuthController {
     );
   }
 
-  @ApiOperation({ summary: 'Seleccionar contexto vía API Gateway' })
+  @ApiOperation({ summary: 'Listar workspaces vía API Gateway' })
+  @Get('workspaces')
+  async listWorkspaces(@Headers('authorization') authorization?: string) {
+    return firstValueFrom(
+      this.nats.send('auth.workspaces.list', {
+        identityToken: extractBearerToken(authorization),
+      }),
+    );
+  }
+
+  @ApiOperation({ summary: 'Seleccionar workspace vía API Gateway' })
+  @Post('workspaces/select')
+  async selectWorkspace(@Body() body: unknown) {
+    return firstValueFrom(
+      this.nats.send('auth.workspaces.select', body),
+    );
+  }
+
+  @ApiOperation({ summary: 'Seleccionar contexto legacy vía API Gateway' })
   @Post('select-context')
   async selectContext(@Body() body: unknown) {
     return firstValueFrom(

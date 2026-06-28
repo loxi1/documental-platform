@@ -5,14 +5,14 @@ import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useMemo, useState } from "react";
-import { login as loginRequest, selectContext } from "@/services/auth";
-import { saveAuthSession, saveLoginResult } from "@/lib/auth-storage";
+import { getWorkspaces, login as loginRequest, selectWorkspace } from "@/services/auth";
+import { saveAuthSession, saveLoginResult, saveWorkspaces } from "@/lib/auth-storage";
 
 export default function LoginPage() {
   const router = useRouter();
   const [showPassword, setShowPassword] = useState(false);
-  const [email, setEmail] = useState("admin@documental.local");
-  const [password, setPassword] = useState("Admin123*");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -25,11 +25,21 @@ export default function LoginPage() {
 
     try {
       const result = await loginRequest(email, password);
-      saveLoginResult(result);
+      const workspacesResult = await getWorkspaces(result.identityToken);
+      const workspaces = workspacesResult.workspaces ?? [];
+      const loginWithWorkspaces = { ...result, workspaces };
+      saveLoginResult(loginWithWorkspaces);
+      saveWorkspaces(workspaces);
 
-      if (result.accesos.length === 1) {
-        const access = result.accesos[0];
-        const session = await selectContext(result.usuario.id, access.sistema, access.empresa_codigo);
+      const favoriteWorkspace = workspaces.find((workspace) => workspace.esFavorito);
+      const autoWorkspace = favoriteWorkspace ?? (workspaces.length === 1 ? workspaces[0] : null);
+
+      if (autoWorkspace) {
+        const session = await selectWorkspace(
+          result.identityToken,
+          autoWorkspace.workspaceId,
+          Boolean(favoriteWorkspace),
+        );
         saveAuthSession(session);
         router.replace("/dashboard");
         return;
@@ -65,7 +75,7 @@ export default function LoginPage() {
           <div className="relative z-10 max-w-xl space-y-8">
             <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/10 px-3 py-1 text-sm text-white/75 backdrop-blur">
               <ShieldCheck className="h-4 w-4" />
-              Acceso seguro por empresa y sistema
+              Acceso seguro por workspace y sistema
             </div>
 
             <div className="space-y-4">
@@ -108,7 +118,7 @@ export default function LoginPage() {
                 <p className="text-sm font-medium text-muted-foreground">Bienvenido</p>
                 <h2 className="text-3xl font-semibold tracking-tight">Iniciar sesión</h2>
                 <p className="text-sm leading-6 text-muted-foreground">
-                  Ingresa con tu correo corporativo. Luego seleccionaremos el contexto de trabajo.
+                  Ingresa con tu correo corporativo. Luego seleccionaremos el espacio de trabajo.
                 </p>
               </div>
 
@@ -124,7 +134,7 @@ export default function LoginPage() {
                       type="email"
                       value={email}
                       onChange={(event) => setEmail(event.target.value)}
-                      placeholder="admin@documental.local"
+                      placeholder="usuario@empresa.com"
                       className="h-11 w-full rounded-xl border border-border bg-background pl-10 pr-3 text-sm outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-200/60 dark:focus:ring-white/10"
                     />
                   </div>

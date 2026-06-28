@@ -266,11 +266,15 @@ function matchesExpediente(expediente: Expediente, search: string) {
   return fields.some((field) => String(field ?? "").toLowerCase().includes(normalized));
 }
 
-function inferAreaFromContext(permisos: string[] = [], perfil?: string): AreaOrigen {
+function inferAreaFromContext(
+  permisos: { menus?: string[]; actions?: string[] } | undefined,
+  perfil?: string,
+): AreaOrigen {
+  const menus = permisos?.menus ?? [];
   if (perfil === "admin") return "COMPRAS";
-  if (permisos.includes("finanzas.ver")) return "FINANZAS";
-  if (permisos.includes("logistica.ver")) return "ALMACEN";
-  if (permisos.includes("compras.ver")) return "COMPRAS";
+  if (menus.includes("finanzas")) return "FINANZAS";
+  if (menus.includes("almacen")) return "ALMACEN";
+  if (menus.includes("compras")) return "COMPRAS";
   return "COMPRAS";
 }
 

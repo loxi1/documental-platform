@@ -7,6 +7,8 @@ import {
   clearAuthSession,
   getAuthSession,
   getContexto,
+  hasAction,
+  hasMenu,
   hasPermission,
 } from "@/lib/auth-storage";
 import type { AuthContext, AuthSession } from "@/types/auth";
@@ -71,5 +73,7 @@ export function useAuth() {
     validateCurrentSession,
     logout,
     hasPermission,
+    hasMenu,
+    hasAction,
   };
 }
