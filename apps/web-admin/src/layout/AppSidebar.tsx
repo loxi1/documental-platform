@@ -29,6 +29,10 @@ type NavItem = {
   name: string;
   path: string;
   icon: React.ReactNode;
+  menuKey?: string;
+  actionKeys?: string[];
+  alwaysVisible?: boolean;
+  adminOnly?: boolean;
   description?: string;
   badge?: string;
 };
@@ -46,36 +50,43 @@ const navGroups: NavGroup[] = [
         name: "Dashboard",
         path: "/dashboard",
         icon: <LayoutDashboard className="h-4 w-4" />,
+        menuKey: "dashboard",
       },
       {
         name: "Expedientes",
         path: "/expedientes",
         icon: <FolderKanban className="h-4 w-4" />,
+        menuKey: "expedientes",
       },
       {
         name: "Almacén",
         path: "/almacen",
         icon: <ClipboardList className="h-4 w-4" />,
+        menuKey: "almacen",
       },
       {
         name: "Finanzas",
         path: "/finanzas",
         icon: <Scale className="h-4 w-4" />,
+        menuKey: "finanzas",
       },
       {
         name: "Documentos",
         path: "/documentos",
         icon: <ClipboardList className="h-4 w-4" />,
+        menuKey: "documentos",
       },
       {
         name: "Carga guiada",
         path: "/documentos/cargar",
         icon: <FilePlus2 className="h-4 w-4" />,
+        actionKeys: ["documentos.subir"],
       },
       {
         name: "OCR Resultados",
         path: "/ocr-resultados",
         icon: <FileSearch className="h-4 w-4" />,
+        actionKeys: ["ocr.confirmar", "documentos.validar"],
       },
     ],
   },
@@ -86,11 +97,13 @@ const navGroups: NavGroup[] = [
         name: "Revisión contable",
         path: "/revision-contable",
         icon: <Scale className="h-4 w-4" />,
+        menuKey: "revision_contable",
       },
       {
         name: "Alertas",
         path: "/alertas",
         icon: <AlertTriangle className="h-4 w-4" />,
+        menuKey: "alertas",
       },
     ],
   },
@@ -101,20 +114,32 @@ const navGroups: NavGroup[] = [
         name: "Mi Perfil",
         path: "/mi-perfil",
         icon: <UserRound className="h-4 w-4" />,
+        alwaysVisible: true,
       },
       {
         name: "Configuración",
         path: "/configuracion",
         icon: <Settings className="h-4 w-4" />,
         badge: "Soon",
+        adminOnly: true,
       },
     ],
   },
 ];
 
+function formatPerfil(perfil?: string | null) {
+  if (!perfil) return "Sin perfil";
+  return perfil
+    .replace(/_/g, " ")
+    .split(" ")
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(" ");
+}
+
 const AppSidebar: React.FC<AppSidebarProps> = ({ userCod }) => {
   const pathname = usePathname();
-  const { contexto, hasPermission } = useAuth();
+  const { contexto, hasMenu, hasAction } = useAuth();
   const {
     isMobileOpen,
     isCollapsed,
@@ -122,6 +147,9 @@ const AppSidebar: React.FC<AppSidebarProps> = ({ userCod }) => {
     toggleMobileSidebar,
     toggleSidebar,
   } = useSidebar();
+
+  const isAdmin = contexto?.perfil === "admin";
+  const perfilLabel = formatPerfil(contexto?.perfil);
 
   const isActive = (href = "") => {
     if (href === "/documentos") return pathname === href;
@@ -132,25 +160,21 @@ const AppSidebar: React.FC<AppSidebarProps> = ({ userCod }) => {
     if (isMobileOpen) toggleMobileSidebar();
   };
 
+  const canSeeItem = (item: NavItem) => {
+    if (item.alwaysVisible) return true;
+    if (item.adminOnly) return isAdmin;
+    if (isAdmin) return true;
+
+    const hasRequiredMenu = item.menuKey ? hasMenu(item.menuKey) : false;
+    const hasRequiredAction = item.actionKeys?.some((action) => hasAction(action)) ?? false;
+
+    return hasRequiredMenu || hasRequiredAction;
+  };
+
   const visibleGroups = navGroups
     .map((group) => ({
       ...group,
-      items: group.items.filter((item) => {
-        if (contexto?.perfil === "admin") return true;
-        if (item.path === "/dashboard")
-          return Boolean(contexto?.permisos?.menus?.length || contexto?.permisos?.actions?.length);
-        if (item.path === "/mi-perfil") return true;
-        if (item.path === "/documentos") return hasPermission("documentos.ver") || hasPermission("documentos.subir");
-        if (item.path === "/documentos/cargar") return hasPermission("documentos.subir");
-        if (item.path === "/ocr-resultados")
-          return hasPermission("ocr.confirmar") || hasPermission("documentos.validar");
-        if (item.path === "/expedientes") return hasPermission("expedientes.ver") || hasPermission("documentos.ver");
-        if (item.path === "/almacen") return hasPermission("almacen.ver");
-        if (item.path === "/finanzas") return hasPermission("finanzas.ver");
-        if (item.path === "/revision-contable") return hasPermission("revision_contable.ver") || hasPermission("contabilidad.ver");
-        if (item.path === "/alertas") return hasPermission("alertas.crear") || hasPermission("alertas.resolver");
-        return false;
-      }),
+      items: group.items.filter(canSeeItem),
     }))
     .filter((group) => group.items.length > 0);
 
@@ -277,7 +301,7 @@ const AppSidebar: React.FC<AppSidebarProps> = ({ userCod }) => {
           href="/seleccionar-contexto"
           onClick={handleMobileNavigate}
           className={`flex w-full items-center rounded-lg text-left text-sm text-slate-600 transition-colors hover:bg-slate-50 hover:text-slate-950 dark:text-slate-300 dark:hover:bg-white/5 dark:hover:text-white ${isCollapsed ? "justify-center px-0 py-3" : "gap-3 px-3 py-3"}`}
-          title={contexto ? `${contexto.empresa} · ${contexto.perfil}` : "Cambiar espacio de trabajo"}
+          title={contexto ? `${contexto.empresa} · ${perfilLabel}` : "Cambiar espacio de trabajo"}
         >
           <ShieldCheck className="h-5 w-5 shrink-0" />
           {!isCollapsed ? (
@@ -286,7 +310,7 @@ const AppSidebar: React.FC<AppSidebarProps> = ({ userCod }) => {
                 {contexto?.empresa || "Sin empresa"}
               </span>
               <span className="block truncate text-xs text-slate-400 dark:text-slate-500">
-                {contexto?.perfil || "sin perfil"} · Cambiar
+                {perfilLabel} · Cambiar espacio
               </span>
             </span>
           ) : null}

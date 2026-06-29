@@ -40,9 +40,24 @@ export class AuthController {
 
   @ApiOperation({ summary: 'Seleccionar workspace vía API Gateway' })
   @Post('workspaces/select')
-  async selectWorkspace(@Body() body: unknown) {
+  async selectWorkspace(
+    @Body() body: unknown,
+    @Headers('authorization') authorization?: string,
+  ) {
+    const identityToken = extractBearerToken(authorization);
+    const payload =
+      body && typeof body === 'object' && !Array.isArray(body)
+        ? {
+            ...body,
+            identityToken:
+              'identityToken' in body && typeof body.identityToken === 'string'
+                ? body.identityToken
+                : identityToken,
+          }
+        : { identityToken };
+
     return firstValueFrom(
-      this.nats.send('auth.workspaces.select', body),
+      this.nats.send('auth.workspaces.select', payload),
     );
   }
 

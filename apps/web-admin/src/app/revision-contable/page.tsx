@@ -769,21 +769,7 @@ export default function RevisionContablePage() {
                                 <Eye className="mr-1 h-4 w-4" />
                                 Ver
                               </Link>
-                            </Button>{
-    "success": false,
-    "requestId": "352ef979-a9da-4bab-ac8e-939682816b8c",
-    "timestamp": "2026-06-28T03:31:08.683Z",
-    "path": "/api/v1/expedientes/41/alertas",
-    "error": {
-        "code": "NOT_FOUND",
-        "message": "Cannot GET /api/v1/expedientes/41/alertas",
-        "details": {
-            "message": "Cannot GET /api/v1/expedientes/41/alertas",
-            "error": "Not Found",
-            "statusCode": 404
-        }
-    }
-}
+                            </Button>
                           ) : null}
 
                           {docId !== "-" ? (

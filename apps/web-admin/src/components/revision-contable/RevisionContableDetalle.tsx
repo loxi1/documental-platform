@@ -237,43 +237,106 @@ function getFacturaAncla(documentos: ExpedienteDocumento[]) {
 function DocumentoCard({
   documento,
   principal = false,
+  compact = false,
   onVer,
 }: {
   documento: ExpedienteDocumento;
   principal?: boolean;
+  compact?: boolean;
   onVer: (documento: ExpedienteDocumento) => void;
 }) {
   return (
-    <div className="rounded-xl border bg-card p-4 shadow-sm">
-      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-        <div className="min-w-0 space-y-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="font-semibold">
-              {documentoTipo(documento)} {documentoSerieNumero(documento)}
-            </div>
-            {principal ? (
-              <Badge variant="secondary">Documento principal</Badge>
-            ) : (
-              <Badge variant="outline">Adjunto</Badge>
-            )}
-            <Badge variant="outline">{documentoEstado(documento)}</Badge>
+    <div className="flex h-full flex-col justify-between rounded-xl border bg-card p-4 shadow-sm">
+      <div className="min-w-0 space-y-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge variant={principal ? "secondary" : "outline"}>
+            {principal ? "Principal" : "Adjunto"}
+          </Badge>
+          <Badge variant="outline">{documentoEstado(documento)}</Badge>
+        </div>
+
+        <div>
+          <div className="line-clamp-2 font-semibold">
+            {documentoTipo(documento)} {documentoSerieNumero(documento)}
           </div>
-          <div className="text-sm text-muted-foreground">
+          <div className="mt-1 line-clamp-2 text-sm text-muted-foreground">
             {documentoProveedor(documento)}
-          </div>
-          <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-            <span>Relación: {documentoRelacion(documento)}</span>
-            <span>Fecha: {documentoFecha(documento)}</span>
-            <span>Monto: {documentoMonto(documento)}</span>
           </div>
         </div>
 
-        <Button type="button" size="sm" variant="outline" onClick={() => onVer(documento)}>
-          <Eye className="mr-1 h-4 w-4" />
-          Ver evidencia
-        </Button>
+        <div className={compact ? "grid gap-1 text-xs text-muted-foreground" : "grid gap-1 text-sm text-muted-foreground"}>
+          <span>Relación: {documentoRelacion(documento)}</span>
+          <span>Fecha: {documentoFecha(documento)}</span>
+          <span>Monto: {documentoMonto(documento)}</span>
+        </div>
       </div>
+
+      <Button
+        type="button"
+        size="sm"
+        variant="outline"
+        className="mt-4 w-full"
+        onClick={() => onVer(documento)}
+      >
+        <Eye className="mr-1 h-4 w-4" />
+        Ver evidencia
+      </Button>
     </div>
+  );
+}
+
+function ExpedienteResumenCard({
+  expediente,
+  empresa,
+  periodo,
+  facturaAncla,
+}: {
+  expediente: Expediente;
+  empresa?: string | null;
+  periodo: string;
+  facturaAncla: ExpedienteDocumento | undefined;
+}) {
+  return (
+    <Card className="h-full">
+      <CardHeader className="border-b">
+        <CardTitle className="flex items-center gap-2">
+          <FileText className="h-5 w-5" />
+          Detalles del expediente
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="grid gap-4 p-4 sm:grid-cols-2">
+        <div>
+          <div className="text-xs font-medium uppercase text-muted-foreground">Empresa</div>
+          <div className="font-semibold">{getExpedienteEmpresa(expediente, empresa)}</div>
+        </div>
+        <div>
+          <div className="text-xs font-medium uppercase text-muted-foreground">Expediente</div>
+          <div className="font-semibold">{getExpedienteCodigo(expediente)}</div>
+        </div>
+        <div>
+          <div className="text-xs font-medium uppercase text-muted-foreground">Periodo contable</div>
+          <div className="font-semibold">{periodo}</div>
+        </div>
+        <div>
+          <div className="text-xs font-medium uppercase text-muted-foreground">Factura ancla</div>
+          <div className="font-semibold">
+            {facturaAncla
+              ? `${asText(pickDocumento(facturaAncla, ["serie"]), "")} ${asText(
+                  pickDocumento(facturaAncla, ["numero"]),
+                  "",
+                )}`.trim()
+              : "-"}
+          </div>
+          <div className="text-xs text-muted-foreground">
+            Fecha factura: {facturaAncla ? documentoFecha(facturaAncla) : "-"}
+          </div>
+        </div>
+        <div className="sm:col-span-2">
+          <div className="text-xs font-medium uppercase text-muted-foreground">Descripción</div>
+          <div className="font-semibold">{asText(expediente.descripcion, "Sin descripción")}</div>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -413,66 +476,40 @@ export function RevisionContableDetalle({ expedienteId, empresa, anio, mes }: Pr
         </Badge>
       </div>
 
-      <Card>
-        <CardContent className="grid gap-3 p-4 md:grid-cols-2 xl:grid-cols-3">
-          <div>
-            <div className="text-xs font-medium uppercase text-muted-foreground">Empresa</div>
-            <div className="font-semibold">{getExpedienteEmpresa(expediente, empresa)}</div>
-          </div>
-          <div>
-            <div className="text-xs font-medium uppercase text-muted-foreground">Expediente</div>
-            <div className="font-semibold">{getExpedienteCodigo(expediente)}</div>
-          </div>
-          <div>
-            <div className="text-xs font-medium uppercase text-muted-foreground">Periodo contable</div>
-            <div className="font-semibold">{periodo}</div>
-          </div>
-          <div className="md:col-span-2">
-            <div className="text-xs font-medium uppercase text-muted-foreground">Descripción</div>
-            <div className="font-semibold">{asText(expediente.descripcion, "Sin descripción")}</div>
-          </div>
-          <div>
-            <div className="text-xs font-medium uppercase text-muted-foreground">Factura ancla</div>
-            <div className="font-semibold">
-              {facturaAncla
-                ? `${asText(pickDocumento(facturaAncla, ["serie"]), "")} ${asText(
-                    pickDocumento(facturaAncla, ["numero"]),
-                    "",
-                  )}`.trim()
-                : "-"}
-            </div>
-            <div className="text-xs text-muted-foreground">
-              Fecha factura: {facturaAncla ? documentoFecha(facturaAncla) : "-"}
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+      <section className="grid gap-4 lg:grid-cols-2">
+        <Card className="h-full">
+          <CardHeader className="border-b">
+            <CardTitle className="flex items-center gap-2">
+              <ReceiptText className="h-5 w-5" />
+              Documento principal
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-4">
+            {principal ? (
+              <DocumentoCard documento={principal} principal onVer={setDocumentoSeleccionado} />
+            ) : (
+              <Empty className="py-6">
+                <EmptyHeader>
+                  <EmptyMedia variant="icon">
+                    <FileText className="h-5 w-5" />
+                  </EmptyMedia>
+                  <EmptyTitle>Sin documento principal</EmptyTitle>
+                  <EmptyDescription>
+                    No se encontró OC, OS o factura directa marcada como principal.
+                  </EmptyDescription>
+                </EmptyHeader>
+              </Empty>
+            )}
+          </CardContent>
+        </Card>
 
-      <Card>
-        <CardHeader className="border-b">
-          <CardTitle className="flex items-center gap-2">
-            <ReceiptText className="h-5 w-5" />
-            Documento principal
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="p-4">
-          {principal ? (
-            <DocumentoCard documento={principal} principal onVer={setDocumentoSeleccionado} />
-          ) : (
-            <Empty className="py-6">
-              <EmptyHeader>
-                <EmptyMedia variant="icon">
-                  <FileText className="h-5 w-5" />
-                </EmptyMedia>
-                <EmptyTitle>Sin documento principal</EmptyTitle>
-                <EmptyDescription>
-                  No se encontró OC, OS o factura directa marcada como principal.
-                </EmptyDescription>
-              </EmptyHeader>
-            </Empty>
-          )}
-        </CardContent>
-      </Card>
+        <ExpedienteResumenCard
+          expediente={expediente}
+          empresa={empresa}
+          periodo={periodo}
+          facturaAncla={facturaAncla}
+        />
+      </section>
 
       <Card>
         <CardHeader className="border-b">
@@ -483,11 +520,12 @@ export function RevisionContableDetalle({ expedienteId, empresa, anio, mes }: Pr
         </CardHeader>
         <CardContent className="p-4">
           {adjuntos.length ? (
-            <div className="space-y-3">
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
               {adjuntos.map((documento, index) => (
                 <DocumentoCard
                   key={asText(pickDocumento(documento, ["documentoId", "documento_id"]), String(index))}
                   documento={documento}
+                  compact
                   onVer={setDocumentoSeleccionado}
                 />
               ))}

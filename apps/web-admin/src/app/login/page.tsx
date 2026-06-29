@@ -1,6 +1,6 @@
 "use client";
 
-import { Eye, EyeOff, FileText, LockKeyhole, Mail, ShieldCheck } from "lucide-react";
+import { BellRing, ClipboardCheck, Eye, EyeOff, FileText, FolderKanban, LockKeyhole, Mail, ShieldCheck } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -56,11 +56,9 @@ export default function LoginPage() {
   return (
     <main className="min-h-screen bg-[#f6f7fb] text-slate-950 dark:bg-[#050816] dark:text-white">
       <div className="grid min-h-screen lg:grid-cols-[1.05fr_0.95fr]">
-        <section className="relative hidden overflow-hidden bg-[#0B1221] px-12 py-10 text-white lg:flex lg:flex-col lg:justify-between">
-          <div className="absolute inset-0 opacity-70">
-            <div className="absolute -left-24 top-10 h-72 w-72 rounded-full bg-blue-500/20 blur-3xl" />
-            <div className="absolute bottom-10 right-0 h-80 w-80 rounded-full bg-cyan-400/10 blur-3xl" />
-          </div>
+        <section className="relative hidden overflow-hidden bg-[#07111f] px-12 py-10 text-white lg:flex lg:flex-col lg:justify-between">
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_18%,rgba(59,130,246,0.28),transparent_34%),radial-gradient(circle_at_78%_74%,rgba(14,165,233,0.2),transparent_38%),linear-gradient(135deg,#07111f_0%,#0f172a_55%,#08111f_100%)]" />
+          <div className="absolute inset-0 bg-slate-950/35" />
 
           <div className="relative z-10 flex items-center gap-3">
             <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white text-[#0B1221] shadow-xl">
@@ -73,37 +71,52 @@ export default function LoginPage() {
           </div>
 
           <div className="relative z-10 max-w-xl space-y-8">
-            <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/10 px-3 py-1 text-sm text-white/75 backdrop-blur">
+            <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/12 px-3 py-1 text-sm font-medium text-slate-100 shadow-sm backdrop-blur">
               <ShieldCheck className="h-4 w-4" />
-              Acceso seguro por workspace y sistema
+              Acceso seguro por empresa y perfil
             </div>
 
             <div className="space-y-4">
-              <h1 className="text-5xl font-semibold leading-tight tracking-tight">
-                Administra expedientes, alertas y trazabilidad documental.
+              <h1 className="text-5xl font-semibold leading-tight tracking-tight text-white drop-shadow-sm">
+                Administra tus documentos sin perder el control.
               </h1>
-              <p className="max-w-lg text-base leading-7 text-white/65">
-                Centraliza OCR, documentos, revisión contable y seguimiento operativo desde un solo panel.
+              <p className="max-w-lg text-base leading-7 text-slate-200">
+                Revisa expedientes, documentos pendientes, alertas y validaciones contables desde un solo lugar.
               </p>
             </div>
 
-            <div className="grid max-w-lg grid-cols-3 gap-3">
-              <div className="rounded-2xl border border-white/10 bg-white/10 p-4 backdrop-blur">
-                <p className="text-2xl font-semibold">OCR</p>
-                <p className="mt-1 text-xs text-white/55">Captura documental</p>
+            <div className="grid max-w-xl gap-3">
+              <div className="flex items-start gap-3 rounded-2xl border border-white/15 bg-white/12 p-4 shadow-sm backdrop-blur">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-slate-950">
+                  <ClipboardCheck className="h-5 w-5" />
+                </div>
+                <div>
+                  <p className="text-base font-semibold text-white">Documentos listos para revisar</p>
+                  <p className="mt-1 text-sm leading-5 text-slate-300">Factura, orden, guía, nota de ingreso y pagos reunidos por expediente.</p>
+                </div>
               </div>
-              <div className="rounded-2xl border border-white/10 bg-white/10 p-4 backdrop-blur">
-                <p className="text-2xl font-semibold">EXP</p>
-                <p className="mt-1 text-xs text-white/55">Expedientes</p>
+              <div className="flex items-start gap-3 rounded-2xl border border-white/15 bg-white/12 p-4 shadow-sm backdrop-blur">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-slate-950">
+                  <FolderKanban className="h-5 w-5" />
+                </div>
+                <div>
+                  <p className="text-base font-semibold text-white">Seguimiento por expediente</p>
+                  <p className="mt-1 text-sm leading-5 text-slate-300">Consulta el estado, la trazabilidad y los documentos vinculados sin salir del panel.</p>
+                </div>
               </div>
-              <div className="rounded-2xl border border-white/10 bg-white/10 p-4 backdrop-blur">
-                <p className="text-2xl font-semibold">ALR</p>
-                <p className="mt-1 text-xs text-white/55">Alertas</p>
+              <div className="flex items-start gap-3 rounded-2xl border border-white/15 bg-white/12 p-4 shadow-sm backdrop-blur">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-slate-950">
+                  <BellRing className="h-5 w-5" />
+                </div>
+                <div>
+                  <p className="text-base font-semibold text-white">Pendientes y alertas visibles</p>
+                  <p className="mt-1 text-sm leading-5 text-slate-300">Detecta qué falta completar y qué requiere atención de cada área.</p>
+                </div>
               </div>
             </div>
           </div>
 
-          <p className="relative z-10 text-sm text-white/45">© {currentYear} Loxi1 · BBTI</p>
+          <p className="relative z-10 text-sm text-slate-300">© {currentYear} Loxi1 · BBTI</p>
         </section>
 
         <section className="flex min-h-screen items-center justify-center px-5 py-10 sm:px-8">
@@ -115,10 +128,10 @@ export default function LoginPage() {
 
             <div className="rounded-[2rem] border border-black/5 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-white/[0.03] sm:p-8">
               <div className="mb-8 space-y-2">
-                <p className="text-sm font-medium text-muted-foreground">Bienvenido</p>
-                <h2 className="text-3xl font-semibold tracking-tight">Iniciar sesión</h2>
-                <p className="text-sm leading-6 text-muted-foreground">
-                  Ingresa con tu correo corporativo. Luego seleccionaremos el espacio de trabajo.
+                <p className="text-sm font-medium text-slate-600 dark:text-slate-300">Bienvenido</p>
+                <h2 className="text-3xl font-semibold tracking-tight text-slate-950 dark:text-white">Iniciar sesión</h2>
+                <p className="text-sm leading-6 text-slate-600 dark:text-slate-300">
+                  Ingresa con tu correo corporativo. Luego podrás elegir tu empresa y perfil de trabajo.
                 </p>
               </div>
 
@@ -135,7 +148,7 @@ export default function LoginPage() {
                       value={email}
                       onChange={(event) => setEmail(event.target.value)}
                       placeholder="usuario@empresa.com"
-                      className="h-11 w-full rounded-xl border border-border bg-background pl-10 pr-3 text-sm outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-200/60 dark:focus:ring-white/10"
+                      className="h-11 w-full rounded-xl border border-slate-200 bg-white pl-10 pr-3 text-sm text-slate-950 outline-none transition placeholder:text-slate-400 focus:border-slate-500 focus:ring-4 focus:ring-slate-200/70 dark:border-white/10 dark:bg-white/5 dark:text-white dark:placeholder:text-slate-500 dark:focus:border-white/40 dark:focus:ring-white/10"
                     />
                   </div>
                 </div>
@@ -152,7 +165,7 @@ export default function LoginPage() {
                       value={password}
                       onChange={(event) => setPassword(event.target.value)}
                       placeholder="••••••••"
-                      className="h-11 w-full rounded-xl border border-border bg-background pl-10 pr-11 text-sm outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-200/60 dark:focus:ring-white/10"
+                      className="h-11 w-full rounded-xl border border-slate-200 bg-white pl-10 pr-11 text-sm text-slate-950 outline-none transition placeholder:text-slate-400 focus:border-slate-500 focus:ring-4 focus:ring-slate-200/70 dark:border-white/10 dark:bg-white/5 dark:text-white dark:placeholder:text-slate-500 dark:focus:border-white/40 dark:focus:ring-white/10"
                     />
                     <button
                       type="button"
@@ -172,11 +185,11 @@ export default function LoginPage() {
                 ) : null}
 
                 <div className="flex items-center justify-between text-sm">
-                  <label className="flex items-center gap-2 text-muted-foreground">
+                  <label className="flex items-center gap-2 text-slate-600 dark:text-slate-300">
                     <input type="checkbox" className="h-4 w-4 rounded border-border" />
                     Recordar sesión
                   </label>
-                  <Link href="#" className="font-medium text-slate-900 hover:underline dark:text-white">
+                  <Link href="#" className="font-semibold text-slate-950 hover:underline dark:text-white">
                     ¿Olvidaste tu clave?
                   </Link>
                 </div>
