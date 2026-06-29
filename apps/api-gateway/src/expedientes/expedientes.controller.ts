@@ -132,6 +132,69 @@ export class ExpedientesGatewayController {
     };
   }
 
+
+  private getEmpresaFromExpediente(expediente: any): string | null {
+    const empresa =
+      expediente?.empresaCodigo ??
+      expediente?.empresa_codigo ??
+      expediente?.expediente?.empresaCodigo ??
+      expediente?.expediente?.empresa_codigo ??
+      null;
+
+    if (typeof empresa !== 'string') {
+      return null;
+    }
+
+    const normalized = empresa.trim().toUpperCase();
+    return normalized.length > 0 ? normalized : null;
+  }
+
+  private async getExpedienteForScopeCheck(
+    id: string,
+    authorization?: string,
+    requestId?: string,
+  ) {
+    const result = await axios.get(`${this.getBaseUrl()}/expedientes/${id}`, {
+      headers: this.buildForwardHeaders(authorization, requestId),
+    });
+
+    return this.unwrap(result);
+  }
+
+  private async assertExpedienteWorkspaceAccess(params: {
+    id: string;
+    payload: any;
+    authorization?: string;
+    requestId?: string;
+  }) {
+    const empresaContexto = this.getEmpresaFromContext(params.payload);
+
+    if (!empresaContexto) {
+      throw new ForbiddenException('El token no tiene empresa de workspace válida');
+    }
+
+    const expediente = await this.getExpedienteForScopeCheck(
+      params.id,
+      params.authorization,
+      params.requestId,
+    );
+    const empresaExpediente = this.getEmpresaFromExpediente(expediente);
+
+    if (!empresaExpediente) {
+      throw new ForbiddenException(
+        'No se pudo validar la empresa del expediente solicitado',
+      );
+    }
+
+    if (empresaExpediente !== empresaContexto) {
+      throw new ForbiddenException(
+        `No tienes permiso para consultar expedientes de la empresa ${empresaExpediente}`,
+      );
+    }
+
+    return expediente;
+  }
+
   private getBaseUrl() {
     return (
       this.config.get<string>('MS_DOCUMENTOS_URL') ??
@@ -233,11 +296,19 @@ export class ExpedientesGatewayController {
 
   @ApiOperation({ summary: 'Resumen de expediente vía API Gateway' })
   @Get(':id/resumen')
-  getResumen(
+  async getResumen(
     @Headers('authorization') authorization: string | undefined,
     @Headers(REQUEST_ID_HEADER) requestId: string | undefined,
     @Param('id') id: string,
   ) {
+    const contexto = await this.validateAuthorization(authorization);
+    await this.assertExpedienteWorkspaceAccess({
+      id,
+      payload: contexto,
+      authorization,
+      requestId,
+    });
+
     return this.proxy({
       method: 'GET',
       path: `/expedientes/${id}/resumen`,
@@ -248,11 +319,19 @@ export class ExpedientesGatewayController {
 
   @ApiOperation({ summary: 'Timeline de expediente vía API Gateway' })
   @Get(':id/timeline')
-  getTimeline(
+  async getTimeline(
     @Headers('authorization') authorization: string | undefined,
     @Headers(REQUEST_ID_HEADER) requestId: string | undefined,
     @Param('id') id: string,
   ) {
+    const contexto = await this.validateAuthorization(authorization);
+    await this.assertExpedienteWorkspaceAccess({
+      id,
+      payload: contexto,
+      authorization,
+      requestId,
+    });
+
     return this.proxy({
       method: 'GET',
       path: `/expedientes/${id}/timeline`,
@@ -263,11 +342,19 @@ export class ExpedientesGatewayController {
 
   @ApiOperation({ summary: 'Estado documental de expediente vía API Gateway' })
   @Get(':id/estado-documental')
-  getEstadoDocumental(
+  async getEstadoDocumental(
     @Headers('authorization') authorization: string | undefined,
     @Headers(REQUEST_ID_HEADER) requestId: string | undefined,
     @Param('id') id: string,
   ) {
+    const contexto = await this.validateAuthorization(authorization);
+    await this.assertExpedienteWorkspaceAccess({
+      id,
+      payload: contexto,
+      authorization,
+      requestId,
+    });
+
     return this.proxy({
       method: 'GET',
       path: `/expedientes/${id}/estado-documental`,
@@ -278,11 +365,19 @@ export class ExpedientesGatewayController {
 
   @ApiOperation({ summary: 'Listar documentos de expediente vía API Gateway' })
   @Get(':id/documentos')
-  findDocumentos(
+  async findDocumentos(
     @Headers('authorization') authorization: string | undefined,
     @Headers(REQUEST_ID_HEADER) requestId: string | undefined,
     @Param('id') id: string,
   ) {
+    const contexto = await this.validateAuthorization(authorization);
+    await this.assertExpedienteWorkspaceAccess({
+      id,
+      payload: contexto,
+      authorization,
+      requestId,
+    });
+
     return this.proxy({
       method: 'GET',
       path: `/expedientes/${id}/documentos`,
@@ -293,12 +388,20 @@ export class ExpedientesGatewayController {
 
   @ApiOperation({ summary: 'Agregar documento a expediente vía API Gateway' })
   @Post(':id/documentos')
-  addDocumento(
+  async addDocumento(
     @Headers('authorization') authorization: string | undefined,
     @Headers(REQUEST_ID_HEADER) requestId: string | undefined,
     @Param('id') id: string,
     @Body() body: unknown,
   ) {
+    const contexto = await this.validateAuthorization(authorization);
+    await this.assertExpedienteWorkspaceAccess({
+      id,
+      payload: contexto,
+      authorization,
+      requestId,
+    });
+
     return this.proxy({
       method: 'POST',
       path: `/expedientes/${id}/documentos`,
@@ -433,15 +536,13 @@ export class ExpedientesGatewayController {
     @Headers(REQUEST_ID_HEADER) requestId: string | undefined,
     @Param('id') id: string,
   ) {
-    await this.validateAuthorization(authorization);
+    const contexto = await this.validateAuthorization(authorization);
 
-    const result = await axios.get(
-      `${this.getBaseUrl()}/expedientes/${id}`,
-      {
-        headers: this.buildForwardHeaders(authorization, requestId),
-      },
-    );
-
-    return this.unwrap(result);
+    return this.assertExpedienteWorkspaceAccess({
+      id,
+      payload: contexto,
+      authorization,
+      requestId,
+    });
   }
 }

@@ -71,7 +71,19 @@ export class DocumentosController {
     return this.upload.cargaGuiada(file, body);
   }
 
-  @ApiOperation({ summary: 'Generar URL temporal de preview para archivo privado R2' }) @Get('archivos/:archivoId/preview-url') getArchivoPreviewUrl( @Param('archivoId', ParseIntPipe) archivoId: number, ) { return this.preview.getArchivoPreviewUrl(archivoId); } @Post('archivos/:archivoId/procesar-ocr')
+  @ApiOperation({ summary: 'Scope de archivo para validación por workspace' })
+  @Get('archivos/:archivoId/scope')
+  getArchivoScope(@Param('archivoId', ParseIntPipe) archivoId: number) {
+    return this.service.getArchivoScope(archivoId);
+  }
+
+  @ApiOperation({ summary: 'Generar URL temporal de preview para archivo privado R2' })
+  @Get('archivos/:archivoId/preview-url')
+  getArchivoPreviewUrl(@Param('archivoId', ParseIntPipe) archivoId: number) {
+    return this.preview.getArchivoPreviewUrl(archivoId);
+  }
+
+  @Post('archivos/:archivoId/procesar-ocr')
   procesarOcrArchivo(
     @Param('archivoId', ParseIntPipe) archivoId: number,
     @Body() body: {
@@ -90,12 +102,14 @@ export class DocumentosController {
   @Get('ocr-resultados')
   findOcrResultados(
     @Query('estado') estado?: string,
+    @Query('cliente') cliente?: string,
     @Query('limit') limit?: string,
     @Query('offset') offset?: string,
     @Query('soloNoVinculados') soloNoVinculados?: string
   ) {
     return this.service.findOcrResultados({
       estado,
+      cliente,
       limit: limit ? Number(limit) : 20,
       offset: offset ? Number(offset) : 0,
       soloNoVinculados: soloNoVinculados === 'true',

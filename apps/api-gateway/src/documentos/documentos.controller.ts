@@ -10,6 +10,7 @@ import {
   Put,
   Query,
   UnauthorizedException,
+  ForbiddenException,
   UploadedFiles,
   UseInterceptors,
 } from '@nestjs/common';
@@ -55,6 +56,221 @@ export class DocumentosGatewayController {
     } catch {
       throw new UnauthorizedException('Token inválido o expirado');
     }
+  }
+
+
+  private getEmpresaFromContext(payload: any): string | null {
+    const empresa = payload?.empresa ?? payload?.empresaCodigo ?? null;
+
+    if (typeof empresa !== 'string') {
+      return null;
+    }
+
+    const normalized = empresa.trim().toUpperCase();
+    return normalized.length > 0 ? normalized : null;
+  }
+
+  private assertEmpresaPermitida(
+    payload: any,
+    empresaRecurso?: string | null,
+    label = 'recurso',
+  ) {
+    const empresaContexto = this.getEmpresaFromContext(payload);
+
+    if (!empresaContexto) {
+      throw new ForbiddenException('El token no tiene empresa de workspace válida');
+    }
+
+    const empresa = String(empresaRecurso ?? '').trim().toUpperCase();
+
+    if (!empresa) {
+      throw new ForbiddenException(`No se pudo determinar la empresa del ${label}`);
+    }
+
+    if (empresa !== empresaContexto) {
+      throw new ForbiddenException(
+        `No tienes permiso para acceder a ${label} de la empresa ${empresa}`,
+      );
+    }
+
+    return empresaContexto;
+  }
+
+  private buildWorkspaceScopedDocumentosQuery(
+    query: Record<string, string>,
+    payload: any,
+  ): Record<string, string> {
+    const empresaContexto = this.getEmpresaFromContext(payload);
+
+    if (!empresaContexto) {
+      throw new ForbiddenException('El token no tiene empresa de workspace válida');
+    }
+
+    const clienteSolicitado = String(query?.cliente ?? query?.empresa ?? '')
+      .trim()
+      .toUpperCase();
+
+    if (clienteSolicitado && clienteSolicitado !== empresaContexto) {
+      throw new ForbiddenException(
+        `No tienes permiso para consultar documentos de la empresa ${clienteSolicitado}`,
+      );
+    }
+
+    return {
+      ...query,
+      cliente: empresaContexto,
+    };
+  }
+
+  private async fetchDocumentoScope(documentoId: string, requestId?: string) {
+    const response = await axios.get(`${this.getBaseUrl()}/documentos/${documentoId}`, {
+      headers: this.buildForwardHeaders(undefined, requestId),
+    });
+
+    const documento = this.unwrap(response);
+
+    return {
+      documentoId,
+      empresa: documento?.cliente_abreviatura ?? documento?.clienteAbreviatura ?? null,
+      documento,
+    };
+  }
+
+  private async fetchArchivoScope(archivoId: string, requestId?: string) {
+    const response = await axios.get(
+      `${this.getBaseUrl()}/documentos/archivos/${archivoId}/scope`,
+      {
+        headers: this.buildForwardHeaders(undefined, requestId),
+      },
+    );
+
+    return this.unwrap(response);
+  }
+
+  private async fetchOcrScope(ocrResultadoId: string, requestId?: string) {
+    const response = await axios.get(
+      `${this.getBaseUrl()}/documentos/ocr-resultados/${ocrResultadoId}`,
+      {
+        headers: this.buildForwardHeaders(undefined, requestId),
+      },
+    );
+
+    const ocr = this.unwrap(response);
+
+    return {
+      ocrResultadoId,
+      empresa: ocr?.cliente_abreviatura ?? ocr?.clienteAbreviatura ?? null,
+      ocr,
+    };
+  }
+
+
+  private getClienteDestinoIdFromContext(payload: any): number | null {
+    const clienteDestinoId = Number(payload?.clienteDestinoId ?? NaN);
+    return Number.isFinite(clienteDestinoId) && clienteDestinoId > 0
+      ? clienteDestinoId
+      : null;
+  }
+
+  private async fetchExpedienteScope(expedienteId: string, requestId?: string) {
+    const response = await axios.get(`${this.getBaseUrl()}/expedientes/${expedienteId}`, {
+      headers: this.buildForwardHeaders(undefined, requestId),
+    });
+
+    const expediente = this.unwrap(response);
+
+    return {
+      expedienteId,
+      empresa:
+        expediente?.empresa_codigo ??
+        expediente?.empresaCodigo ??
+        expediente?.cliente_abreviatura ??
+        expediente?.clienteAbreviatura ??
+        null,
+      expediente,
+    };
+  }
+
+  private buildWorkspaceScopedOcrExpedienteBody(body: any, payload: any) {
+    const empresaContexto = this.getEmpresaFromContext(payload);
+    const clienteDestinoIdContexto = this.getClienteDestinoIdFromContext(payload);
+
+    if (!empresaContexto) {
+      throw new ForbiddenException('El token no tiene empresa de workspace válida');
+    }
+
+    if (!clienteDestinoIdContexto) {
+      throw new ForbiddenException('El token no tiene cliente destino de workspace válido');
+    }
+
+    const empresaSolicitada = String(body?.empresaCodigo ?? body?.empresa ?? '')
+      .trim()
+      .toUpperCase();
+
+    if (empresaSolicitada && empresaSolicitada !== empresaContexto) {
+      throw new ForbiddenException(
+        `No tienes permiso para crear expedientes en la empresa ${empresaSolicitada}`,
+      );
+    }
+
+    const clienteDestinoIdSolicitado = Number(body?.clienteDestinoId ?? NaN);
+
+    if (
+      Number.isFinite(clienteDestinoIdSolicitado) &&
+      clienteDestinoIdSolicitado > 0 &&
+      clienteDestinoIdSolicitado !== clienteDestinoIdContexto
+    ) {
+      throw new ForbiddenException(
+        'No tienes permiso para crear expedientes en otro cliente destino',
+      );
+    }
+
+    return {
+      ...(body ?? {}),
+      empresaCodigo: empresaContexto,
+      clienteDestinoId: clienteDestinoIdContexto,
+    };
+  }
+
+  private async assertDocumentoPermitido(
+    documentoId: string,
+    payload: any,
+    requestId?: string,
+  ) {
+    const scope = await this.fetchDocumentoScope(documentoId, requestId);
+    return this.assertEmpresaPermitida(payload, scope.empresa, `documento ${documentoId}`);
+  }
+
+  private async assertArchivoPermitido(
+    archivoId: string,
+    payload: any,
+    requestId?: string,
+  ) {
+    const scope = await this.fetchArchivoScope(archivoId, requestId);
+    return this.assertEmpresaPermitida(payload, scope?.clienteAbreviatura ?? scope?.empresa, `archivo ${archivoId}`);
+  }
+
+
+  private async assertExpedientePermitido(
+    expedienteId: string | number | undefined | null,
+    payload: any,
+    requestId?: string,
+  ) {
+    if (expedienteId === undefined || expedienteId === null || String(expedienteId).trim() === '') {
+      throw new ForbiddenException('El expediente es obligatorio para validar el workspace');
+    }
+
+    const scope = await this.fetchExpedienteScope(String(expedienteId), requestId);
+    return this.assertEmpresaPermitida(payload, scope.empresa, `expediente ${expedienteId}`);
+  }
+
+  private async assertOcrPermitido(
+    ocrResultadoId: string,
+    payload: any,
+    requestId?: string,
+  ) {
+    const scope = await this.fetchOcrScope(ocrResultadoId, requestId);
+    return this.assertEmpresaPermitida(payload, scope.empresa, `resultado OCR ${ocrResultadoId}`);
   }
 
   private getBaseUrl() {
@@ -130,17 +346,20 @@ export class DocumentosGatewayController {
 
   @ApiOperation({ summary: 'Listar documentos vía API Gateway' })
   @Get()
-  findAll(
+  async findAll(
     @Headers('authorization') authorization: string | undefined,
     @Headers(REQUEST_ID_HEADER) requestId: string | undefined,
     @Query() query: Record<string, string>,
   ) {
+    const contexto = await this.validateAuthorization(authorization);
+    const scopedQuery = this.buildWorkspaceScopedDocumentosQuery(query, contexto);
+
     return this.proxy({
       method: 'GET',
       path: '/documentos',
       authorization,
       requestId,
-      query,
+      query: scopedQuery,
     });
   }
 
@@ -158,7 +377,12 @@ export class DocumentosGatewayController {
     @UploadedFiles() files: Record<string, any[]>,
     @Body() body: Record<string, any>,
   ) {
-    await this.validateAuthorization(authorization);
+    const contexto = await this.validateAuthorization(authorization);
+    const empresaContexto = this.getEmpresaFromContext(contexto);
+
+    if (!empresaContexto) {
+      throw new ForbiddenException('El token no tiene empresa de workspace válida');
+    }
 
     const file = files?.file?.[0] ?? files?.archivo?.[0];
 
@@ -180,12 +404,20 @@ export class DocumentosGatewayController {
 
     for (const [key, value] of Object.entries(body ?? {})) {
       if (value === undefined || value === null) continue;
+      if (['cliente', 'clienteAbreviatura', 'empresa', 'empresaCodigo'].includes(key)) {
+        continue;
+      }
       if (Array.isArray(value)) {
         value.forEach((item) => form.append(key, String(item)));
       } else {
         form.append(key, String(value));
       }
     }
+
+    form.append('cliente', empresaContexto);
+    form.append('clienteAbreviatura', empresaContexto);
+    form.append('empresa', empresaContexto);
+    form.append('empresaCodigo', empresaContexto);
 
     const response = await axios.request({
       method: 'POST',
@@ -204,12 +436,15 @@ export class DocumentosGatewayController {
 
   @ApiOperation({ summary: 'Procesar OCR de archivo vía API Gateway' })
   @Post('archivos/:archivoId/procesar-ocr')
-  procesarOcrArchivo(
+  async procesarOcrArchivo(
     @Headers('authorization') authorization: string | undefined,
     @Headers(REQUEST_ID_HEADER) requestId: string | undefined,
     @Param('archivoId') archivoId: string,
     @Body() body: unknown,
   ) {
+    const contexto = await this.validateAuthorization(authorization);
+    await this.assertArchivoPermitido(archivoId, contexto, requestId);
+
     return this.proxy({
       method: 'POST',
       path: `/documentos/archivos/${archivoId}/procesar-ocr`,
@@ -221,12 +456,15 @@ export class DocumentosGatewayController {
 
   @ApiOperation({ summary: 'Editar resultado OCR vía API Gateway' })
   @Put('ocr-resultados/:id/editar')
-  editarOcrResultadoPut(
+  async editarOcrResultadoPut(
     @Headers('authorization') authorization: string | undefined,
     @Headers(REQUEST_ID_HEADER) requestId: string | undefined,
     @Param('id') id: string,
     @Body() body: unknown,
   ) {
+    const contexto = await this.validateAuthorization(authorization);
+    await this.assertOcrPermitido(id, contexto, requestId);
+
     return this.proxy({
       method: 'PUT',
       path: `/documentos/ocr-resultados/${id}/editar`,
@@ -237,12 +475,15 @@ export class DocumentosGatewayController {
   }
 
   @Patch('ocr-resultados/:id/editar')
-  editarOcrResultadoPatch(
+  async editarOcrResultadoPatch(
     @Headers('authorization') authorization: string | undefined,
     @Headers(REQUEST_ID_HEADER) requestId: string | undefined,
     @Param('id') id: string,
     @Body() body: unknown,
   ) {
+    const contexto = await this.validateAuthorization(authorization);
+    await this.assertOcrPermitido(id, contexto, requestId);
+
     return this.proxy({
       method: 'PATCH',
       path: `/documentos/ocr-resultados/${id}/editar`,
@@ -254,12 +495,15 @@ export class DocumentosGatewayController {
 
   @ApiOperation({ summary: 'Confirmar resultado OCR vía API Gateway' })
   @Post('ocr-resultados/:id/confirmar')
-  confirmarOcrResultado(
+  async confirmarOcrResultado(
     @Headers('authorization') authorization: string | undefined,
     @Headers(REQUEST_ID_HEADER) requestId: string | undefined,
     @Param('id') id: string,
     @Body() body: unknown,
   ) {
+    const contexto = await this.validateAuthorization(authorization);
+    await this.assertOcrPermitido(id, contexto, requestId);
+
     return this.proxy({
       method: 'POST',
       path: `/documentos/ocr-resultados/${id}/confirmar`,
@@ -271,12 +515,16 @@ export class DocumentosGatewayController {
 
   @ApiOperation({ summary: 'Confirmar OCR con expediente de forma transaccional vía API Gateway' })
   @Post('ocr-resultados/:id/confirmar-con-expediente')
-  confirmarOcrResultadoConExpediente(
+  async confirmarOcrResultadoConExpediente(
     @Headers('authorization') authorization: string | undefined,
     @Headers(REQUEST_ID_HEADER) requestId: string | undefined,
     @Param('id') id: string,
     @Body() body: unknown,
   ) {
+    const contexto = await this.validateAuthorization(authorization);
+    await this.assertOcrPermitido(id, contexto, requestId);
+    await this.assertExpedientePermitido((body as any)?.expedienteId, contexto, requestId);
+
     return this.proxy({
       method: 'POST',
       path: `/documentos/ocr-resultados/${id}/confirmar-con-expediente`,
@@ -288,12 +536,15 @@ export class DocumentosGatewayController {
 
   @ApiOperation({ summary: 'Rechazar resultado OCR vía API Gateway' })
   @Post('ocr-resultados/:id/rechazar')
-  rechazarOcrResultado(
+  async rechazarOcrResultado(
     @Headers('authorization') authorization: string | undefined,
     @Headers(REQUEST_ID_HEADER) requestId: string | undefined,
     @Param('id') id: string,
     @Body() body: unknown,
   ) {
+    const contexto = await this.validateAuthorization(authorization);
+    await this.assertOcrPermitido(id, contexto, requestId);
+
     return this.proxy({
       method: 'POST',
       path: `/documentos/ocr-resultados/${id}/rechazar`,
@@ -363,27 +614,33 @@ export class DocumentosGatewayController {
 
   @ApiOperation({ summary: 'Listar resultados OCR vía API Gateway' })
   @Get('ocr-resultados')
-  findOcrResultados(
+  async findOcrResultados(
     @Headers('authorization') authorization: string | undefined,
     @Headers(REQUEST_ID_HEADER) requestId: string | undefined,
     @Query() query: Record<string, string>,
   ) {
+    const contexto = await this.validateAuthorization(authorization);
+    const scopedQuery = this.buildWorkspaceScopedDocumentosQuery(query, contexto);
+
     return this.proxy({
       method: 'GET',
       path: '/documentos/ocr-resultados',
       authorization,
       requestId,
-      query,
+      query: scopedQuery,
     });
   }
 
   @ApiOperation({ summary: 'Obtener resultado OCR por ID vía API Gateway' })
   @Get('ocr-resultados/:id')
-  findOcrResultadoById(
+  async findOcrResultadoById(
     @Headers('authorization') authorization: string | undefined,
     @Headers(REQUEST_ID_HEADER) requestId: string | undefined,
     @Param('id') id: string,
   ) {
+    const contexto = await this.validateAuthorization(authorization);
+    await this.assertOcrPermitido(id, contexto, requestId);
+
     return this.proxy({
       method: 'GET',
       path: `/documentos/ocr-resultados/${id}`,
@@ -394,29 +651,36 @@ export class DocumentosGatewayController {
 
   @ApiOperation({ summary: 'Crear expediente desde OCR vía API Gateway' })
   @Post('ocr-resultados/:id/crear-expediente')
-  crearExpedienteDesdeOcr(
+  async crearExpedienteDesdeOcr(
     @Headers('authorization') authorization: string | undefined,
     @Headers(REQUEST_ID_HEADER) requestId: string | undefined,
     @Param('id') id: string,
     @Body() body: unknown,
   ) {
+    const contexto = await this.validateAuthorization(authorization);
+    await this.assertOcrPermitido(id, contexto, requestId);
+    const scopedBody = this.buildWorkspaceScopedOcrExpedienteBody(body, contexto);
+
     return this.proxy({
       method: 'POST',
       path: `/documentos/ocr-resultados/${id}/crear-expediente`,
       authorization,
       requestId,
-      body,
+      body: scopedBody,
     });
   }
 
   @ApiOperation({ summary: 'Sugerir expediente para OCR vía API Gateway' })
   @Post('ocr-resultados/:id/sugerir-expediente')
-  sugerirExpedienteParaOcr(
+  async sugerirExpedienteParaOcr(
     @Headers('authorization') authorization: string | undefined,
     @Headers(REQUEST_ID_HEADER) requestId: string | undefined,
     @Param('id') id: string,
     @Body() body: unknown,
   ) {
+    const contexto = await this.validateAuthorization(authorization);
+    await this.assertOcrPermitido(id, contexto, requestId);
+
     return this.proxy({
       method: 'POST',
       path: `/documentos/ocr-resultados/${id}/sugerir-expediente`,
@@ -428,12 +692,16 @@ export class DocumentosGatewayController {
 
   @ApiOperation({ summary: 'Vincular OCR a expediente vía API Gateway' })
   @Post('ocr-resultados/:id/vincular-expediente')
-  vincularOcrAExpediente(
+  async vincularOcrAExpediente(
     @Headers('authorization') authorization: string | undefined,
     @Headers(REQUEST_ID_HEADER) requestId: string | undefined,
     @Param('id') id: string,
     @Body() body: unknown,
   ) {
+    const contexto = await this.validateAuthorization(authorization);
+    await this.assertOcrPermitido(id, contexto, requestId);
+    await this.assertExpedientePermitido((body as any)?.expedienteId, contexto, requestId);
+
     return this.proxy({
       method: 'POST',
       path: `/documentos/ocr-resultados/${id}/vincular-expediente`,
@@ -448,11 +716,14 @@ export class DocumentosGatewayController {
 
   @ApiOperation({ summary: 'Listar versiones/archivos físicos de un documento lógico vía API Gateway' })
   @Get(':id/archivos')
-  findArchivosByDocumentoId(
+  async findArchivosByDocumentoId(
     @Headers('authorization') authorization: string | undefined,
     @Headers(REQUEST_ID_HEADER) requestId: string | undefined,
     @Param('id') id: string,
   ) {
+    const contexto = await this.validateAuthorization(authorization);
+    await this.assertDocumentoPermitido(id, contexto, requestId);
+
     return this.proxy({
       method: 'GET',
       path: `/documentos/${id}/archivos`,
@@ -463,13 +734,17 @@ export class DocumentosGatewayController {
 
   @ApiOperation({ summary: 'Agregar archivo existente como versión de un documento lógico vía API Gateway' })
   @Post(':documentoId/archivos/:archivoId/agregar-version')
-  agregarArchivoComoVersion(
+  async agregarArchivoComoVersion(
     @Headers('authorization') authorization: string | undefined,
     @Headers(REQUEST_ID_HEADER) requestId: string | undefined,
     @Param('documentoId') documentoId: string,
     @Param('archivoId') archivoId: string,
     @Body() body: unknown,
   ) {
+    const contexto = await this.validateAuthorization(authorization);
+    await this.assertDocumentoPermitido(documentoId, contexto, requestId);
+    await this.assertArchivoPermitido(archivoId, contexto, requestId);
+
     return this.proxy({
       method: 'POST',
       path: `/documentos/${documentoId}/archivos/${archivoId}/agregar-version`,
@@ -480,11 +755,17 @@ export class DocumentosGatewayController {
   }
 
   @Post('relaciones')
-  createDocumentoRelacion(
+  async createDocumentoRelacion(
     @Headers('authorization') authorization: string | undefined,
     @Headers(REQUEST_ID_HEADER) requestId: string | undefined,
     @Body() body: unknown,
   ) {
+    const contexto = await this.validateAuthorization(authorization);
+    const relacion = body as any;
+
+    await this.assertDocumentoPermitido(relacion?.documentoOrigenId, contexto, requestId);
+    await this.assertDocumentoPermitido(relacion?.documentoDestinoId, contexto, requestId);
+
     return this.proxy({
       method: 'POST',
       path: '/documentos/relaciones',
@@ -496,11 +777,14 @@ export class DocumentosGatewayController {
 
   @ApiOperation({ summary: 'Listar relaciones de documento vía API Gateway' })
   @Get(':id/relaciones')
-  findDocumentoRelaciones(
+  async findDocumentoRelaciones(
     @Headers('authorization') authorization: string | undefined,
     @Headers(REQUEST_ID_HEADER) requestId: string | undefined,
     @Param('id') id: string,
   ) {
+    const contexto = await this.validateAuthorization(authorization);
+    await this.assertDocumentoPermitido(id, contexto, requestId);
+
     return this.proxy({
       method: 'GET',
       path: `/documentos/${id}/relaciones`,
@@ -511,12 +795,15 @@ export class DocumentosGatewayController {
 
   @ApiOperation({ summary: 'Crear alerta de documento vía API Gateway' })
   @Post(':id/alertas')
-  createDocumentoAlerta(
+  async createDocumentoAlerta(
     @Headers('authorization') authorization: string | undefined,
     @Headers(REQUEST_ID_HEADER) requestId: string | undefined,
     @Param('id') id: string,
     @Body() body: unknown,
   ) {
+    const contexto = await this.validateAuthorization(authorization);
+    await this.assertDocumentoPermitido(id, contexto, requestId);
+
     return this.proxy({
       method: 'POST',
       path: `/documentos/${id}/alertas`,
@@ -528,11 +815,14 @@ export class DocumentosGatewayController {
 
   @ApiOperation({ summary: 'Listar alertas de documento vía API Gateway' })
   @Get(':id/alertas')
-  findDocumentoAlertas(
+  async findDocumentoAlertas(
     @Headers('authorization') authorization: string | undefined,
     @Headers(REQUEST_ID_HEADER) requestId: string | undefined,
     @Param('id') id: string,
   ) {
+    const contexto = await this.validateAuthorization(authorization);
+    await this.assertDocumentoPermitido(id, contexto, requestId);
+
     return this.proxy({
       method: 'GET',
       path: `/documentos/${id}/alertas`,
@@ -543,13 +833,16 @@ export class DocumentosGatewayController {
 
   @ApiOperation({ summary: 'Resolver alerta de documento vía API Gateway' })
   @Patch(':documentoId/alertas/:alertaId/resolver')
-  resolverDocumentoAlerta(
+  async resolverDocumentoAlerta(
     @Headers('authorization') authorization: string | undefined,
     @Headers(REQUEST_ID_HEADER) requestId: string | undefined,
     @Param('documentoId') documentoId: string,
     @Param('alertaId') alertaId: string,
     @Body() body: unknown,
   ) {
+    const contexto = await this.validateAuthorization(authorization);
+    await this.assertDocumentoPermitido(documentoId, contexto, requestId);
+
     return this.proxy({
       method: 'PATCH',
       path: `/documentos/${documentoId}/alertas/${alertaId}/resolver`,
@@ -565,6 +858,9 @@ export class DocumentosGatewayController {
     @Headers('authorization') authorization?: string,
     @Headers(REQUEST_ID_HEADER) requestId?: string,
   ) {
+    const contexto = await this.validateAuthorization(authorization);
+    await this.assertArchivoPermitido(archivoId, contexto, requestId);
+
     return this.proxy({
       method: 'GET',
       path: `/documentos/archivos/${archivoId}/preview-url`,
@@ -575,12 +871,15 @@ export class DocumentosGatewayController {
 
 
   @Patch(':id/editar')
-  actualizarDocumentoManual(
+  async actualizarDocumentoManual(
     @Headers('authorization') authorization: string | undefined,
     @Headers(REQUEST_ID_HEADER) requestId: string | undefined,
     @Param('id') id: string,
     @Body() body: unknown,
   ) {
+    const contexto = await this.validateAuthorization(authorization);
+    await this.assertDocumentoPermitido(id, contexto, requestId);
+
     return this.proxy({
       method: 'PATCH',
       path: `/documentos/${id}/editar`,
@@ -592,11 +891,14 @@ export class DocumentosGatewayController {
 
   @ApiOperation({ summary: 'Obtener documento por ID vía API Gateway' })
   @Get(':id')
-  findById(
+  async findById(
     @Headers('authorization') authorization: string | undefined,
     @Headers(REQUEST_ID_HEADER) requestId: string | undefined,
     @Param('id') id: string,
   ) {
+    const contexto = await this.validateAuthorization(authorization);
+    await this.assertDocumentoPermitido(id, contexto, requestId);
+
     return this.proxy({
       method: 'GET',
       path: `/documentos/${id}`,

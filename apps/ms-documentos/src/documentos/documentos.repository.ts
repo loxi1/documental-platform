@@ -375,6 +375,7 @@ export class DocumentosRepository {
 
   async findOcrResultados(filters: {
     estado?: string;
+    cliente?: string;
     limit?: number;
     offset?: number;
     soloNoVinculados?: boolean;
@@ -395,11 +396,17 @@ export class DocumentosRepository {
         da.nombre_archivo,
         da.storage_provider,
         da.storage_key,
-        NULLIF(o.metadata #>> '{vinculoExpediente,expedienteId}', '')::int AS expediente_id
+        NULLIF(o.metadata #>> '{vinculoExpediente,expedienteId}', '')::int AS expediente_id,
+        COALESCE(d.cliente_abreviatura, d_archivo.cliente_abreviatura) AS cliente_abreviatura
       FROM documentos.ocr_resultados o
       LEFT JOIN documentos.documentos_archivos da
         ON da.id = o.archivo_id
+      LEFT JOIN documentos.documentos d
+        ON d.id = o.documento_id
+      LEFT JOIN documentos.documentos d_archivo
+        ON d_archivo.id = da.documento_id
       WHERE (${filters.estado ?? null}::text IS NULL OR o.estado = ${filters.estado ?? null})
+        AND (${filters.cliente ?? null}::text IS NULL OR COALESCE(d.cliente_abreviatura, d_archivo.cliente_abreviatura) = ${filters.cliente ?? null})
         AND (
           ${filters.soloNoVinculados ?? false}::boolean = false
           OR o.metadata->'vinculoExpediente' IS NULL
@@ -417,10 +424,15 @@ export class DocumentosRepository {
         da.nombre_archivo,
         da.storage_provider,
         da.storage_key,
-        da.ruta_archivo
+        da.ruta_archivo,
+        COALESCE(d.cliente_abreviatura, d_archivo.cliente_abreviatura) AS cliente_abreviatura
       FROM documentos.ocr_resultados o
       LEFT JOIN documentos.documentos_archivos da
         ON da.id = o.archivo_id
+      LEFT JOIN documentos.documentos d
+        ON d.id = o.documento_id
+      LEFT JOIN documentos.documentos d_archivo
+        ON d_archivo.id = da.documento_id
       WHERE o.id = ${id}
       LIMIT 1
     `;

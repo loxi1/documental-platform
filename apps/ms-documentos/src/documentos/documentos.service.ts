@@ -62,6 +62,23 @@ export class DocumentosService {
     };
   }
 
+  async getArchivoScope(archivoId: number) {
+    const archivo = await this.repo.findArchivoById(archivoId);
+
+    if (!archivo) {
+      throw new NotFoundException(`Archivo ${archivoId} no encontrado`);
+    }
+
+    return {
+      archivoId: Number(archivo.id),
+      documentoId: archivo.documento_id ? Number(archivo.documento_id) : null,
+      clienteAbreviatura: archivo.cliente_abreviatura ?? null,
+      nombreArchivo: archivo.nombre_archivo ?? null,
+      storageProvider: archivo.storage_provider ?? null,
+    };
+  }
+
+
   getTipos() {
     return this.repo.getTipos();
   }
@@ -153,6 +170,7 @@ export class DocumentosService {
 
   findOcrResultados(filters: {
     estado?: string;
+    cliente?: string;
     limit?: number;
     offset?: number;
     soloNoVinculados?: boolean;
