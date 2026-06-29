@@ -13,6 +13,7 @@ import {
 } from "@/lib/auth-storage";
 import { getWorkspaces, selectWorkspace } from "@/services/auth";
 import type { AuthWorkspace, LoginResult } from "@/types/auth";
+import { getDefaultPathForContext } from "@/lib/workspace-navigation";
 
 function workspaceKey(workspace: AuthWorkspace) {
   return String(workspace.workspaceId);
@@ -82,7 +83,7 @@ export default function SeleccionarContextoPage() {
         rememberWorkspace,
       );
       saveAuthSession(session);
-      router.replace("/dashboard");
+      router.replace(getDefaultPathForContext(session.contexto));
     } catch {
       setError("No se pudo seleccionar el espacio de trabajo. Verifica el API Gateway.");
     } finally {

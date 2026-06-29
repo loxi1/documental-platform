@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { FormEvent, useMemo, useState } from "react";
 import { getWorkspaces, login as loginRequest, selectWorkspace } from "@/services/auth";
 import { saveAuthSession, saveLoginResult, saveWorkspaces } from "@/lib/auth-storage";
+import { getDefaultPathForContext } from "@/lib/workspace-navigation";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -41,7 +42,7 @@ export default function LoginPage() {
           Boolean(favoriteWorkspace),
         );
         saveAuthSession(session);
-        router.replace("/dashboard");
+        router.replace(getDefaultPathForContext(session.contexto));
         return;
       }
 

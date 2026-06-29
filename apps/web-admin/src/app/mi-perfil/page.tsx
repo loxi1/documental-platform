@@ -17,6 +17,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { getAuthSession, getStoredWorkspaces, saveAuthSession } from "@/lib/auth-storage";
 import { selectWorkspace } from "@/services/auth";
 import type { AuthWorkspace } from "@/types/auth";
+import { getDefaultPathForContext } from "@/lib/workspace-navigation";
 
 function formatDate(value?: string | null) {
   if (!value) return "-";
@@ -68,7 +69,7 @@ export default function MiPerfilPage() {
       );
       saveAuthSession(newSession);
       refreshSession();
-      router.replace("/dashboard");
+      router.replace(getDefaultPathForContext(newSession.contexto));
     } catch {
       setError("No se pudo cambiar el espacio de trabajo. Verifica que el servicio de autenticación esté activo.");
     } finally {

@@ -7,6 +7,7 @@ import {
   Param,
   Query,
   UnauthorizedException,
+  ForbiddenException,
   HttpException,
   HttpStatus,
 } from '@nestjs/common';
@@ -50,6 +51,42 @@ export class ExpedientesGatewayController {
     } catch {
       throw new UnauthorizedException('Token inválido o expirado');
     }
+  }
+
+
+  private getEmpresaFromContext(payload: any): string | null {
+    const empresa = payload?.empresa ?? payload?.empresaCodigo ?? null;
+
+    if (typeof empresa !== 'string') {
+      return null;
+    }
+
+    const normalized = empresa.trim().toUpperCase();
+    return normalized.length > 0 ? normalized : null;
+  }
+
+  private buildWorkspaceScopedQuery(
+    query: Record<string, string>,
+    payload: any,
+  ): Record<string, string> {
+    const empresaContexto = this.getEmpresaFromContext(payload);
+
+    if (!empresaContexto) {
+      throw new ForbiddenException('El token no tiene empresa de workspace válida');
+    }
+
+    const empresaSolicitada = query?.empresa?.trim().toUpperCase();
+
+    if (empresaSolicitada && empresaSolicitada !== empresaContexto) {
+      throw new ForbiddenException(
+        `No tienes permiso para consultar la empresa ${empresaSolicitada}`,
+      );
+    }
+
+    return {
+      ...query,
+      empresa: empresaContexto,
+    };
   }
 
   private getBaseUrl() {
@@ -220,49 +257,58 @@ export class ExpedientesGatewayController {
 
   @ApiOperation({ summary: 'Bandeja contable vía API Gateway' })
   @Get('bandeja-contable')
-  getBandejaContable(
+  async getBandejaContable(
     @Headers('authorization') authorization: string | undefined,
     @Headers(REQUEST_ID_HEADER) requestId: string | undefined,
     @Query() query: Record<string, string>,
   ) {
+    const contexto = await this.validateAuthorization(authorization);
+    const scopedQuery = this.buildWorkspaceScopedQuery(query, contexto);
+
     return this.proxy({
       method: 'GET',
       path: '/expedientes/bandeja-contable',
       authorization,
       requestId,
-      query,
+      query: scopedQuery,
     });
   }
 
   @ApiOperation({ summary: 'Revisión contable vía API Gateway' })
   @Get('revision-contable')
-  getRevisionContable(
+  async getRevisionContable(
     @Headers('authorization') authorization: string | undefined,
     @Headers(REQUEST_ID_HEADER) requestId: string | undefined,
     @Query() query: Record<string, string>,
   ) {
+    const contexto = await this.validateAuthorization(authorization);
+    const scopedQuery = this.buildWorkspaceScopedQuery(query, contexto);
+
     return this.proxy({
       method: 'GET',
       path: '/expedientes/revision-contable',
       authorization,
       requestId,
-      query,
+      query: scopedQuery,
     });
   }
 
   @ApiOperation({ summary: 'Dashboard contable vía API Gateway' })
   @Get('dashboard-contable')
-  getDashboardContable(
+  async getDashboardContable(
     @Headers('authorization') authorization: string | undefined,
     @Headers(REQUEST_ID_HEADER) requestId: string | undefined,
     @Query() query: Record<string, string>,
   ) {
+    const contexto = await this.validateAuthorization(authorization);
+    const scopedQuery = this.buildWorkspaceScopedQuery(query, contexto);
+
     return this.proxy({
       method: 'GET',
       path: '/expedientes/dashboard-contable',
       authorization,
       requestId,
-      query,
+      query: scopedQuery,
     });
   }
 
