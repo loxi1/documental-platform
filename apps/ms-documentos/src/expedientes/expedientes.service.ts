@@ -149,8 +149,9 @@ export class ExpedientesService {
     };
   }
 
-  async buscarExpedientes(params: { q?: string; limit?: number }) {
+  async buscarExpedientes(params: { q?: string; empresa?: string; limit?: number }) {
     const q = String(params.q ?? '').trim();
+    const empresa = String(params.empresa ?? '').trim().toUpperCase() || undefined;
     const limit = Math.min(Math.max(Number(params.limit ?? 10), 1), 20);
 
     if (q.length < 2) {
@@ -160,7 +161,7 @@ export class ExpedientesService {
       };
     }
 
-    const data = await this.repo.buscarExpedientes({ q, limit });
+    const data = await this.repo.buscarExpedientes({ q, empresa, limit });
 
     return {
       total: data.length,
@@ -168,8 +169,11 @@ export class ExpedientesService {
     };
   }
 
-  async findByCodigoExpediente(codigo: string) {
-    const expediente = await this.repo.findByCodigoExpediente(codigo);
+  async findByCodigoExpediente(codigo: string, empresa?: string) {
+    const expediente = await this.repo.findByCodigoExpediente(
+      codigo,
+      empresa ? empresa.trim().toUpperCase() : undefined,
+    );
 
     return {
       existe: !!expediente,

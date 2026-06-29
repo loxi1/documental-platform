@@ -89,6 +89,49 @@ export class ExpedientesGatewayController {
     };
   }
 
+  private buildWorkspaceScopedExpedienteBody(body: any, payload: any) {
+    const empresaContexto = this.getEmpresaFromContext(payload);
+    const clienteDestinoIdContexto = Number(payload?.clienteDestinoId ?? NaN);
+
+    if (!empresaContexto) {
+      throw new ForbiddenException('El token no tiene empresa de workspace válida');
+    }
+
+    if (!Number.isFinite(clienteDestinoIdContexto) || clienteDestinoIdContexto <= 0) {
+      throw new ForbiddenException(
+        'El token no tiene cliente destino de workspace válido',
+      );
+    }
+
+    const empresaSolicitada = String(body?.empresaCodigo ?? body?.empresa ?? '')
+      .trim()
+      .toUpperCase();
+
+    if (empresaSolicitada && empresaSolicitada !== empresaContexto) {
+      throw new ForbiddenException(
+        `No tienes permiso para crear expedientes en la empresa ${empresaSolicitada}`,
+      );
+    }
+
+    const clienteDestinoIdSolicitado = Number(body?.clienteDestinoId ?? NaN);
+
+    if (
+      Number.isFinite(clienteDestinoIdSolicitado) &&
+      clienteDestinoIdSolicitado > 0 &&
+      clienteDestinoIdSolicitado !== clienteDestinoIdContexto
+    ) {
+      throw new ForbiddenException(
+        'No tienes permiso para crear expedientes en otro cliente destino',
+      );
+    }
+
+    return {
+      ...(body ?? {}),
+      empresaCodigo: empresaContexto,
+      clienteDestinoId: clienteDestinoIdContexto,
+    };
+  }
+
   private getBaseUrl() {
     return (
       this.config.get<string>('MS_DOCUMENTOS_URL') ??
@@ -118,10 +161,11 @@ export class ExpedientesGatewayController {
     @Headers(REQUEST_ID_HEADER) requestId: string | undefined,
     @Query() query: Record<string, string>,
   ) {
-    await this.validateAuthorization(authorization);
+    const contexto = await this.validateAuthorization(authorization);
+    const scopedQuery = this.buildWorkspaceScopedQuery(query, contexto);
 
     const result = await axios.get(`${this.getBaseUrl()}/expedientes`, {
-      params: query,
+      params: scopedQuery,
       headers: this.buildForwardHeaders(authorization, requestId),
     });
 
@@ -131,50 +175,59 @@ export class ExpedientesGatewayController {
 
   @ApiOperation({ summary: 'Crear expediente vía API Gateway' })
   @Post()
-  create(
+  async create(
     @Headers('authorization') authorization: string | undefined,
     @Headers(REQUEST_ID_HEADER) requestId: string | undefined,
     @Body() body: unknown,
   ) {
+    const contexto = await this.validateAuthorization(authorization);
+    const scopedBody = this.buildWorkspaceScopedExpedienteBody(body, contexto);
+
     return this.proxy({
       method: 'POST',
       path: '/expedientes',
       authorization,
       requestId,
-      body,
+      body: scopedBody,
     });
   }
 
 
   @ApiOperation({ summary: 'Buscar expedientes vía API Gateway' })
   @Get('buscar')
-  buscarExpedientes(
+  async buscarExpedientes(
     @Headers('authorization') authorization: string | undefined,
     @Headers(REQUEST_ID_HEADER) requestId: string | undefined,
     @Query() query: Record<string, string>,
   ) {
+    const contexto = await this.validateAuthorization(authorization);
+    const scopedQuery = this.buildWorkspaceScopedQuery(query, contexto);
+
     return this.proxy({
       method: 'GET',
       path: '/expedientes/buscar',
       authorization,
       requestId,
-      query,
+      query: scopedQuery,
     });
   }
 
   @ApiOperation({ summary: 'Buscar expediente por código vía API Gateway' })
   @Get('buscar-por-codigo')
-  findByCodigoExpediente(
+  async findByCodigoExpediente(
     @Headers('authorization') authorization: string | undefined,
     @Headers(REQUEST_ID_HEADER) requestId: string | undefined,
     @Query() query: Record<string, string>,
   ) {
+    const contexto = await this.validateAuthorization(authorization);
+    const scopedQuery = this.buildWorkspaceScopedQuery(query, contexto);
+
     return this.proxy({
       method: 'GET',
       path: '/expedientes/buscar-por-codigo',
       authorization,
       requestId,
-      query,
+      query: scopedQuery,
     });
   }
 

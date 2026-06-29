@@ -293,7 +293,7 @@ export class ExpedientesRepository {
   }
 
 
-  async buscarExpedientes(filters: { q: string; limit?: number }) {
+  async buscarExpedientes(filters: { q: string; empresa?: string; limit?: number }) {
     const q = filters.q.trim();
     const like = `%${q}%`;
     const normalizedDoc = q.replace(/\s+/g, '').replace(/-/g, '').toUpperCase();
@@ -379,6 +379,7 @@ export class ExpedientesRepository {
         LIMIT 1
       ) principal ON true
       WHERE e.estado <> 'eliminado'
+        AND (${filters.empresa ?? null}::text IS NULL OR e.empresa_codigo = ${filters.empresa ?? null})
         AND (
           e.codigo_expediente ILIKE ${like}
           OR e.descripcion ILIKE ${like}
@@ -420,11 +421,12 @@ export class ExpedientesRepository {
     }));
   }
 
-  async findByCodigoExpediente(codigo: string) {
+  async findByCodigoExpediente(codigo: string, empresa?: string) {
     const rows = await sql`
       SELECT *
       FROM documentos.expedientes
       WHERE codigo_expediente = ${codigo}
+        AND (${empresa ?? null}::text IS NULL OR empresa_codigo = ${empresa ?? null})
       LIMIT 1
     `;
 

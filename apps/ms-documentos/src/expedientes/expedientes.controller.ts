@@ -34,16 +34,21 @@ export class ExpedientesController {
   buscarExpedientes(
     @Query('q') q?: string,
     @Query('limit') limit?: string,
+    @Query('empresa') empresa?: string,
   ) {
     return this.service.buscarExpedientes({
       q,
+      empresa,
       limit: limit ? Number(limit) : 10,
     });
   }
 
   @Get('buscar-por-codigo')
-  findByCodigoExpediente(@Query('codigo') codigo: string) {
-    return this.service.findByCodigoExpediente(codigo);
+  findByCodigoExpediente(
+    @Query('codigo') codigo: string,
+    @Query('empresa') empresa?: string,
+  ) {
+    return this.service.findByCodigoExpediente(codigo, empresa);
   }
 
   @Get(':id/resumen')
