@@ -92,6 +92,10 @@ function normalizeEmpresa(value: string | null | undefined) {
   return (value ?? "").trim().toUpperCase();
 }
 
+function empresaLabel(value: string) {
+  return EMPRESAS.find((item) => item.value === value)?.label ?? value;
+}
+
 function pick<T>(...values: T[]) {
   return values.find(
     (value) => value !== null && value !== undefined && value !== "",
@@ -373,13 +377,12 @@ function buildSearchText(item: RevisionContableItem) {
 
 export default function RevisionContablePage() {
   const contexto = getContexto();
+  const workspaceEmpresa = normalizeEmpresa(contexto?.empresa) || "BBTI";
   const yearOptions = useMemo(() => buildYearOptions(), []);
   const today = new Date();
   const initialYear = String(Math.max(today.getFullYear(), 2026));
 
-  const [empresa, setEmpresa] = useState(
-    () => normalizeEmpresa(getBrowserQueryParam("empresa")) || contexto?.empresa || "BBTI",
-  );
+  const [empresa, setEmpresa] = useState(() => workspaceEmpresa);
   const [anio, setAnio] = useState(() => getBrowserQueryParam("anio") ?? initialYear);
   const [mes, setMes] = useState(
     () => getBrowserQueryParam("mes") ?? String(today.getMonth() + 1),
@@ -395,8 +398,12 @@ export default function RevisionContablePage() {
     const anioUrl = getBrowserQueryParam("anio");
     const mesUrl = getBrowserQueryParam("mes");
 
-    if (empresaUrl) setEmpresa(normalizeEmpresa(empresaUrl));
-    else if (contexto?.empresa) setEmpresa(contexto.empresa);
+    setEmpresa(workspaceEmpresa);
+    if (empresaUrl && normalizeEmpresa(empresaUrl) !== workspaceEmpresa) {
+      const url = new URL(window.location.href);
+      url.searchParams.set("empresa", workspaceEmpresa);
+      window.history.replaceState(null, "", url.toString());
+    }
 
     if (anioUrl) setAnio(anioUrl);
     if (mesUrl) setMes(mesUrl);
@@ -521,18 +528,12 @@ export default function RevisionContablePage() {
               <span className="text-xs font-medium text-muted-foreground">
                 Empresa
               </span>
-              <Select value={empresa} onValueChange={setEmpresa}>
-                <SelectTrigger className="h-9 w-full">
-                  <SelectValue placeholder="Selecciona empresa" />
-                </SelectTrigger>
-                <SelectContent>
-                  {EMPRESAS.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <div
+                className="flex h-9 items-center rounded-lg border border-dashed border-input bg-muted/40 px-3 text-sm font-medium text-foreground"
+                title="Empresa definida por el workspace activo"
+              >
+                {empresaLabel(empresa)}
+              </div>
             </div>
 
             <div className="grid grid-cols-[42px_minmax(0,1fr)] items-center gap-2">

@@ -17,6 +17,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useExpedientes } from "@/hooks/useExpedientes";
+import { getContexto } from "@/lib/auth-storage";
 import { buscarExpedientes } from "@/services/expedientes";
 import type { Expediente, ExpedienteDocumento } from "@/types/expediente";
 
@@ -28,6 +29,20 @@ type ExpedientesApiResponse = {
 };
 
 const PAGE_SIZE = 8;
+
+const EMPRESA_LABELS: Record<string, string> = {
+  BBTI: "BBTI - BBTI S.A.C.",
+  BBTEC: "BBTEC - BB TECNOLOGÍA INDUSTRIAL S.A.C.",
+  CIMA: "CIMA - CIMA ENERGY",
+  HUANCA: "HUANCA - HUANCA",
+  TARMA: "TARMA - TARMA",
+  KIMBIRI: "KIMBIRI - KIMBIRI",
+};
+
+function empresaLabel(value: string) {
+  return EMPRESA_LABELS[value] ?? value;
+}
+
 
 function normalizeExpedientes(input: unknown): Expediente[] {
   if (Array.isArray(input)) return input as Expediente[];
@@ -336,6 +351,7 @@ function PaginationControls({
 }
 
 export function AlmacenBandeja() {
+  const [workspaceEmpresa, setWorkspaceEmpresa] = useState("BBTI");
   const [empresa, setEmpresa] = useState("BBTI");
   const [estado, setEstado] = useState("abierto");
   const [search, setSearch] = useState("");
@@ -344,6 +360,13 @@ export function AlmacenBandeja() {
   const [searchMode, setSearchMode] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const contexto = getContexto();
+    const empresaContexto = contexto?.empresa?.trim() || "BBTI";
+    setWorkspaceEmpresa(empresaContexto);
+    setEmpresa(empresaContexto);
+  }, []);
 
   const { data, isLoading, error } = useExpedientes({
     empresa,
@@ -357,7 +380,8 @@ export function AlmacenBandeja() {
   const rows = useMemo(() => {
     const value = search.trim().toLowerCase();
     const sourceRows = searchMode ? remoteRows : expedientes;
-    const withPrincipal = sourceRows.filter((expediente) => Boolean(getPrincipal(expediente)));
+    const scopedRows = sourceRows.filter((expediente) => getEmpresa(expediente) === empresa);
+    const withPrincipal = scopedRows.filter((expediente) => Boolean(getPrincipal(expediente)));
 
     if (searchMode) return withPrincipal;
     if (!value) return withPrincipal;
@@ -377,7 +401,7 @@ export function AlmacenBandeja() {
         .toLowerCase()
         .includes(value),
     );
-  }, [expedientes, remoteRows, search, searchMode]);
+  }, [empresa, expedientes, remoteRows, search, searchMode]);
 
   async function ejecutarBusqueda() {
     const value = search.trim();
@@ -471,19 +495,12 @@ export function AlmacenBandeja() {
               void ejecutarBusqueda();
             }}
           >
-            <select
-              className="h-8 rounded-lg border border-input bg-background px-2 text-sm"
-              value={empresa}
-              onChange={(event) => setEmpresa(event.target.value)}
-              disabled={searchMode}
+            <div
+              className="flex h-8 items-center rounded-lg border border-dashed border-input bg-muted/40 px-3 text-sm font-medium text-foreground"
+              title="Empresa definida por el workspace activo"
             >
-              <option value="BBTI">BBTI</option>
-              <option value="BBTEC">BBTEC</option>
-              <option value="CIMA">CIMA</option>
-              <option value="HUANCA">HUANCA</option>
-              <option value="TARMA">TARMA</option>
-              <option value="KIMBIRI">KIMBIRI</option>
-            </select>
+              {empresaLabel(workspaceEmpresa)}
+            </div>
 
             <select
               className="h-8 rounded-lg border border-input bg-background px-2 text-sm"
@@ -520,7 +537,7 @@ export function AlmacenBandeja() {
 
           {searchMode ? (
             <p className="text-xs text-muted-foreground">
-              Búsqueda global activa: {rows.length} expediente(s) con principal. Los filtros de empresa y estado se aplican solo al listado normal.
+              Búsqueda global activa: {rows.length} expediente(s) con principal. La búsqueda se mantiene limitada a la empresa del workspace activo.
             </p>
           ) : null}
           {searchError ? <p className="text-xs text-red-600">{searchError}</p> : null}
