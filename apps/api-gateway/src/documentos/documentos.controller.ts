@@ -273,6 +273,36 @@ export class DocumentosGatewayController {
     return this.assertEmpresaPermitida(payload, scope.empresa, `resultado OCR ${ocrResultadoId}`);
   }
 
+
+
+  private getActionsFromContext(payload: any): string[] {
+    const actions = payload?.permisos?.actions;
+
+    if (!Array.isArray(actions)) {
+      return [];
+    }
+
+    return actions
+      .filter((action) => typeof action === 'string')
+      .map((action) => action.trim())
+      .filter(Boolean);
+  }
+
+  private assertAnyActionPermitida(
+    payload: any,
+    actionsPermitidas: string[],
+    label: string,
+  ) {
+    const actions = this.getActionsFromContext(payload);
+    const tienePermiso = actionsPermitidas.some((action) => actions.includes(action));
+
+    if (!tienePermiso) {
+      throw new ForbiddenException(
+        `No tienes permiso para ${label}. Acción requerida: ${actionsPermitidas.join(' o ')}`,
+      );
+    }
+  }
+
   private getBaseUrl() {
     return (
       this.config.get<string>('MS_DOCUMENTOS_URL') ??
@@ -378,6 +408,7 @@ export class DocumentosGatewayController {
     @Body() body: Record<string, any>,
   ) {
     const contexto = await this.validateAuthorization(authorization);
+    this.assertAnyActionPermitida(contexto, ['documentos.subir'], 'subir documentos');
     const empresaContexto = this.getEmpresaFromContext(contexto);
 
     if (!empresaContexto) {
@@ -443,6 +474,7 @@ export class DocumentosGatewayController {
     @Body() body: unknown,
   ) {
     const contexto = await this.validateAuthorization(authorization);
+    this.assertAnyActionPermitida(contexto, ['documentos.validar', 'ocr.procesar'], 'procesar OCR');
     await this.assertArchivoPermitido(archivoId, contexto, requestId);
 
     return this.proxy({
@@ -463,6 +495,7 @@ export class DocumentosGatewayController {
     @Body() body: unknown,
   ) {
     const contexto = await this.validateAuthorization(authorization);
+    this.assertAnyActionPermitida(contexto, ['documentos.editar_ocr'], 'editar resultados OCR');
     await this.assertOcrPermitido(id, contexto, requestId);
 
     return this.proxy({
@@ -482,6 +515,7 @@ export class DocumentosGatewayController {
     @Body() body: unknown,
   ) {
     const contexto = await this.validateAuthorization(authorization);
+    this.assertAnyActionPermitida(contexto, ['documentos.editar_ocr'], 'editar resultados OCR');
     await this.assertOcrPermitido(id, contexto, requestId);
 
     return this.proxy({
@@ -502,6 +536,7 @@ export class DocumentosGatewayController {
     @Body() body: unknown,
   ) {
     const contexto = await this.validateAuthorization(authorization);
+    this.assertAnyActionPermitida(contexto, ['documentos.confirmar_ocr', 'ocr.confirmar'], 'confirmar resultados OCR');
     await this.assertOcrPermitido(id, contexto, requestId);
 
     return this.proxy({
@@ -522,6 +557,8 @@ export class DocumentosGatewayController {
     @Body() body: unknown,
   ) {
     const contexto = await this.validateAuthorization(authorization);
+    this.assertAnyActionPermitida(contexto, ['documentos.confirmar_ocr', 'ocr.confirmar'], 'confirmar resultados OCR');
+    this.assertAnyActionPermitida(contexto, ['documentos.vincular_expediente'], 'vincular documentos a expedientes');
     await this.assertOcrPermitido(id, contexto, requestId);
     await this.assertExpedientePermitido((body as any)?.expedienteId, contexto, requestId);
 
@@ -543,6 +580,7 @@ export class DocumentosGatewayController {
     @Body() body: unknown,
   ) {
     const contexto = await this.validateAuthorization(authorization);
+    this.assertAnyActionPermitida(contexto, ['documentos.rechazar_ocr', 'ocr.rechazar'], 'rechazar resultados OCR');
     await this.assertOcrPermitido(id, contexto, requestId);
 
     return this.proxy({
@@ -658,6 +696,7 @@ export class DocumentosGatewayController {
     @Body() body: unknown,
   ) {
     const contexto = await this.validateAuthorization(authorization);
+    this.assertAnyActionPermitida(contexto, ['documentos.vincular_expediente'], 'crear expedientes desde OCR');
     await this.assertOcrPermitido(id, contexto, requestId);
     const scopedBody = this.buildWorkspaceScopedOcrExpedienteBody(body, contexto);
 
@@ -679,6 +718,7 @@ export class DocumentosGatewayController {
     @Body() body: unknown,
   ) {
     const contexto = await this.validateAuthorization(authorization);
+    this.assertAnyActionPermitida(contexto, ['documentos.validar', 'documentos.vincular_expediente'], 'sugerir expedientes');
     await this.assertOcrPermitido(id, contexto, requestId);
 
     return this.proxy({
@@ -699,6 +739,7 @@ export class DocumentosGatewayController {
     @Body() body: unknown,
   ) {
     const contexto = await this.validateAuthorization(authorization);
+    this.assertAnyActionPermitida(contexto, ['documentos.vincular_expediente'], 'vincular documentos a expedientes');
     await this.assertOcrPermitido(id, contexto, requestId);
     await this.assertExpedientePermitido((body as any)?.expedienteId, contexto, requestId);
 
@@ -742,6 +783,7 @@ export class DocumentosGatewayController {
     @Body() body: unknown,
   ) {
     const contexto = await this.validateAuthorization(authorization);
+    this.assertAnyActionPermitida(contexto, ['documentos.vincular_expediente'], 'agregar versiones de archivo');
     await this.assertDocumentoPermitido(documentoId, contexto, requestId);
     await this.assertArchivoPermitido(archivoId, contexto, requestId);
 
@@ -761,6 +803,7 @@ export class DocumentosGatewayController {
     @Body() body: unknown,
   ) {
     const contexto = await this.validateAuthorization(authorization);
+    this.assertAnyActionPermitida(contexto, ['documentos.vincular_expediente'], 'crear relaciones documentales');
     const relacion = body as any;
 
     await this.assertDocumentoPermitido(relacion?.documentoOrigenId, contexto, requestId);
@@ -802,6 +845,7 @@ export class DocumentosGatewayController {
     @Body() body: unknown,
   ) {
     const contexto = await this.validateAuthorization(authorization);
+    this.assertAnyActionPermitida(contexto, ['alertas.crear'], 'crear alertas');
     await this.assertDocumentoPermitido(id, contexto, requestId);
 
     return this.proxy({
@@ -841,6 +885,7 @@ export class DocumentosGatewayController {
     @Body() body: unknown,
   ) {
     const contexto = await this.validateAuthorization(authorization);
+    this.assertAnyActionPermitida(contexto, ['alertas.resolver'], 'resolver alertas');
     await this.assertDocumentoPermitido(documentoId, contexto, requestId);
 
     return this.proxy({
@@ -878,6 +923,7 @@ export class DocumentosGatewayController {
     @Body() body: unknown,
   ) {
     const contexto = await this.validateAuthorization(authorization);
+    this.assertAnyActionPermitida(contexto, ['documentos.validar', 'documentos.editar'], 'editar documentos');
     await this.assertDocumentoPermitido(id, contexto, requestId);
 
     return this.proxy({
