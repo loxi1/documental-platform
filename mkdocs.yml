@@ -1,0 +1,96 @@
+site_name: Documental Platform
+site_description: Engineering Handbook de Documental Platform
+site_author: Documental Platform Team
+repo_name: documental-platform
+docs_dir: docs
+
+theme:
+  name: material
+  language: es
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - navigation.path
+    - navigation.top
+    - search.highlight
+    - search.share
+    - content.code.copy
+  palette:
+    - scheme: default
+      primary: blue
+      accent: indigo
+
+plugins:
+  - search
+  - mermaid2
+
+markdown_extensions:
+  - admonition
+  - tables
+  - toc:
+      permalink: true
+  - attr_list
+  - md_in_html
+  - pymdownx.details
+  - pymdownx.superfences
+
+nav:
+  - Inicio: README.md
+  - Proyecto:
+      - Visión: project/00-VISION-PROYECTO.md
+      - Roadmap: project/01-ROADMAP.md
+      - Arquitectura General: project/02-ARQUITECTURA-GENERAL.md
+      - Reglas de Negocio: project/03-REGLAS-DE-NEGOCIO.md
+  - Plataforma:
+      - Plataforma: 01-plataforma/README.md
+      - Qué es: 01-plataforma/01-que-es-documental-platform.md
+      - Capacidades Compartidas: 01-plataforma/02-capacidades-compartidas.md
+      - Sistemas Consumidores: 01-plataforma/03-sistemas-consumidores.md
+      - Alcance: 01-plataforma/04-alcance.md
+  - Arquitectura:
+      - Índice: architecture/README.md
+      - C1 Contexto: architecture/C1-System-Context.md
+      - C2 Containers: architecture/C2-Containers.md
+      - Workspace: architecture/C3-Workspace.md
+      - Motor Documental: architecture/C3-Motor-Documental.md
+      - UI Foundation: architecture/C3-UI-Foundation.md
+      - Deployment AWS: architecture/Deployment-AWS.md
+  - ADR:
+      - Índice: 11-adr/README.md
+      - Workspace: 11-adr/ADR-001-workspace.md
+      - Documento Lógico: 11-adr/ADR-002-documento-logico.md
+      - Versionado: 11-adr/ADR-003-versionado.md
+      - Factura Periodo: 11-adr/ADR-004-factura-periodo.md
+      - Baseline y Migraciones: 11-adr/ADR-007-estrategia-baseline-migraciones.md
+  - Backend:
+      - Índice: 04-backend/README.md
+      - API Guidelines: 04-backend/01-api-guidelines.md
+      - Document Engine: 04-backend/02-document-engine.md
+      - Versionado: 04-backend/03-versionado.md
+      - Clave Documental: 04-backend/04-clave-documental.md
+      - OCR: 04-backend/05-ocr.md
+  - Dominio:
+      - Índice: 17-domain/README.md
+      - Documentos: 17-domain/documentos.md
+      - Expedientes: 17-domain/expedientes.md
+      - Facturas: 17-domain/facturas.md
+      - Revisión Contable: 17-domain/revision-contable.md
+      - Versionado: 17-domain/versionado.md
+  - API:
+      - Índice: 16-api/README.md
+      - Auth: 16-api/auth.md
+      - Documentos: 16-api/documentos.md
+      - OCR: 16-api/ocr.md
+      - Revisión Contable: 16-api/revision-contable.md
+  - Operaciones:
+      - Runbooks: 18-runbooks/README.md
+      - Operations Manual: 29-operations-manual/README.md
+      - Developer Onboarding: 30-developer-onboarding/README.md
+  - Standards:
+      - Índice: 21-standards/README.md
+      - Backend: 21-standards/01-backend.md
+      - Frontend: 21-standards/02-frontend.md
+      - Database: 21-standards/03-database.md
+      - API REST: 21-standards/04-api-rest.md
+      - Code Review: 21-standards/10-code-review.md
