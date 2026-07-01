@@ -1,15 +1,29 @@
-**Estado:** Base inicial  
-**Responsable:** Product Owner / Sucesor I
+# Alertas y Auditoría
 
----
-# Alertas
+## Alertas
 
-## Concepto
+Las alertas contables son manuales. No deben generarse automáticamente en este sprint.
 
-Las alertas permiten comunicar pendientes o inconsistencias del expediente.
+Ejemplos:
+
+- Falta guía.
+- Factura observada.
+- Pago pendiente.
+- Detracción pendiente.
+- Monto inconsistente.
+
+## Auditoría
+
+Debe registrarse en metadata o tablas especializadas según el caso.
+
+Eventos relevantes:
+
+- Documento confirmado.
+- Documento editado manualmente.
+- Documento agregado como versión.
+- Documento desvinculado de expediente.
+- Observación contable agregada.
 
 ## Regla
 
-Son manuales en el MVP.
-
-No se deben crear alertas automáticas sin regla aprobada.
+No perder trazabilidad aunque el usuario se equivoque.

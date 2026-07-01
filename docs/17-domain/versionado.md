@@ -1,20 +1,25 @@
-**Estado:** Base inicial  
-**Responsable:** Product Owner / Sucesor I
+# Versionado
 
----
-# Versionado Documental
+## Qué representa
 
-## Regla
+Capacidad de conservar múltiples archivos para un mismo documento lógico.
 
-Nunca sobrescribir archivos.
+## Reglas
 
-Cada nueva evidencia física genera una versión asociada al mismo documento lógico.
+- No sobrescribir archivo físico.
+- Mantener historial.
+- Solo una versión actual.
+- Permitir agregar versión por duplicado.
 
-## Tipos sugeridos
+## Casos
 
-- original
-- firmado
-- escaneado
-- reemplazo
-- sustento
-- otro
+- Guía cargada en Compras y luego escaneada en Almacén.
+- Factura reemplazada por versión legible.
+- Pago subido nuevamente con mejor calidad.
+
+## Acciones
+
+- Ver actual.
+- Ver historial.
+- Agregar versión.
+- Marcar versión actual.

@@ -1,23 +1,40 @@
-**Estado:** Base inicial  
-**Responsable:** Product Owner / Sucesor I
-
----
 # Expedientes
 
-## Concepto
+## Qué representa
 
-El expediente agrupa documentos relacionados a una operación.
+Un expediente agrupa documentos de negocio relacionados con una operación, proyecto, centro de costo u orden.
 
-## Contenido esperado
+## Tabla principal
 
-- Documento principal.
+`documentos.expedientes`
+
+## Reglas
+
+- Un expediente puede existir sin factura.
+- Compras, Almacén y Finanzas pueden trabajar con expedientes incompletos.
+- Revisión Contable solo lista expedientes con factura confirmada para el período seleccionado.
+- El expediente no define el período contable; lo define la factura.
+
+## Relación documental
+
+Los documentos se vinculan por `documentos.expediente_documentos`.
+
+## Caso real
+
+Expediente:
+
+```text
+id = 41
+empresa_codigo = BBTI
+codigo_expediente = 050201
+descripcion = PRODUCCION C X DISTRIBUIR
+```
+
+Documentos vinculados:
+
+- OC principal.
 - Factura.
 - Guía.
 - Nota de ingreso.
 - Transferencia.
 - Detracción.
-- Alertas y observaciones.
-
-## Regla
-
-Revisión Contable trabaja por expediente completo.

@@ -1,44 +1,12 @@
 # Docker
 
-**Estado:** Base aprobada  
-**Responsable:** Viejo Maestro  
-
----
-
-## Objetivo
-
-Ejecutar aplicaciones y servicios internos en contenedores.
-
----
-
-## Servicios esperados
-
+Contenedores:
 - web-admin
 - api-gateway
 - ms-auth
 - ms-documentos
+- OCR Worker
 - NATS
 - Traefik
-- otros workers internos
 
----
-
-## No contenerizar
-
-PostgreSQL no vive en Docker en producción.
-
-La base oficial vive en AWS RDS.
-
----
-
-## Regla
-
-Docker debe ser reproducible y no contener datos críticos persistentes fuera de volúmenes controlados.
-
----
-
-## Ver también
-
-- `01-despliegue.md`
-- `03-traefik.md`
-- `../21-standards/03-database.md`
+Las dependencias OCR (Tesseract, Poppler, Ghostscript, LibreOffice, ImageMagick, etc.) deben ir preferentemente dentro de la imagen del OCR Worker; si la estrategia cambia, deberá documentarse.

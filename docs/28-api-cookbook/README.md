@@ -1,5 +1,5 @@
-# API Cookbook
+# 28-api-cookbook — Ejemplos de API
 
-Ejemplos prácticos de consumo de APIs.
+Ejemplos prácticos para nuevos desarrolladores.
 
-Cada receta incluye objetivo, request, response, errores y permisos.
+Incluye Auth, Workspace, Expedientes, Documentos, OCR, Preview, Confirmar y Versionado.

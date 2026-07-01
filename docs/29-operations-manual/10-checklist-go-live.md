@@ -1,9 +1,12 @@
-# Go Live Checklist
+# Checklist Go Live
 
+- Backup y Restore validados
+- Snapshot previo
 - Migraciones aplicadas
-- Variables configuradas
-- Backups verificados
-- OCR operativo
-- Workspace validado
-- Auditoría habilitada
-- Monitoreo activo
+- HTTPS OK
+- R2 privado
+- Variables completas
+- Health Checks
+- OCR validado
+- Logging
+- Monitoreo

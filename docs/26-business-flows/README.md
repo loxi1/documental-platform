@@ -1,13 +1,3 @@
-# Business Flows
+# 26-business-flows — Flujos de Negocio
 
-Documenta los flujos oficiales del negocio.
-
-Todo flujo funcional debe describir:
-
-- Objetivo
-- Actores
-- Entradas
-- Salidas
-- Reglas
-- Diagrama Mermaid
-- Excepciones
+Documenta los flujos aprobados del Motor Documental.

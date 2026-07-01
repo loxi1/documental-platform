@@ -1,13 +1,45 @@
-**Estado:** Base inicial  
-**Responsable:** Product Owner / Sucesor I
-
----
 # Revisión Contable
 
-## Concepto
+## Qué representa
 
-Vista de control final del expediente completo.
+Pantalla donde Contabilidad revisa la integridad documental antes del cierre.
 
-## Regla
+## Regla actualizada
 
-Contabilidad no carga ni edita OCR. Revisa completitud, observa, alerta y confirma estado documental.
+Revisión Contable trabaja por:
+
+```text
+Empresa
+↓
+Año + Mes
+↓
+Facturas confirmadas del período
+↓
+Expedientes asociados
+↓
+Matriz documental
+```
+
+## Factura ancla
+
+La factura define el período contable mediante `fecha_emision`.
+
+## No aparecen
+
+Expedientes sin factura confirmada no participan en Revisión Contable.
+
+## Acciones permitidas
+
+- Ver documento.
+- Ver versiones.
+- Agregar observación.
+- Generar alerta manual.
+- Confirmar documentación completa.
+- Marcar pendiente de regularización.
+
+## No permitido
+
+- Subir documentos.
+- Editar OCR.
+- Confirmar OCR.
+- Reemplazar archivos.
