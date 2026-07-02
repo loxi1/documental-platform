@@ -1,0 +1,122 @@
+services:
+  traefik:
+    image: traefik:v3.1
+    container_name: dp_traefik
+    restart: unless-stopped
+    command:
+      - "--configFile=/etc/traefik/traefik.yml"
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ../traefik/traefik.yml:/etc/traefik/traefik.yml:ro
+      - ../traefik/dynamic.yml:/etc/traefik/dynamic.yml:ro
+      - traefik_letsencrypt:/letsencrypt
+    networks:
+      - dp_net
+
+  nats:
+    image: nats:2.10
+    container_name: dp_nats
+    restart: unless-stopped
+    command: ["-js", "-m", "8222"]
+    expose:
+      - "4222"
+      - "8222"
+    networks:
+      - dp_net
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8222/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+
+  api-gateway:
+    build:
+      context: ../..
+      dockerfile: deployment/docker/Dockerfile.nest
+      args:
+        APP_PATH: apps/api-gateway
+    container_name: dp_api_gateway
+    restart: unless-stopped
+    env_file:
+      - ../env/.env.production
+    environment:
+      PORT: ${GATEWAY_PORT:-3000}
+      SERVICE_NAME: api-gateway
+    expose:
+      - "3000"
+    depends_on:
+      - nats
+    networks:
+      - dp_net
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.dp-api.rule=Host(`${TRAEFIK_API_DOMAIN}`)"
+      - "traefik.http.routers.dp-api.entrypoints=websecure"
+      - "traefik.http.routers.dp-api.tls.certresolver=letsencrypt"
+      - "traefik.http.services.dp-api.loadbalancer.server.port=3000"
+
+  ms-auth:
+    build:
+      context: ../..
+      dockerfile: deployment/docker/Dockerfile.nest
+      args:
+        APP_PATH: apps/ms-auth
+    container_name: dp_ms_auth
+    restart: unless-stopped
+    env_file:
+      - ../env/.env.production
+    environment:
+      PORT: ${AUTH_PORT:-3001}
+      SERVICE_NAME: ms-auth
+    expose:
+      - "3001"
+    depends_on:
+      - nats
+    networks:
+      - dp_net
+
+  ms-documentos:
+    build:
+      context: ../..
+      dockerfile: deployment/docker/Dockerfile.nest
+      args:
+        APP_PATH: apps/ms-documentos
+    container_name: dp_ms_documentos
+    restart: unless-stopped
+    env_file:
+      - ../env/.env.production
+    environment:
+      PORT: ${DOCUMENTOS_PORT:-3002}
+      SERVICE_NAME: ms-documentos
+    expose:
+      - "3002"
+    depends_on:
+      - nats
+    networks:
+      - dp_net
+
+  ocr-worker:
+    build:
+      context: ../..
+      dockerfile: deployment/docker/Dockerfile.ocr-worker
+    container_name: dp_ocr_worker
+    restart: unless-stopped
+    env_file:
+      - ../env/.env.production
+    depends_on:
+      - nats
+    networks:
+      - dp_net
+    volumes:
+      - ocr_tmp:/tmp/documental-ocr
+
+networks:
+  dp_net:
+    name: dp_net
+
+volumes:
+  traefik_letsencrypt:
+  ocr_tmp:

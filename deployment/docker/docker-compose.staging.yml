@@ -1,0 +1,2 @@
+# Staging puede usar la misma estructura que producción.
+# Copiar desde docker-compose.production.yml y cambiar env_file a .env.staging si se requiere.
