@@ -63,8 +63,10 @@ services:
     restart: unless-stopped
     env_file:
       - ../env/.env.production
+    environment:
+      PORT: 3005
     expose:
-      - "3000"
+      - "3005"
     depends_on:
       - api-gateway
     networks:
@@ -74,7 +76,7 @@ services:
       - "traefik.http.routers.dp-web.rule=Host(`${TRAEFIK_DOMAIN}`)"
       - "traefik.http.routers.dp-web.entrypoints=websecure"
       - "traefik.http.routers.dp-web.tls.certresolver=letsencrypt"
-      - "traefik.http.services.dp-web.loadbalancer.server.port=3000"
+      - "traefik.http.services.dp-web.loadbalancer.server.port=3005"
 
   ms-auth:
     build:
