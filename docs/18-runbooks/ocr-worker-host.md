@@ -1,12 +1,12 @@
 # OCR Worker en Host
 
-## Decisión
+## Decisión oficial
 
-En producción, el OCR Worker se instala en el sistema operativo de la EC2 como servicio Python.
+El OCR Worker corre nativamente en Ubuntu con Python venv + systemd.
 
-No corre como contenedor Docker.
+No se usa Docker para OCR en producción.
 
-## Instalación
+## Instalar
 
 ```bash
 bash deployment/scripts/install-ocr-host.sh
@@ -25,6 +25,16 @@ sudo systemctl status documental-ocr-worker
 sudo journalctl -u documental-ocr-worker -f
 ```
 
-## Regla
+## NATS
 
-NATS corre en Docker, pero expone `127.0.0.1:4222` para que el OCR Worker en host pueda conectarse.
+NATS corre en Docker pero expone localhost:
+
+```text
+127.0.0.1:4222
+```
+
+El OCR usa:
+
+```text
+OCR_NATS_URL=nats://localhost:4222
+```
