@@ -1,0 +1,29 @@
+# CODEOWNERS
+
+/docs/03-producto/ @product-architect
+/docs/05-frontend/ @product-architect
+/docs/24-product-architecture/ @product-architect
+/docs/25-design-tokens/ @product-architect
+/docs/42-component-catalog/ @product-architect
+
+/docs/04-backend/ @domain-architect
+/docs/16-api/ @domain-architect
+/docs/17-domain/ @domain-architect
+/docs/26-business-flows/ @domain-architect
+/docs/27-data-dictionary/ @domain-architect
+/docs/28-api-cookbook/ @domain-architect
+/docs/motor-documental/ @domain-architect
+
+/docs/06-database/ @chief-architect
+/docs/07-infraestructura/ @chief-architect
+/docs/08-seguridad/ @chief-architect
+/docs/18-runbooks/ @chief-architect
+/docs/29-operations-manual/ @chief-architect
+/docs/43-service-catalog/ @chief-architect
+
+/docs/11-adr/ @architecture-board
+/docs/31-governance/ @knowledge-manager
+/docs/32-review-packages/ @knowledge-manager
+/mkdocs.yml @knowledge-manager
+/HANDBOOK-CHARTER.md @knowledge-manager
+/GOVERNANCE.md @knowledge-manager
