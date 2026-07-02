@@ -1,8 +1,8 @@
-site_name: Documental Platform
-site_description: Engineering Handbook de Documental Platform
+site_name: Documental Platform Engineering Handbook
+site_description: Engineering Knowledge Base de Documental Platform
 site_author: Documental Platform Team
-repo_name: documental-platform
 docs_dir: docs
+site_dir: site
 
 theme:
   name: material
@@ -16,10 +16,20 @@ theme:
     - search.highlight
     - search.share
     - content.code.copy
+    - content.tabs.link
   palette:
     - scheme: default
       primary: blue
       accent: indigo
+      toggle:
+        icon: material/weather-night
+        name: Cambiar a modo oscuro
+    - scheme: slate
+      primary: blue
+      accent: indigo
+      toggle:
+        icon: material/weather-sunny
+        name: Cambiar a modo claro
 
 plugins:
   - search
@@ -34,35 +44,54 @@ markdown_extensions:
   - md_in_html
   - pymdownx.details
   - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+
+extra_css:
+  - stylesheets/extra.css
 
 nav:
   - Inicio: README.md
-  - Proyecto:
-      - Visión: project/00-VISION-PROYECTO.md
-      - Roadmap: project/01-ROADMAP.md
-      - Arquitectura General: project/02-ARQUITECTURA-GENERAL.md
-      - Reglas de Negocio: project/03-REGLAS-DE-NEGOCIO.md
+
   - Plataforma:
-      - Plataforma: 01-plataforma/README.md
-      - Qué es: 01-plataforma/01-que-es-documental-platform.md
+      - Qué es Documental Platform: 01-plataforma/01-que-es-documental-platform.md
       - Capacidades Compartidas: 01-plataforma/02-capacidades-compartidas.md
       - Sistemas Consumidores: 01-plataforma/03-sistemas-consumidores.md
       - Alcance: 01-plataforma/04-alcance.md
+
   - Arquitectura:
-      - Índice: architecture/README.md
-      - C1 Contexto: architecture/C1-System-Context.md
+      - General: 02-arquitectura/01-arquitectura-general.md
+      - Capacidades Compartidas: 02-arquitectura/02-capacidades-compartidas.md
+      - Workspace: 02-arquitectura/03-workspace.md
+      - Motor Documental: 02-arquitectura/04-motor-documental.md
+      - UI Foundation: 02-arquitectura/05-ui-foundation.md
+      - Auditoría: 02-arquitectura/06-auditoria.md
+      - C1 Context: architecture/C1-System-Context.md
       - C2 Containers: architecture/C2-Containers.md
-      - Workspace: architecture/C3-Workspace.md
-      - Motor Documental: architecture/C3-Motor-Documental.md
-      - UI Foundation: architecture/C3-UI-Foundation.md
       - Deployment AWS: architecture/Deployment-AWS.md
-  - ADR:
-      - Índice: 11-adr/README.md
-      - Workspace: 11-adr/ADR-001-workspace.md
-      - Documento Lógico: 11-adr/ADR-002-documento-logico.md
-      - Versionado: 11-adr/ADR-003-versionado.md
-      - Factura Periodo: 11-adr/ADR-004-factura-periodo.md
-      - Baseline y Migraciones: 11-adr/ADR-007-estrategia-baseline-migraciones.md
+
+  - Producto:
+      - Product Guidelines: 03-producto/01-product-guidelines.md
+      - UI Foundation: 03-producto/02-ui-foundation.md
+      - Layouts: 03-producto/03-layouts.md
+      - Patrones: 03-producto/04-patrones.md
+      - Módulos: 03-producto/05-modulos.md
+      - Componentes Reutilizables: 03-producto/06-componentes-reutilizables.md
+      - Component Catalog: 42-component-catalog/README.md
+
+  - Motor Documental:
+      - Índice: motor-documental/README.md
+      - Arquitectura Maestra: motor-documental/Motor-Documental-Architecture.md
+      - Arquitectura: motor-documental/arquitectura.md
+      - Documento Lógico vs Archivo Físico: motor-documental/documento-logico-vs-archivo-fisico.md
+      - Clave Documental: motor-documental/clave-documental.md
+      - OCR: motor-documental/flujo-ocr.md
+      - Confirmación: motor-documental/flujo-confirmacion.md
+      - Versionado: motor-documental/flujo-versionado.md
+      - Duplicados: motor-documental/duplicados.md
+      - Preview: motor-documental/preview.md
+      - Factura Ancla: motor-documental/reglas-contables-factura-ancla.md
+
   - Backend:
       - Índice: 04-backend/README.md
       - API Guidelines: 04-backend/01-api-guidelines.md
@@ -70,27 +99,131 @@ nav:
       - Versionado: 04-backend/03-versionado.md
       - Clave Documental: 04-backend/04-clave-documental.md
       - OCR: 04-backend/05-ocr.md
-  - Dominio:
-      - Índice: 17-domain/README.md
-      - Documentos: 17-domain/documentos.md
-      - Expedientes: 17-domain/expedientes.md
-      - Facturas: 17-domain/facturas.md
-      - Revisión Contable: 17-domain/revision-contable.md
-      - Versionado: 17-domain/versionado.md
+      - Service Catalog: 43-service-catalog/README.md
+
   - API:
       - Índice: 16-api/README.md
       - Auth: 16-api/auth.md
+      - Gateway: 16-api/gateway.md
       - Documentos: 16-api/documentos.md
+      - Carga Guiada: 16-api/carga-guiada.md
       - OCR: 16-api/ocr.md
+      - Procesar OCR: 16-api/procesar-ocr.md
+      - Confirmar con Expediente: 16-api/confirmar-con-expediente.md
+      - Expediente Documentos: 16-api/expediente-documentos.md
+      - Preview URL: 16-api/preview-url.md
+      - Versionado: 16-api/versionado.md
       - Revisión Contable: 16-api/revision-contable.md
-  - Operaciones:
+
+  - Dominio:
+      - Índice: 17-domain/README.md
+      - Workspace: 17-domain/workspace.md
+      - Documentos: 17-domain/documentos.md
+      - Expedientes: 17-domain/expedientes.md
+      - Facturas: 17-domain/facturas.md
+      - Guías: 17-domain/guias.md
+      - Pagos: 17-domain/pagos.md
+      - Detracciones: 17-domain/detracciones.md
+      - OCR: 17-domain/ocr.md
+      - Confirmación Documental: 17-domain/confirmacion-documental.md
+      - Duplicados: 17-domain/duplicados.md
+      - Versionado: 17-domain/versionado.md
+      - Revisión Contable: 17-domain/revision-contable.md
+      - Alertas: 17-domain/alertas.md
+      - Proveedores: 17-domain/proveedores.md
+      - Periodos: 17-domain/periodos.md
+
+  - Business Flows:
+      - Índice: 26-business-flows/README.md
+      - Workspace Login: 26-business-flows/01-workspace-login.md
+      - Carga Documento: 26-business-flows/02-carga-documento.md
+      - OCR: 26-business-flows/03-flujo-ocr.md
+      - Confirmación: 26-business-flows/04-confirmacion-expediente.md
+      - Versionado: 26-business-flows/06-versionado.md
+      - Duplicados: 26-business-flows/07-duplicados.md
+      - Revisión Contable: 26-business-flows/08-revision-contable.md
+      - Alertas: 26-business-flows/09-alertas.md
+      - Preview: 26-business-flows/11-preview.md
+      - Auditoría: 26-business-flows/10-auditoria.md
+
+  - Data Dictionary:
+      - Índice: 27-data-dictionary/README.md
+      - documentos.documentos: 27-data-dictionary/01-documentos.documentos.md
+      - documentos_archivos: 27-data-dictionary/02-documentos.documentos_archivos.md
+      - expedientes: 27-data-dictionary/03-documentos.expedientes.md
+      - expediente_documentos: 27-data-dictionary/04-documentos.expediente_documentos.md
+      - ocr_resultados: 27-data-dictionary/05-documentos.ocr_resultados.md
+      - proveedores: 27-data-dictionary/06-core.proveedores.md
+      - monedas: 27-data-dictionary/07-core.monedas.md
+      - bancos: 27-data-dictionary/08-core.bancos.md
+      - Relaciones: 27-data-dictionary/09-relaciones.md
+
+  - Infraestructura:
+      - Despliegue: 07-infraestructura/01-despliegue.md
+      - Docker: 07-infraestructura/02-docker.md
+      - Traefik: 07-infraestructura/03-traefik.md
+      - Cloudflare: 07-infraestructura/04-cloudflare.md
+      - OCR Worker: 07-infraestructura/05-ocr-worker.md
+      - Deployment AWS Diagram: 15-diagrams/deployment-aws.md
+
+  - Operación:
       - Runbooks: 18-runbooks/README.md
+      - Deploy Producción: 18-runbooks/deploy-produccion.md
+      - Rollback: 18-runbooks/rollback.md
+      - Backup RDS: 18-runbooks/backup-rds.md
+      - Restore RDS: 18-runbooks/restore-rds.md
+      - Rotación Secretos: 18-runbooks/rotacion-secretos.md
       - Operations Manual: 29-operations-manual/README.md
-      - Developer Onboarding: 30-developer-onboarding/README.md
-  - Standards:
-      - Índice: 21-standards/README.md
-      - Backend: 21-standards/01-backend.md
-      - Frontend: 21-standards/02-frontend.md
-      - Database: 21-standards/03-database.md
-      - API REST: 21-standards/04-api-rest.md
-      - Code Review: 21-standards/10-code-review.md
+      - Checklist Deploy: 29-operations-manual/11-deployment-readiness-checklist.md
+
+  - Seguridad:
+      - Workspace: 08-seguridad/01-workspace.md
+      - JWT: 08-seguridad/02-jwt.md
+      - Permisos: 08-seguridad/03-permisos.md
+      - Session Context: 08-seguridad/04-session-context.md
+      - Preview Seguro: 08-seguridad/05-preview-seguro.md
+      - R2: 08-seguridad/06-r2.md
+      - Auditoría: 08-seguridad/07-auditoria.md
+
+  - ADR:
+      - Índice: 11-adr/README.md
+      - ADR-001 Workspace: 11-adr/ADR-001-workspace.md
+      - ADR-002 Documento Lógico: 11-adr/ADR-002-documento-logico.md
+      - ADR-003 Versionado: 11-adr/ADR-003-versionado.md
+      - ADR-004 Factura Periodo: 11-adr/ADR-004-factura-periodo.md
+      - ADR-005 UI Foundation: 11-adr/ADR-005-ui-foundation.md
+      - ADR-006 Versionado Documental: 11-adr/ADR-006-estrategia-de-versionado-documental.md
+      - ADR-007 Baseline Migraciones: 11-adr/ADR-007-estrategia-baseline-migraciones.md
+      - ADR-008 Seguridad: 11-adr/ADR-008-seguridad-basada-en-workspace-permisos-auditoria.md
+      - ADR-009 Capacidades Compartidas: 11-adr/ADR-009-arquitectura-por-capacidades-compartidas.md
+      - ADR-013 Periodos Contables: 11-adr/ADR-013-gestion-de-periodos-contables.md
+
+  - Governance:
+      - Índice: 31-governance/README.md
+      - Business Rules: 31-governance/01-business-rules.md
+      - Source of Truth: 31-governance/02-source-of-truth.md
+      - Definition of Done: 31-governance/03-definition-of-done.md
+      - Document Lifecycle: 31-governance/04-document-lifecycle.md
+      - Review Process: 31-governance/05-review-process.md
+      - Source of Truth Matrix: 31-governance/13-source-of-truth-matrix.md
+      - Cross Reference Policy: 31-governance/14-cross-reference-policy.md
+
+  - Knowledge Graph:
+      - Índice: 39-knowledge-graph/README.md
+      - Architecture Map: 39-knowledge-graph/architecture-map.md
+      - Domain Map: 39-knowledge-graph/domain-map.md
+      - API Map: 39-knowledge-graph/api-map.md
+      - Business Map: 39-knowledge-graph/business-map.md
+      - Source of Truth Map: 39-knowledge-graph/source-of-truth-map.md
+
+  - QA y Testing:
+      - Testing: 19-testing/README.md
+      - QA: 20-qa/README.md
+      - Casos de Prueba: 20-qa/casos-prueba.md
+      - Criterios de Aceptación: 20-qa/criterios-aceptacion.md
+
+  - Release:
+      - Engineering Handbook v1.0 RC: RELEASE-1.0-RC.md
+      - Release 1.0: RELEASE-1.0.md
+      - Checklist v1.0: RELEASE-CHECKLIST-v1.0.md
+      - Validation: 38-handbook-validation/README.md

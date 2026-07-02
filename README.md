@@ -1,3 +1,23 @@
+# Documental Platform
+
+Documental Platform es una plataforma privada de gestión documental por Workspace.
+
+## Entrada rápida
+
+| Necesidad | Documento |
+|---|---|
+| Visión | `docs/project/00-VISION-PROYECTO.md` |
+| Arquitectura | `docs/02-arquitectura/01-arquitectura-general.md` |
+| Motor Documental | `docs/motor-documental/Motor-Documental-Architecture.md` |
+| Producto/UI | `docs/03-producto/01-product-guidelines.md` |
+| Infraestructura | `docs/07-infraestructura/01-despliegue.md` |
+| Gobierno | `GOVERNANCE.md` |
+| Contribuir | `CONTRIBUTING.md` |
+
+## Regla principal
+
+El conocimiento oficial vive en el repositorio, no en chats.
+
 # documental-platform
 levanta proyecto:
 docker exec -it dp_postgres psql -U postgres -d documental_platform

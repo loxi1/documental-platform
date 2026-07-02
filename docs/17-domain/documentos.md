@@ -42,3 +42,29 @@ Solo puede existir un principal activo por expediente:
 ## Documento contable ancla
 
 La factura confirmada es el ancla del período contable, aunque no sea principal.
+
+## Referencias
+
+### Arquitectura
+
+- 02-arquitectura/04-motor-documental.md
+
+### ADR
+
+- ADR-002 Documento Lógico
+
+### Backend
+
+- 04-backend/02-document-engine.md
+
+### API
+
+- 16-api/documentos.md
+
+### Business Flow
+
+- 26-business-flows/02-carga-documento.md
+
+### Data Dictionary
+
+- 27-data-dictionary/01-documentos.documentos.md

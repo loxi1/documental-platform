@@ -1,0 +1,6624 @@
+
+<!doctype html>
+<html lang="es" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Engineering Knowledge Base de Documental Platform">
+      
+      
+        <meta name="author" content="Documental Platform Team">
+      
+      
+      
+        <link rel="prev" href="../">
+      
+      
+        <link rel="next" href="../arquitectura/">
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.5.50">
+    
+    
+      
+        <title>Arquitectura Maestra - Documental Platform Engineering Handbook</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.a40c8224.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.06af60db.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../stylesheets/extra.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="blue" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#motor-documental-architecture" class="md-skip">
+          Saltar a contenido
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Cabecera">
+    <a href="../.." title="Documental Platform Engineering Handbook" class="md-header__button md-logo" aria-label="Documental Platform Engineering Handbook" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Documental Platform Engineering Handbook
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Arquitectura Maestra
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="blue" data-md-color-accent="indigo"  aria-label="Cambiar a modo oscuro"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Cambiar a modo oscuro" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m17.75 4.09-2.53 1.94.91 3.06-2.63-1.81-2.63 1.81.91-3.06-2.53-1.94L12.44 4l1.06-3 1.06 3zm3.5 6.91-1.64 1.25.59 1.98-1.7-1.17-1.7 1.17.59-1.98L15.75 11l2.06-.05L18.5 9l.69 1.95zm-2.28 4.95c.83-.08 1.72 1.1 1.19 1.85-.32.45-.66.87-1.08 1.27C15.17 23 8.84 23 4.94 19.07c-3.91-3.9-3.91-10.24 0-14.14.4-.4.82-.76 1.27-1.08.75-.53 1.93.36 1.85 1.19-.27 2.86.69 5.83 2.89 8.02a9.96 9.96 0 0 0 8.02 2.89m-1.64 2.02a12.08 12.08 0 0 1-7.8-3.47c-2.17-2.19-3.33-5-3.49-7.82-2.81 3.14-2.7 7.96.31 10.98 3.02 3.01 7.84 3.12 10.98.31"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="blue" data-md-color-accent="indigo"  aria-label="Cambiar a modo claro"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Cambiar a modo claro" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 7a5 5 0 0 1 5 5 5 5 0 0 1-5 5 5 5 0 0 1-5-5 5 5 0 0 1 5-5m0 2a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3m0-7 2.39 3.42C13.65 5.15 12.84 5 12 5s-1.65.15-2.39.42zM3.34 7l4.16-.35A7.2 7.2 0 0 0 5.94 8.5c-.44.74-.69 1.5-.83 2.29zm.02 10 1.76-3.77a7.131 7.131 0 0 0 2.38 4.14zM20.65 7l-1.77 3.79a7.02 7.02 0 0 0-2.38-4.15zm-.01 10-4.14.36c.59-.51 1.12-1.14 1.54-1.86.42-.73.69-1.5.83-2.29zM12 22l-2.41-3.44c.74.27 1.55.44 2.41.44.82 0 1.63-.17 2.37-.44z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      <label class="md-header__button md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+      </label>
+      <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Búsqueda" placeholder="Búsqueda" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Buscar">
+        
+          <a href="javascript:void(0)" class="md-search__icon md-icon" title="Compartir" aria-label="Compartir" data-clipboard data-clipboard-text="" data-md-component="search-share" tabindex="-1">
+            
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9a3 3 0 0 0-3 3 3 3 0 0 0 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.15c-.05.21-.08.43-.08.66 0 1.61 1.31 2.91 2.92 2.91s2.92-1.3 2.92-2.91A2.92 2.92 0 0 0 18 16.08"/></svg>
+          </a>
+        
+        <button type="reset" class="md-search__icon md-icon" title="Limpiar" aria-label="Limpiar" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Inicializando búsqueda
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+    
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Pestañas" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../.." class="md-tabs__link">
+        
+  
+    
+  
+  Inicio
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../01-plataforma/01-que-es-documental-platform/" class="md-tabs__link">
+          
+  
+  Plataforma
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../02-arquitectura/01-arquitectura-general/" class="md-tabs__link">
+          
+  
+  Arquitectura
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../03-producto/01-product-guidelines/" class="md-tabs__link">
+          
+  
+  Producto
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../" class="md-tabs__link">
+          
+  
+  Motor Documental
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../04-backend/" class="md-tabs__link">
+          
+  
+  Backend
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../16-api/" class="md-tabs__link">
+          
+  
+  API
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../17-domain/" class="md-tabs__link">
+          
+  
+  Dominio
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../26-business-flows/" class="md-tabs__link">
+          
+  
+  Business Flows
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../27-data-dictionary/" class="md-tabs__link">
+          
+  
+  Data Dictionary
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../07-infraestructura/01-despliegue/" class="md-tabs__link">
+          
+  
+  Infraestructura
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../18-runbooks/" class="md-tabs__link">
+          
+  
+  Operación
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../08-seguridad/01-workspace/" class="md-tabs__link">
+          
+  
+  Seguridad
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../11-adr/" class="md-tabs__link">
+          
+  
+  ADR
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../31-governance/" class="md-tabs__link">
+          
+  
+  Governance
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../39-knowledge-graph/" class="md-tabs__link">
+          
+  
+  Knowledge Graph
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../19-testing/" class="md-tabs__link">
+          
+  
+  QA y Testing
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../RELEASE-1.0-RC/" class="md-tabs__link">
+          
+  
+  Release
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navegación" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="Documental Platform Engineering Handbook" class="md-nav__button md-logo" aria-label="Documental Platform Engineering Handbook" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Documental Platform Engineering Handbook
+  </label>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Inicio
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  <span class="md-ellipsis">
+    Plataforma
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            Plataforma
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../01-plataforma/01-que-es-documental-platform/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Qué es Documental Platform
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../01-plataforma/02-capacidades-compartidas/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Capacidades Compartidas
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../01-plataforma/03-sistemas-consumidores/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Sistemas Consumidores
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../01-plataforma/04-alcance/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Alcance
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  <span class="md-ellipsis">
+    Arquitectura
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            Arquitectura
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../02-arquitectura/01-arquitectura-general/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    General
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../02-arquitectura/02-capacidades-compartidas/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Capacidades Compartidas
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../02-arquitectura/03-workspace/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Workspace
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../02-arquitectura/04-motor-documental/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Motor Documental
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../02-arquitectura/05-ui-foundation/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    UI Foundation
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../02-arquitectura/06-auditoria/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Auditoría
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/C1-System-Context/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    C1 Context
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/C2-Containers/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    C2 Containers
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/Deployment-AWS/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Deployment AWS
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  <span class="md-ellipsis">
+    Producto
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            Producto
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../03-producto/01-product-guidelines/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Product Guidelines
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../03-producto/02-ui-foundation/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    UI Foundation
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../03-producto/03-layouts/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Layouts
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../03-producto/04-patrones/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Patrones
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../03-producto/05-modulos/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Módulos
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../03-producto/06-componentes-reutilizables/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Componentes Reutilizables
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../42-component-catalog/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Component Catalog
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  <span class="md-ellipsis">
+    Motor Documental
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            Motor Documental
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Índice
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  <span class="md-ellipsis">
+    Arquitectura Maestra
+  </span>
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  <span class="md-ellipsis">
+    Arquitectura Maestra
+  </span>
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Tabla de contenidos">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Tabla de contenidos
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-que-es-el-motor-documental" class="md-nav__link">
+    <span class="md-ellipsis">
+      1. ¿Qué es el Motor Documental?
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-que-problemas-resuelve" class="md-nav__link">
+    <span class="md-ellipsis">
+      2. ¿Qué problemas resuelve?
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="2. ¿Qué problemas resuelve?">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#21-evita-duplicidad-documental" class="md-nav__link">
+    <span class="md-ellipsis">
+      2.1. Evita duplicidad documental
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#22-separa-documento-logico-de-archivo-fisico" class="md-nav__link">
+    <span class="md-ellipsis">
+      2.2. Separa documento lógico de archivo físico
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#23-centraliza-ocr-y-validacion" class="md-nav__link">
+    <span class="md-ellipsis">
+      2.3. Centraliza OCR y validación
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#24-reduce-dependencia-del-frontend" class="md-nav__link">
+    <span class="md-ellipsis">
+      2.4. Reduce dependencia del frontend
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#25-permite-trazabilidad-y-auditoria" class="md-nav__link">
+    <span class="md-ellipsis">
+      2.5. Permite trazabilidad y auditoría
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#26-permite-reutilizacion-futura" class="md-nav__link">
+    <span class="md-ellipsis">
+      2.6. Permite reutilización futura
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-que-responsabilidades-tiene" class="md-nav__link">
+    <span class="md-ellipsis">
+      3. ¿Qué responsabilidades tiene?
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="3. ¿Qué responsabilidades tiene?">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#31-registro-de-archivos-fisicos" class="md-nav__link">
+    <span class="md-ellipsis">
+      3.1. Registro de archivos físicos
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#32-integracion-con-almacenamiento-privado" class="md-nav__link">
+    <span class="md-ellipsis">
+      3.2. Integración con almacenamiento privado
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#33-orquestacion-ocr" class="md-nav__link">
+    <span class="md-ellipsis">
+      3.3. Orquestación OCR
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#34-normalizacion-de-tipo-documental" class="md-nav__link">
+    <span class="md-ellipsis">
+      3.4. Normalización de tipo documental
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#35-extraccion-de-metadata-documental" class="md-nav__link">
+    <span class="md-ellipsis">
+      3.5. Extracción de metadata documental
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#36-generacion-de-clave-documental" class="md-nav__link">
+    <span class="md-ellipsis">
+      3.6. Generación de clave documental
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#37-confirmacion-documental" class="md-nav__link">
+    <span class="md-ellipsis">
+      3.7. Confirmación documental
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#38-vinculacion-con-expedientes" class="md-nav__link">
+    <span class="md-ellipsis">
+      3.8. Vinculación con expedientes
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#39-versionado-documental" class="md-nav__link">
+    <span class="md-ellipsis">
+      3.9. Versionado documental
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#310-manejo-de-duplicados" class="md-nav__link">
+    <span class="md-ellipsis">
+      3.10. Manejo de duplicados
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#311-enriquecimiento-documental" class="md-nav__link">
+    <span class="md-ellipsis">
+      3.11. Enriquecimiento documental
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#312-metricas-ocr" class="md-nav__link">
+    <span class="md-ellipsis">
+      3.12. Métricas OCR
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-que-no-hace" class="md-nav__link">
+    <span class="md-ellipsis">
+      4. ¿Qué no hace?
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="4. ¿Qué no hace?">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#41-no-define-ux-ni-pantallas" class="md-nav__link">
+    <span class="md-ellipsis">
+      4.1. No define UX ni pantallas
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#42-no-administra-login-usuarios-ni-permisos-visuales" class="md-nav__link">
+    <span class="md-ellipsis">
+      4.2. No administra login, usuarios ni permisos visuales
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#43-no-decide-reglas-contables-de-cierre" class="md-nav__link">
+    <span class="md-ellipsis">
+      4.3. No decide reglas contables de cierre
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#44-no-edita-geometrias-ni-procesos-gis" class="md-nav__link">
+    <span class="md-ellipsis">
+      4.4. No edita geometrías ni procesos GIS
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#45-no-borra-fisicamente-documentos-en-flujos-normales" class="md-nav__link">
+    <span class="md-ellipsis">
+      4.5. No borra físicamente documentos en flujos normales
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-cuales-son-sus-componentes" class="md-nav__link">
+    <span class="md-ellipsis">
+      5. ¿Cuáles son sus componentes?
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="5. ¿Cuáles son sus componentes?">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#51-api-gateway" class="md-nav__link">
+    <span class="md-ellipsis">
+      5.1. API Gateway
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#52-ms-documentos" class="md-nav__link">
+    <span class="md-ellipsis">
+      5.2. ms-documentos
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#53-ocr-worker" class="md-nav__link">
+    <span class="md-ellipsis">
+      5.3. OCR Worker
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#54-nats" class="md-nav__link">
+    <span class="md-ellipsis">
+      5.4. NATS
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#55-postgresql" class="md-nav__link">
+    <span class="md-ellipsis">
+      5.5. PostgreSQL
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#56-cloudflare-r2" class="md-nav__link">
+    <span class="md-ellipsis">
+      5.6. Cloudflare R2
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#57-extractores-documentales" class="md-nav__link">
+    <span class="md-ellipsis">
+      5.7. Extractores documentales
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#58-normalizador-documental" class="md-nav__link">
+    <span class="md-ellipsis">
+      5.8. Normalizador documental
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#59-generador-de-clave-documental" class="md-nav__link">
+    <span class="md-ellipsis">
+      5.9. Generador de clave documental
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#510-servicio-de-enriquecimiento" class="md-nav__link">
+    <span class="md-ellipsis">
+      5.10. Servicio de enriquecimiento
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#511-servicio-de-versionado" class="md-nav__link">
+    <span class="md-ellipsis">
+      5.11. Servicio de versionado
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#512-servicio-de-auditoria-documental" class="md-nav__link">
+    <span class="md-ellipsis">
+      5.12. Servicio de auditoría documental
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-como-interactuan" class="md-nav__link">
+    <span class="md-ellipsis">
+      6. ¿Cómo interactúan?
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="6. ¿Cómo interactúan?">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#61-flujo-de-carga-y-ocr" class="md-nav__link">
+    <span class="md-ellipsis">
+      6.1. Flujo de carga y OCR
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#62-flujo-de-confirmacion" class="md-nav__link">
+    <span class="md-ellipsis">
+      6.2. Flujo de confirmación
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#63-flujo-de-version-documental" class="md-nav__link">
+    <span class="md-ellipsis">
+      6.3. Flujo de versión documental
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#64-flujo-de-revision-contable" class="md-nav__link">
+    <span class="md-ellipsis">
+      6.4. Flujo de revisión contable
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-cuales-son-sus-invariantes" class="md-nav__link">
+    <span class="md-ellipsis">
+      7. ¿Cuáles son sus invariantes?
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="7. ¿Cuáles son sus invariantes?">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#71-el-backend-es-autoridad-de-clave-documental" class="md-nav__link">
+    <span class="md-ellipsis">
+      7.1. El backend es autoridad de clave documental
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#72-documento-logico-y-archivo-fisico-son-conceptos-distintos" class="md-nav__link">
+    <span class="md-ellipsis">
+      7.2. Documento lógico y archivo físico son conceptos distintos
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#73-no-se-sobrescriben-archivos-fisicos" class="md-nav__link">
+    <span class="md-ellipsis">
+      7.3. No se sobrescriben archivos físicos
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#74-solo-una-version-actual-por-documento-logico" class="md-nav__link">
+    <span class="md-ellipsis">
+      7.4. Solo una versión actual por documento lógico
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#75-un-expediente-tiene-un-solo-documento-principal-activo" class="md-nav__link">
+    <span class="md-ellipsis">
+      7.5. Un expediente tiene un solo documento principal activo
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#76-la-factura-es-ancla-contable" class="md-nav__link">
+    <span class="md-ellipsis">
+      7.6. La factura es ancla contable
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#77-un-expediente-sin-factura-confirmada-no-participa-del-cierre-contable" class="md-nav__link">
+    <span class="md-ellipsis">
+      7.7. Un expediente sin factura confirmada no participa del cierre contable
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#78-los-duplicados-son-conflictos-controlados" class="md-nav__link">
+    <span class="md-ellipsis">
+      7.8. Los duplicados son conflictos controlados
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#79-ocr-original-no-se-pierde" class="md-nav__link">
+    <span class="md-ellipsis">
+      7.9. OCR original no se pierde
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#710-los-catalogos-son-fuente-de-normalizacion" class="md-nav__link">
+    <span class="md-ellipsis">
+      7.10. Los catálogos son fuente de normalización
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#711-quitar-no-es-eliminar-fisico" class="md-nav__link">
+    <span class="md-ellipsis">
+      7.11. Quitar no es eliminar físico
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#712-los-modulos-consumen-el-motor-no-lo-duplican" class="md-nav__link">
+    <span class="md-ellipsis">
+      7.12. Los módulos consumen el motor, no lo duplican
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-cuales-son-las-adr-relacionadas" class="md-nav__link">
+    <span class="md-ellipsis">
+      8. ¿Cuáles son las ADR relacionadas?
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="8. ¿Cuáles son las ADR relacionadas?">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#adr-001-separar-documento-logico-de-archivo-fisico" class="md-nav__link">
+    <span class="md-ellipsis">
+      ADR-001: Separar documento lógico de archivo físico
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#adr-002-cloudflare-r2-privado-para-almacenamiento-documental" class="md-nav__link">
+    <span class="md-ellipsis">
+      ADR-002: Cloudflare R2 privado para almacenamiento documental
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#adr-003-ocr-desacoplado-mediante-nats" class="md-nav__link">
+    <span class="md-ellipsis">
+      ADR-003: OCR desacoplado mediante NATS
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#adr-004-backend-como-autoridad-de-clave-documental" class="md-nav__link">
+    <span class="md-ellipsis">
+      ADR-004: Backend como autoridad de clave documental
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#adr-005-duplicado-documental-como-conflicto-controlado" class="md-nav__link">
+    <span class="md-ellipsis">
+      ADR-005: Duplicado documental como conflicto controlado
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#adr-006-versionado-sin-sobrescritura" class="md-nav__link">
+    <span class="md-ellipsis">
+      ADR-006: Versionado sin sobrescritura
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#adr-007-ocr-original-editado-y-confirmado-deben-conservarse" class="md-nav__link">
+    <span class="md-ellipsis">
+      ADR-007: OCR original, editado y confirmado deben conservarse
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#adr-008-catalogos-core-para-normalizacion" class="md-nav__link">
+    <span class="md-ellipsis">
+      ADR-008: Catálogos core para normalización
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#adr-009-factura-como-ancla-contable" class="md-nav__link">
+    <span class="md-ellipsis">
+      ADR-009: Factura como ancla contable
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#adr-010-quitar-no-elimina-fisicamente" class="md-nav__link">
+    <span class="md-ellipsis">
+      ADR-010: Quitar no elimina físicamente
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#adr-011-motor-documental-como-servicio-transversal" class="md-nav__link">
+    <span class="md-ellipsis">
+      ADR-011: Motor Documental como servicio transversal
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#9-nota-de-alineacion-con-el-handbook-actual" class="md-nav__link">
+    <span class="md-ellipsis">
+      9. Nota de alineación con el Handbook actual
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="9. Nota de alineación con el Handbook actual">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#adr-oficiales-relacionadas-en-el-repositorio-actual" class="md-nav__link">
+    <span class="md-ellipsis">
+      ADR oficiales relacionadas en el repositorio actual
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#correccion-importante" class="md-nav__link">
+    <span class="md-ellipsis">
+      Corrección importante
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../arquitectura/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Arquitectura
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../documento-logico-vs-archivo-fisico/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Documento Lógico vs Archivo Físico
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../clave-documental/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Clave Documental
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../flujo-ocr/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    OCR
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../flujo-confirmacion/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Confirmación
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../flujo-versionado/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Versionado
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../duplicados/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Duplicados
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../preview/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Preview
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reglas-contables-factura-ancla/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Factura Ancla
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+            
+  
+  <span class="md-ellipsis">
+    Backend
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            Backend
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../04-backend/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Índice
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../04-backend/01-api-guidelines/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    API Guidelines
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../04-backend/02-document-engine/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Document Engine
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../04-backend/03-versionado/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Versionado
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../04-backend/04-clave-documental/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Clave Documental
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../04-backend/05-ocr/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    OCR
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../43-service-catalog/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Service Catalog
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="0">
+            
+  
+  <span class="md-ellipsis">
+    API
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            API
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../16-api/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Índice
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../16-api/auth/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Auth
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../16-api/gateway/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Gateway
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../16-api/documentos/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Documentos
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../16-api/carga-guiada/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Carga Guiada
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../16-api/ocr/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    OCR
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../16-api/procesar-ocr/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Procesar OCR
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../16-api/confirmar-con-expediente/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Confirmar con Expediente
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../16-api/expediente-documentos/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Expediente Documentos
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../16-api/preview-url/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Preview URL
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../16-api/versionado/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Versionado
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../16-api/revision-contable/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Revisión Contable
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_8" >
+        
+          
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="0">
+            
+  
+  <span class="md-ellipsis">
+    Dominio
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            Dominio
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../17-domain/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Índice
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../17-domain/workspace/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Workspace
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../17-domain/documentos/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Documentos
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../17-domain/expedientes/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Expedientes
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../17-domain/facturas/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Facturas
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../17-domain/guias/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Guías
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../17-domain/pagos/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Pagos
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../17-domain/detracciones/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Detracciones
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../17-domain/ocr/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    OCR
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../17-domain/confirmacion-documental/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Confirmación Documental
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../17-domain/duplicados/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Duplicados
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../17-domain/versionado/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Versionado
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../17-domain/revision-contable/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Revisión Contable
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../17-domain/alertas/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Alertas
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../17-domain/proveedores/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Proveedores
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../17-domain/periodos/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Periodos
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_9" >
+        
+          
+          <label class="md-nav__link" for="__nav_9" id="__nav_9_label" tabindex="0">
+            
+  
+  <span class="md-ellipsis">
+    Business Flows
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_9_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_9">
+            <span class="md-nav__icon md-icon"></span>
+            Business Flows
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../26-business-flows/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Índice
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../26-business-flows/01-workspace-login/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Workspace Login
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../26-business-flows/02-carga-documento/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Carga Documento
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../26-business-flows/03-flujo-ocr/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    OCR
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../26-business-flows/04-confirmacion-expediente/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Confirmación
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../26-business-flows/06-versionado/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Versionado
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../26-business-flows/07-duplicados/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Duplicados
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../26-business-flows/08-revision-contable/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Revisión Contable
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../26-business-flows/09-alertas/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Alertas
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../26-business-flows/11-preview/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Preview
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../26-business-flows/10-auditoria/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Auditoría
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_10" >
+        
+          
+          <label class="md-nav__link" for="__nav_10" id="__nav_10_label" tabindex="0">
+            
+  
+  <span class="md-ellipsis">
+    Data Dictionary
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_10_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_10">
+            <span class="md-nav__icon md-icon"></span>
+            Data Dictionary
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../27-data-dictionary/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Índice
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../27-data-dictionary/01-documentos.documentos/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    documentos.documentos
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../27-data-dictionary/02-documentos.documentos_archivos/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    documentos_archivos
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../27-data-dictionary/03-documentos.expedientes/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    expedientes
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../27-data-dictionary/04-documentos.expediente_documentos/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    expediente_documentos
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../27-data-dictionary/05-documentos.ocr_resultados/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    ocr_resultados
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../27-data-dictionary/06-core.proveedores/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    proveedores
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../27-data-dictionary/07-core.monedas/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    monedas
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../27-data-dictionary/08-core.bancos/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    bancos
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../27-data-dictionary/09-relaciones/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Relaciones
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_11" >
+        
+          
+          <label class="md-nav__link" for="__nav_11" id="__nav_11_label" tabindex="0">
+            
+  
+  <span class="md-ellipsis">
+    Infraestructura
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_11_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_11">
+            <span class="md-nav__icon md-icon"></span>
+            Infraestructura
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../07-infraestructura/01-despliegue/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Despliegue
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../07-infraestructura/02-docker/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Docker
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../07-infraestructura/03-traefik/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Traefik
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../07-infraestructura/04-cloudflare/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Cloudflare
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../07-infraestructura/05-ocr-worker/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    OCR Worker
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../15-diagrams/deployment-aws/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Deployment AWS Diagram
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_12" >
+        
+          
+          <label class="md-nav__link" for="__nav_12" id="__nav_12_label" tabindex="0">
+            
+  
+  <span class="md-ellipsis">
+    Operación
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_12_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_12">
+            <span class="md-nav__icon md-icon"></span>
+            Operación
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../18-runbooks/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Runbooks
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../18-runbooks/deploy-produccion/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Deploy Producción
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../18-runbooks/rollback/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Rollback
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../18-runbooks/backup-rds/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Backup RDS
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../18-runbooks/restore-rds/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Restore RDS
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../18-runbooks/rotacion-secretos/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Rotación Secretos
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../29-operations-manual/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Operations Manual
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../29-operations-manual/11-deployment-readiness-checklist/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Checklist Deploy
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_13" >
+        
+          
+          <label class="md-nav__link" for="__nav_13" id="__nav_13_label" tabindex="0">
+            
+  
+  <span class="md-ellipsis">
+    Seguridad
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_13_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_13">
+            <span class="md-nav__icon md-icon"></span>
+            Seguridad
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../08-seguridad/01-workspace/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Workspace
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../08-seguridad/02-jwt/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    JWT
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../08-seguridad/03-permisos/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Permisos
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../08-seguridad/04-session-context/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Session Context
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../08-seguridad/05-preview-seguro/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Preview Seguro
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../08-seguridad/06-r2/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    R2
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../08-seguridad/07-auditoria/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Auditoría
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_14" >
+        
+          
+          <label class="md-nav__link" for="__nav_14" id="__nav_14_label" tabindex="0">
+            
+  
+  <span class="md-ellipsis">
+    ADR
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_14_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_14">
+            <span class="md-nav__icon md-icon"></span>
+            ADR
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../11-adr/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Índice
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../11-adr/ADR-001-workspace/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    ADR-001 Workspace
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../11-adr/ADR-002-documento-logico/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    ADR-002 Documento Lógico
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../11-adr/ADR-003-versionado/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    ADR-003 Versionado
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../11-adr/ADR-004-factura-periodo/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    ADR-004 Factura Periodo
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../11-adr/ADR-005-ui-foundation/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    ADR-005 UI Foundation
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../11-adr/ADR-006-estrategia-de-versionado-documental/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    ADR-006 Versionado Documental
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../11-adr/ADR-007-estrategia-baseline-migraciones/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    ADR-007 Baseline Migraciones
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../11-adr/ADR-008-seguridad-basada-en-workspace-permisos-auditoria/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    ADR-008 Seguridad
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../11-adr/ADR-009-arquitectura-por-capacidades-compartidas/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    ADR-009 Capacidades Compartidas
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../11-adr/ADR-013-gestion-de-periodos-contables/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    ADR-013 Periodos Contables
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_15" >
+        
+          
+          <label class="md-nav__link" for="__nav_15" id="__nav_15_label" tabindex="0">
+            
+  
+  <span class="md-ellipsis">
+    Governance
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_15_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_15">
+            <span class="md-nav__icon md-icon"></span>
+            Governance
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../31-governance/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Índice
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../31-governance/01-business-rules/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Business Rules
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../31-governance/02-source-of-truth/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Source of Truth
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../31-governance/03-definition-of-done/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Definition of Done
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../31-governance/04-document-lifecycle/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Document Lifecycle
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../31-governance/05-review-process/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Review Process
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../31-governance/13-source-of-truth-matrix/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Source of Truth Matrix
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../31-governance/14-cross-reference-policy/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Cross Reference Policy
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_16" >
+        
+          
+          <label class="md-nav__link" for="__nav_16" id="__nav_16_label" tabindex="0">
+            
+  
+  <span class="md-ellipsis">
+    Knowledge Graph
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_16_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_16">
+            <span class="md-nav__icon md-icon"></span>
+            Knowledge Graph
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../39-knowledge-graph/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Índice
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../39-knowledge-graph/architecture-map/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Architecture Map
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../39-knowledge-graph/domain-map/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Domain Map
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../39-knowledge-graph/api-map/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    API Map
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../39-knowledge-graph/business-map/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Business Map
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../39-knowledge-graph/source-of-truth-map/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Source of Truth Map
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_17" >
+        
+          
+          <label class="md-nav__link" for="__nav_17" id="__nav_17_label" tabindex="0">
+            
+  
+  <span class="md-ellipsis">
+    QA y Testing
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_17_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_17">
+            <span class="md-nav__icon md-icon"></span>
+            QA y Testing
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../19-testing/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Testing
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../20-qa/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    QA
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../20-qa/casos-prueba/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Casos de Prueba
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../20-qa/criterios-aceptacion/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Criterios de Aceptación
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_18" >
+        
+          
+          <label class="md-nav__link" for="__nav_18" id="__nav_18_label" tabindex="0">
+            
+  
+  <span class="md-ellipsis">
+    Release
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_18_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_18">
+            <span class="md-nav__icon md-icon"></span>
+            Release
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../RELEASE-1.0-RC/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Engineering Handbook v1.0 RC
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../RELEASE-1.0/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Release 1.0
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../RELEASE-CHECKLIST-v1.0/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Checklist v1.0
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../38-handbook-validation/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Validation
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Tabla de contenidos">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Tabla de contenidos
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-que-es-el-motor-documental" class="md-nav__link">
+    <span class="md-ellipsis">
+      1. ¿Qué es el Motor Documental?
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-que-problemas-resuelve" class="md-nav__link">
+    <span class="md-ellipsis">
+      2. ¿Qué problemas resuelve?
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="2. ¿Qué problemas resuelve?">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#21-evita-duplicidad-documental" class="md-nav__link">
+    <span class="md-ellipsis">
+      2.1. Evita duplicidad documental
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#22-separa-documento-logico-de-archivo-fisico" class="md-nav__link">
+    <span class="md-ellipsis">
+      2.2. Separa documento lógico de archivo físico
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#23-centraliza-ocr-y-validacion" class="md-nav__link">
+    <span class="md-ellipsis">
+      2.3. Centraliza OCR y validación
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#24-reduce-dependencia-del-frontend" class="md-nav__link">
+    <span class="md-ellipsis">
+      2.4. Reduce dependencia del frontend
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#25-permite-trazabilidad-y-auditoria" class="md-nav__link">
+    <span class="md-ellipsis">
+      2.5. Permite trazabilidad y auditoría
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#26-permite-reutilizacion-futura" class="md-nav__link">
+    <span class="md-ellipsis">
+      2.6. Permite reutilización futura
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-que-responsabilidades-tiene" class="md-nav__link">
+    <span class="md-ellipsis">
+      3. ¿Qué responsabilidades tiene?
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="3. ¿Qué responsabilidades tiene?">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#31-registro-de-archivos-fisicos" class="md-nav__link">
+    <span class="md-ellipsis">
+      3.1. Registro de archivos físicos
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#32-integracion-con-almacenamiento-privado" class="md-nav__link">
+    <span class="md-ellipsis">
+      3.2. Integración con almacenamiento privado
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#33-orquestacion-ocr" class="md-nav__link">
+    <span class="md-ellipsis">
+      3.3. Orquestación OCR
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#34-normalizacion-de-tipo-documental" class="md-nav__link">
+    <span class="md-ellipsis">
+      3.4. Normalización de tipo documental
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#35-extraccion-de-metadata-documental" class="md-nav__link">
+    <span class="md-ellipsis">
+      3.5. Extracción de metadata documental
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#36-generacion-de-clave-documental" class="md-nav__link">
+    <span class="md-ellipsis">
+      3.6. Generación de clave documental
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#37-confirmacion-documental" class="md-nav__link">
+    <span class="md-ellipsis">
+      3.7. Confirmación documental
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#38-vinculacion-con-expedientes" class="md-nav__link">
+    <span class="md-ellipsis">
+      3.8. Vinculación con expedientes
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#39-versionado-documental" class="md-nav__link">
+    <span class="md-ellipsis">
+      3.9. Versionado documental
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#310-manejo-de-duplicados" class="md-nav__link">
+    <span class="md-ellipsis">
+      3.10. Manejo de duplicados
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#311-enriquecimiento-documental" class="md-nav__link">
+    <span class="md-ellipsis">
+      3.11. Enriquecimiento documental
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#312-metricas-ocr" class="md-nav__link">
+    <span class="md-ellipsis">
+      3.12. Métricas OCR
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-que-no-hace" class="md-nav__link">
+    <span class="md-ellipsis">
+      4. ¿Qué no hace?
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="4. ¿Qué no hace?">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#41-no-define-ux-ni-pantallas" class="md-nav__link">
+    <span class="md-ellipsis">
+      4.1. No define UX ni pantallas
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#42-no-administra-login-usuarios-ni-permisos-visuales" class="md-nav__link">
+    <span class="md-ellipsis">
+      4.2. No administra login, usuarios ni permisos visuales
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#43-no-decide-reglas-contables-de-cierre" class="md-nav__link">
+    <span class="md-ellipsis">
+      4.3. No decide reglas contables de cierre
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#44-no-edita-geometrias-ni-procesos-gis" class="md-nav__link">
+    <span class="md-ellipsis">
+      4.4. No edita geometrías ni procesos GIS
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#45-no-borra-fisicamente-documentos-en-flujos-normales" class="md-nav__link">
+    <span class="md-ellipsis">
+      4.5. No borra físicamente documentos en flujos normales
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-cuales-son-sus-componentes" class="md-nav__link">
+    <span class="md-ellipsis">
+      5. ¿Cuáles son sus componentes?
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="5. ¿Cuáles son sus componentes?">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#51-api-gateway" class="md-nav__link">
+    <span class="md-ellipsis">
+      5.1. API Gateway
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#52-ms-documentos" class="md-nav__link">
+    <span class="md-ellipsis">
+      5.2. ms-documentos
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#53-ocr-worker" class="md-nav__link">
+    <span class="md-ellipsis">
+      5.3. OCR Worker
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#54-nats" class="md-nav__link">
+    <span class="md-ellipsis">
+      5.4. NATS
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#55-postgresql" class="md-nav__link">
+    <span class="md-ellipsis">
+      5.5. PostgreSQL
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#56-cloudflare-r2" class="md-nav__link">
+    <span class="md-ellipsis">
+      5.6. Cloudflare R2
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#57-extractores-documentales" class="md-nav__link">
+    <span class="md-ellipsis">
+      5.7. Extractores documentales
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#58-normalizador-documental" class="md-nav__link">
+    <span class="md-ellipsis">
+      5.8. Normalizador documental
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#59-generador-de-clave-documental" class="md-nav__link">
+    <span class="md-ellipsis">
+      5.9. Generador de clave documental
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#510-servicio-de-enriquecimiento" class="md-nav__link">
+    <span class="md-ellipsis">
+      5.10. Servicio de enriquecimiento
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#511-servicio-de-versionado" class="md-nav__link">
+    <span class="md-ellipsis">
+      5.11. Servicio de versionado
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#512-servicio-de-auditoria-documental" class="md-nav__link">
+    <span class="md-ellipsis">
+      5.12. Servicio de auditoría documental
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-como-interactuan" class="md-nav__link">
+    <span class="md-ellipsis">
+      6. ¿Cómo interactúan?
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="6. ¿Cómo interactúan?">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#61-flujo-de-carga-y-ocr" class="md-nav__link">
+    <span class="md-ellipsis">
+      6.1. Flujo de carga y OCR
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#62-flujo-de-confirmacion" class="md-nav__link">
+    <span class="md-ellipsis">
+      6.2. Flujo de confirmación
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#63-flujo-de-version-documental" class="md-nav__link">
+    <span class="md-ellipsis">
+      6.3. Flujo de versión documental
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#64-flujo-de-revision-contable" class="md-nav__link">
+    <span class="md-ellipsis">
+      6.4. Flujo de revisión contable
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-cuales-son-sus-invariantes" class="md-nav__link">
+    <span class="md-ellipsis">
+      7. ¿Cuáles son sus invariantes?
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="7. ¿Cuáles son sus invariantes?">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#71-el-backend-es-autoridad-de-clave-documental" class="md-nav__link">
+    <span class="md-ellipsis">
+      7.1. El backend es autoridad de clave documental
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#72-documento-logico-y-archivo-fisico-son-conceptos-distintos" class="md-nav__link">
+    <span class="md-ellipsis">
+      7.2. Documento lógico y archivo físico son conceptos distintos
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#73-no-se-sobrescriben-archivos-fisicos" class="md-nav__link">
+    <span class="md-ellipsis">
+      7.3. No se sobrescriben archivos físicos
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#74-solo-una-version-actual-por-documento-logico" class="md-nav__link">
+    <span class="md-ellipsis">
+      7.4. Solo una versión actual por documento lógico
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#75-un-expediente-tiene-un-solo-documento-principal-activo" class="md-nav__link">
+    <span class="md-ellipsis">
+      7.5. Un expediente tiene un solo documento principal activo
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#76-la-factura-es-ancla-contable" class="md-nav__link">
+    <span class="md-ellipsis">
+      7.6. La factura es ancla contable
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#77-un-expediente-sin-factura-confirmada-no-participa-del-cierre-contable" class="md-nav__link">
+    <span class="md-ellipsis">
+      7.7. Un expediente sin factura confirmada no participa del cierre contable
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#78-los-duplicados-son-conflictos-controlados" class="md-nav__link">
+    <span class="md-ellipsis">
+      7.8. Los duplicados son conflictos controlados
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#79-ocr-original-no-se-pierde" class="md-nav__link">
+    <span class="md-ellipsis">
+      7.9. OCR original no se pierde
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#710-los-catalogos-son-fuente-de-normalizacion" class="md-nav__link">
+    <span class="md-ellipsis">
+      7.10. Los catálogos son fuente de normalización
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#711-quitar-no-es-eliminar-fisico" class="md-nav__link">
+    <span class="md-ellipsis">
+      7.11. Quitar no es eliminar físico
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#712-los-modulos-consumen-el-motor-no-lo-duplican" class="md-nav__link">
+    <span class="md-ellipsis">
+      7.12. Los módulos consumen el motor, no lo duplican
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-cuales-son-las-adr-relacionadas" class="md-nav__link">
+    <span class="md-ellipsis">
+      8. ¿Cuáles son las ADR relacionadas?
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="8. ¿Cuáles son las ADR relacionadas?">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#adr-001-separar-documento-logico-de-archivo-fisico" class="md-nav__link">
+    <span class="md-ellipsis">
+      ADR-001: Separar documento lógico de archivo físico
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#adr-002-cloudflare-r2-privado-para-almacenamiento-documental" class="md-nav__link">
+    <span class="md-ellipsis">
+      ADR-002: Cloudflare R2 privado para almacenamiento documental
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#adr-003-ocr-desacoplado-mediante-nats" class="md-nav__link">
+    <span class="md-ellipsis">
+      ADR-003: OCR desacoplado mediante NATS
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#adr-004-backend-como-autoridad-de-clave-documental" class="md-nav__link">
+    <span class="md-ellipsis">
+      ADR-004: Backend como autoridad de clave documental
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#adr-005-duplicado-documental-como-conflicto-controlado" class="md-nav__link">
+    <span class="md-ellipsis">
+      ADR-005: Duplicado documental como conflicto controlado
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#adr-006-versionado-sin-sobrescritura" class="md-nav__link">
+    <span class="md-ellipsis">
+      ADR-006: Versionado sin sobrescritura
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#adr-007-ocr-original-editado-y-confirmado-deben-conservarse" class="md-nav__link">
+    <span class="md-ellipsis">
+      ADR-007: OCR original, editado y confirmado deben conservarse
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#adr-008-catalogos-core-para-normalizacion" class="md-nav__link">
+    <span class="md-ellipsis">
+      ADR-008: Catálogos core para normalización
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#adr-009-factura-como-ancla-contable" class="md-nav__link">
+    <span class="md-ellipsis">
+      ADR-009: Factura como ancla contable
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#adr-010-quitar-no-elimina-fisicamente" class="md-nav__link">
+    <span class="md-ellipsis">
+      ADR-010: Quitar no elimina físicamente
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#adr-011-motor-documental-como-servicio-transversal" class="md-nav__link">
+    <span class="md-ellipsis">
+      ADR-011: Motor Documental como servicio transversal
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#9-nota-de-alineacion-con-el-handbook-actual" class="md-nav__link">
+    <span class="md-ellipsis">
+      9. Nota de alineación con el Handbook actual
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="9. Nota de alineación con el Handbook actual">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#adr-oficiales-relacionadas-en-el-repositorio-actual" class="md-nav__link">
+    <span class="md-ellipsis">
+      ADR oficiales relacionadas en el repositorio actual
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#correccion-importante" class="md-nav__link">
+    <span class="md-ellipsis">
+      Corrección importante
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+<h1 id="motor-documental-architecture">Motor Documental Architecture<a class="headerlink" href="#motor-documental-architecture" title="Permanent link">&para;</a></h1>
+<h2 id="1-que-es-el-motor-documental">1. ¿Qué es el Motor Documental?<a class="headerlink" href="#1-que-es-el-motor-documental" title="Permanent link">&para;</a></h2>
+<p>El <strong>Motor Documental</strong> es el núcleo backend reutilizable de Documental Platform encargado de transformar archivos documentales en documentos de negocio confiables, versionados, trazables y vinculables a distintos módulos de la plataforma.</p>
+<p>No es una pantalla, no es un flujo de usuario y no pertenece a un módulo específico. Es una capa transversal que sirve a Compras, Almacén, Finanzas, Revisión Contable, Caja Chica, Rendiciones y futuros módulos.</p>
+<p>Su responsabilidad principal es mantener una separación clara entre:</p>
+<div class="highlight"><pre><span></span><code>Archivo físico
+↓
+documentos.documentos_archivos
+</code></pre></div>
+<p>Y:</p>
+<div class="highlight"><pre><span></span><code>Documento lógico de negocio
+↓
+documentos.documentos
+</code></pre></div>
+<p>Un documento lógico puede tener uno o varios archivos físicos asociados como versiones, evidencias, reemplazos o sustentos.</p>
+<p>Ejemplo:</p>
+<div class="highlight"><pre><span></span><code>Documento lógico:
+GUIA_REMISION EG07-00000163
+
+Archivos físicos:
+v1 original
+v2 escaneado
+v3 firmado / corregido
+</code></pre></div>
+<p>El Motor Documental garantiza que los documentos tengan identidad, clave documental, trazabilidad, versiones, metadata validada, relación con expedientes y posibilidad de revisión posterior.</p>
+<hr />
+<h2 id="2-que-problemas-resuelve">2. ¿Qué problemas resuelve?<a class="headerlink" href="#2-que-problemas-resuelve" title="Permanent link">&para;</a></h2>
+<p>El Motor Documental resuelve problemas estructurales comunes en plataformas documentales empresariales.</p>
+<h3 id="21-evita-duplicidad-documental">2.1. Evita duplicidad documental<a class="headerlink" href="#21-evita-duplicidad-documental" title="Permanent link">&para;</a></h3>
+<p>Sin un motor central, cada módulo podría crear documentos repetidos para la misma factura, guía, OC, transferencia o detracción.</p>
+<p>El motor resuelve esto mediante una <strong>clave documental única</strong> por tipo documental.</p>
+<p>Ejemplos:</p>
+<div class="highlight"><pre><span></span><code>FACTURA:
+CLIENTE|FACTURA|RUC|SERIE|NUMERO
+
+OC:
+CLIENTE|OC|NUMERO
+
+GUIA_REMISION:
+CLIENTE|GUIA_REMISION|RUC|SERIE|NUMERO
+
+PAGO_DETRACCION:
+CLIENTE|PAGO_DETRACCION|NUMERO_OPERACION
+</code></pre></div>
+<p>Si existe la misma clave documental, el backend no debe crear otro documento lógico. Debe responder conflicto controlado y sugerir agregar una nueva versión.</p>
+<hr />
+<h3 id="22-separa-documento-logico-de-archivo-fisico">2.2. Separa documento lógico de archivo físico<a class="headerlink" href="#22-separa-documento-logico-de-archivo-fisico" title="Permanent link">&para;</a></h3>
+<p>Un error común es tratar cada PDF como un documento nuevo. El motor evita eso.</p>
+<div class="highlight"><pre><span></span><code>PDF subido ≠ documento nuevo necesariamente
+</code></pre></div>
+<p>Un archivo subido puede ser:</p>
+<div class="highlight"><pre><span></span><code>Nuevo documento lógico
+Nueva versión de documento existente
+Reemplazo
+Evidencia adicional
+Archivo pendiente de revisión
+Archivo rechazado
+</code></pre></div>
+<hr />
+<h3 id="23-centraliza-ocr-y-validacion">2.3. Centraliza OCR y validación<a class="headerlink" href="#23-centraliza-ocr-y-validacion" title="Permanent link">&para;</a></h3>
+<p>El OCR no debe estar duplicado en Compras, Almacén o Finanzas. Todos los módulos usan el mismo flujo:</p>
+<div class="highlight"><pre><span></span><code>Upload
+↓
+R2
+↓
+documentos_archivos
+↓
+OCR Worker
+↓
+ocr_resultados
+↓
+Validación usuario
+↓
+Confirmación
+↓
+Documento oficial
+</code></pre></div>
+<hr />
+<h3 id="24-reduce-dependencia-del-frontend">2.4. Reduce dependencia del frontend<a class="headerlink" href="#24-reduce-dependencia-del-frontend" title="Permanent link">&para;</a></h3>
+<p>El frontend puede proponer datos, pero no es autoridad.</p>
+<p>El backend siempre debe recalcular:</p>
+<div class="highlight"><pre><span></span><code>claveDocumental
+clienteAbreviatura
+rucComprador
+codigoExpediente
+tipoRelacion
+datos derivados del expediente
+</code></pre></div>
+<p>Esto evita que un usuario o una pantalla defectuosa cree documentos inconsistentes.</p>
+<hr />
+<h3 id="25-permite-trazabilidad-y-auditoria">2.5. Permite trazabilidad y auditoría<a class="headerlink" href="#25-permite-trazabilidad-y-auditoria" title="Permanent link">&para;</a></h3>
+<p>El motor conserva:</p>
+<div class="highlight"><pre><span></span><code>OCR original
+OCR editado
+OCR confirmado
+Cambios manuales
+Versiones de archivo
+Vínculos con expedientes
+Usuarios y fechas de validación
+</code></pre></div>
+<p>Esto permite reconstruir qué pasó con cada documento.</p>
+<hr />
+<h3 id="26-permite-reutilizacion-futura">2.6. Permite reutilización futura<a class="headerlink" href="#26-permite-reutilizacion-futura" title="Permanent link">&para;</a></h3>
+<p>El mismo motor debe servir para:</p>
+<div class="highlight"><pre><span></span><code>Compras
+Almacén
+Finanzas
+Revisión Contable
+Caja Chica
+Rendiciones
+RRHH
+Comunicaciones
+</code></pre></div>
+<p>Por eso no debe programarse pensando solo en un módulo.</p>
+<hr />
+<h2 id="3-que-responsabilidades-tiene">3. ¿Qué responsabilidades tiene?<a class="headerlink" href="#3-que-responsabilidades-tiene" title="Permanent link">&para;</a></h2>
+<p>El Motor Documental tiene las siguientes responsabilidades.</p>
+<h3 id="31-registro-de-archivos-fisicos">3.1. Registro de archivos físicos<a class="headerlink" href="#31-registro-de-archivos-fisicos" title="Permanent link">&para;</a></h3>
+<p>Registrar cada archivo subido en:</p>
+<div class="highlight"><pre><span></span><code>documentos.documentos_archivos
+</code></pre></div>
+<p>Con datos como:</p>
+<div class="highlight"><pre><span></span><code>storageProvider
+storageBucket
+storageKey
+nombreArchivo
+contentType
+hashSha256
+estado
+tipoVersion
+version
+esVersionActual
+</code></pre></div>
+<hr />
+<h3 id="32-integracion-con-almacenamiento-privado">3.2. Integración con almacenamiento privado<a class="headerlink" href="#32-integracion-con-almacenamiento-privado" title="Permanent link">&para;</a></h3>
+<p>Los archivos se almacenan en Cloudflare R2 privado.</p>
+<p>El motor debe usar signed URLs para vista previa, evitando que los documentos sean públicos.</p>
+<div class="highlight"><pre><span></span><code>R2 privado
+↓
+Signed URL temporal
+↓
+Vista previa PDF/imagen
+</code></pre></div>
+<hr />
+<h3 id="33-orquestacion-ocr">3.3. Orquestación OCR<a class="headerlink" href="#33-orquestacion-ocr" title="Permanent link">&para;</a></h3>
+<p>El backend publica solicitudes de OCR mediante NATS.</p>
+<div class="highlight"><pre><span></span><code>ms-documentos
+↓
+NATS subject: ocr.procesar-archivo
+↓
+OCR Worker
+↓
+Resultado OCR
+</code></pre></div>
+<p>El motor debe manejar correctamente casos donde el worker no responde o no hay suscriptores, evitando errores genéricos no controlados.</p>
+<hr />
+<h3 id="34-normalizacion-de-tipo-documental">3.4. Normalización de tipo documental<a class="headerlink" href="#34-normalizacion-de-tipo-documental" title="Permanent link">&para;</a></h3>
+<p>El motor debe transformar variaciones del texto detectado a tipos documentales oficiales.</p>
+<p>Ejemplo:</p>
+<div class="highlight"><pre><span></span><code>Factura Electrónica
+FACTURA ELECTRONICA
+Factura
+</code></pre></div>
+<p>Debe normalizarse a:</p>
+<div class="highlight"><pre><span></span><code>FACTURA
+</code></pre></div>
+<p>Lo mismo para:</p>
+<div class="highlight"><pre><span></span><code>GUIA
+GUIA DE REMISION
+GUIA_REMISION
+</code></pre></div>
+<p>Debe normalizarse a:</p>
+<div class="highlight"><pre><span></span><code>GUIA_REMISION
+</code></pre></div>
+<hr />
+<h3 id="35-extraccion-de-metadata-documental">3.5. Extracción de metadata documental<a class="headerlink" href="#35-extraccion-de-metadata-documental" title="Permanent link">&para;</a></h3>
+<p>Cada tipo documental debe tener extractor propio.</p>
+<p>Estructura sugerida:</p>
+<div class="highlight"><pre><span></span><code>core/extractors/factura.py
+core/extractors/guia.py
+core/extractors/nota_ingreso.py
+core/extractors/oc.py
+core/extractors/os.py
+core/extractors/transferencia.py
+core/extractors/detraccion.py
+core/extractors/recibo_honorario.py
+</code></pre></div>
+<p>Todos los extractores deben devolver una estructura común:</p>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;metadata&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{},</span>
+<span class="w">  </span><span class="nt">&quot;metadataSource&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{},</span>
+<span class="w">  </span><span class="nt">&quot;confidence&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.0</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;camposDetectados&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[],</span>
+<span class="w">  </span><span class="nt">&quot;camposFaltantes&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[]</span>
+<span class="p">}</span>
+</code></pre></div>
+<hr />
+<h3 id="36-generacion-de-clave-documental">3.6. Generación de clave documental<a class="headerlink" href="#36-generacion-de-clave-documental" title="Permanent link">&para;</a></h3>
+<p>La clave documental es responsabilidad exclusiva del backend.</p>
+<p>El frontend nunca debe ser fuente de verdad.</p>
+<p>Reglas base:</p>
+<div class="highlight"><pre><span></span><code>FACTURA:
+CLIENTE|FACTURA|RUC_EMISOR|SERIE|NUMERO
+
+OC:
+CLIENTE|OC|NUMERO
+
+OS:
+CLIENTE|OS|NUMERO
+
+GUIA_REMISION:
+CLIENTE|GUIA_REMISION|RUC_EMISOR|SERIE|NUMERO
+
+NOTA_INGRESO:
+CLIENTE|NOTA_INGRESO|NUMERO
+
+PAGO_TRANSFERENCIA:
+CLIENTE|PAGO_TRANSFERENCIA|NUMERO_OPERACION
+
+PAGO_DETRACCION:
+CLIENTE|PAGO_DETRACCION|NUMERO_CONSTANCIA_O_OPERACION
+</code></pre></div>
+<hr />
+<h3 id="37-confirmacion-documental">3.7. Confirmación documental<a class="headerlink" href="#37-confirmacion-documental" title="Permanent link">&para;</a></h3>
+<p>Cuando un usuario confirma un OCR, el motor debe:</p>
+<div class="highlight"><pre><span></span><code>1. Leer OCR resultado.
+2. Leer archivo físico.
+3. Leer expediente.
+4. Resolver cliente destino.
+5. Completar metadata de contexto.
+6. Recalcular clave documental.
+7. Validar duplicados.
+8. Actualizar documento lógico.
+9. Actualizar OCR resultado.
+10. Vincular documento al expediente.
+11. Registrar auditoría.
+12. Confirmar transacción.
+</code></pre></div>
+<p>Todo debe ejecutarse de forma transaccional.</p>
+<hr />
+<h3 id="38-vinculacion-con-expedientes">3.8. Vinculación con expedientes<a class="headerlink" href="#38-vinculacion-con-expedientes" title="Permanent link">&para;</a></h3>
+<p>El motor vincula documentos a expedientes mediante:</p>
+<div class="highlight"><pre><span></span><code>documentos.expediente_documentos
+</code></pre></div>
+<p>Relaciones principales:</p>
+<div class="highlight"><pre><span></span><code>principal_oc
+principal_os
+principal_factura
+</code></pre></div>
+<p>Adjuntos:</p>
+<div class="highlight"><pre><span></span><code>adjunto_factura
+adjunto_guia
+adjunto_nota_ingreso
+adjunto_transferencia
+adjunto_detraccion
+adjunto_recibo_honorario
+adjunto_otro
+</code></pre></div>
+<p>Debe garantizar que exista un solo principal activo por expediente.</p>
+<hr />
+<h3 id="39-versionado-documental">3.9. Versionado documental<a class="headerlink" href="#39-versionado-documental" title="Permanent link">&para;</a></h3>
+<p>El motor debe permitir:</p>
+<div class="highlight"><pre><span></span><code>Agregar versión
+Reemplazar archivo lógico con nueva versión
+Marcar versión actual
+Consultar historial
+Mantener versiones antiguas
+</code></pre></div>
+<p>Nunca debe sobrescribir físicamente un archivo.</p>
+<hr />
+<h3 id="310-manejo-de-duplicados">3.10. Manejo de duplicados<a class="headerlink" href="#310-manejo-de-duplicados" title="Permanent link">&para;</a></h3>
+<p>Cuando se detecta una clave documental existente, el motor debe responder conflicto controlado.</p>
+<p>Respuesta esperada:</p>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;success&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;error&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;code&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;DOCUMENTO_DUPLICADO&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;message&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Ya existe un documento con la misma clave documental.&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;details&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="nt">&quot;documentoExistenteId&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">123</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;claveDocumental&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;BBTI|FACTURA|20603430248|F001|00017434&quot;</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;suggestedAction&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;AGREGAR_VERSION&quot;</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+<p>Nunca debe devolver <code>500</code> por duplicado esperado.</p>
+<hr />
+<h3 id="311-enriquecimiento-documental">3.11. Enriquecimiento documental<a class="headerlink" href="#311-enriquecimiento-documental" title="Permanent link">&para;</a></h3>
+<p>El motor debe enriquecer documentos usando catálogos internos.</p>
+<p>Ejemplo:</p>
+<div class="highlight"><pre><span></span><code>RUC proveedor
+↓
+core.proveedores
+↓
+razon_social
+</code></pre></div>
+<p>Si no existe, se puede consultar API externa y hacer upsert.</p>
+<p>Este enriquecimiento debe ser reutilizable por todos los documentos.</p>
+<hr />
+<h3 id="312-metricas-ocr">3.12. Métricas OCR<a class="headerlink" href="#312-metricas-ocr" title="Permanent link">&para;</a></h3>
+<p>El motor debe registrar métricas para evaluar calidad.</p>
+<p>Ejemplos:</p>
+<div class="highlight"><pre><span></span><code>confidence promedio
+campos detectados
+campos faltantes
+campos editados manualmente
+campos provenientes de OCR
+campos provenientes de catálogo
+campos confirmados sin cambios
+</code></pre></div>
+<p>Estas métricas permitirán mejorar los extractores y priorizar automatización.</p>
+<hr />
+<h2 id="4-que-no-hace">4. ¿Qué no hace?<a class="headerlink" href="#4-que-no-hace" title="Permanent link">&para;</a></h2>
+<p>El Motor Documental no debe asumir responsabilidades que pertenecen a otras capas.</p>
+<h3 id="41-no-define-ux-ni-pantallas">4.1. No define UX ni pantallas<a class="headerlink" href="#41-no-define-ux-ni-pantallas" title="Permanent link">&para;</a></h3>
+<p>No decide cómo se ve:</p>
+<div class="highlight"><pre><span></span><code>Workspace
+Sidebar
+Modales
+Tablas
+Cards
+Formularios
+</code></pre></div>
+<p>Eso pertenece al frontend y al equipo de UX.</p>
+<hr />
+<h3 id="42-no-administra-login-usuarios-ni-permisos-visuales">4.2. No administra login, usuarios ni permisos visuales<a class="headerlink" href="#42-no-administra-login-usuarios-ni-permisos-visuales" title="Permanent link">&para;</a></h3>
+<p>No implementa:</p>
+<div class="highlight"><pre><span></span><code>Login
+JWT
+Perfiles
+Roles visuales
+Navegación
+Seguridad de interfaz
+</code></pre></div>
+<p>Puede recibir <code>usuarioId</code> para auditoría, pero no debe mezclar lógica documental con autenticación.</p>
+<hr />
+<h3 id="43-no-decide-reglas-contables-de-cierre">4.3. No decide reglas contables de cierre<a class="headerlink" href="#43-no-decide-reglas-contables-de-cierre" title="Permanent link">&para;</a></h3>
+<p>El motor conserva documentos y metadata. La Revisión Contable usa esa información para decidir cierre, observación o regularización.</p>
+<p>El motor no debe cerrar períodos contables por sí mismo.</p>
+<hr />
+<h3 id="44-no-edita-geometrias-ni-procesos-gis">4.4. No edita geometrías ni procesos GIS<a class="headerlink" href="#44-no-edita-geometrias-ni-procesos-gis" title="Permanent link">&para;</a></h3>
+<p>GIS queda fuera de Documental Platform. Si en el futuro existe una integración documental, será mediante contrato externo, sin que el Motor Documental administre geometrías, capas, PostGIS, mapas ni sincronización CAD.</p>
+<hr />
+<h3 id="45-no-borra-fisicamente-documentos-en-flujos-normales">4.5. No borra físicamente documentos en flujos normales<a class="headerlink" href="#45-no-borra-fisicamente-documentos-en-flujos-normales" title="Permanent link">&para;</a></h3>
+<p>El motor no debe eliminar archivos físicos por acciones comunes del usuario.</p>
+<p>Debe preferir:</p>
+<div class="highlight"><pre><span></span><code>Desvincular
+Anular
+Marcar como removido
+Auditar
+</code></pre></div>
+<p>El borrado físico debe quedar reservado para mantenimiento técnico controlado.</p>
+<hr />
+<h2 id="5-cuales-son-sus-componentes">5. ¿Cuáles son sus componentes?<a class="headerlink" href="#5-cuales-son-sus-componentes" title="Permanent link">&para;</a></h2>
+<h3 id="51-api-gateway">5.1. API Gateway<a class="headerlink" href="#51-api-gateway" title="Permanent link">&para;</a></h3>
+<p>Expone endpoints públicos internos de la plataforma y enruta hacia <code>ms-documentos</code>.</p>
+<p>Ejemplos:</p>
+<div class="highlight"><pre><span></span><code>POST /api/v1/documentos/carga-guiada
+POST /api/v1/documentos/archivos/:archivoId/procesar-ocr
+POST /api/v1/documentos/ocr-resultados/:id/confirmar-con-expediente
+PATCH /api/v1/documentos/:id/editar
+GET /api/v1/documentos/archivos/:archivoId/preview-url
+</code></pre></div>
+<hr />
+<h3 id="52-ms-documentos">5.2. ms-documentos<a class="headerlink" href="#52-ms-documentos" title="Permanent link">&para;</a></h3>
+<p>Servicio principal del Motor Documental.</p>
+<p>Responsable de:</p>
+<div class="highlight"><pre><span></span><code>Documentos lógicos
+Archivos físicos
+OCR resultados
+Confirmación
+Expedientes
+Vínculos
+Versiones
+Duplicados
+Enriquecimiento
+Signed URLs
+</code></pre></div>
+<hr />
+<h3 id="53-ocr-worker">5.3. OCR Worker<a class="headerlink" href="#53-ocr-worker" title="Permanent link">&para;</a></h3>
+<p>Servicio Python que procesa archivos PDF o imágenes.</p>
+<p>Responsable de:</p>
+<div class="highlight"><pre><span></span><code>Leer archivo
+Extraer texto
+Clasificar tipo documental
+Ejecutar extractor específico
+Retornar metadata estructurada
+</code></pre></div>
+<p>Se comunica con <code>ms-documentos</code> por NATS.</p>
+<hr />
+<h3 id="54-nats">5.4. NATS<a class="headerlink" href="#54-nats" title="Permanent link">&para;</a></h3>
+<p>Bus de mensajería para desacoplar OCR del backend.</p>
+<p>Permite que <code>ms-documentos</code> no ejecute OCR pesado directamente.</p>
+<hr />
+<h3 id="55-postgresql">5.5. PostgreSQL<a class="headerlink" href="#55-postgresql" title="Permanent link">&para;</a></h3>
+<p>Base de datos principal.</p>
+<p>Schemas relevantes:</p>
+<div class="highlight"><pre><span></span><code>documentos
+core
+</code></pre></div>
+<p>Tablas principales:</p>
+<div class="highlight"><pre><span></span><code>documentos.documentos
+documentos.documentos_archivos
+documentos.ocr_resultados
+documentos.expedientes
+documentos.expediente_documentos
+core.proveedores
+core.monedas
+core.bancos
+</code></pre></div>
+<hr />
+<h3 id="56-cloudflare-r2">5.6. Cloudflare R2<a class="headerlink" href="#56-cloudflare-r2" title="Permanent link">&para;</a></h3>
+<p>Almacenamiento privado de archivos físicos.</p>
+<p>El motor guarda en base datos la referencia al archivo:</p>
+<div class="highlight"><pre><span></span><code>storageProvider
+storageBucket
+storageKey
+</code></pre></div>
+<p>Y genera signed URLs para vista temporal.</p>
+<hr />
+<h3 id="57-extractores-documentales">5.7. Extractores documentales<a class="headerlink" href="#57-extractores-documentales" title="Permanent link">&para;</a></h3>
+<p>Módulos especializados por tipo documental.</p>
+<p>Ejemplo:</p>
+<div class="highlight"><pre><span></span><code>factura extractor
+oc extractor
+guia extractor
+nota ingreso extractor
+transferencia extractor
+detraccion extractor
+recibo honorario extractor
+</code></pre></div>
+<hr />
+<h3 id="58-normalizador-documental">5.8. Normalizador documental<a class="headerlink" href="#58-normalizador-documental" title="Permanent link">&para;</a></h3>
+<p>Componente encargado de mapear variaciones a tipos oficiales.</p>
+<div class="highlight"><pre><span></span><code>Factura electrónica → FACTURA
+Guía → GUIA_REMISION
+Depósito de detracción → PAGO_DETRACCION
+Transferencia bancaria → PAGO_TRANSFERENCIA
+</code></pre></div>
+<hr />
+<h3 id="59-generador-de-clave-documental">5.9. Generador de clave documental<a class="headerlink" href="#59-generador-de-clave-documental" title="Permanent link">&para;</a></h3>
+<p>Función única backend encargada de generar claves documentales.</p>
+<p>Debe ser reutilizada por todos los módulos.</p>
+<hr />
+<h3 id="510-servicio-de-enriquecimiento">5.10. Servicio de enriquecimiento<a class="headerlink" href="#510-servicio-de-enriquecimiento" title="Permanent link">&para;</a></h3>
+<p>Servicio encargado de completar datos desde catálogos.</p>
+<div class="highlight"><pre><span></span><code>RUC → core.proveedores → razón social
+moneda → core.monedas
+banco → core.bancos
+</code></pre></div>
+<hr />
+<h3 id="511-servicio-de-versionado">5.11. Servicio de versionado<a class="headerlink" href="#511-servicio-de-versionado" title="Permanent link">&para;</a></h3>
+<p>Servicio encargado de manejar versiones de archivos físicos por documento lógico.</p>
+<hr />
+<h3 id="512-servicio-de-auditoria-documental">5.12. Servicio de auditoría documental<a class="headerlink" href="#512-servicio-de-auditoria-documental" title="Permanent link">&para;</a></h3>
+<p>Componente encargado de registrar eventos como:</p>
+<div class="highlight"><pre><span></span><code>OCR procesado
+OCR editado
+Documento confirmado
+Documento versionado
+Documento desvinculado
+Documento anulado
+</code></pre></div>
+<hr />
+<h2 id="6-como-interactuan">6. ¿Cómo interactúan?<a class="headerlink" href="#6-como-interactuan" title="Permanent link">&para;</a></h2>
+<h3 id="61-flujo-de-carga-y-ocr">6.1. Flujo de carga y OCR<a class="headerlink" href="#61-flujo-de-carga-y-ocr" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code>Frontend
+↓
+API Gateway
+↓
+ms-documentos
+↓
+Cloudflare R2
+↓
+documentos.documentos_archivos
+↓
+NATS
+↓
+OCR Worker
+↓
+ms-documentos
+↓
+documentos.ocr_resultados
+↓
+Frontend OcrValidationModal
+</code></pre></div>
+<hr />
+<h3 id="62-flujo-de-confirmacion">6.2. Flujo de confirmación<a class="headerlink" href="#62-flujo-de-confirmacion" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code>OcrValidationModal
+↓
+API Gateway
+↓
+ms-documentos
+↓
+Validar expediente
+↓
+Resolver cliente destino
+↓
+Normalizar tipo documental
+↓
+Enriquecer metadata
+↓
+Generar clave documental
+↓
+Validar duplicado
+↓
+Actualizar documento lógico
+↓
+Actualizar OCR resultado
+↓
+Vincular expediente-documento
+↓
+Registrar auditoría
+</code></pre></div>
+<hr />
+<h3 id="63-flujo-de-version-documental">6.3. Flujo de versión documental<a class="headerlink" href="#63-flujo-de-version-documental" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code>Archivo nuevo
+↓
+Detectar misma clave documental
+↓
+Responder 409 suggestedAction=AGREGAR_VERSION
+↓
+Usuario confirma agregar versión
+↓
+Actualizar documentos_archivos
+↓
+Marcar versión actual
+↓
+Conservar versiones anteriores
+</code></pre></div>
+<hr />
+<h3 id="64-flujo-de-revision-contable">6.4. Flujo de revisión contable<a class="headerlink" href="#64-flujo-de-revision-contable" title="Permanent link">&para;</a></h3>
+<p>La Revisión Contable no crea documentos.</p>
+<p>Consume documentos confirmados.</p>
+<p>Regla:</p>
+<div class="highlight"><pre><span></span><code>FACTURA confirmada
+↓
+fecha_emision
+↓
+periodo contable
+↓
+expediente
+↓
+matriz documental
+</code></pre></div>
+<p>El Motor Documental provee los datos, pero la decisión contable pertenece al módulo de Revisión Contable.</p>
+<hr />
+<h2 id="7-cuales-son-sus-invariantes">7. ¿Cuáles son sus invariantes?<a class="headerlink" href="#7-cuales-son-sus-invariantes" title="Permanent link">&para;</a></h2>
+<p>Los invariantes son reglas que no deben romperse.</p>
+<h3 id="71-el-backend-es-autoridad-de-clave-documental">7.1. El backend es autoridad de clave documental<a class="headerlink" href="#71-el-backend-es-autoridad-de-clave-documental" title="Permanent link">&para;</a></h3>
+<p>El frontend nunca define la clave documental final.</p>
+<hr />
+<h3 id="72-documento-logico-y-archivo-fisico-son-conceptos-distintos">7.2. Documento lógico y archivo físico son conceptos distintos<a class="headerlink" href="#72-documento-logico-y-archivo-fisico-son-conceptos-distintos" title="Permanent link">&para;</a></h3>
+<p>Un nuevo archivo no implica necesariamente un nuevo documento.</p>
+<hr />
+<h3 id="73-no-se-sobrescriben-archivos-fisicos">7.3. No se sobrescriben archivos físicos<a class="headerlink" href="#73-no-se-sobrescriben-archivos-fisicos" title="Permanent link">&para;</a></h3>
+<p>Cada archivo subido se conserva.</p>
+<p>Las correcciones se manejan como versiones.</p>
+<hr />
+<h3 id="74-solo-una-version-actual-por-documento-logico">7.4. Solo una versión actual por documento lógico<a class="headerlink" href="#74-solo-una-version-actual-por-documento-logico" title="Permanent link">&para;</a></h3>
+<p>Para cada documento lógico debe existir como máximo una versión actual.</p>
+<hr />
+<h3 id="75-un-expediente-tiene-un-solo-documento-principal-activo">7.5. Un expediente tiene un solo documento principal activo<a class="headerlink" href="#75-un-expediente-tiene-un-solo-documento-principal-activo" title="Permanent link">&para;</a></h3>
+<p>Solo uno de estos puede quedar como principal activo:</p>
+<div class="highlight"><pre><span></span><code>principal_oc
+principal_os
+principal_factura
+</code></pre></div>
+<hr />
+<h3 id="76-la-factura-es-ancla-contable">7.6. La factura es ancla contable<a class="headerlink" href="#76-la-factura-es-ancla-contable" title="Permanent link">&para;</a></h3>
+<p>Para Revisión Contable, el período contable se define por:</p>
+<div class="highlight"><pre><span></span><code>fecha_emision de FACTURA confirmada
+</code></pre></div>
+<p>No por fecha de OC, guía, pago, carga u OCR.</p>
+<hr />
+<h3 id="77-un-expediente-sin-factura-confirmada-no-participa-del-cierre-contable">7.7. Un expediente sin factura confirmada no participa del cierre contable<a class="headerlink" href="#77-un-expediente-sin-factura-confirmada-no-participa-del-cierre-contable" title="Permanent link">&para;</a></h3>
+<p>Puede existir en Compras, Almacén o Finanzas, pero no debe aparecer en Revisión Contable.</p>
+<hr />
+<h3 id="78-los-duplicados-son-conflictos-controlados">7.8. Los duplicados son conflictos controlados<a class="headerlink" href="#78-los-duplicados-son-conflictos-controlados" title="Permanent link">&para;</a></h3>
+<p>Una clave documental duplicada debe devolver 409 con acción sugerida.</p>
+<p>Nunca debe ser 500.</p>
+<hr />
+<h3 id="79-ocr-original-no-se-pierde">7.9. OCR original no se pierde<a class="headerlink" href="#79-ocr-original-no-se-pierde" title="Permanent link">&para;</a></h3>
+<p>Deben conservarse:</p>
+<div class="highlight"><pre><span></span><code>OCR original
+OCR editado
+OCR confirmado
+</code></pre></div>
+<hr />
+<h3 id="710-los-catalogos-son-fuente-de-normalizacion">7.10. Los catálogos son fuente de normalización<a class="headerlink" href="#710-los-catalogos-son-fuente-de-normalizacion" title="Permanent link">&para;</a></h3>
+<p>Datos como bancos, monedas y proveedores deben normalizarse desde catálogos.</p>
+<div class="highlight"><pre><span></span><code>core.bancos
+core.monedas
+core.proveedores
+</code></pre></div>
+<hr />
+<h3 id="711-quitar-no-es-eliminar-fisico">7.11. Quitar no es eliminar físico<a class="headerlink" href="#711-quitar-no-es-eliminar-fisico" title="Permanent link">&para;</a></h3>
+<p>Las acciones de usuario deben desvincular o anular, no borrar físicamente.</p>
+<hr />
+<h3 id="712-los-modulos-consumen-el-motor-no-lo-duplican">7.12. Los módulos consumen el motor, no lo duplican<a class="headerlink" href="#712-los-modulos-consumen-el-motor-no-lo-duplican" title="Permanent link">&para;</a></h3>
+<p>Compras, Almacén, Finanzas, Revisión Contable y futuros módulos no deben tener lógica documental propia duplicada.</p>
+<hr />
+<h2 id="8-cuales-son-las-adr-relacionadas">8. ¿Cuáles son las ADR relacionadas?<a class="headerlink" href="#8-cuales-son-las-adr-relacionadas" title="Permanent link">&para;</a></h2>
+<h3 id="adr-001-separar-documento-logico-de-archivo-fisico">ADR-001: Separar documento lógico de archivo físico<a class="headerlink" href="#adr-001-separar-documento-logico-de-archivo-fisico" title="Permanent link">&para;</a></h3>
+<p><strong>Decisión:</strong> usar <code>documentos.documentos</code> para el documento de negocio y <code>documentos.documentos_archivos</code> para archivos físicos y versiones.</p>
+<p><strong>Motivo:</strong> un mismo documento puede tener varios archivos físicos.</p>
+<p><strong>Consecuencia:</strong> los módulos trabajan con documentos lógicos; R2 almacena archivos físicos.</p>
+<hr />
+<h3 id="adr-002-cloudflare-r2-privado-para-almacenamiento-documental">ADR-002: Cloudflare R2 privado para almacenamiento documental<a class="headerlink" href="#adr-002-cloudflare-r2-privado-para-almacenamiento-documental" title="Permanent link">&para;</a></h3>
+<p><strong>Decisión:</strong> almacenar archivos en R2 privado y acceder mediante signed URLs.</p>
+<p><strong>Motivo:</strong> evitar exposición pública de documentos.</p>
+<p><strong>Consecuencia:</strong> el backend debe generar URLs temporales de visualización.</p>
+<hr />
+<h3 id="adr-003-ocr-desacoplado-mediante-nats">ADR-003: OCR desacoplado mediante NATS<a class="headerlink" href="#adr-003-ocr-desacoplado-mediante-nats" title="Permanent link">&para;</a></h3>
+<p><strong>Decisión:</strong> OCR Worker no se ejecuta dentro del request principal del backend; se invoca vía NATS.</p>
+<p><strong>Motivo:</strong> OCR es costoso y debe estar desacoplado.</p>
+<p><strong>Consecuencia:</strong> ms-documentos debe manejar errores de timeout o ausencia de suscriptores.</p>
+<hr />
+<h3 id="adr-004-backend-como-autoridad-de-clave-documental">ADR-004: Backend como autoridad de clave documental<a class="headerlink" href="#adr-004-backend-como-autoridad-de-clave-documental" title="Permanent link">&para;</a></h3>
+<p><strong>Decisión:</strong> la clave documental se calcula solo en backend.</p>
+<p><strong>Motivo:</strong> evitar inconsistencias o manipulación desde frontend.</p>
+<p><strong>Consecuencia:</strong> todos los módulos deben reutilizar la misma función backend.</p>
+<hr />
+<h3 id="adr-005-duplicado-documental-como-conflicto-controlado">ADR-005: Duplicado documental como conflicto controlado<a class="headerlink" href="#adr-005-duplicado-documental-como-conflicto-controlado" title="Permanent link">&para;</a></h3>
+<p><strong>Decisión:</strong> si existe la misma clave documental, responder 409 y sugerir agregar versión.</p>
+<p><strong>Motivo:</strong> duplicado no es error inesperado.</p>
+<p><strong>Consecuencia:</strong> frontend debe mostrar acción <code>Agregar como versión</code>.</p>
+<hr />
+<h3 id="adr-006-versionado-sin-sobrescritura">ADR-006: Versionado sin sobrescritura<a class="headerlink" href="#adr-006-versionado-sin-sobrescritura" title="Permanent link">&para;</a></h3>
+<p><strong>Decisión:</strong> los archivos físicos nunca se sobrescriben.</p>
+<p><strong>Motivo:</strong> trazabilidad y auditoría.</p>
+<p><strong>Consecuencia:</strong> cada corrección o reemplazo crea nueva versión.</p>
+<hr />
+<h3 id="adr-007-ocr-original-editado-y-confirmado-deben-conservarse">ADR-007: OCR original, editado y confirmado deben conservarse<a class="headerlink" href="#adr-007-ocr-original-editado-y-confirmado-deben-conservarse" title="Permanent link">&para;</a></h3>
+<p><strong>Decisión:</strong> almacenar los distintos estados del OCR.</p>
+<p><strong>Motivo:</strong> medir calidad OCR y auditar cambios humanos.</p>
+<p><strong>Consecuencia:</strong> metadata debe incluir auditoría y fuentes de datos.</p>
+<hr />
+<h3 id="adr-008-catalogos-core-para-normalizacion">ADR-008: Catálogos core para normalización<a class="headerlink" href="#adr-008-catalogos-core-para-normalizacion" title="Permanent link">&para;</a></h3>
+<p><strong>Decisión:</strong> usar tablas <code>core.proveedores</code>, <code>core.monedas</code> y <code>core.bancos</code>.</p>
+<p><strong>Motivo:</strong> evitar valores libres e inconsistentes.</p>
+<p><strong>Consecuencia:</strong> frontend debe usar selects y backend debe validar/enriquecer.</p>
+<hr />
+<h3 id="adr-009-factura-como-ancla-contable">ADR-009: Factura como ancla contable<a class="headerlink" href="#adr-009-factura-como-ancla-contable" title="Permanent link">&para;</a></h3>
+<p><strong>Decisión:</strong> el período contable se define por la fecha de emisión de la factura confirmada.</p>
+<p><strong>Motivo:</strong> Contabilidad trabaja por período de factura, no por creación de expediente ni fecha de OC.</p>
+<p><strong>Consecuencia:</strong> Revisión Contable solo lista expedientes con factura confirmada en el período seleccionado.</p>
+<hr />
+<h3 id="adr-010-quitar-no-elimina-fisicamente">ADR-010: Quitar no elimina físicamente<a class="headerlink" href="#adr-010-quitar-no-elimina-fisicamente" title="Permanent link">&para;</a></h3>
+<p><strong>Decisión:</strong> acciones de usuario no eliminan archivos físicos.</p>
+<p><strong>Motivo:</strong> trazabilidad, seguridad documental y recuperación ante error humano.</p>
+<p><strong>Consecuencia:</strong> se implementa desvinculación/anulación con auditoría.</p>
+<hr />
+<h3 id="adr-011-motor-documental-como-servicio-transversal">ADR-011: Motor Documental como servicio transversal<a class="headerlink" href="#adr-011-motor-documental-como-servicio-transversal" title="Permanent link">&para;</a></h3>
+<p><strong>Decisión:</strong> Compras, Almacén, Finanzas, Revisión Contable, Caja Chica y futuros módulos deben reutilizar el mismo motor.</p>
+<p><strong>Motivo:</strong> evitar duplicación de lógica documental.</p>
+<p><strong>Consecuencia:</strong> el motor debe ser modular, extensible y no acoplado a una pantalla.</p>
+<hr />
+<h2 id="9-nota-de-alineacion-con-el-handbook-actual">9. Nota de alineación con el Handbook actual<a class="headerlink" href="#9-nota-de-alineacion-con-el-handbook-actual" title="Permanent link">&para;</a></h2>
+<p>Este documento se incorpora como documento maestro del Motor Documental.</p>
+<p>Debe enlazarse desde:</p>
+<ul>
+<li><code>docs/motor-documental/README.md</code></li>
+<li><code>docs/02-arquitectura/04-motor-documental.md</code></li>
+<li><code>docs/04-backend/02-document-engine.md</code></li>
+<li><code>docs/17-domain/documentos.md</code></li>
+<li><code>docs/27-data-dictionary/documentos.md</code></li>
+</ul>
+<h3 id="adr-oficiales-relacionadas-en-el-repositorio-actual">ADR oficiales relacionadas en el repositorio actual<a class="headerlink" href="#adr-oficiales-relacionadas-en-el-repositorio-actual" title="Permanent link">&para;</a></h3>
+<ul>
+<li><code>ADR-002-documento-logico.md</code></li>
+<li><code>ADR-003-versionado.md</code></li>
+<li><code>ADR-004-factura-periodo.md</code></li>
+<li><code>ADR-006-estrategia-de-versionado-documental.md</code></li>
+<li><code>ADR-008-seguridad-basada-en-workspace-permisos-auditoria.md</code></li>
+<li><code>ADR-009-arquitectura-por-capacidades-compartidas.md</code></li>
+</ul>
+<h3 id="correccion-importante">Corrección importante<a class="headerlink" href="#correccion-importante" title="Permanent link">&para;</a></h3>
+<p>La factura es <strong>ancla contable</strong>, no necesariamente documento principal del expediente.</p>
+<p>Puede existir:</p>
+<ul>
+<li><code>principal_oc</code></li>
+<li><code>principal_os</code></li>
+<li><code>principal_factura</code></li>
+</ul>
+<p>Pero para Revisión Contable, la FACTURA confirmada define el período por <code>fecha_emision</code>, incluso si está vinculada como <code>adjunto_factura</code>.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+  <script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Volver al principio
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    <script id="__config" type="application/json">{"base": "../..", "features": ["navigation.tabs", "navigation.sections", "navigation.expand", "navigation.path", "navigation.top", "search.highlight", "search.share", "content.code.copy", "content.tabs.link"], "search": "../../assets/javascripts/workers/search.f8cc74c7.min.js", "translations": {"clipboard.copied": "Copiado al portapapeles", "clipboard.copy": "Copiar al portapapeles", "search.result.more.one": "1 m\u00e1s en esta p\u00e1gina", "search.result.more.other": "# m\u00e1s en esta p\u00e1gina", "search.result.none": "No se encontraron documentos", "search.result.one": "1 documento encontrado", "search.result.other": "# documentos encontrados", "search.result.placeholder": "Teclee para comenzar b\u00fasqueda", "search.result.term.missing": "Falta", "select.version": "Seleccionar versi\u00f3n"}}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.60a45f97.min.js"></script>
+      
+    
+  </body>
+</html>
