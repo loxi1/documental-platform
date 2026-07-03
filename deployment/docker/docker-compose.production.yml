@@ -40,6 +40,7 @@ services:
     environment:
       PORT: ${GATEWAY_PORT:-3000}
       SERVICE_NAME: api-gateway
+      NATS_URL: nats://nats:4222
     expose:
       - "3000"
     depends_on:
@@ -91,6 +92,7 @@ services:
     environment:
       PORT: ${AUTH_PORT:-3001}
       SERVICE_NAME: ms-auth
+      NATS_URL: nats://nats:4222
     expose:
       - "3001"
     depends_on:
@@ -111,6 +113,7 @@ services:
     environment:
       PORT: ${DOCUMENTOS_PORT:-3002}
       SERVICE_NAME: ms-documentos
+      NATS_URL: nats://nats:4222
     expose:
       - "3002"
     depends_on:
