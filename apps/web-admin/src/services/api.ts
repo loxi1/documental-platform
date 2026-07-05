@@ -1,13 +1,9 @@
 import axios from "axios";
 import { clearAuthSession, getAccessToken } from "@/lib/auth-storage";
+import { getPublicApiUrl } from "@/services/env";
 
 export const api = axios.create({
-  // TEMPORAL DEV: mientras api-gateway no expone todas las rutas documentales,
-  // los módulos documentos/expedientes/alertas consumen ms-documentos directo.
-  // En producción debe apuntar al api-gateway.
-  baseURL:
-    process.env.NEXT_PUBLIC_API_URL ??
-    "http://localhost:3002/api/v1",
+  baseURL: getPublicApiUrl(),
   timeout: 30000,
 });
 

@@ -1,10 +1,9 @@
 import axios from "axios";
 import { clearAuthSession, getAccessToken } from "@/lib/auth-storage";
+import { getPublicAuthApiUrl } from "@/services/env";
 
 export const authApi = axios.create({
-  baseURL:
-    process.env.NEXT_PUBLIC_AUTH_API_URL ??
-    "http://localhost:3000/api/v1",
+  baseURL: getPublicAuthApiUrl(),
   timeout: 30000,
 });
 
