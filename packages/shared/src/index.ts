@@ -8,3 +8,4 @@ export * from './nats/subjects.js';
 export * from './nats/nats-client-options.js';
 
 export * from './pagination/pagination.js';
+export * from './observability.js';

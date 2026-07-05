@@ -1,9 +1,12 @@
 import { Injectable, OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { connect, type NatsConnection } from 'nats';
-import { createNatsClientOptions } from '@documental/shared';
+import {
+  createLiveResponse,
+  createNatsClientOptions,
+  createVersionResponse,
+} from '@documental/shared';
 import { sql } from '@documental/database';
-
 
 @Injectable()
 export class AppService implements OnModuleDestroy {
@@ -23,6 +26,28 @@ export class AppService implements OnModuleDestroy {
         nats,
       },
     };
+  }
+
+  getLive() {
+    return createLiveResponse('ms-auth');
+  }
+
+  async getReady() {
+    const postgres = await this.checkPostgres();
+    const nats = await this.checkNats();
+
+    return {
+      service: 'ms-auth',
+      status: postgres === 'up' && nats === 'up' ? 'ok' : 'degraded',
+      checks: {
+        postgres,
+        nats,
+      },
+    };
+  }
+
+  getVersion() {
+    return createVersionResponse('ms-auth');
   }
 
   private async checkPostgres(): Promise<'up' | 'down'> {

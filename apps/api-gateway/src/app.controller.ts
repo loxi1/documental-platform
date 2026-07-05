@@ -12,4 +12,22 @@ export class AppController {
   getHealth() {
     return this.appService.getHealth();
   }
+
+  @ApiOperation({ summary: 'Liveness check del API Gateway' })
+  @Get('live')
+  getLive() {
+    return this.appService.getLive();
+  }
+
+  @ApiOperation({ summary: 'Readiness check del API Gateway' })
+  @Get('ready')
+  getReady() {
+    return this.appService.getReady();
+  }
+
+  @ApiOperation({ summary: 'Versión del API Gateway' })
+  @Get('version')
+  getVersion() {
+    return this.appService.getVersion();
+  }
 }

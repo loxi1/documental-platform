@@ -12,4 +12,22 @@ export class AppController {
   getHealth() {
     return this.appService.getHealth();
   }
+
+  @ApiOperation({ summary: 'Liveness check del microservicio de autenticación' })
+  @Get('live')
+  getLive() {
+    return this.appService.getLive();
+  }
+
+  @ApiOperation({ summary: 'Readiness check del microservicio de autenticación' })
+  @Get('ready')
+  getReady() {
+    return this.appService.getReady();
+  }
+
+  @ApiOperation({ summary: 'Versión del microservicio de autenticación' })
+  @Get('version')
+  getVersion() {
+    return this.appService.getVersion();
+  }
 }
