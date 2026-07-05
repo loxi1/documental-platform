@@ -39,21 +39,23 @@ async function bootstrap() {
 
   app.setGlobalPrefix('api/v1');
 
-  const swaggerConfig = new DocumentBuilder()
-    .setTitle('MS Auth API')
-    .setDescription('Microservicio de autenticación y autorización')
-    .setVersion('1.0.0')
-    .addTag('sistema')
-    .addTag('auth')
-    .build();
+  const isProduction = process.env.NODE_ENV === 'production';
+  const swaggerEnabled = process.env.SWAGGER_ENABLED === 'true' && !isProduction;
 
-  const document = SwaggerModule.createDocument(app, swaggerConfig);
-  SwaggerModule.setup('docs', app, document);
+  if (swaggerEnabled) {
+    const swaggerConfig = new DocumentBuilder()
+      .setTitle('MS Auth API')
+      .setDescription('Microservicio de autenticación y autorización')
+      .setVersion('1.0.0')
+      .addTag('sistema')
+      .addTag('auth')
+      .build();
+
+    const swaggerDocument = SwaggerModule.createDocument(app, swaggerConfig);
+    SwaggerModule.setup('docs', app, swaggerDocument);
+  }
 
   await app.listen(port);
-
-  console.log(`ms-auth escuchando en puerto ${port}`);
-  console.log(`Swagger disponible en http://localhost:${port}/docs`);
 }
 
 bootstrap();

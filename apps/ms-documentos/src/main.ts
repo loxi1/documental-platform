@@ -29,21 +29,23 @@ async function bootstrap() {
 
   app.setGlobalPrefix('api/v1');
 
-  const swaggerConfig = new DocumentBuilder()
-    .setTitle('MS Documentos API')
-    .setDescription('Microservicio de gestión documental')
-    .setVersion('1.0.0')
-    .addTag('documentos')
-    .addTag('grupos')
-    .build();
+    const isProduction = process.env.NODE_ENV === 'production';
+    const swaggerEnabled = process.env.SWAGGER_ENABLED === 'true' && !isProduction;
 
-  const document = SwaggerModule.createDocument(app, swaggerConfig);
-  SwaggerModule.setup('docs', app, document);
+    if (swaggerEnabled) {
+      const swaggerConfig = new DocumentBuilder()
+        .setTitle('MS Documentos API')
+        .setDescription('Microservicio de gestión documental')
+        .setVersion('1.0.0')
+        .addTag('documentos')
+        .addTag('grupos')
+        .build();
 
-  await app.listen(port);
+      const swaggerDocument = SwaggerModule.createDocument(app, swaggerConfig);
+      SwaggerModule.setup('docs', app, swaggerDocument);
+    }
 
-  console.log(`ms-documentos escuchando en puerto ${port}`);
-  console.log(`Swagger disponible en http://localhost:${port}/docs`);
+    await app.listen(port);
 }
 
 bootstrap();

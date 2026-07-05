@@ -29,21 +29,21 @@ async function bootstrap() {
 
   app.setGlobalPrefix('api/v1');
 
-  const swaggerConfig = new DocumentBuilder()
-    .setTitle('API Gateway')
-    .setDescription('Gateway principal de la plataforma documental')
-    .setVersion('1.0.0')
-    .addTag('auth')
-    .addTag('sistema')
-    .build();
+  const isProduction = process.env.NODE_ENV === 'production';
+  const swaggerEnabled = process.env.SWAGGER_ENABLED === 'true' && !isProduction;
 
-  const document = SwaggerModule.createDocument(app, swaggerConfig);
-  SwaggerModule.setup('docs', app, document);
+  if (swaggerEnabled) {
+    const swaggerConfig = new DocumentBuilder()
+      .setTitle('Documental Platform')
+      .setDescription('API documentation')
+      .setVersion('1.0')
+      .build();
+
+    const swaggerDocument = SwaggerModule.createDocument(app, swaggerConfig);
+    SwaggerModule.setup('docs', app, swaggerDocument);
+  }
 
   await app.listen(port);
-
-  console.log(`api-gateway escuchando en puerto ${port}`);
-  console.log(`Swagger disponible en http://localhost:${port}/docs`);
 }
 
 bootstrap();

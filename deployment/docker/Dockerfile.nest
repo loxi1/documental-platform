@@ -21,6 +21,8 @@ RUN corepack enable
 COPY --from=deps /app ./
 
 ARG APP_PATH
+COPY --from=build /app/${APP_PATH}/dist /app/${APP_PATH}/dist
+
 WORKDIR /app/${APP_PATH}
 
 CMD ["node", "dist/main.js"]
