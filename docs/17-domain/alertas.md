@@ -1,29 +1,19 @@
-# Alertas y Auditoría
+# Documento de diseño — Alertas documentales
 
-## Alertas
+## Objetivo
 
-Las alertas contables son manuales. No deben generarse automáticamente en este sprint.
+Definir el modelo funcional para alertas documentales dentro de Documental Platform.
 
-Ejemplos:
+Este documento es solo diseño de dominio. No implementa migraciones, runtime ni cambios de infraestructura.
 
-- Falta guía.
-- Factura observada.
-- Pago pendiente.
-- Detracción pendiente.
-- Monto inconsistente.
+## Principio general
 
-## Auditoría
+Las alertas documentales representan observaciones, pendientes o incidencias funcionales detectadas sobre documentos, archivos, OCR o expedientes.
 
-Debe registrarse en metadata o tablas especializadas según el caso.
+Una alerta no reemplaza un evento documental.
 
-Eventos relevantes:
+Diferencia principal:
 
-- Documento confirmado.
-- Documento editado manualmente.
-- Documento agregado como versión.
-- Documento desvinculado de expediente.
-- Observación contable agregada.
-
-## Regla
-
-No perder trazabilidad aunque el usuario se equivoque.
+```text
+evento documental = hecho ocurrido
+alerta documental = condición que requiere atención
