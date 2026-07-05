@@ -31,3 +31,4 @@ infra/backups/*.sql
 infra/backups/*.dump
 storage
 data
+deployment/env/.env.production

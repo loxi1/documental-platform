@@ -1,6 +1,6 @@
 services:
   traefik:
-    image: traefik:v3.1
+    image: traefik:v3.6.1
     container_name: dp_traefik
     restart: unless-stopped
     command:
@@ -38,7 +38,7 @@ services:
     env_file:
       - ../env/.env.production
     environment:
-      PORT: ${GATEWAY_PORT:-3000}
+      PORT: ${API_GATEWAY_PORT:-3000}
       SERVICE_NAME: api-gateway
       NATS_URL: nats://nats:4222
     expose:
@@ -60,6 +60,10 @@ services:
       dockerfile: deployment/docker/Dockerfile.next
       args:
         APP_PATH: apps/web-admin
+        NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL}
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
+        NEXT_PUBLIC_AUTH_API_URL: ${NEXT_PUBLIC_AUTH_API_URL}
+        NEXT_PUBLIC_APP_NAME: ${NEXT_PUBLIC_APP_NAME}
     container_name: dp_web_admin
     restart: unless-stopped
     env_file:
@@ -90,7 +94,7 @@ services:
     env_file:
       - ../env/.env.production
     environment:
-      PORT: ${AUTH_PORT:-3001}
+      PORT: ${MS_AUTH_PORT:-3001}
       SERVICE_NAME: ms-auth
       NATS_URL: nats://nats:4222
     expose:
@@ -111,7 +115,7 @@ services:
     env_file:
       - ../env/.env.production
     environment:
-      PORT: ${DOCUMENTOS_PORT:-3002}
+      PORT: ${MS_DOCUMENTOS_PORT:-3002}
       SERVICE_NAME: ms-documentos
       NATS_URL: nats://nats:4222
     expose:
