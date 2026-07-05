@@ -1,3 +1,10 @@
+## Comandos rápidos de desarrollo
+
+### Acceso a PostgreSQL local
+
+```bash
+docker exec -it dp_postgres psql -U postgres -d documental_platform
+
 # Documental Platform
 
 Documental Platform es una plataforma privada de gestión documental por Workspace.
@@ -16,12 +23,7 @@ Documental Platform es una plataforma privada de gestión documental por Workspa
 
 ## Regla principal
 
-El conocimiento oficial vive en el repositorio, no en chats.
-
-# documental-platform
-levanta proyecto:
-docker exec -it dp_postgres psql -U postgres -d documental_platform
-
+## Comandos rápidos de desarrollo
 
 pnpm --filter @documental/api-gateway build
 pnpm --filter @documental/api-gateway start:dev
@@ -42,3 +44,18 @@ source .venv/bin/activate
 loxi1@Servidor-Ubuntu:~/projects/apps/documental-platform/workers/ocr-worker$ python -m app.main
 
 loxi1@Servidor-Ubuntu:~/projects/apps/documental-platform/workers/ocr-worker$ python -m app.test_subscribe_clasificado
+
+> Nota: si el stack Docker productivo/local está levantado, puede ocupar los puertos `3000`, `3001`, `3002` o `3005`.
+>
+> Si aparece `EADDRINUSE`, detén el contenedor correspondiente o usa el servicio ya levantado en Docker.
+
+
+### Verificar puertos ocupados
+
+```bash
+ss -ltnp | grep -E ':3000|:3001|:3002|:3005'
+
+
+# documental-platform
+levanta proyecto:
+    docker exec -it dp_postgres psql -U postgres -d documental_platform
