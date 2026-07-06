@@ -752,8 +752,23 @@ export class DocumentosGatewayController {
     });
   }
 
-  @ApiOperation({ summary: 'Crear relación documental vía API Gateway' })
+  @ApiOperation({ summary: 'Listar eventos documentales de un documento vía API Gateway' })
+  @Get(':id/eventos')
+  async findDocumentoEventos(
+    @Headers('authorization') authorization: string | undefined,
+    @Headers(REQUEST_ID_HEADER) requestId: string | undefined,
+    @Param('id') id: string,
+  ) {
+    const contexto = await this.validateAuthorization(authorization);
+    await this.assertDocumentoPermitido(id, contexto, requestId);
 
+    return this.proxy({
+      method: 'GET',
+      path: `/documentos/${id}/eventos`,
+      authorization,
+      requestId,
+    });
+  }
 
   @ApiOperation({ summary: 'Listar versiones/archivos físicos de un documento lógico vía API Gateway' })
   @Get(':id/archivos')
@@ -796,6 +811,7 @@ export class DocumentosGatewayController {
     });
   }
 
+  @ApiOperation({ summary: 'Crear relación documental vía API Gateway' })
   @Post('relaciones')
   async createDocumentoRelacion(
     @Headers('authorization') authorization: string | undefined,

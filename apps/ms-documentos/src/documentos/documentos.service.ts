@@ -4,6 +4,7 @@ import { ClientProxy } from '@nestjs/microservices';
 import { firstValueFrom } from 'rxjs';
 import { NatsSubjects } from '@documental/shared';
 import { NATS_CLIENT } from '../nats/nats-client.provider';
+import { DocumentoEventosService } from '../documento-eventos/documento-eventos.service';
 
 import {
   DocumentosFilters,
@@ -14,6 +15,7 @@ import {
 export class DocumentosService {
   constructor(
     private readonly repo: DocumentosRepository,
+    private readonly documentoEventos: DocumentoEventosService,
     @Inject(NATS_CLIENT)
     private readonly nats: ClientProxy,
   ) {}
@@ -416,6 +418,23 @@ export class DocumentosService {
       };
     }
 
+    await this.documentoEventos.registrarEvento({
+      documentoId: Number(result.ocr.documento_id),
+      expedienteId: Number(body.expedienteId),
+      tipoEvento: 'expediente.vinculado',
+      entidadTipo: 'expediente',
+      entidadId: Number(body.expedienteId),
+      descripcion: 'Documento OCR vinculado a expediente.',
+      metadata: {
+        ocrResultadoId: id,
+        tipoRelacion: body.tipoRelacion,
+        esPrincipal: body.esPrincipal ?? false,
+        orden: body.orden ?? 0,
+        vinculo: result.vinculo ?? null,
+      },
+      origen: 'api',
+    });
+
     return {
       ocrResultadoId: id,
       expedienteId: body.expedienteId,
@@ -424,6 +443,22 @@ export class DocumentosService {
       esPrincipal: body.esPrincipal ?? false,
       orden: body.orden ?? 0,
       vinculo: result.vinculo,
+    };
+  }
+
+  async findEventosByDocumentoId(documentoId: number) {
+    const doc = await this.repo.findById(documentoId);
+
+    if (!doc) {
+      throw new NotFoundException(`Documento ${documentoId} no encontrado`);
+    }
+
+    const eventos = await this.documentoEventos.listarPorDocumento(documentoId);
+
+    return {
+      documentoId,
+      total: eventos.length,
+      eventos,
     };
   }
 

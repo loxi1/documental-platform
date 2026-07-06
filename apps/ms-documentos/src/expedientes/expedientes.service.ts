@@ -1,9 +1,13 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { ExpedientesRepository } from './expedientes.repository';
+import { DocumentoEventosService } from '../documento-eventos/documento-eventos.service';
 
 @Injectable()
 export class ExpedientesService {
-  constructor(private readonly repo: ExpedientesRepository) {}
+  constructor(
+    private readonly repo: ExpedientesRepository,
+    private readonly documentoEventos: DocumentoEventosService,
+  ) {}
 
   findAll(filters: {
     empresa?: string;
@@ -91,6 +95,22 @@ export class ExpedientesService {
         expedienteId: result.expedienteId,
       };
     }
+
+    await this.documentoEventos.registrarEvento({
+      documentoId: Number(data.documentoId),
+      expedienteId: Number(expedienteId),
+      tipoEvento: 'expediente.vinculado',
+      entidadTipo: 'expediente',
+      entidadId: Number(expedienteId),
+      descripcion: 'Documento vinculado manualmente a expediente.',
+      metadata: {
+        tipoRelacion: data.tipoRelacion ?? null,
+        esPrincipal: data.esPrincipal ?? false,
+        orden: data.orden ?? 0,
+        vinculo: result ?? null,
+      },
+      origen: 'api',
+    });
 
     return result;
   }

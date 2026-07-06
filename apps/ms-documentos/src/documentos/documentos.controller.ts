@@ -147,6 +147,13 @@ export class DocumentosController {
 
 
 
+  @ApiOperation({ summary: 'Listar eventos documentales de un documento' })
+  @ApiParam({ name: 'id', example: 3747 })
+  @Get(':id/eventos')
+  findEventosByDocumentoId(@Param('id', ParseIntPipe) id: number) {
+    return this.service.findEventosByDocumentoId(id);
+  }
+
   @ApiOperation({ summary: 'Listar versiones/archivos físicos de un documento lógico' })
   @ApiParam({ name: 'id', example: 3747 })
   @Get(':id/archivos')
