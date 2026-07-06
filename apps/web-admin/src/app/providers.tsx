@@ -17,6 +17,10 @@ export default function Providers({
           queries: {
             staleTime: 60_000,
             refetchOnWindowFocus: false,
+            retry: false,
+          },
+          mutations: {
+            retry: false,
           },
         },
       }),

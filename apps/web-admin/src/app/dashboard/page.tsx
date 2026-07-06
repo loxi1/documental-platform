@@ -15,6 +15,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { MetricCard, MetricCardSkeleton } from "@/components/documental/metric-card";
 import { Input } from "@/components/ui/input";
 import { useDashboardContable } from "@/hooks/useDashboard";
+import { useAuth } from "@/hooks/useAuth";
 
 function asValue(value: unknown, fallback = "0") {
   if (value === null || value === undefined || value === "") return fallback;
@@ -36,13 +37,14 @@ function formatMoney(value: unknown) {
 }
 
 export default function DashboardPage() {
-  const [empresa, setEmpresa] = useState("BBTI");
+  const { contexto } = useAuth();
+  const empresa = contexto?.empresa?.trim().toUpperCase() || "BBTI";
   const [anio, setAnio] = useState("2026");
   const [mes, setMes] = useState("1");
 
   const params = useMemo(
     () => ({
-      empresa: empresa.trim().toUpperCase(),
+      empresa,
       anio,
       mes,
     }),
@@ -60,7 +62,7 @@ export default function DashboardPage() {
         <div>
           <h1 className="text-2xl font-bold">Dashboard contable</h1>
           <p className="text-sm text-muted-foreground">
-            Indicadores operativos por empresa, año y mes. El expediente sigue
+            Indicadores operativos del Workspace activo. El expediente sigue
             siendo la unidad principal del negocio.
           </p>
         </div>
@@ -78,7 +80,7 @@ export default function DashboardPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Filtros</CardTitle>
+          <CardTitle>Filtros de demostración</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="grid gap-3 md:grid-cols-4">
@@ -88,8 +90,11 @@ export default function DashboardPage() {
               </span>
               <Input
                 value={empresa}
-                onChange={(event) => setEmpresa(event.target.value)}
-                placeholder="BBTI"
+                readOnly
+                aria-readonly="true"
+                title="La empresa se toma del Workspace activo"
+                className="bg-muted/50"
+                placeholder="Empresa del workspace"
               />
             </label>
 

@@ -125,6 +125,7 @@ export function clearAuthSession() {
   if (!isBrowser()) return;
   window.localStorage.removeItem(AUTH_STORAGE_KEY);
   window.localStorage.removeItem(LOGIN_STORAGE_KEY);
+  window.localStorage.removeItem(WORKSPACES_STORAGE_KEY);
 }
 
 export function getAccessToken(): string | null {
