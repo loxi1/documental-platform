@@ -155,6 +155,27 @@ export class DocumentosService {
         forceReprocess: contexto.reprocesar === true,
       });
 
+      if (saved?.row?.id) {
+        await this.documentoEventos.registrarEvento({
+          documentoId: saved.row.documento_id ? Number(saved.row.documento_id) : archivo.documento_id ? Number(archivo.documento_id) : null,
+          archivoId: Number(archivo.id),
+          tipoEvento: 'ocr.procesado',
+          entidadTipo: 'ocr_resultado',
+          entidadId: Number(saved.row.id),
+          expedienteId: saved.row.expediente_id ? Number(saved.row.expediente_id) : saved.expediente?.id ? Number(saved.expediente.id) : contexto.expedienteId ?? null,
+          descripcion: 'OCR procesado y registrado como pendiente de validación.',
+          metadata: {
+            tipoPropuesto: saved.row.tipo_propuesto ?? result.tipoDocumental ?? null,
+            estado: saved.row.estado ?? 'pendiente_validacion',
+            confidence: saved.row.confidence ?? result.confidence ?? null,
+            claveDocumental: saved.row.clave_documental ?? result.claveDocumental ?? null,
+            yaExistia: saved.yaExistia ?? false,
+            motivo: saved.motivo ?? null,
+          },
+          origen: 'ocr',
+        });
+      }
+
       return {
         ...result,
         expedienteId: saved?.row?.expediente_id ?? saved?.expediente?.id ?? null,
@@ -208,6 +229,23 @@ export class DocumentosService {
     });
 
     const confirmado = await this.repo.confirmarOcrResultado(id, usuarioId);
+
+    await this.documentoEventos.registrarEvento({
+      documentoId: result.documento_id ? Number(result.documento_id) : null,
+      archivoId: result.archivo_id ? Number(result.archivo_id) : null,
+      tipoEvento: 'ocr.confirmado',
+      entidadTipo: 'ocr_resultado',
+      entidadId: id,
+      expedienteId: result.expediente_id ? Number(result.expediente_id) : null,
+      descripcion: 'Resultado OCR confirmado.',
+      metadata: {
+        tipoPropuesto: result.tipo_propuesto ?? null,
+        claveDocumental: result.clave_documental ?? null,
+        usuarioId: usuarioId ?? null,
+      },
+      usuarioId: usuarioId ?? null,
+      origen: 'api',
+    });
 
     return {
       id: confirmado.id,
@@ -505,11 +543,31 @@ export class DocumentosService {
   ) {
     const motivoFinal = motivo?.trim() || 'Rechazado por usuario';
 
-    return this.repo.rechazarOcrResultado(
+    const rechazado = await this.repo.rechazarOcrResultado(
       id,
       motivoFinal,
       usuarioId,
     );
+
+    if (rechazado) {
+      await this.documentoEventos.registrarEvento({
+        documentoId: rechazado.documento_id ? Number(rechazado.documento_id) : null,
+        archivoId: rechazado.archivo_id ? Number(rechazado.archivo_id) : null,
+        tipoEvento: 'ocr.rechazado',
+        entidadTipo: 'ocr_resultado',
+        entidadId: Number(rechazado.id),
+        expedienteId: rechazado.expediente_id ? Number(rechazado.expediente_id) : null,
+        descripcion: 'Resultado OCR rechazado.',
+        metadata: {
+          motivo: motivoFinal,
+          usuarioId: usuarioId ?? null,
+        },
+        usuarioId: usuarioId ?? null,
+        origen: 'api',
+      });
+    }
+
+    return rechazado;
   }
 
 

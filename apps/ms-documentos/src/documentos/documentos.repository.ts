@@ -1520,7 +1520,7 @@ export class DocumentosRepository {
             'rechazo',
             jsonb_build_object(
               'fecha', now(),
-              'motivo', ${motivoFinal}
+              'motivo', ${motivoFinal}::text
             )
           )
       WHERE id = ${id}

@@ -27,7 +27,6 @@ export async function subirDocumentoGuiado(
   file: File,
 ) {
   const formData = new FormData();
-  formData.append("archivo", file);
   formData.append("file", file);
   formData.append("areaOrigen", payload.areaOrigen);
   formData.append("clienteAbreviatura", payload.clienteAbreviatura);

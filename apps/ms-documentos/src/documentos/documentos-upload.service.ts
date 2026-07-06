@@ -2,6 +2,7 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { sql } from '@documental/database';
+import { DocumentoEventosService } from '../documento-eventos/documento-eventos.service';
 import { createHash, randomUUID } from 'node:crypto';
 import path from 'node:path';
 
@@ -69,7 +70,10 @@ function normalizeUpper(value: string | undefined | null, fallback: string) {
 
 @Injectable()
 export class DocumentosUploadService {
-  constructor(private readonly config: ConfigService) {}
+  constructor(
+    private readonly config: ConfigService,
+    private readonly documentoEventos: DocumentoEventosService,
+  ) {}
 
   async cargaGuiada(file: UploadedFileLike | undefined, body: CargaGuiadaBody) {
     if (!file?.buffer?.length) {
@@ -107,6 +111,7 @@ export class DocumentosUploadService {
       `${randomUUID()}__${originalFilename}`,
     ].join('/');
 
+    const documentoCreado = !documentoIdPayload;
     const documentoId = documentoIdPayload ?? await this.crearDocumentoContenedor({
       clienteAbreviatura,
       tipoEsperado,
@@ -119,6 +124,27 @@ export class DocumentosUploadService {
       contentType,
       sha256,
     });
+
+    if (documentoCreado) {
+      await this.documentoEventos.registrarEvento({
+        documentoId,
+        tipoEvento: 'documento.creado',
+        entidadTipo: 'documento',
+        entidadId: documentoId,
+        expedienteId,
+        descripcion: 'Documento contenedor creado desde carga guiada.',
+        metadata: {
+          clienteAbreviatura,
+          tipoEsperado,
+          canalIngreso,
+          areaOrigen,
+          filename: originalFilename,
+          contentType,
+          hashSha256: sha256,
+        },
+        origen: 'api',
+      });
+    }
 
     const duplicados = await this.buscarDuplicados({
       sha256,
@@ -190,6 +216,29 @@ export class DocumentosUploadService {
     if (!archivoId) {
       throw new BadRequestException('No se pudo registrar documentos_archivos');
     }
+
+    await this.documentoEventos.registrarEvento({
+      documentoId,
+      archivoId,
+      tipoEvento: 'archivo.subido',
+      entidadTipo: 'archivo',
+      entidadId: archivoId,
+      expedienteId,
+      descripcion: 'Archivo subido desde carga guiada.',
+      metadata: {
+        filename: originalFilename,
+        contentType,
+        storageProvider: 'r2',
+        storageBucket: bucket,
+        storageKey,
+        areaOrigen,
+        canalIngreso,
+        tipoEsperado,
+        hashSha256: sha256,
+        duplicadoAdvertencia: duplicados.length > 0
+      },
+      origen: 'api',
+    });
 
     return {
       archivoId,

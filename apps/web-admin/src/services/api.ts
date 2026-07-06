@@ -4,7 +4,7 @@ import { getPublicApiUrl } from "@/services/env";
 
 export const api = axios.create({
   baseURL: getPublicApiUrl(),
-  timeout: 30000,
+  timeout: 120000,
 });
 
 api.interceptors.request.use((config) => {
