@@ -1,0 +1,30 @@
+services:
+  api-gateway:
+    environment:
+      DATABASE_HOST: dp_postgres
+      DATABASE_PORT: 5432
+      DATABASE_NAME: documental_platform
+      DATABASE_USER: postgres
+      DATABASE_PASSWORD: postgres_local
+      DATABASE_SSLMODE: disable
+      DATABASE_URL: postgresql://postgres:postgres_local@dp_postgres:5432/documental_platform?sslmode=disable
+
+  ms-auth:
+    environment:
+      DATABASE_HOST: dp_postgres
+      DATABASE_PORT: 5432
+      DATABASE_NAME: documental_platform
+      DATABASE_USER: postgres
+      DATABASE_PASSWORD: postgres_local
+      DATABASE_SSLMODE: disable
+      DATABASE_URL: postgresql://postgres:postgres_local@dp_postgres:5432/documental_platform?sslmode=disable
+
+  ms-documentos:
+    environment:
+      DATABASE_HOST: dp_postgres
+      DATABASE_PORT: 5432
+      DATABASE_NAME: documental_platform
+      DATABASE_USER: postgres
+      DATABASE_PASSWORD: postgres_local
+      DATABASE_SSLMODE: disable
+      DATABASE_URL: postgresql://postgres:postgres_local@dp_postgres:5432/documental_platform?sslmode=disable

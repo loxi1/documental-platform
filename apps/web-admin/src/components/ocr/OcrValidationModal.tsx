@@ -282,21 +282,41 @@ function buildInitialForm(resultado: unknown, expedienteContexto?: OcrValidation
         raw.razonSocialEmisor ??
         metadata.proveedor ??
         metadata.proveedorNombre ??
-        metadata.razonSocialEmisor,
+        metadata.razonSocialEmisor ??
+        metadata.razonSocial ??
+        metadata.razon_social,
       "",
     ),
     rucProveedor: texto(
       raw.rucProveedor ??
         raw.ruc_proveedor ??
         raw.proveedorRuc ??
+        raw.rucEmisor ??
+        raw.ruc_emisor ??
+        raw.ruc ??
         metadata.rucProveedor ??
         metadata.ruc_proveedor ??
-        metadata.proveedorRuc,
+        metadata.proveedorRuc ??
+        metadata.rucEmisor ??
+        metadata.ruc_emisor ??
+        metadata.ruc,
       "",
     ),
     rucComprador: texto(raw.rucComprador ?? raw.ruc_comprador ?? metadata.rucComprador ?? metadata.ruc_comprador ?? expedienteContexto?.rucComprador, ""),
     rucEmisor: texto(raw.rucEmisor ?? raw.ruc_emisor ?? metadata.rucEmisor ?? metadata.ruc_emisor ?? raw.ruc ?? metadata.ruc, ""),
-    razonSocial: texto(raw.razonSocial ?? raw.razon_social ?? metadata.razonSocial ?? metadata.razon_social, ""),
+    razonSocial: texto(
+      raw.razonSocial ??
+        raw.razon_social ??
+        raw.razonSocialEmisor ??
+        raw.razon_social_emisor ??
+        raw.proveedor ??
+        metadata.razonSocial ??
+        metadata.razon_social ??
+        metadata.razonSocialEmisor ??
+        metadata.razon_social_emisor ??
+        metadata.proveedor,
+      "",
+    ),
     montoTotal: texto(raw.montoTotal ?? raw.monto_total ?? metadata.montoTotal ?? metadata.monto_total, ""),
     moneda: texto(raw.moneda ?? metadata.moneda, ""),
     cotizacion: texto(raw.cotizacion ?? metadata.cotizacion, ""),
@@ -363,6 +383,7 @@ function buildInitialForm(resultado: unknown, expedienteContexto?: OcrValidation
 function camposPorTipo(tipo: string, formularioContexto?: "ALMACEN" | "COMPRAS" | "FINANZAS"): Array<keyof FormState> {
   const normalizado = tipo.toUpperCase();
   const esAlmacen = formularioContexto === "ALMACEN";
+  const esFinanzas = formularioContexto === "FINANZAS";
 
   if (normalizado === "FACTURA") {
     if (esAlmacen) {
@@ -378,8 +399,6 @@ function camposPorTipo(tipo: string, formularioContexto?: "ALMACEN" | "COMPRAS" 
       "razonSocial",
       "montoTotal",
       "moneda",
-      "codigoExpediente",
-      "claveDocumental",
     ];
   }
 
@@ -393,9 +412,8 @@ function camposPorTipo(tipo: string, formularioContexto?: "ALMACEN" | "COMPRAS" 
       "numero",
       "fechaEmision",
       "rucEmisor",
+      "rucComprador",
       "proveedor",
-      "documentoRelacionado",
-      "codigoExpediente",
     ];
   }
 
@@ -410,30 +428,37 @@ function camposPorTipo(tipo: string, formularioContexto?: "ALMACEN" | "COMPRAS" 
       "proveedor",
       "rucProveedor",
       "documentoRelacionado",
-      "codigoExpediente",
-      "claveDocumental",
     ];
   }
 
   if (
     normalizado === "TRANSFERENCIA" ||
+    normalizado === "PAGO_TRANSFERENCIA"
+  ) {
+    return [
+      "numeroOperacion",
+      "fechaPago",
+      "banco",
+      "montoTotal",
+      "moneda",
+    ];
+  }
+
+  if (
     normalizado === "DETRACCION" ||
-    normalizado === "PAGO_TRANSFERENCIA" ||
     normalizado === "PAGO_DETRACCION"
   ) {
-    if (formularioContexto === "FINANZAS") {
-      return [
-        "numeroOperacion",
-        "fechaPago",
-        "banco",
-        "rucProveedor",
-        "montoTotal",
-        "moneda",
-        "comprobante",
-      ];
-    }
+    return [
+      "numeroOperacion",
+      "fechaPago",
+      "banco",
+      "montoTotal",
+      "moneda",
+    ];
+  }
 
-    return ["numero", "fechaEmision", "proveedor", "rucProveedor", "montoTotal", "moneda", "codigoExpediente"];
+  if (esFinanzas) {
+    return ["numeroOperacion", "fechaPago", "banco", "montoTotal", "moneda"];
   }
 
   return [
@@ -445,8 +470,6 @@ function camposPorTipo(tipo: string, formularioContexto?: "ALMACEN" | "COMPRAS" 
     "montoTotal",
     "moneda",
     "cotizacion",
-    "codigoExpediente",
-    "claveDocumental",
   ];
 }
 
@@ -473,6 +496,39 @@ const FIELD_LABELS: Record<keyof FormState, string> = {
   observacion: "Observación",
 };
 
+function fieldSpanClass(name: keyof FormState) {
+  if (["proveedor", "razonSocial", "documentoRelacionado", "comprobante"].includes(name)) {
+    return "md:col-span-2";
+  }
+
+  return "";
+}
+
+function ReadOnlyInfo({
+  label,
+  value,
+  mono = false,
+}: {
+  label: string;
+  value: string;
+  mono?: boolean;
+}) {
+  if (!value.trim()) return null;
+
+  return (
+    <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 dark:border-slate-800 dark:bg-slate-900">
+      <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">{label}</p>
+      <p
+        className={`mt-1 break-words text-sm font-semibold text-slate-900 dark:text-slate-100 ${
+          mono ? "font-mono text-[13px] leading-5" : ""
+        }`}
+      >
+        {value}
+      </p>
+    </div>
+  );
+}
+
 function FieldInput({
   name,
   value,
@@ -493,7 +549,7 @@ function FieldInput({
   const inputType = name === "fechaPago" || name === "fechaEmision" ? "date" : "text";
 
   return (
-    <label className="block">
+    <label className={`block ${fieldSpanClass(name)}`}>
       <span className="text-[11px] font-medium uppercase tracking-wide text-slate-400">
         {FIELD_LABELS[name]}
       </span>
@@ -651,7 +707,7 @@ export function OcrValidationModal({
   const ocultarTipoDocumental =
     (formularioContexto === "ALMACEN" || formularioContexto === "FINANZAS") &&
     tipoDocumentalBloqueado;
-  const ocultarExpedienteVinculado = formularioContexto === "FINANZAS";
+  const ocultarExpedienteVinculado = false;
 
   if (!open) return null;
 
@@ -734,8 +790,8 @@ export function OcrValidationModal({
             <p className="text-xs font-medium uppercase tracking-wide text-slate-400">
               Validación visual documental
             </p>
-            <h2 className="mt-1 text-lg font-semibold text-slate-950 dark:text-slate-100">
-{readOnly ? "Vista documental" : "Validación OCR"} - {archivo.nombre}
+            <h2 className="mt-1 max-w-5xl break-words text-lg font-semibold text-slate-950 dark:text-slate-100">
+              {readOnly ? "Vista documental" : "Validación OCR"} - {archivo.nombre}
             </h2>
             <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
               {readOnly
@@ -754,19 +810,13 @@ export function OcrValidationModal({
           </button>
         </header>
 
-        <section
-          className={`grid min-h-0 flex-1 overflow-hidden ${
-            formularioContexto === "FINANZAS" || formularioContexto === "ALMACEN"
-              ? "lg:grid-cols-[2fr_1fr]"
-              : "lg:grid-cols-[1.05fr_0.95fr]"
-          }`}
-        >
-          <div className="min-h-[520px] overflow-auto border-b border-slate-200 bg-slate-50 p-5 dark:border-slate-800 dark:bg-slate-900/60 lg:border-b-0 lg:border-r">
+        <section className="grid min-h-0 flex-1 overflow-hidden lg:grid-cols-[minmax(0,2fr)_minmax(360px,1fr)]">
+          <div className="min-h-[560px] overflow-auto border-b border-slate-200 bg-slate-50 p-5 dark:border-slate-800 dark:bg-slate-900/60 lg:border-b-0 lg:border-r">
             {previewUrl ? (
               <iframe
                 src={previewUrl}
                 title={`Vista previa ${archivo.nombre}`}
-                className="h-full min-h-[620px] w-full rounded-xl border border-slate-200 bg-white dark:border-slate-800"
+                className="h-full min-h-[660px] w-full rounded-xl border border-slate-200 bg-white dark:border-slate-800"
               />
             ) : (
               <div className="flex h-full min-h-[620px] flex-col items-center justify-center rounded-xl border border-dashed border-slate-300 bg-white p-8 text-center dark:border-slate-700 dark:bg-slate-950">
@@ -829,6 +879,11 @@ export function OcrValidationModal({
                     readOnly={readOnly}
                   />
                 ))}
+              </div>
+
+              <div className="grid gap-3 md:grid-cols-2">
+                <ReadOnlyInfo label="Código expediente" value={form.codigoExpediente || expediente.codigo} />
+                <ReadOnlyInfo label="Clave documental" value={form.claveDocumental} mono />
               </div>
 
               {!ocultarExpedienteVinculado ? (

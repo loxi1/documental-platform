@@ -129,9 +129,17 @@ function isImagePreview(preview: DocumentoArchivoPreview | null) {
   );
 }
 
-function DetailRow({ label, value }: { label: string; value: unknown }) {
+function DetailRow({
+  label,
+  value,
+  className = "",
+}: {
+  label: string;
+  value: unknown;
+  className?: string;
+}) {
   return (
-    <div className="rounded-lg border bg-muted/20 p-2">
+    <div className={`rounded-lg border bg-muted/20 p-2 ${className}`}>
       <div className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
         {label}
       </div>
@@ -140,6 +148,147 @@ function DetailRow({ label, value }: { label: string; value: unknown }) {
       </div>
     </div>
   );
+}
+
+type DetailField = {
+  label: string;
+  value: unknown;
+  wide?: boolean;
+};
+
+function normalizeTipoDocumental(value: unknown) {
+  return String(value ?? "")
+    .trim()
+    .toUpperCase()
+    .replace(/[\s-]+/g, "_");
+}
+
+function buildDetailFields(documento: ExpedienteDocumento | null): DetailField[] {
+  const tipoDocumental = pickDocumentoValue(documento, [
+    "tipoDocumental",
+    "tipo_documental",
+  ]);
+  const tipo = normalizeTipoDocumental(tipoDocumental);
+  const tipoRelacion = pickDocumentoValue(documento, [
+    "tipoRelacion",
+    "tipo_relacion",
+  ]);
+  const serie = pickDocumentoValue(documento, ["serie"]);
+  const numero = pickDocumentoValue(documento, ["numero"]);
+  const fecha = pickDocumentoValue(documento, ["fechaEmision", "fecha_emision"]);
+  const monto = pickDocumentoValue(documento, ["montoTotal", "monto_total"]);
+  const moneda = pickDocumentoValue(documento, ["moneda"]);
+  const estado = pickDocumentoValue(documento, ["estado"]);
+  const claveDocumental = pickDocumentoValue(documento, [
+    "claveDocumental",
+    "clave_documental",
+  ]);
+  const ruc = pickDocumentoValue(documento, [
+    "rucEmisor",
+    "ruc_emisor",
+    "rucProveedor",
+    "ruc_proveedor",
+  ]);
+  const razonSocial = pickDocumentoValue(documento, [
+    "razonSocialEmisor",
+    "razon_social_emisor",
+    "proveedor",
+    "razonSocial",
+    "razon_social",
+  ]);
+
+  const common = {
+    tipoDocumental,
+    tipoRelacion,
+    serie,
+    numero,
+    fecha,
+    monto,
+    moneda,
+    estado,
+    claveDocumental,
+    ruc,
+    razonSocial,
+  };
+
+  if (tipo === "NOTA_INGRESO") {
+    return [
+      { label: "Tipo documental", value: common.tipoDocumental },
+      { label: "Número", value: common.numero },
+      { label: "Clave documental", value: common.claveDocumental, wide: true },
+    ];
+  }
+
+  if (tipo === "PAGO_TRANSFERENCIA") {
+    return [
+      { label: "Tipo documental", value: common.tipoDocumental },
+      { label: "Tipo relación", value: common.tipoRelacion },
+      { label: "Código operación", value: common.numero },
+      { label: "Fecha pago", value: formatDate(common.fecha) },
+      { label: "Monto", value: formatMoney(common.moneda, common.monto) },
+      { label: "Moneda", value: common.moneda },
+      { label: "Estado", value: common.estado },
+      { label: "Clave documental", value: common.claveDocumental, wide: true },
+    ];
+  }
+
+  if (tipo === "PAGO_DETRACCION") {
+    return [
+      { label: "Tipo documental", value: common.tipoDocumental },
+      { label: "Tipo relación", value: common.tipoRelacion },
+      { label: "Número de constancia", value: common.numero },
+      { label: "Fecha pago", value: formatDate(common.fecha) },
+      { label: "RUC proveedor", value: common.ruc },
+      { label: "Razón social", value: common.razonSocial },
+      { label: "Monto", value: formatMoney(common.moneda, common.monto) },
+      { label: "Moneda", value: common.moneda },
+      { label: "Estado", value: common.estado },
+      { label: "Clave documental", value: common.claveDocumental, wide: true },
+    ];
+  }
+
+  if (tipo === "FACTURA") {
+    return [
+      { label: "Tipo documental", value: common.tipoDocumental },
+      { label: "Tipo relación", value: common.tipoRelacion },
+      { label: "Serie", value: common.serie },
+      { label: "Número", value: common.numero },
+      { label: "Fecha emisión", value: formatDate(common.fecha) },
+      { label: "RUC emisor", value: common.ruc },
+      { label: "Razón social", value: common.razonSocial, wide: true },
+      { label: "Estado", value: common.estado },
+      { label: "Clave documental", value: common.claveDocumental, wide: true },
+    ];
+  }
+
+  if (tipo === "OC" || tipo === "ORDEN_COMPRA") {
+    return [
+      { label: "Tipo documental", value: common.tipoDocumental },
+      { label: "Tipo relación", value: common.tipoRelacion },
+      { label: "Número", value: common.numero },
+      { label: "Fecha emisión", value: formatDate(common.fecha) },
+      { label: "RUC proveedor", value: common.ruc },
+      { label: "Razón social", value: common.razonSocial, wide: true },
+      { label: "Monto", value: formatMoney(common.moneda, common.monto) },
+      { label: "Moneda", value: common.moneda },
+      { label: "Estado", value: common.estado },
+      { label: "Clave documental", value: common.claveDocumental, wide: true },
+    ];
+  }
+
+  return [
+    { label: "Tipo documental", value: common.tipoDocumental },
+    { label: "Tipo relación", value: common.tipoRelacion },
+    { label: "Serie", value: common.serie },
+    { label: "Número", value: common.numero },
+    { label: "Fecha emisión", value: formatDate(common.fecha) },
+    { label: "RUC emisor / proveedor", value: common.ruc },
+    { label: "Razón social", value: common.razonSocial, wide: true },
+    { label: "Monto", value: formatMoney(common.moneda, common.monto) },
+    { label: "Moneda", value: common.moneda },
+    { label: "Estado", value: common.estado },
+    { label: "Clave documental", value: common.claveDocumental, wide: true },
+  ];
 }
 
 export function DocumentoPreviewModal({ documento, open, onClose }: Props) {
@@ -184,30 +333,7 @@ export function DocumentoPreviewModal({ documento, open, onClose }: Props) {
     };
   }, [archivoId, documento, open]);
 
-  const tipoDocumental = pickDocumentoValue(documento, [
-    "tipoDocumental",
-    "tipo_documental",
-  ]);
-  const tipoRelacion = pickDocumentoValue(documento, [
-    "tipoRelacion",
-    "tipo_relacion",
-  ]);
-  const fecha = pickDocumentoValue(documento, ["fechaEmision", "fecha_emision"]);
-  const monto = pickDocumentoValue(documento, ["montoTotal", "monto_total"]);
-  const moneda = pickDocumentoValue(documento, ["moneda"]);
-  const ruc = pickDocumentoValue(documento, [
-    "rucEmisor",
-    "ruc_emisor",
-    "rucProveedor",
-    "ruc_proveedor",
-  ]);
-  const razonSocial = pickDocumentoValue(documento, [
-    "razonSocialEmisor",
-    "razon_social_emisor",
-    "proveedor",
-    "razonSocial",
-    "razon_social",
-  ]);
+  const detailFields = useMemo(() => buildDetailFields(documento), [documento]);
 
   return (
     <Modal
@@ -270,28 +396,15 @@ export function DocumentoPreviewModal({ documento, open, onClose }: Props) {
               Datos principales
             </div>
 
-            <div className="grid gap-2">
-              <DetailRow label="Tipo documental" value={tipoDocumental} />
-              <DetailRow label="Tipo relación" value={tipoRelacion} />
-              <DetailRow label="Serie" value={pickDocumentoValue(documento, ["serie"])} />
-              <DetailRow label="Número" value={pickDocumentoValue(documento, ["numero"])} />
-              <DetailRow label="Fecha emisión / pago" value={formatDate(fecha)} />
-              <DetailRow label="RUC emisor / proveedor" value={ruc} />
-              <DetailRow label="Razón social" value={razonSocial} />
-              <DetailRow label="Monto" value={formatMoney(moneda, monto)} />
-              <DetailRow label="Moneda" value={moneda} />
-              <DetailRow label="Estado" value={pickDocumentoValue(documento, ["estado"])} />
-              <DetailRow
-                label="Clave documental"
-                value={pickDocumentoValue(documento, ["claveDocumental", "clave_documental"])}
-              />
-              <DetailRow
-                label="Archivo"
-                value={
-                  preview?.filename ??
-                  pickDocumentoValue(documento, ["nombreArchivo", "nombre_archivo"])
-                }
-              />
+            <div className="grid grid-cols-1 gap-2 xl:grid-cols-2">
+              {detailFields.map((field) => (
+                <DetailRow
+                  key={field.label}
+                  label={field.label}
+                  value={field.value}
+                  className={field.wide ? "xl:col-span-2" : ""}
+                />
+              ))}
             </div>
 
             <div className="mt-4 flex justify-end">
