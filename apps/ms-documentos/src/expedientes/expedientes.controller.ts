@@ -100,7 +100,7 @@ export class ExpedientesController {
     @Param('id', ParseIntPipe) id: number,
     @Body() body: any,
   ) {
-    return this.service.updateMantenimientoEstado(id, body?.estado);
+    return this.service.updateMantenimientoEstado(id, body ?? {});
   }
 
   @Get(':id/resumen')

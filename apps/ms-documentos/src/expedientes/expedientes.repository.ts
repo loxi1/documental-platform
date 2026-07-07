@@ -1,8 +1,21 @@
 import { Injectable } from '@nestjs/common';
 import { sql } from '@documental/database';
 
+type ExpedienteAuditContext = {
+  usuarioId?: number | null;
+  usuarioEmail?: string | null;
+  perfil?: string | null;
+  requestId?: string | null;
+  sessionContextId?: string | null;
+};
+
 @Injectable()
 export class ExpedientesRepository {
+
+  private toUuidOrNull(value?: string | null) {
+    const normalized = String(value ?? '').trim();
+    return normalized.length > 0 ? normalized : null;
+  }
 
   async findMantenimiento(filters: {
     empresa?: string;
@@ -49,6 +62,12 @@ export class ExpedientesRepository {
         e.estado,
         e.metadata,
         COUNT(DISTINCT ed.documento_id)::int AS "totalDocumentos",
+        COALESCE(BOOL_OR(ed.es_principal IS TRUE), false) AS "tieneDocumentoPrincipal",
+        e.creado_por AS "creadoPor",
+        e.actualizado_por AS "actualizadoPor",
+        e.anulado_en AS "anuladoEn",
+        e.anulado_por AS "anuladoPor",
+        e.motivo_anulacion AS "motivoAnulacion",
         e.creado_en AS "creadoEn",
         e.actualizado_en AS "actualizadoEn"
       FROM documentos.expedientes e
@@ -130,6 +149,12 @@ export class ExpedientesRepository {
         e.estado,
         e.metadata,
         COUNT(DISTINCT ed.documento_id)::int AS "totalDocumentos",
+        COALESCE(BOOL_OR(ed.es_principal IS TRUE), false) AS "tieneDocumentoPrincipal",
+        e.creado_por AS "creadoPor",
+        e.actualizado_por AS "actualizadoPor",
+        e.anulado_en AS "anuladoEn",
+        e.anulado_por AS "anuladoPor",
+        e.motivo_anulacion AS "motivoAnulacion",
         e.creado_en AS "creadoEn",
         e.actualizado_en AS "actualizadoEn"
       FROM documentos.expedientes e
@@ -164,6 +189,18 @@ export class ExpedientesRepository {
     return rows[0] ?? null;
   }
 
+  async expedienteTieneDocumentoPrincipal(id: number) {
+    const rows = await sql`
+      SELECT 1
+      FROM documentos.expediente_documentos
+      WHERE expediente_id = ${id}::bigint
+        AND es_principal IS TRUE
+      LIMIT 1
+    `;
+
+    return Boolean(rows[0]);
+  }
+
   async createMantenimiento(data: {
     clienteDestinoId: number;
     empresaCodigo: string;
@@ -171,6 +208,7 @@ export class ExpedientesRepository {
     descripcion?: string | null;
     estado?: string | null;
     metadata?: Record<string, any> | null;
+    audit?: ExpedienteAuditContext | null;
   }) {
     const rows = await sql`
       INSERT INTO documentos.expedientes (
@@ -180,6 +218,8 @@ export class ExpedientesRepository {
         descripcion,
         estado,
         metadata,
+        creado_por,
+        actualizado_por,
         creado_en,
         actualizado_en
       )
@@ -190,13 +230,31 @@ export class ExpedientesRepository {
         ${data.descripcion ?? null},
         ${data.estado ?? 'abierto'},
         ${JSON.stringify(data.metadata ?? {})}::jsonb,
+        ${data.audit?.usuarioId ?? null}::bigint,
+        ${data.audit?.usuarioId ?? null}::bigint,
         now(),
         now()
       )
       RETURNING id
     `;
 
-    return this.findMantenimientoById(Number(rows[0]?.id));
+    const expediente = await this.findMantenimientoById(Number(rows[0]?.id));
+
+    if (expediente) {
+      await this.registrarAuditoriaMantenimiento({
+        expedienteId: Number(expediente.id),
+        accion: 'expediente.creado',
+        estadoNuevo: expediente.estado,
+        codigoNuevo: expediente.codigoExpediente,
+        descripcionNueva: expediente.descripcion,
+        metadataNueva: expediente.metadata ?? {},
+        empresaCodigo: expediente.empresaCodigo,
+        clienteDestinoId: Number(expediente.clienteDestinoId),
+        audit: data.audit,
+      });
+    }
+
+    return expediente;
   }
 
   async updateMantenimiento(
@@ -206,7 +264,83 @@ export class ExpedientesRepository {
       descripcion?: string | null;
       estado?: string;
       metadata?: Record<string, any> | null;
+      audit?: ExpedienteAuditContext | null;
     },
+  ) {
+    const current = await this.findMantenimientoById(id);
+
+    if (!current) {
+      return null;
+    }
+
+    const nuevoCodigo = data.codigoExpediente ?? current.codigoExpediente;
+    const nuevaDescripcion =
+      data.descripcion !== undefined ? data.descripcion : current.descripcion;
+    const nuevoEstado = data.estado ?? current.estado;
+    const nuevaMetadata =
+      data.metadata !== undefined ? data.metadata : current.metadata ?? {};
+    const motivoAnulacion =
+      nuevoEstado === 'anulado'
+        ? String((nuevaMetadata as any)?.motivoAnulacion ?? '').trim() || null
+        : null;
+
+    const rows = await sql`
+      UPDATE documentos.expedientes
+      SET
+        codigo_expediente = ${nuevoCodigo},
+        descripcion = ${nuevaDescripcion},
+        estado = ${nuevoEstado},
+        metadata = ${JSON.stringify(nuevaMetadata ?? {})}::jsonb,
+        actualizado_por = ${data.audit?.usuarioId ?? null}::bigint,
+        anulado_en = CASE
+          WHEN ${nuevoEstado}::text = 'anulado' AND anulado_en IS NULL THEN now()
+          WHEN ${nuevoEstado}::text <> 'anulado' THEN NULL
+          ELSE anulado_en
+        END,
+        anulado_por = CASE
+          WHEN ${nuevoEstado}::text = 'anulado' THEN ${data.audit?.usuarioId ?? null}::bigint
+          WHEN ${nuevoEstado}::text <> 'anulado' THEN NULL
+          ELSE anulado_por
+        END,
+        motivo_anulacion = CASE
+          WHEN ${nuevoEstado}::text = 'anulado' THEN ${motivoAnulacion}::text
+          WHEN ${nuevoEstado}::text <> 'anulado' THEN NULL
+          ELSE motivo_anulacion
+        END,
+        actualizado_en = now()
+      WHERE id = ${id}
+      RETURNING id
+    `;
+
+    const expediente = await this.findMantenimientoById(Number(rows[0]?.id));
+
+    if (expediente) {
+      await this.registrarAuditoriaMantenimiento({
+        expedienteId: id,
+        accion: current.estado !== nuevoEstado ? 'expediente.estado_cambiado' : 'expediente.actualizado',
+        estadoAnterior: current.estado,
+        estadoNuevo: expediente.estado,
+        codigoAnterior: current.codigoExpediente,
+        codigoNuevo: expediente.codigoExpediente,
+        descripcionAnterior: current.descripcion,
+        descripcionNueva: expediente.descripcion,
+        metadataAnterior: current.metadata ?? {},
+        metadataNueva: expediente.metadata ?? {},
+        empresaCodigo: expediente.empresaCodigo,
+        clienteDestinoId: Number(expediente.clienteDestinoId),
+        detalle: { motivoAnulacion },
+        audit: data.audit,
+      });
+    }
+
+    return expediente;
+  }
+
+  async updateMantenimientoEstado(
+    id: number,
+    estado: string,
+    audit?: ExpedienteAuditContext | null,
+    motivoAnulacion?: string | null,
   ) {
     const current = await this.findMantenimientoById(id);
 
@@ -217,23 +351,23 @@ export class ExpedientesRepository {
     const rows = await sql`
       UPDATE documentos.expedientes
       SET
-        codigo_expediente = ${data.codigoExpediente ?? current.codigoExpediente},
-        descripcion = ${data.descripcion !== undefined ? data.descripcion : current.descripcion},
-        estado = ${data.estado ?? current.estado},
-        metadata = ${JSON.stringify(data.metadata !== undefined ? data.metadata : current.metadata ?? {})}::jsonb,
-        actualizado_en = now()
-      WHERE id = ${id}
-      RETURNING id
-    `;
-
-    return this.findMantenimientoById(Number(rows[0]?.id));
-  }
-
-  async updateMantenimientoEstado(id: number, estado: string) {
-    const rows = await sql`
-      UPDATE documentos.expedientes
-      SET
         estado = ${estado},
+        actualizado_por = ${audit?.usuarioId ?? null}::bigint,
+        anulado_en = CASE
+          WHEN ${estado}::text = 'anulado' AND anulado_en IS NULL THEN now()
+          WHEN ${estado}::text <> 'anulado' THEN NULL
+          ELSE anulado_en
+        END,
+        anulado_por = CASE
+          WHEN ${estado}::text = 'anulado' THEN ${audit?.usuarioId ?? null}::bigint
+          WHEN ${estado}::text <> 'anulado' THEN NULL
+          ELSE anulado_por
+        END,
+        motivo_anulacion = CASE
+          WHEN ${estado}::text = 'anulado' THEN ${motivoAnulacion ?? null}::text
+          WHEN ${estado}::text <> 'anulado' THEN NULL
+          ELSE motivo_anulacion
+        END,
         actualizado_en = now()
       WHERE id = ${id}
       RETURNING id
@@ -243,7 +377,88 @@ export class ExpedientesRepository {
       return null;
     }
 
-    return this.findMantenimientoById(Number(rows[0].id));
+    const expediente = await this.findMantenimientoById(Number(rows[0].id));
+
+    if (expediente) {
+      await this.registrarAuditoriaMantenimiento({
+        expedienteId: id,
+        accion: estado === 'anulado' ? 'expediente.anulado' : 'expediente.estado_cambiado',
+        estadoAnterior: current.estado,
+        estadoNuevo: expediente.estado,
+        codigoAnterior: current.codigoExpediente,
+        codigoNuevo: expediente.codigoExpediente,
+        descripcionAnterior: current.descripcion,
+        descripcionNueva: expediente.descripcion,
+        metadataAnterior: current.metadata ?? {},
+        metadataNueva: expediente.metadata ?? {},
+        empresaCodigo: expediente.empresaCodigo,
+        clienteDestinoId: Number(expediente.clienteDestinoId),
+        detalle: { motivoAnulacion: motivoAnulacion ?? null },
+        audit,
+      });
+    }
+
+    return expediente;
+  }
+
+  async registrarAuditoriaMantenimiento(input: {
+    expedienteId: number;
+    accion: string;
+    estadoAnterior?: string | null;
+    estadoNuevo?: string | null;
+    codigoAnterior?: string | null;
+    codigoNuevo?: string | null;
+    descripcionAnterior?: string | null;
+    descripcionNueva?: string | null;
+    metadataAnterior?: Record<string, any> | null;
+    metadataNueva?: Record<string, any> | null;
+    empresaCodigo?: string | null;
+    clienteDestinoId?: number | null;
+    detalle?: Record<string, any> | null;
+    audit?: ExpedienteAuditContext | null;
+  }) {
+    await sql`
+      INSERT INTO documentos.expediente_auditoria (
+        expediente_id,
+        accion,
+        estado_anterior,
+        estado_nuevo,
+        codigo_anterior,
+        codigo_nuevo,
+        descripcion_anterior,
+        descripcion_nueva,
+        metadata_anterior,
+        metadata_nueva,
+        usuario_id,
+        usuario_email,
+        perfil,
+        empresa_codigo,
+        cliente_destino_id,
+        request_id,
+        session_context_id,
+        detalle
+      )
+      VALUES (
+        ${input.expedienteId}::bigint,
+        ${input.accion}::text,
+        ${input.estadoAnterior ?? null}::text,
+        ${input.estadoNuevo ?? null}::text,
+        ${input.codigoAnterior ?? null}::text,
+        ${input.codigoNuevo ?? null}::text,
+        ${input.descripcionAnterior ?? null}::text,
+        ${input.descripcionNueva ?? null}::text,
+        ${JSON.stringify(input.metadataAnterior ?? null)}::jsonb,
+        ${JSON.stringify(input.metadataNueva ?? null)}::jsonb,
+        ${input.audit?.usuarioId ?? null}::bigint,
+        ${input.audit?.usuarioEmail ?? null}::text,
+        ${input.audit?.perfil ?? null}::text,
+        ${input.empresaCodigo ?? null}::text,
+        ${input.clienteDestinoId ?? null}::int,
+        ${this.toUuidOrNull(input.audit?.requestId)}::uuid,
+        ${this.toUuidOrNull(input.audit?.sessionContextId)}::uuid,
+        ${JSON.stringify(input.detalle ?? {})}::jsonb
+      )
+    `;
   }
 
   async findAll(filters: {

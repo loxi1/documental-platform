@@ -100,6 +100,21 @@ export class ExpedientesGatewayController {
     return clienteDestinoId;
   }
 
+  private buildAuditContext(payload: any, requestId?: string) {
+    const usuarioId = Number(payload?.sub ?? payload?.usuarioId ?? NaN);
+
+    return {
+      usuarioId: Number.isFinite(usuarioId) && usuarioId > 0 ? usuarioId : null,
+      usuarioEmail: typeof payload?.email === 'string' ? payload.email : null,
+      perfil: this.getPerfilFromContext(payload),
+      requestId: requestId ?? null,
+      sessionContextId:
+        typeof payload?.sessionContextId === 'string'
+          ? payload.sessionContextId
+          : null,
+    };
+  }
+
   private buildWorkspaceScopedQuery(
     query: Record<string, string>,
     payload: any,
@@ -214,10 +229,17 @@ export class ExpedientesGatewayController {
     };
   }
 
-  private buildMantenimientoExpedienteBody(body: any, payload: any) {
+  private buildMantenimientoExpedienteBody(
+    body: any,
+    payload: any,
+    requestId?: string,
+  ) {
     this.assertMantenimientoExpedientesAccess(payload);
 
-    return this.buildWorkspaceScopedExpedienteBody(body, payload);
+    return {
+      ...this.buildWorkspaceScopedExpedienteBody(body, payload),
+      auditContext: this.buildAuditContext(payload, requestId),
+    };
   }
 
   private async assertMantenimientoExpedienteAccess(params: {
@@ -444,7 +466,7 @@ export class ExpedientesGatewayController {
     const contexto = await this.validateAuthorization(authorization);
     const scopedQuery = this.buildMantenimientoExpedientesQuery(query, contexto);
 
-    return this.proxy({
+    return this.proxyUnwrapped({
       method: 'GET',
       path: '/expedientes/mantenimiento',
       authorization,
@@ -468,7 +490,7 @@ export class ExpedientesGatewayController {
       requestId,
     });
 
-    return this.proxy({
+    return this.proxyUnwrapped({
       method: 'GET',
       path: `/expedientes/mantenimiento/${id}`,
       authorization,
@@ -484,9 +506,9 @@ export class ExpedientesGatewayController {
     @Body() body: unknown,
   ) {
     const contexto = await this.validateAuthorization(authorization);
-    const scopedBody = this.buildMantenimientoExpedienteBody(body, contexto);
+    const scopedBody = this.buildMantenimientoExpedienteBody(body, contexto, requestId);
 
-    return this.proxy({
+    return this.proxyUnwrapped({
       method: 'POST',
       path: '/expedientes/mantenimiento',
       authorization,
@@ -511,12 +533,15 @@ export class ExpedientesGatewayController {
       requestId,
     });
 
-    return this.proxy({
+    return this.proxyUnwrapped({
       method: 'PATCH',
       path: `/expedientes/mantenimiento/${id}`,
       authorization,
       requestId,
-      body,
+      body: {
+        ...((body as Record<string, unknown>) ?? {}),
+        auditContext: this.buildAuditContext(contexto, requestId),
+      },
     });
   }
 
@@ -536,12 +561,15 @@ export class ExpedientesGatewayController {
       requestId,
     });
 
-    return this.proxy({
+    return this.proxyUnwrapped({
       method: 'PATCH',
       path: `/expedientes/mantenimiento/${id}/estado`,
       authorization,
       requestId,
-      body,
+      body: {
+        ...((body as Record<string, unknown>) ?? {}),
+        auditContext: this.buildAuditContext(contexto, requestId),
+      },
     });
   }
 
@@ -719,7 +747,19 @@ export class ExpedientesGatewayController {
     });
   }
 
-    private get msDocumentosUrl() {
+  private async proxyUnwrapped(params: {
+    method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+    path: string;
+    authorization?: string;
+    requestId?: string;
+    query?: Record<string, unknown>;
+    body?: unknown;
+  }) {
+    const result = await this.proxy(params);
+    return result?.data ?? result;
+  }
+
+  private get msDocumentosUrl() {
     return this.config.get<string>(
       'MS_DOCUMENTOS_URL',
       'http://localhost:3002/api/v1',

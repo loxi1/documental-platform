@@ -2,6 +2,14 @@ import { BadRequestException, ConflictException, Injectable, NotFoundException }
 import { ExpedientesRepository } from './expedientes.repository';
 import { DocumentoEventosService } from '../documento-eventos/documento-eventos.service';
 
+type ExpedienteAuditContext = {
+  usuarioId?: number | null;
+  usuarioEmail?: string | null;
+  perfil?: string | null;
+  requestId?: string | null;
+  sessionContextId?: string | null;
+};
+
 @Injectable()
 export class ExpedientesService {
   constructor(
@@ -59,6 +67,54 @@ export class ExpedientesService {
     return normalized;
   }
 
+
+  private sanitizeAuditContext(audit?: ExpedienteAuditContext | null): ExpedienteAuditContext | null {
+    if (!audit) {
+      return null;
+    }
+
+    const usuarioId = Number(audit.usuarioId ?? NaN);
+
+    return {
+      usuarioId: Number.isFinite(usuarioId) && usuarioId > 0 ? usuarioId : null,
+      usuarioEmail: audit.usuarioEmail?.trim() || null,
+      perfil: audit.perfil?.trim().toLowerCase() || null,
+      requestId: audit.requestId?.trim() || null,
+      sessionContextId: audit.sessionContextId?.trim() || null,
+    };
+  }
+
+  private normalizeMotivoAnulacion(motivo?: string | null) {
+    const normalized = String(motivo ?? '').trim();
+    return normalized.length > 0 ? normalized : null;
+  }
+
+  private async assertEstadoTransitionAllowed(params: {
+    expedienteId: number;
+    estadoActual: string;
+    estadoNuevo: string;
+  }) {
+    if (params.estadoActual === 'anulado' && params.estadoNuevo !== 'anulado') {
+      throw new BadRequestException(
+        'No se puede reactivar un centro de costo anulado desde mantenimiento.',
+      );
+    }
+
+    if (params.estadoNuevo === 'anulado') {
+      const tienePrincipal = await this.repo.expedienteTieneDocumentoPrincipal(
+        params.expedienteId,
+      );
+
+      if (tienePrincipal) {
+        throw new ConflictException({
+          code: 'EXPEDIENTE_TIENE_DOCUMENTO_PRINCIPAL',
+          message:
+            'No se puede anular el centro de costo porque tiene un documento principal relacionado.',
+        });
+      }
+    }
+  }
+
   findMantenimiento(filters: {
     empresa?: string;
     clienteDestinoId?: number;
@@ -98,6 +154,7 @@ export class ExpedientesService {
     descripcion?: string | null;
     estado?: string | null;
     metadata?: Record<string, any> | null;
+    auditContext?: ExpedienteAuditContext | null;
   }) {
     const empresaCodigo = this.normalizeEmpresaCodigo(data.empresaCodigo);
     const clienteDestinoId = this.normalizeClienteDestinoId(data.clienteDestinoId);
@@ -126,6 +183,7 @@ export class ExpedientesService {
         ...(data.metadata ?? {}),
         origen: data.metadata?.origen ?? 'mantenimiento_contable',
       },
+      audit: this.sanitizeAuditContext(data.auditContext),
     });
   }
 
@@ -136,6 +194,7 @@ export class ExpedientesService {
       descripcion?: string | null;
       estado?: string;
       metadata?: Record<string, any> | null;
+      auditContext?: ExpedienteAuditContext | null;
     },
   ) {
     const current = await this.findMantenimientoById(id);
@@ -147,6 +206,12 @@ export class ExpedientesService {
       data.estado !== undefined
         ? this.normalizeEstadoMantenimiento(data.estado)
         : current.estado;
+
+    await this.assertEstadoTransitionAllowed({
+      expedienteId: id,
+      estadoActual: current.estado,
+      estadoNuevo: estado,
+    });
 
     const duplicate = await this.repo.existsMantenimientoDuplicate({
       empresaCodigo: current.empresaCodigo,
@@ -167,14 +232,35 @@ export class ExpedientesService {
         data.descripcion !== undefined ? data.descripcion?.trim() || null : undefined,
       estado,
       metadata: data.metadata !== undefined ? data.metadata ?? {} : undefined,
+      audit: this.sanitizeAuditContext(data.auditContext),
     });
   }
 
-  async updateMantenimientoEstado(id: number, estado: string) {
-    await this.findMantenimientoById(id);
-    const normalizedEstado = this.normalizeEstadoMantenimiento(estado);
+  async updateMantenimientoEstado(
+    id: number,
+    data: {
+      estado?: string | null;
+      motivoAnulacion?: string | null;
+      auditContext?: ExpedienteAuditContext | null;
+    },
+  ) {
+    const current = await this.findMantenimientoById(id);
+    const normalizedEstado = this.normalizeEstadoMantenimiento(data?.estado);
 
-    return this.repo.updateMantenimientoEstado(id, normalizedEstado);
+    await this.assertEstadoTransitionAllowed({
+      expedienteId: id,
+      estadoActual: current.estado,
+      estadoNuevo: normalizedEstado,
+    });
+
+    return this.repo.updateMantenimientoEstado(
+      id,
+      normalizedEstado,
+      this.sanitizeAuditContext(data.auditContext),
+      normalizedEstado === 'anulado'
+        ? this.normalizeMotivoAnulacion(data.motivoAnulacion)
+        : null,
+    );
   }
 
   findAll(filters: {

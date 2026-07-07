@@ -62,6 +62,15 @@ export type ExpedientesMantenimientoResponse = {
   filters?: Record<string, unknown> | null;
 };
 
+export type UpdateExpedienteMantenimientoPayload = {
+  codigoExpediente: string;
+  descripcion: string;
+};
+
+export type UpdateExpedienteEstadoPayload = {
+  estado: ExpedienteMantenimientoEstado;
+};
+
 function unwrap<T>(payload: T | ApiEnvelope<T>): T {
   let current = payload as any;
 
@@ -126,6 +135,30 @@ export async function getExpedientesMantenimiento(
 export async function getExpedienteMantenimiento(id: number | string) {
   const { data } = await api.get<ApiEnvelope<ExpedienteMantenimiento> | ExpedienteMantenimiento>(
     `/expedientes/mantenimiento/${id}`,
+  );
+
+  return unwrap<ExpedienteMantenimiento>(data);
+}
+
+export async function updateExpedienteMantenimiento(
+  id: number | string,
+  payload: UpdateExpedienteMantenimientoPayload,
+) {
+  const { data } = await api.patch<ApiEnvelope<ExpedienteMantenimiento> | ExpedienteMantenimiento>(
+    `/expedientes/mantenimiento/${id}`,
+    payload,
+  );
+
+  return unwrap<ExpedienteMantenimiento>(data);
+}
+
+export async function updateExpedienteMantenimientoEstado(
+  id: number | string,
+  payload: UpdateExpedienteEstadoPayload,
+) {
+  const { data } = await api.patch<ApiEnvelope<ExpedienteMantenimiento> | ExpedienteMantenimiento>(
+    `/expedientes/mantenimiento/${id}/estado`,
+    payload,
   );
 
   return unwrap<ExpedienteMantenimiento>(data);
