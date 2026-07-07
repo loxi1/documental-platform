@@ -131,6 +131,56 @@ function getApiErrorPayload(error: unknown): any {
   return response?.data ?? null;
 }
 
+function findErrorInfo(value: unknown, codes: string[], depth = 0): Record<string, unknown> | null {
+  if (!isRecord(value) || depth > 8) return null;
+
+  const code = typeof value.code === "string" ? value.code : undefined;
+  if (code && codes.includes(code)) {
+    const nested = isRecord(value.details) ? value.details : {};
+    return { ...value, ...nested, code };
+  }
+
+  for (const key of ["error", "details", "data", "payload", "response"]) {
+    const found = findErrorInfo(value[key], codes, depth + 1);
+    if (found) return found;
+  }
+
+  return null;
+}
+
+function firstText(value: Record<string, unknown> | null | undefined, keys: string[]) {
+  if (!value) return "";
+
+  for (const key of keys) {
+    const raw = value[key];
+    if (typeof raw === "string" && raw.trim()) return raw.trim();
+    if (typeof raw === "number") return String(raw);
+  }
+
+  return "";
+}
+
+function firstNestedText(value: Record<string, unknown> | null | undefined, paths: string[][]) {
+  if (!value) return "";
+
+  for (const path of paths) {
+    let current: unknown = value;
+
+    for (const key of path) {
+      if (!isRecord(current)) {
+        current = undefined;
+        break;
+      }
+      current = current[key];
+    }
+
+    if (typeof current === "string" && current.trim()) return current.trim();
+    if (typeof current === "number") return String(current);
+  }
+
+  return "";
+}
+
 function buildApiErrorMessage(error: unknown, fallback: string) {
   const payload = getApiErrorPayload(error);
   const apiError = payload?.error;
@@ -140,6 +190,74 @@ function buildApiErrorMessage(error: unknown, fallback: string) {
     apiError?.message ??
     payload?.message ??
     (error instanceof Error ? error.message : fallback);
+
+  const linkedInfo = findErrorInfo(payload, ["DOCUMENTO_YA_VINCULADO_A_OTRO_EXPEDIENTE"]);
+  if (linkedInfo) {
+    const codigoActual =
+      firstText(linkedInfo, [
+        "codigoExpedienteActual",
+        "codigo_expediente_actual",
+        "codigoExpediente",
+        "codigo_expediente",
+        "centroCostoActual",
+        "centro_costo_actual",
+      ]) ||
+      firstNestedText(linkedInfo, [
+        ["expedienteActual", "codigoExpediente"],
+        ["expedienteActual", "codigo_expediente"],
+        ["expediente_actual", "codigoExpediente"],
+        ["expediente_actual", "codigo_expediente"],
+        ["expediente", "codigoExpediente"],
+        ["expediente", "codigo_expediente"],
+      ]);
+
+    return [
+      "Este documento ya está vinculado a otro centro de costo.",
+      codigoActual ? `Documento vinculado actualmente al centro de costo ${codigoActual}.` : null,
+    ].filter(Boolean).join("\n");
+  }
+
+  const mismatchInfo = findErrorInfo(payload, ["CODIGO_EXPEDIENTE_NO_COINCIDE"]);
+  if (mismatchInfo) {
+    const codigoSeleccionado =
+      firstText(mismatchInfo, [
+        "codigoExpedienteSeleccionado",
+        "codigo_expediente_seleccionado",
+        "codigoExpedienteSolicitado",
+        "codigo_expediente_solicitado",
+        "codigoSeleccionado",
+        "codigo_solicitado",
+      ]) ||
+      firstNestedText(mismatchInfo, [
+        ["expedienteSeleccionado", "codigoExpediente"],
+        ["expedienteSeleccionado", "codigo_expediente"],
+        ["expediente_solicitado", "codigoExpediente"],
+        ["expediente_solicitado", "codigo_expediente"],
+      ]);
+
+    const codigoDetectado =
+      firstText(mismatchInfo, [
+        "codigoExpedienteDetectado",
+        "codigo_expediente_detectado",
+        "codigoDetectado",
+        "codigo_detectado",
+        "codigoDocumento",
+        "codigo_documento",
+      ]) ||
+      firstNestedText(mismatchInfo, [
+        ["documento", "codigoExpediente"],
+        ["documento", "codigo_expediente"],
+        ["metadata", "codigoExpediente"],
+        ["metadata", "codigo_expediente"],
+      ]);
+
+    return [
+      "El código detectado en el documento no coincide con el centro de costo seleccionado.",
+      codigoSeleccionado ? `Centro de costo seleccionado: ${codigoSeleccionado}.` : null,
+      codigoDetectado ? `Código detectado en documento: ${codigoDetectado}.` : null,
+      "Revisa el documento o cambia el centro de costo seleccionado antes de confirmar.",
+    ].filter(Boolean).join("\n");
+  }
 
   const duplicateDetails = details?.details ?? details;
   if (
@@ -233,10 +351,15 @@ export async function confirmarOcrConExpediente(
       "No se pudo confirmar el OCR con expediente.",
     );
 
+    const conflictDetails = findErrorInfo(payload, [
+      "DOCUMENTO_YA_VINCULADO_A_OTRO_EXPEDIENTE",
+      "CODIGO_EXPEDIENTE_NO_COINCIDE",
+    ]);
+
     throw new OcrApiError(message, {
-      code: duplicateDetails?.code ?? apiError?.code,
+      code: String(conflictDetails?.code ?? duplicateDetails?.code ?? apiError?.code ?? ""),
       status: (error as any)?.response?.status,
-      details: duplicateDetails ?? apiError?.details ?? payload,
+      details: conflictDetails ?? duplicateDetails ?? apiError?.details ?? payload,
     });
   }
 }

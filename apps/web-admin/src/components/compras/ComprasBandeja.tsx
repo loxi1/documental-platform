@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Eye, FilePlus2, Pencil, Plus, Search, X } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -220,12 +221,12 @@ function ExpedienteCell({ expediente }: { expediente: Expediente }) {
   );
 }
 
-function ActionsCell({ expediente }: { expediente: Expediente }) {
+function ActionsCell({ expediente, returnTo }: { expediente: Expediente; returnTo: string }) {
   const tienePrincipal = Boolean(getPrincipal(expediente));
   return (
     <div className="flex justify-end gap-1">
       <Button asChild size="icon" variant="outline" title="Ver expediente">
-        <Link href={`/compras/${expediente.id}/ver`} aria-label="Ver expediente">
+        <Link href={`/compras/${expediente.id}/ver?returnTo=${encodeURIComponent(returnTo)}`} aria-label="Ver expediente">
           <Eye className="h-4 w-4" />
         </Link>
       </Button>
@@ -322,15 +323,22 @@ function PaginationControls({
 }
 
 export function ComprasBandeja() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const initialEstado = searchParams.get("estado") || "abierto";
+  const initialSearch = searchParams.get("q") || "";
+  const initialPage = Number(searchParams.get("page") || "1");
+
   const [workspaceEmpresa, setWorkspaceEmpresa] = useState("BBTI");
   const [empresa, setEmpresa] = useState("BBTI");
-  const [estado, setEstado] = useState("abierto");
-  const [search, setSearch] = useState("");
-  const [page, setPage] = useState(1);
+  const [estado, setEstado] = useState(initialEstado);
+  const [search, setSearch] = useState(initialSearch);
+  const [page, setPage] = useState(Number.isFinite(initialPage) && initialPage > 0 ? initialPage : 1);
   const [remoteRows, setRemoteRows] = useState<Expediente[]>([]);
   const [searchMode, setSearchMode] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
+  const didMountFiltersRef = useRef(false);
 
   useEffect(() => {
     const contexto = getContexto();
@@ -412,7 +420,21 @@ export function ComprasBandeja() {
     return rows.slice(start, start + PAGE_SIZE);
   }, [currentPage, rows]);
 
+  const returnTo = useMemo(() => {
+    const params = new URLSearchParams();
+    if (estado) params.set("estado", estado);
+    if (search.trim()) params.set("q", search.trim());
+    if (currentPage > 1) params.set("page", String(currentPage));
+    const query = params.toString();
+    return query ? `/compras?${query}` : "/compras";
+  }, [currentPage, estado, search]);
+
   useEffect(() => {
+    if (!didMountFiltersRef.current) {
+      didMountFiltersRef.current = true;
+      return;
+    }
+
     setPage(1);
   }, [empresa, estado, search]);
 
@@ -423,6 +445,10 @@ export function ComprasBandeja() {
       setSearchError(null);
     }
   }, [search]);
+
+  useEffect(() => {
+    router.replace(returnTo, { scroll: false });
+  }, [returnTo, router]);
 
   if (isLoading) {
     return (
@@ -579,7 +605,7 @@ export function ComprasBandeja() {
                             <Badge variant="secondary">{getEstado(expediente)}</Badge>
                           </td>
                           <td className="w-[12%] py-3 text-right">
-                            <ActionsCell expediente={expediente} />
+                            <ActionsCell expediente={expediente} returnTo={returnTo} />
                           </td>
                         </tr>
                       );
