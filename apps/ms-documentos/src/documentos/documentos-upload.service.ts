@@ -25,11 +25,21 @@ type CargaGuiadaBody = {
   tipoRelacionSugerida?: string;
   canalIngreso?: string;
   observacion?: string;
+  claveDocumental?: string;
+  codigoExpediente?: string;
 };
 
 type DocumentoRow = { id: number };
 type ArchivoRow = { id: number };
-type DuplicadoRow = { id: number; documento_id: number | null };
+type DuplicadoRow = {
+  id: number;
+  documento_id: number | null;
+  nombre_archivo?: string | null;
+  storage_key?: string | null;
+  expediente_id?: number | null;
+  tipo_relacion?: string | null;
+  es_principal?: boolean | null;
+};
 
 function firstNonEmpty(...values: Array<string | undefined | null>) {
   return values.find((value) => typeof value === 'string' && value.trim().length > 0)?.trim();
@@ -75,6 +85,105 @@ export class DocumentosUploadService {
     private readonly documentoEventos: DocumentoEventosService,
   ) {}
 
+  async prevalidarCarga(file: UploadedFileLike | undefined, body: CargaGuiadaBody) {
+    if (!file?.buffer?.length) {
+      throw new BadRequestException('Archivo requerido en el campo file o archivo');
+    }
+
+    const clienteAbreviatura = normalizeUpper(body.clienteAbreviatura, '');
+    if (!clienteAbreviatura) {
+      throw new BadRequestException('clienteAbreviatura es obligatorio');
+    }
+
+    const tipoEsperado = normalizeUpper(body.tipoEsperado, 'OTRO');
+    const tipoRelacionSugerida = firstNonEmpty(body.tipoRelacionSugerida) ?? null;
+    const expedienteId = toOptionalNumber(body.expedienteId);
+    const documentoIdPayload = toOptionalNumber(body.documentoId);
+    const claveDocumental = firstNonEmpty(body.claveDocumental) ?? null;
+    const codigoExpedientePayload = firstNonEmpty(body.codigoExpediente) ?? null;
+
+    const originalFilename = sanitizeFilename(file.originalname ?? 'documento.pdf');
+    const contentType = inferContentType(file, originalFilename);
+    const sha256 = createHash('sha256').update(file.buffer).digest('hex');
+
+    const [duplicados, expedienteInfo, documentoExistente] = await Promise.all([
+      this.buscarDuplicadosPorHash({
+        sha256,
+        documentoId: documentoIdPayload,
+        expedienteId,
+      }),
+      expedienteId ? this.obtenerResumenExpediente(expedienteId) : Promise.resolve(null),
+      claveDocumental ? this.buscarDocumentoPorClave(claveDocumental) : Promise.resolve(null),
+    ]);
+
+    const documentoYaVinculado = documentoExistente?.expedienteId
+      ? {
+          expedienteId: documentoExistente.expedienteId,
+          tipoRelacion: documentoExistente.tipoRelacion ?? null,
+          esPrincipal: documentoExistente.esPrincipal === true,
+        }
+      : null;
+
+    const codigoExpedienteCoincide = !codigoExpedientePayload || !expedienteInfo?.codigoExpediente
+      ? null
+      : codigoExpedientePayload === expedienteInfo.codigoExpediente;
+
+    const expedienteTienePrincipal = expedienteInfo?.principalActivo ? true : false;
+    const intentaPrincipal = this.esSolicitudPrincipal(tipoRelacionSugerida, body);
+
+    let accionSugerida: 'abrir_existente' | 'vincular_existente' | 'cargar_nuevo' | 'bloquear' | 'requiere_confirmacion' = 'cargar_nuevo';
+    let motivo: string | null = null;
+
+    if (duplicados.length > 0) {
+      accionSugerida = 'abrir_existente';
+      motivo = 'ARCHIVO_DUPLICADO_POR_HASH';
+    } else if (documentoExistente?.id && documentoYaVinculado?.expedienteId && expedienteId && Number(documentoYaVinculado.expedienteId) !== Number(expedienteId)) {
+      accionSugerida = 'bloquear';
+      motivo = 'DOCUMENTO_YA_VINCULADO_A_OTRO_EXPEDIENTE';
+    } else if (codigoExpedienteCoincide === false) {
+      accionSugerida = 'bloquear';
+      motivo = 'CODIGO_EXPEDIENTE_NO_COINCIDE';
+    } else if (intentaPrincipal && expedienteTienePrincipal) {
+      accionSugerida = 'bloquear';
+      motivo = 'EXPEDIENTE_YA_TIENE_DOCUMENTO_PRINCIPAL';
+    } else if (documentoExistente?.id && expedienteId) {
+      accionSugerida = 'vincular_existente';
+      motivo = 'MISMA_CLAVE_DOCUMENTAL';
+    }
+
+    return {
+      hashSha256: sha256,
+      filename: originalFilename,
+      contentType,
+      clienteAbreviatura,
+      tipoEsperado,
+      expedienteId,
+      documentoId: documentoIdPayload,
+      claveDocumental,
+      documentoExistente,
+      documentoYaVinculado,
+      expedienteTienePrincipal,
+      principalActivo: expedienteInfo?.principalActivo ?? null,
+      codigoExpedienteCoincide,
+      codigoExpedienteSeleccionado: expedienteInfo?.codigoExpediente ?? null,
+      codigoExpedienteDetectado: codigoExpedientePayload,
+      duplicadoArchivo: duplicados.length > 0,
+      duplicados: duplicados.map((item) => ({
+        archivoId: item.id,
+        documentoId: item.documento_id,
+        nombreArchivo: item.nombre_archivo ?? null,
+        storageKey: item.storage_key ?? null,
+        expedienteId: item.expediente_id ?? null,
+        tipoRelacion: item.tipo_relacion ?? null,
+        esPrincipal: item.es_principal ?? null,
+      })),
+      accionSugerida,
+      motivo,
+      persistido: false,
+      storageProvider: null,
+    };
+  }
+
   async cargaGuiada(file: UploadedFileLike | undefined, body: CargaGuiadaBody) {
     if (!file?.buffer?.length) {
       throw new BadRequestException('Archivo requerido en el campo file o archivo');
@@ -101,6 +210,57 @@ export class DocumentosUploadService {
     const originalFilename = sanitizeFilename(file.originalname ?? 'documento.pdf');
     const contentType = inferContentType(file, originalFilename);
     const sha256 = createHash('sha256').update(file.buffer).digest('hex');
+
+    const duplicadosPrevios = await this.buscarDuplicadosPorHash({
+      sha256,
+      documentoId: documentoIdPayload,
+      expedienteId,
+    });
+
+    if (duplicadosPrevios.length > 0) {
+      throw new ConflictException({
+        code: 'ARCHIVO_DUPLICADO_EN_CARGA_GUIADA',
+        message: 'Ya existe un archivo equivalente. No se subió nuevamente a R2.',
+        details: {
+          expedienteId,
+          documentoId: documentoIdPayload,
+          hashSha256: sha256,
+          duplicados: duplicadosPrevios.map((item) => ({
+            archivoId: item.id,
+            documentoId: item.documento_id,
+            nombreArchivo: item.nombre_archivo ?? null,
+            storageKey: item.storage_key ?? null,
+            expedienteId: item.expediente_id ?? null,
+            tipoRelacion: item.tipo_relacion ?? null,
+            esPrincipal: item.es_principal ?? null,
+          })),
+          accionSugerida: 'abrir_existente',
+        },
+      });
+    }
+
+    const intentaPrincipal = this.esSolicitudPrincipal(tipoRelacionSugerida, body);
+
+    if (expedienteId && intentaPrincipal) {
+      const expedienteInfo = await this.obtenerResumenExpediente(expedienteId);
+      const principalActivo = expedienteInfo?.principalActivo ?? null;
+
+      if (principalActivo && Number(principalActivo.documentoId) !== Number(documentoIdPayload ?? 0)) {
+        throw new ConflictException({
+          code: 'EXPEDIENTE_YA_TIENE_DOCUMENTO_PRINCIPAL',
+          message: 'El expediente ya tiene un documento principal activo. No se subió nuevamente a R2.',
+          details: {
+            expedienteId,
+            codigoExpediente: expedienteInfo?.codigoExpediente ?? null,
+            documentoId: documentoIdPayload,
+            tipoRelacionSugerida,
+            canalIngreso,
+            principalActivo,
+            accionSugerida: 'bloquear',
+          },
+        });
+      }
+    }
 
     const bucket = this.resolveBucket();
     const storageKey = [
@@ -146,28 +306,7 @@ export class DocumentosUploadService {
       });
     }
 
-    const duplicados = await this.buscarDuplicados({
-      sha256,
-      documentoId,
-      expedienteId,
-    });
-
-    if (duplicados.length > 0) {
-      throw new ConflictException({
-        code: 'ARCHIVO_DUPLICADO_EN_CARGA_GUIADA',
-        message: 'Ya existe un archivo equivalente cargado para este documento o expediente.',
-        details: {
-          documentoId,
-          expedienteId,
-          hashSha256: sha256,
-          duplicados: duplicados.map((item) => ({
-            archivoId: item.id,
-            documentoId: item.documento_id,
-          })),
-          accionSugerida: 'abrir_existente',
-        },
-      });
-    }
+    const duplicados: DuplicadoRow[] = [];
 
     await this.subirAR2({
       bucket,
@@ -327,32 +466,133 @@ export class DocumentosUploadService {
     return documentoId;
   }
 
-  private async buscarDuplicados(params: {
+  private async buscarDuplicadosPorHash(params: {
     sha256: string;
-    documentoId: number;
+    documentoId: number | null;
     expedienteId: number | null;
   }) {
-    const porDocumento = await sql<DuplicadoRow[]>`
-      SELECT id, documento_id
-      FROM documentos.documentos_archivos
-      WHERE hash_sha256 = ${params.sha256}
-        AND documento_id = ${params.documentoId}
-      LIMIT 5
-    `;
-
-    if (porDocumento.length > 0 || !params.expedienteId) {
-      return porDocumento;
-    }
-
     return sql<DuplicadoRow[]>`
-      SELECT da.id, da.documento_id
+      SELECT
+        da.id,
+        da.documento_id,
+        da.nombre_archivo,
+        da.storage_key,
+        ed.expediente_id,
+        ed.tipo_relacion,
+        ed.es_principal
       FROM documentos.documentos_archivos da
-      INNER JOIN documentos.expediente_documentos ed
+      LEFT JOIN documentos.expediente_documentos ed
         ON ed.documento_id = da.documento_id
       WHERE da.hash_sha256 = ${params.sha256}
-        AND ed.expediente_id = ${params.expedienteId}
-      LIMIT 5
+        AND da.estado <> 'duplicado_absorbido'
+        AND (
+          ${params.documentoId}::bigint IS NULL
+          OR da.documento_id = ${params.documentoId}::bigint
+          OR ${params.expedienteId}::bigint IS NULL
+          OR ed.expediente_id = ${params.expedienteId}::bigint
+        )
+      ORDER BY da.id DESC
+      LIMIT 10
     `;
+  }
+
+  private async buscarDocumentoPorClave(claveDocumental: string) {
+    const rows = await sql`
+      SELECT
+        d.id,
+        d.clave_documental,
+        d.tipo_documental,
+        d.serie,
+        d.numero,
+        ed.expediente_id,
+        ed.tipo_relacion,
+        ed.es_principal
+      FROM documentos.documentos d
+      LEFT JOIN documentos.expediente_documentos ed
+        ON ed.documento_id = d.id
+      WHERE d.clave_documental = ${claveDocumental}
+      ORDER BY d.id DESC
+      LIMIT 1
+    `;
+
+    const row = rows[0];
+    if (!row) return null;
+
+    return {
+      id: Number(row.id),
+      claveDocumental: row.clave_documental ?? null,
+      tipoDocumental: row.tipo_documental ?? null,
+      serie: row.serie ?? null,
+      numero: row.numero ?? null,
+      expedienteId: row.expediente_id ? Number(row.expediente_id) : null,
+      tipoRelacion: row.tipo_relacion ?? null,
+      esPrincipal: row.es_principal === true,
+    };
+  }
+
+  private async obtenerResumenExpediente(expedienteId: number) {
+    const expedienteRows = await sql`
+      SELECT id, codigo_expediente, empresa_codigo, cliente_destino_id
+      FROM documentos.expedientes
+      WHERE id = ${expedienteId}::bigint
+      LIMIT 1
+    `;
+
+    const expediente = expedienteRows[0];
+    if (!expediente) return null;
+
+    const principalRows = await sql`
+      SELECT
+        ed.documento_id,
+        ed.tipo_relacion,
+        d.tipo_documental,
+        d.serie,
+        d.numero,
+        d.clave_documental
+      FROM documentos.expediente_documentos ed
+      JOIN documentos.documentos d
+        ON d.id = ed.documento_id
+      WHERE ed.expediente_id = ${expedienteId}::bigint
+        AND ed.es_principal = true
+      ORDER BY ed.orden ASC, ed.creado_en ASC
+      LIMIT 1
+    `;
+
+    const principal = principalRows[0] ?? null;
+
+    return {
+      id: Number(expediente.id),
+      codigoExpediente: expediente.codigo_expediente ?? null,
+      empresaCodigo: expediente.empresa_codigo ?? null,
+      clienteDestinoId: expediente.cliente_destino_id ? Number(expediente.cliente_destino_id) : null,
+      principalActivo: principal
+        ? {
+            documentoId: Number(principal.documento_id),
+            tipoRelacion: principal.tipo_relacion ?? null,
+            tipoDocumental: principal.tipo_documental ?? null,
+            serie: principal.serie ?? null,
+            numero: principal.numero ?? null,
+            claveDocumental: principal.clave_documental ?? null,
+          }
+        : null,
+    };
+  }
+
+  private esSolicitudPrincipal(tipoRelacionSugerida: string | null, body: CargaGuiadaBody) {
+    const rawEsPrincipal = (body as any).esPrincipal;
+    if (rawEsPrincipal === true || rawEsPrincipal === 'true' || rawEsPrincipal === '1') {
+      return true;
+    }
+
+    const tipo = String(tipoRelacionSugerida ?? '').trim().toLowerCase();
+    if (['principal_oc', 'principal_os', 'principal_factura'].includes(tipo)) {
+      return true;
+    }
+
+    const canalIngreso = String(body.canalIngreso ?? '').trim().toUpperCase();
+    return canalIngreso === 'COMPRAS_NUEVO_UPLOAD_PRINCIPAL'
+      || canalIngreso.endsWith('_UPLOAD_PRINCIPAL')
+      || canalIngreso.includes('UPLOAD_PRINCIPAL');
   }
 
   private resolveBucket() {

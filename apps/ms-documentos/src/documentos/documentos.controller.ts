@@ -56,6 +56,21 @@ export class DocumentosController {
   }
 
 
+  @ApiOperation({ summary: 'Prevalidar carga guiada sin persistir ni subir a R2' })
+  @ApiConsumes('multipart/form-data')
+  @Post('carga-guiada/prevalidar')
+  @UseInterceptors(FileFieldsInterceptor([
+    { name: 'file', maxCount: 1 },
+    { name: 'archivo', maxCount: 1 },
+  ]))
+  prevalidarCargaGuiada(
+    @UploadedFiles() files: Record<string, any[]>,
+    @Body() body: any,
+  ) {
+    const file = files?.file?.[0] ?? files?.archivo?.[0];
+    return this.upload.prevalidarCarga(file, body);
+  }
+
   @ApiOperation({ summary: 'Carga guiada de archivo a R2 sin procesar OCR' })
   @ApiConsumes('multipart/form-data')
   @Post('carga-guiada')

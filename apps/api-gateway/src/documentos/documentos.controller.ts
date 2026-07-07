@@ -325,6 +325,33 @@ export class DocumentosGatewayController {
     return response?.data?.data ?? response?.data;
   }
 
+
+
+  private throwUpstreamHttpException(error: any): never {
+    if (axios.isAxiosError(error) && error.response) {
+      const status = error.response.status ?? 500;
+      const payload = error.response.data;
+      const upstreamError = payload?.error ?? payload;
+      const upstreamDetails = upstreamError?.details ?? payload?.details ?? null;
+
+      throw new HttpException(
+        {
+          message:
+            upstreamError?.message ??
+            payload?.message ??
+            error.message ??
+            'Error del microservicio documentos',
+          code: upstreamError?.code ?? payload?.code ?? 'UPSTREAM_ERROR',
+          details: upstreamDetails,
+          upstream: payload ?? null,
+        },
+        status,
+      );
+    }
+
+    throw error;
+  }
+
   private async proxy(params: {
     method: Method;
     path: string;
@@ -349,28 +376,7 @@ export class DocumentosGatewayController {
 
       return this.unwrap(response);
     } catch (error: any) {
-      if (axios.isAxiosError(error) && error.response) {
-        const status = error.response.status ?? 500;
-        const payload = error.response.data;
-        const upstreamError = payload?.error ?? payload;
-        const upstreamDetails = upstreamError?.details ?? payload?.details ?? null;
-
-        throw new HttpException(
-          {
-            message:
-              upstreamError?.message ??
-              payload?.message ??
-              error.message ??
-              'Error del microservicio documentos',
-            code: upstreamError?.code ?? payload?.code ?? 'UPSTREAM_ERROR',
-            details: upstreamDetails,
-            upstream: payload ?? null,
-          },
-          status,
-        );
-      }
-
-      throw error;
+      this.throwUpstreamHttpException(error);
     }
   }
 
@@ -393,6 +399,76 @@ export class DocumentosGatewayController {
     });
   }
 
+
+  @ApiOperation({ summary: 'Prevalidar carga guiada sin persistencia definitiva vía API Gateway' })
+  @ApiConsumes('multipart/form-data')
+  @Post('carga-guiada/prevalidar')
+  @UseInterceptors(FileFieldsInterceptor([
+    { name: 'file', maxCount: 1 },
+    { name: 'archivo', maxCount: 1 },
+  ]))
+  async prevalidarCargaGuiada(
+    @Headers('authorization') authorization: string | undefined,
+    @Headers(REQUEST_ID_HEADER) requestId: string | undefined,
+    @UploadedFiles() files: Record<string, any[]>,
+    @Body() body: Record<string, any>,
+  ) {
+    const contexto = await this.validateAuthorization(authorization);
+    this.assertAnyActionPermitida(contexto, ['documentos.subir'], 'prevalidar carga de documentos');
+    const empresaContexto = this.getEmpresaFromContext(contexto);
+
+    if (!empresaContexto) {
+      throw new ForbiddenException('El token no tiene empresa de workspace válida');
+    }
+
+    const file = files?.file?.[0] ?? files?.archivo?.[0];
+
+    if (!file?.buffer) {
+      throw new Error('Archivo requerido en el campo file o archivo');
+    }
+
+    const form = new FormData();
+    form.append('file', file.buffer, {
+      filename: file.originalname,
+      contentType: file.mimetype,
+      knownLength: file.size,
+    });
+
+    for (const [key, value] of Object.entries(body ?? {})) {
+      if (value === undefined || value === null) continue;
+      if (['cliente', 'clienteAbreviatura', 'empresa', 'empresaCodigo'].includes(key)) {
+        continue;
+      }
+      if (Array.isArray(value)) {
+        value.forEach((item) => form.append(key, String(item)));
+      } else {
+        form.append(key, String(value));
+      }
+    }
+
+    form.append('cliente', empresaContexto);
+    form.append('clienteAbreviatura', empresaContexto);
+    form.append('empresa', empresaContexto);
+    form.append('empresaCodigo', empresaContexto);
+
+    try {
+      const response = await axios.request({
+        method: 'POST',
+        url: `${this.getBaseUrl()}/documentos/carga-guiada/prevalidar`,
+        data: form,
+        headers: {
+          ...this.buildForwardHeaders(authorization, requestId),
+          ...form.getHeaders(),
+        },
+        maxBodyLength: Infinity,
+        maxContentLength: Infinity,
+      });
+
+      return this.unwrap(response);
+    } catch (error: any) {
+      this.throwUpstreamHttpException(error);
+    }
+  }
 
   @ApiOperation({ summary: 'Carga guiada de archivo vía API Gateway' })
   @ApiConsumes('multipart/form-data')
@@ -450,19 +526,23 @@ export class DocumentosGatewayController {
     form.append('empresa', empresaContexto);
     form.append('empresaCodigo', empresaContexto);
 
-    const response = await axios.request({
-      method: 'POST',
-      url: `${this.getBaseUrl()}/documentos/carga-guiada`,
-      data: form,
-      headers: {
-        ...this.buildForwardHeaders(authorization, requestId),
-        ...form.getHeaders(),
-      },
-      maxBodyLength: Infinity,
-      maxContentLength: Infinity,
-    });
+    try {
+      const response = await axios.request({
+        method: 'POST',
+        url: `${this.getBaseUrl()}/documentos/carga-guiada`,
+        data: form,
+        headers: {
+          ...this.buildForwardHeaders(authorization, requestId),
+          ...form.getHeaders(),
+        },
+        maxBodyLength: Infinity,
+        maxContentLength: Infinity,
+      });
 
-    return this.unwrap(response);
+      return this.unwrap(response);
+    } catch (error: any) {
+      this.throwUpstreamHttpException(error);
+    }
   }
 
   @ApiOperation({ summary: 'Procesar OCR de archivo vía API Gateway' })
