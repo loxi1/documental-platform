@@ -3,6 +3,249 @@ import { sql } from '@documental/database';
 
 @Injectable()
 export class ExpedientesRepository {
+
+  async findMantenimiento(filters: {
+    empresa?: string;
+    clienteDestinoId?: number;
+    estado?: string;
+    q?: string;
+    limit?: number;
+    offset?: number;
+    page?: number;
+    pageSize?: number;
+  }) {
+    const requestedPage = Math.max(Number(filters.page ?? 1), 1);
+    const requestedPageSize = Math.min(
+      Math.max(Number(filters.pageSize ?? filters.limit ?? 50), 1),
+      200,
+    );
+    const limit = requestedPageSize;
+    const offset =
+      filters.offset !== undefined
+        ? Math.max(Number(filters.offset ?? 0), 0)
+        : (requestedPage - 1) * requestedPageSize;
+    const page = Math.floor(offset / limit) + 1;
+    const empresa = filters.empresa?.trim().toUpperCase() || null;
+    const estado = filters.estado?.trim() || null;
+    const clienteDestinoId = Number(filters.clienteDestinoId ?? NaN);
+    const clienteDestinoIdParam =
+      Number.isFinite(clienteDestinoId) && clienteDestinoId > 0
+        ? clienteDestinoId
+        : null;
+    const q = filters.q?.trim() || null;
+    const like = q ? `%${q}%` : null;
+
+    const rows = await sql`
+      SELECT
+        e.id,
+        e.id AS "expedienteId",
+        e.empresa_codigo AS "empresaCodigo",
+        e.codigo_expediente AS "codigoExpediente",
+        e.descripcion,
+        e.cliente_destino_id AS "clienteDestinoId",
+        cd.nombre_oficial AS "clienteNombre",
+        cd.abreviatura AS "clienteAbreviatura",
+        cd.ruc AS "clienteRuc",
+        e.estado,
+        e.metadata,
+        COUNT(DISTINCT ed.documento_id)::int AS "totalDocumentos",
+        e.creado_en AS "creadoEn",
+        e.actualizado_en AS "actualizadoEn"
+      FROM documentos.expedientes e
+      LEFT JOIN core.clientes_destino cd
+        ON cd.id = e.cliente_destino_id
+      LEFT JOIN documentos.expediente_documentos ed
+        ON ed.expediente_id = e.id
+      WHERE (${empresa}::text IS NULL OR e.empresa_codigo = ${empresa})
+        AND (${estado}::text IS NULL OR e.estado = ${estado})
+        AND (${clienteDestinoIdParam}::int IS NULL OR e.cliente_destino_id = ${clienteDestinoIdParam})
+        AND (
+          ${like}::text IS NULL
+          OR e.codigo_expediente ILIKE ${like}
+          OR e.descripcion ILIKE ${like}
+          OR e.empresa_codigo ILIKE ${like}
+          OR cd.nombre_oficial ILIKE ${like}
+          OR cd.abreviatura ILIKE ${like}
+          OR cd.ruc ILIKE ${like}
+        )
+      GROUP BY e.id, cd.id
+      ORDER BY e.actualizado_en DESC NULLS LAST, e.id DESC
+      LIMIT ${limit}
+      OFFSET ${offset}
+    `;
+
+    const countRows = await sql`
+      SELECT COUNT(*)::int AS total
+      FROM documentos.expedientes e
+      LEFT JOIN core.clientes_destino cd
+        ON cd.id = e.cliente_destino_id
+      WHERE (${empresa}::text IS NULL OR e.empresa_codigo = ${empresa})
+        AND (${estado}::text IS NULL OR e.estado = ${estado})
+        AND (${clienteDestinoIdParam}::int IS NULL OR e.cliente_destino_id = ${clienteDestinoIdParam})
+        AND (
+          ${like}::text IS NULL
+          OR e.codigo_expediente ILIKE ${like}
+          OR e.descripcion ILIKE ${like}
+          OR e.empresa_codigo ILIKE ${like}
+          OR cd.nombre_oficial ILIKE ${like}
+          OR cd.abreviatura ILIKE ${like}
+          OR cd.ruc ILIKE ${like}
+        )
+    `;
+
+    const total = countRows[0]?.total ?? 0;
+    const totalPages = limit > 0 ? Math.ceil(total / limit) : 0;
+
+    return {
+      items: rows,
+      total,
+      limit,
+      offset,
+      page,
+      pageSize: limit,
+      totalPages,
+      hasNextPage: page < totalPages,
+      hasPreviousPage: page > 1,
+      filters: {
+        empresa,
+        clienteDestinoId: clienteDestinoIdParam,
+        estado,
+        q,
+      },
+    };
+  }
+
+  async findMantenimientoById(id: number) {
+    const rows = await sql`
+      SELECT
+        e.id,
+        e.id AS "expedienteId",
+        e.empresa_codigo AS "empresaCodigo",
+        e.codigo_expediente AS "codigoExpediente",
+        e.descripcion,
+        e.cliente_destino_id AS "clienteDestinoId",
+        cd.nombre_oficial AS "clienteNombre",
+        cd.abreviatura AS "clienteAbreviatura",
+        cd.ruc AS "clienteRuc",
+        e.estado,
+        e.metadata,
+        COUNT(DISTINCT ed.documento_id)::int AS "totalDocumentos",
+        e.creado_en AS "creadoEn",
+        e.actualizado_en AS "actualizadoEn"
+      FROM documentos.expedientes e
+      LEFT JOIN core.clientes_destino cd
+        ON cd.id = e.cliente_destino_id
+      LEFT JOIN documentos.expediente_documentos ed
+        ON ed.expediente_id = e.id
+      WHERE e.id = ${id}
+      GROUP BY e.id, cd.id
+      LIMIT 1
+    `;
+
+    return rows[0] ?? null;
+  }
+
+  async existsMantenimientoDuplicate(params: {
+    empresaCodigo: string;
+    clienteDestinoId: number;
+    codigoExpediente: string;
+    excludeId?: number;
+  }) {
+    const rows = await sql`
+      SELECT id
+      FROM documentos.expedientes
+      WHERE empresa_codigo = ${params.empresaCodigo}
+        AND cliente_destino_id = ${params.clienteDestinoId}
+        AND codigo_expediente = ${params.codigoExpediente}
+        AND (${params.excludeId ?? null}::bigint IS NULL OR id <> ${params.excludeId ?? null})
+      LIMIT 1
+    `;
+
+    return rows[0] ?? null;
+  }
+
+  async createMantenimiento(data: {
+    clienteDestinoId: number;
+    empresaCodigo: string;
+    codigoExpediente: string;
+    descripcion?: string | null;
+    estado?: string | null;
+    metadata?: Record<string, any> | null;
+  }) {
+    const rows = await sql`
+      INSERT INTO documentos.expedientes (
+        cliente_destino_id,
+        empresa_codigo,
+        codigo_expediente,
+        descripcion,
+        estado,
+        metadata,
+        creado_en,
+        actualizado_en
+      )
+      VALUES (
+        ${data.clienteDestinoId},
+        ${data.empresaCodigo},
+        ${data.codigoExpediente},
+        ${data.descripcion ?? null},
+        ${data.estado ?? 'abierto'},
+        ${JSON.stringify(data.metadata ?? {})}::jsonb,
+        now(),
+        now()
+      )
+      RETURNING id
+    `;
+
+    return this.findMantenimientoById(Number(rows[0]?.id));
+  }
+
+  async updateMantenimiento(
+    id: number,
+    data: {
+      codigoExpediente?: string;
+      descripcion?: string | null;
+      estado?: string;
+      metadata?: Record<string, any> | null;
+    },
+  ) {
+    const current = await this.findMantenimientoById(id);
+
+    if (!current) {
+      return null;
+    }
+
+    const rows = await sql`
+      UPDATE documentos.expedientes
+      SET
+        codigo_expediente = ${data.codigoExpediente ?? current.codigoExpediente},
+        descripcion = ${data.descripcion !== undefined ? data.descripcion : current.descripcion},
+        estado = ${data.estado ?? current.estado},
+        metadata = ${JSON.stringify(data.metadata !== undefined ? data.metadata : current.metadata ?? {})}::jsonb,
+        actualizado_en = now()
+      WHERE id = ${id}
+      RETURNING id
+    `;
+
+    return this.findMantenimientoById(Number(rows[0]?.id));
+  }
+
+  async updateMantenimientoEstado(id: number, estado: string) {
+    const rows = await sql`
+      UPDATE documentos.expedientes
+      SET
+        estado = ${estado},
+        actualizado_en = now()
+      WHERE id = ${id}
+      RETURNING id
+    `;
+
+    if (!rows[0]) {
+      return null;
+    }
+
+    return this.findMantenimientoById(Number(rows[0].id));
+  }
+
   async findAll(filters: {
     empresa?: string;
     estado?: string;

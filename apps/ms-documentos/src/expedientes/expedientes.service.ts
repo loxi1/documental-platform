@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { ExpedientesRepository } from './expedientes.repository';
 import { DocumentoEventosService } from '../documento-eventos/documento-eventos.service';
 
@@ -8,6 +8,174 @@ export class ExpedientesService {
     private readonly repo: ExpedientesRepository,
     private readonly documentoEventos: DocumentoEventosService,
   ) {}
+
+
+  private readonly estadosMantenimiento = new Set([
+    'abierto',
+    'cerrado',
+    'observado',
+    'anulado',
+  ]);
+
+  private normalizeEstadoMantenimiento(estado?: string | null) {
+    const normalized = String(estado ?? 'abierto').trim().toLowerCase();
+
+    if (!this.estadosMantenimiento.has(normalized)) {
+      throw new BadRequestException(
+        'estado inválido. Valores permitidos: abierto, cerrado, observado, anulado',
+      );
+    }
+
+    return normalized;
+  }
+
+  private normalizeCodigoExpediente(codigo?: string | null) {
+    const normalized = String(codigo ?? '').trim();
+
+    if (!normalized) {
+      throw new BadRequestException('codigoExpediente es obligatorio');
+    }
+
+    return normalized;
+  }
+
+  private normalizeEmpresaCodigo(empresa?: string | null) {
+    const normalized = String(empresa ?? '').trim().toUpperCase();
+
+    if (!normalized) {
+      throw new BadRequestException('empresaCodigo es obligatorio');
+    }
+
+    return normalized;
+  }
+
+  private normalizeClienteDestinoId(clienteDestinoId: unknown) {
+    const normalized = Number(clienteDestinoId);
+
+    if (!Number.isFinite(normalized) || normalized <= 0) {
+      throw new BadRequestException('clienteDestinoId es obligatorio');
+    }
+
+    return normalized;
+  }
+
+  findMantenimiento(filters: {
+    empresa?: string;
+    clienteDestinoId?: number;
+    estado?: string;
+    q?: string;
+    limit?: number;
+    offset?: number;
+    page?: number;
+    pageSize?: number;
+  }) {
+    return this.repo.findMantenimiento({
+      empresa: filters.empresa?.trim().toUpperCase() || undefined,
+      clienteDestinoId: filters.clienteDestinoId,
+      estado: filters.estado?.trim() || undefined,
+      q: filters.q?.trim() || undefined,
+      limit: filters.limit,
+      offset: filters.offset,
+      page: filters.page,
+      pageSize: filters.pageSize,
+    });
+  }
+
+  async findMantenimientoById(id: number) {
+    const expediente = await this.repo.findMantenimientoById(id);
+
+    if (!expediente) {
+      throw new NotFoundException(`Expediente ${id} no encontrado`);
+    }
+
+    return expediente;
+  }
+
+  async createMantenimiento(data: {
+    clienteDestinoId: number;
+    empresaCodigo: string;
+    codigoExpediente: string;
+    descripcion?: string | null;
+    estado?: string | null;
+    metadata?: Record<string, any> | null;
+  }) {
+    const empresaCodigo = this.normalizeEmpresaCodigo(data.empresaCodigo);
+    const clienteDestinoId = this.normalizeClienteDestinoId(data.clienteDestinoId);
+    const codigoExpediente = this.normalizeCodigoExpediente(data.codigoExpediente);
+    const estado = this.normalizeEstadoMantenimiento(data.estado);
+
+    const duplicate = await this.repo.existsMantenimientoDuplicate({
+      empresaCodigo,
+      clienteDestinoId,
+      codigoExpediente,
+    });
+
+    if (duplicate) {
+      throw new ConflictException(
+        `Ya existe un expediente ${codigoExpediente} para la empresa ${empresaCodigo}`,
+      );
+    }
+
+    return this.repo.createMantenimiento({
+      clienteDestinoId,
+      empresaCodigo,
+      codigoExpediente,
+      descripcion: data.descripcion?.trim() || null,
+      estado,
+      metadata: {
+        ...(data.metadata ?? {}),
+        origen: data.metadata?.origen ?? 'mantenimiento_contable',
+      },
+    });
+  }
+
+  async updateMantenimiento(
+    id: number,
+    data: {
+      codigoExpediente?: string;
+      descripcion?: string | null;
+      estado?: string;
+      metadata?: Record<string, any> | null;
+    },
+  ) {
+    const current = await this.findMantenimientoById(id);
+    const codigoExpediente =
+      data.codigoExpediente !== undefined
+        ? this.normalizeCodigoExpediente(data.codigoExpediente)
+        : current.codigoExpediente;
+    const estado =
+      data.estado !== undefined
+        ? this.normalizeEstadoMantenimiento(data.estado)
+        : current.estado;
+
+    const duplicate = await this.repo.existsMantenimientoDuplicate({
+      empresaCodigo: current.empresaCodigo,
+      clienteDestinoId: current.clienteDestinoId,
+      codigoExpediente,
+      excludeId: id,
+    });
+
+    if (duplicate) {
+      throw new ConflictException(
+        `Ya existe un expediente ${codigoExpediente} para la empresa ${current.empresaCodigo}`,
+      );
+    }
+
+    return this.repo.updateMantenimiento(id, {
+      codigoExpediente,
+      descripcion:
+        data.descripcion !== undefined ? data.descripcion?.trim() || null : undefined,
+      estado,
+      metadata: data.metadata !== undefined ? data.metadata ?? {} : undefined,
+    });
+  }
+
+  async updateMantenimientoEstado(id: number, estado: string) {
+    await this.findMantenimientoById(id);
+    const normalizedEstado = this.normalizeEstadoMantenimiento(estado);
+
+    return this.repo.updateMantenimientoEstado(id, normalizedEstado);
+  }
 
   findAll(filters: {
     empresa?: string;

@@ -4,6 +4,7 @@ import {
   Get,
   Param,
   ParseIntPipe,
+  Patch,
   Post,
   Query,
 } from '@nestjs/common';
@@ -49,6 +50,57 @@ export class ExpedientesController {
     @Query('empresa') empresa?: string,
   ) {
     return this.service.findByCodigoExpediente(codigo, empresa);
+  }
+
+
+  @Get('mantenimiento')
+  findMantenimiento(
+    @Query('empresa') empresa?: string,
+    @Query('clienteDestinoId') clienteDestinoId?: string,
+    @Query('estado') estado?: string,
+    @Query('q') q?: string,
+    @Query('search') search?: string,
+    @Query('limit') limit?: string,
+    @Query('offset') offset?: string,
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
+  ) {
+    return this.service.findMantenimiento({
+      empresa,
+      clienteDestinoId: clienteDestinoId ? Number(clienteDestinoId) : undefined,
+      estado,
+      q: q ?? search,
+      limit: limit ? Number(limit) : undefined,
+      offset: offset ? Number(offset) : undefined,
+      page: page ? Number(page) : undefined,
+      pageSize: pageSize ? Number(pageSize) : undefined,
+    });
+  }
+
+  @Get('mantenimiento/:id')
+  findMantenimientoById(@Param('id', ParseIntPipe) id: number) {
+    return this.service.findMantenimientoById(id);
+  }
+
+  @Post('mantenimiento')
+  createMantenimiento(@Body() body: any) {
+    return this.service.createMantenimiento(body);
+  }
+
+  @Patch('mantenimiento/:id')
+  updateMantenimiento(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: any,
+  ) {
+    return this.service.updateMantenimiento(id, body);
+  }
+
+  @Patch('mantenimiento/:id/estado')
+  updateMantenimientoEstado(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: any,
+  ) {
+    return this.service.updateMantenimientoEstado(id, body?.estado);
   }
 
   @Get(':id/resumen')

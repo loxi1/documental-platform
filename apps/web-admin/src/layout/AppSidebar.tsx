@@ -11,6 +11,7 @@ import {
   FilePlus2,
   FileSearch,
   FolderKanban,
+  ListChecks,
   LayoutDashboard,
   Scale,
   ShieldCheck,
@@ -102,6 +103,12 @@ const navGroups: NavGroup[] = [
         name: "Revisión contable",
         path: "/revision-contable",
         icon: <Scale className="h-4 w-4" />,
+        menuKey: "revision_contable",
+      },
+      {
+        name: "Centro de costo",
+        path: "/revision-contable/expedientes",
+        icon: <ListChecks className="h-4 w-4" />,
         menuKey: "revision_contable",
       },
       {
