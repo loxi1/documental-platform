@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { getAccessToken } from "@/lib/auth-storage";
 
 import {
   getExpediente,
@@ -12,9 +13,12 @@ import {
 } from "@/services/expedientes";
 
 export function useExpedientes(params: ExpedientesQuery = {}) {
+  const hasToken = typeof window !== "undefined" && Boolean(getAccessToken());
+
   return useQuery({
     queryKey: ["expedientes", params],
     queryFn: () => getExpedientes(params),
+    enabled: hasToken,
   });
 }
 

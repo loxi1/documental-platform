@@ -17,9 +17,9 @@ export const workspaceRouteRules: RouteAccessRule[] = [
   { prefix: "/compras", label: "Compras", menuKey: "compras" },
   { prefix: "/almacen", label: "Almacén", menuKey: "almacen" },
   { prefix: "/finanzas", label: "Finanzas", menuKey: "finanzas" },
-  { prefix: "/documentos/cargar", label: "Carga guiada", actionKeys: ["documentos.subir"] },
-  { prefix: "/carga-guiada", label: "Carga guiada", actionKeys: ["documentos.subir"] },
-  { prefix: "/ocr-resultados", label: "OCR Resultados", actionKeys: ["ocr.confirmar", "documentos.validar"] },
+  { prefix: "/documentos/cargar", label: "Carga guiada", menuKey: "documentos" },
+  { prefix: "/carga-guiada", label: "Carga guiada", menuKey: "documentos" },
+  { prefix: "/ocr-resultados", label: "OCR Resultados", menuKey: "documentos" },
   { prefix: "/documentos", label: "Documentos", menuKey: "documentos" },
   { prefix: "/revision-contable", label: "Revisión contable", menuKey: "revision_contable" },
   { prefix: "/alertas", label: "Alertas", menuKey: "alertas" },
@@ -59,12 +59,12 @@ export function canAccessPath(pathname: string, contexto?: AuthContext | null) {
   if (rule.adminOnly) return false;
 
   const menus = contexto.permisos?.menus ?? [];
-  const actions = contexto.permisos?.actions ?? [];
-
   const hasMenu = rule.menuKey ? menus.includes(rule.menuKey) : false;
-  const hasAction = rule.actionKeys?.some((action) => actions.includes(action)) ?? false;
 
-  return hasMenu || hasAction;
+  // Las rutas técnicas de documentos/carga/OCR no se habilitan por acciones.
+  // Para perfiles operativos se accede a esas funciones desde su módulo principal
+  // (/compras, /almacen, /finanzas, /revision-contable), no como menú/ruta directa.
+  return hasMenu;
 }
 
 export function getDefaultPathForContext(contexto?: AuthContext | null) {

@@ -8,6 +8,7 @@ services:
       DATABASE_PASSWORD: postgres_local
       DATABASE_SSLMODE: disable
       DATABASE_URL: postgresql://postgres:postgres_local@dp_postgres:5432/documental_platform?sslmode=disable
+      MS_DOCUMENTOS_URL: http://ms-documentos:3002/api/v1
 
   ms-auth:
     environment:

@@ -58,6 +58,12 @@ const navGroups: NavGroup[] = [
         menuKey: "expedientes",
       },
       {
+        name: "Compras",
+        path: "/compras",
+        icon: <ClipboardList className="h-4 w-4" />,
+        menuKey: "compras",
+      },
+      {
         name: "Almacén",
         path: "/almacen",
         icon: <ClipboardList className="h-4 w-4" />,
@@ -79,13 +85,13 @@ const navGroups: NavGroup[] = [
         name: "Carga guiada",
         path: "/documentos/cargar",
         icon: <FilePlus2 className="h-4 w-4" />,
-        actionKeys: ["documentos.subir"],
+        menuKey: "documentos",
       },
       {
         name: "OCR Resultados",
         path: "/ocr-resultados",
         icon: <FileSearch className="h-4 w-4" />,
-        actionKeys: ["ocr.confirmar", "documentos.validar"],
+        menuKey: "documentos",
       },
     ],
   },
@@ -157,10 +163,9 @@ const AppSidebar: React.FC<AppSidebarProps> = ({ userCod }) => {
     if (item.adminOnly) return isAdmin;
     if (isAdmin) return true;
 
-    const hasRequiredMenu = item.menuKey ? hasMenu(item.menuKey) : false;
-    const hasRequiredAction = item.actionKeys?.some((action) => hasAction(action)) ?? false;
+    if (!item.menuKey) return false;
 
-    return hasRequiredMenu || hasRequiredAction;
+    return hasMenu(item.menuKey);
   };
 
   const visibleGroups = navGroups
