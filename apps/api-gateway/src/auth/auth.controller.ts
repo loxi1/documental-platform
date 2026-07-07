@@ -1,4 +1,15 @@
-import { Body, Controller, Get, Headers, Inject, Post } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  ForbiddenException,
+  Get,
+  Headers,
+  Inject,
+  Param,
+  ParseIntPipe,
+  Post,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { ClientProxy } from '@nestjs/microservices';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { firstValueFrom } from 'rxjs';
@@ -20,6 +31,38 @@ export class AuthController {
     private readonly nats: ClientProxy,
   ) {}
 
+  private async assertAdminAuthorization(authHeader?: string) {
+    if (!authHeader?.startsWith('Bearer ')) {
+      throw new UnauthorizedException('Token requerido');
+    }
+
+    const token = extractBearerToken(authHeader);
+
+    try {
+      const response = await firstValueFrom(
+        this.nats.send(NatsSubjects.AuthValidateToken, { token }),
+      );
+
+      if (!response?.valid || !response?.payload) {
+        throw new UnauthorizedException('Token inválido o expirado');
+      }
+
+      if (response.payload.perfil !== 'admin') {
+        throw new ForbiddenException(
+          'Solo el perfil admin puede consultar administración de accesos',
+        );
+      }
+
+      return token;
+    } catch (error) {
+      if (error instanceof ForbiddenException || error instanceof UnauthorizedException) {
+        throw error;
+      }
+
+      throw new UnauthorizedException('Token inválido o expirado');
+    }
+  }
+
   @ApiOperation({ summary: 'Login vía API Gateway' })
   @Post('login')
   async login(@Body() body: unknown) {
@@ -34,6 +77,81 @@ export class AuthController {
     return firstValueFrom(
       this.nats.send('auth.workspaces.list', {
         identityToken: extractBearerToken(authorization),
+      }),
+    );
+  }
+
+
+  @ApiOperation({ summary: 'Listar usuarios sanitizados para administración de accesos' })
+  @Get('usuarios')
+  async listUsuariosAdmin(@Headers('authorization') authorization?: string) {
+    const accessToken = await this.assertAdminAuthorization(authorization);
+
+    return firstValueFrom(
+      this.nats.send('auth.admin.usuarios.list', { accessToken }),
+    );
+  }
+
+  @ApiOperation({ summary: 'Obtener usuario sanitizado para administración de accesos' })
+  @Get('usuarios/:id')
+  async findUsuarioAdminById(
+    @Param('id', ParseIntPipe) id: number,
+    @Headers('authorization') authorization?: string,
+  ) {
+    const accessToken = await this.assertAdminAuthorization(authorization);
+
+    return firstValueFrom(
+      this.nats.send('auth.admin.usuarios.get', { accessToken, id }),
+    );
+  }
+
+  @ApiOperation({ summary: 'Listar perfiles para administración de accesos' })
+  @Get('perfiles')
+  async listPerfilesAdmin(@Headers('authorization') authorization?: string) {
+    const accessToken = await this.assertAdminAuthorization(authorization);
+
+    return firstValueFrom(
+      this.nats.send('auth.admin.perfiles.list', { accessToken }),
+    );
+  }
+
+  @ApiOperation({ summary: 'Obtener perfil para administración de accesos' })
+  @Get('perfiles/:id')
+  async findPerfilAdminById(
+    @Param('id', ParseIntPipe) id: number,
+    @Headers('authorization') authorization?: string,
+  ) {
+    const accessToken = await this.assertAdminAuthorization(authorization);
+
+    return firstValueFrom(
+      this.nats.send('auth.admin.perfiles.get', { accessToken, id }),
+    );
+  }
+
+  @ApiOperation({ summary: 'Listar workspaces de usuarios para administración de accesos' })
+  @Get('usuario-workspaces')
+  async listUsuarioWorkspacesAdmin(
+    @Headers('authorization') authorization?: string,
+  ) {
+    const accessToken = await this.assertAdminAuthorization(authorization);
+
+    return firstValueFrom(
+      this.nats.send('auth.admin.usuario-workspaces.list', { accessToken }),
+    );
+  }
+
+  @ApiOperation({ summary: 'Listar workspaces de un usuario para administración de accesos' })
+  @Get('usuarios/:id/workspaces')
+  async listWorkspacesByUsuarioAdmin(
+    @Param('id', ParseIntPipe) id: number,
+    @Headers('authorization') authorization?: string,
+  ) {
+    const accessToken = await this.assertAdminAuthorization(authorization);
+
+    return firstValueFrom(
+      this.nats.send('auth.admin.usuario-workspaces.list', {
+        accessToken,
+        usuarioId: id,
       }),
     );
   }

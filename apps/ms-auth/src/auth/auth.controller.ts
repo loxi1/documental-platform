@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Headers, Post } from '@nestjs/common';
+import { Body, Controller, Get, Headers, Param, ParseIntPipe, Post } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
 import { AuthService } from './auth.service';
@@ -36,6 +36,63 @@ export class AuthController {
   listWorkspaces(@Headers('authorization') authorization?: string) {
     return this.service.listWorkspaces({
       identityToken: extractBearerToken(authorization),
+    });
+  }
+
+
+  @ApiOperation({ summary: 'Listar usuarios sanitizados para administración de accesos' })
+  @Get('usuarios')
+  listUsuariosAdmin(@Headers('authorization') authorization?: string) {
+    return this.service.listUsuariosAdmin(extractBearerToken(authorization));
+  }
+
+  @ApiOperation({ summary: 'Obtener usuario sanitizado para administración de accesos' })
+  @Get('usuarios/:id')
+  findUsuarioAdminById(
+    @Param('id', ParseIntPipe) id: number,
+    @Headers('authorization') authorization?: string,
+  ) {
+    return this.service.findUsuarioAdminById({
+      id,
+      accessToken: extractBearerToken(authorization),
+    });
+  }
+
+  @ApiOperation({ summary: 'Listar perfiles para administración de accesos' })
+  @Get('perfiles')
+  listPerfilesAdmin(@Headers('authorization') authorization?: string) {
+    return this.service.listPerfilesAdmin(extractBearerToken(authorization));
+  }
+
+  @ApiOperation({ summary: 'Obtener perfil para administración de accesos' })
+  @Get('perfiles/:id')
+  findPerfilAdminById(
+    @Param('id', ParseIntPipe) id: number,
+    @Headers('authorization') authorization?: string,
+  ) {
+    return this.service.findPerfilAdminById({
+      id,
+      accessToken: extractBearerToken(authorization),
+    });
+  }
+
+  @ApiOperation({ summary: 'Listar workspaces de usuarios para administración de accesos' })
+  @Get('usuario-workspaces')
+  listUsuarioWorkspacesAdmin(@Headers('authorization') authorization?: string) {
+    return this.service.listUsuarioWorkspacesAdmin({
+      accessToken: extractBearerToken(authorization),
+    });
+  }
+
+  @ApiOperation({ summary: 'Listar workspaces de un usuario para administración de accesos' })
+  @Get('usuarios/:id/workspaces')
+  listWorkspacesByUsuarioAdmin(
+    @Param('id', ParseIntPipe) id: number,
+    @Headers('authorization') authorization?: string,
+  ) {
+    return this.service.listUsuarioWorkspacesAdmin({
+      usuarioId: id,
+      accessToken: extractBearerToken(authorization),
     });
   }
 

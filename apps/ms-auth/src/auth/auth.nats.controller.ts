@@ -31,6 +31,43 @@ export class AuthNatsController {
     return this.service.selectWorkspace(dto);
   }
 
+
+  @MessagePattern('auth.admin.usuarios.list')
+  listUsuariosAdmin(@Payload() payload: { accessToken?: string }) {
+    return this.service.listUsuariosAdmin(payload?.accessToken ?? '');
+  }
+
+  @MessagePattern('auth.admin.usuarios.get')
+  findUsuarioAdminById(@Payload() payload: { accessToken?: string; id?: number }) {
+    return this.service.findUsuarioAdminById({
+      accessToken: payload?.accessToken ?? '',
+      id: Number(payload?.id),
+    });
+  }
+
+  @MessagePattern('auth.admin.perfiles.list')
+  listPerfilesAdmin(@Payload() payload: { accessToken?: string }) {
+    return this.service.listPerfilesAdmin(payload?.accessToken ?? '');
+  }
+
+  @MessagePattern('auth.admin.perfiles.get')
+  findPerfilAdminById(@Payload() payload: { accessToken?: string; id?: number }) {
+    return this.service.findPerfilAdminById({
+      accessToken: payload?.accessToken ?? '',
+      id: Number(payload?.id),
+    });
+  }
+
+  @MessagePattern('auth.admin.usuario-workspaces.list')
+  listUsuarioWorkspacesAdmin(
+    @Payload() payload: { accessToken?: string; usuarioId?: number },
+  ) {
+    return this.service.listUsuarioWorkspacesAdmin({
+      accessToken: payload?.accessToken ?? '',
+      usuarioId: payload?.usuarioId,
+    });
+  }
+
   @MessagePattern(NatsSubjects.AuthSelectContext)
   selectContext(@Payload() payload: unknown) {
     const dto = selectContextSchema.parse(payload);

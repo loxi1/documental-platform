@@ -151,6 +151,118 @@ export class AuthRepository {
     `;
   }
 
+
+  async listUsuariosAdmin() {
+    return sql`
+      SELECT
+        id,
+        nombres,
+        apellidos,
+        email,
+        estado,
+        creado_en,
+        actualizado_en
+      FROM auth.usuarios
+      ORDER BY id
+    `;
+  }
+
+  async findUsuarioAdminById(id: number) {
+    const rows = await sql`
+      SELECT
+        id,
+        nombres,
+        apellidos,
+        email,
+        estado,
+        creado_en,
+        actualizado_en
+      FROM auth.usuarios
+      WHERE id = ${id}
+      LIMIT 1
+    `;
+
+    return rows[0] ?? null;
+  }
+
+  async listPerfilesAdmin() {
+    return sql`
+      SELECT
+        p.id,
+        p.codigo,
+        p.nombre,
+        p.descripcion,
+        p.sistema_id,
+        s.codigo AS sistema_codigo,
+        s.nombre AS sistema_nombre,
+        p.estado,
+        p.creado_en,
+        p.actualizado_en
+      FROM auth.perfiles p
+      LEFT JOIN core.sistemas s ON s.id = p.sistema_id
+      ORDER BY p.sistema_id, p.id
+    `;
+  }
+
+  async findPerfilAdminById(id: number) {
+    const rows = await sql`
+      SELECT
+        p.id,
+        p.codigo,
+        p.nombre,
+        p.descripcion,
+        p.sistema_id,
+        s.codigo AS sistema_codigo,
+        s.nombre AS sistema_nombre,
+        p.estado,
+        p.creado_en,
+        p.actualizado_en
+      FROM auth.perfiles p
+      LEFT JOIN core.sistemas s ON s.id = p.sistema_id
+      WHERE p.id = ${id}
+      LIMIT 1
+    `;
+
+    return rows[0] ?? null;
+  }
+
+  async listUsuarioWorkspacesAdmin(params?: { usuarioId?: number }) {
+    const usuarioId = params?.usuarioId ?? null;
+
+    return sql`
+      SELECT
+        uw.id,
+        uw.id AS workspace_id,
+        uw.usuario_id,
+        u.nombres,
+        u.apellidos,
+        u.email,
+        uw.empresa_codigo,
+        uw.cliente_destino_id,
+        uw.sistema_id,
+        s.codigo AS sistema_codigo,
+        s.nombre AS sistema_nombre,
+        uw.perfil_id,
+        p.codigo AS perfil_codigo,
+        p.nombre AS perfil_nombre,
+        uw.estado,
+        uw.es_favorito,
+        uw.ultimo_uso_en,
+        uw.vigencia_desde,
+        uw.vigencia_hasta,
+        uw.permission_version,
+        uw.permisos,
+        uw.creado_en,
+        uw.actualizado_en
+      FROM auth.usuario_workspaces uw
+      JOIN auth.usuarios u ON u.id = uw.usuario_id
+      JOIN auth.perfiles p ON p.id = uw.perfil_id
+      LEFT JOIN core.sistemas s ON s.id = uw.sistema_id
+      WHERE (${usuarioId}::int IS NULL OR uw.usuario_id = ${usuarioId})
+      ORDER BY u.email, uw.id
+    `;
+  }
+
   async auditEvent(event: AuditEventInput) {
     await sql`
       INSERT INTO core.auditoria_eventos (
