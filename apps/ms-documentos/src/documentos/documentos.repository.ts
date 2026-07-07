@@ -571,9 +571,7 @@ export class DocumentosRepository {
 
       const codigoExpedienteSeleccionado = String(expediente.codigo_expediente ?? '').trim();
       const codigoExpedienteDetectado = String(
-        metadataEntrada.codigoExpediente ??
-          input.metadata?.codigoExpediente ??
-          '',
+        input.metadata?.codigoExpediente ?? metadataActual.codigoExpediente ?? '',
       ).trim();
 
       if (
@@ -588,38 +586,6 @@ export class DocumentosRepository {
             expedienteId: Number(expediente.id),
             codigoExpedienteSeleccionado,
             codigoExpedienteDetectado,
-          },
-        );
-      }
-
-      const vinculoExistenteRows = await tx`
-        SELECT
-          expediente_id,
-          documento_id,
-          tipo_relacion,
-          es_principal,
-          orden,
-          creado_en
-        FROM documentos.expediente_documentos
-        WHERE documento_id = ${Number(ocr.documento_id)}::bigint
-        FOR UPDATE
-        LIMIT 1
-      `;
-
-      const vinculoExistente = vinculoExistenteRows[0] ?? null;
-
-      if (
-        vinculoExistente &&
-        Number(vinculoExistente.expediente_id) !== Number(expediente.id)
-      ) {
-        this.throwDomainError(
-          'DOCUMENTO_YA_VINCULADO_A_OTRO_EXPEDIENTE',
-          'El documento ya está vinculado a otro expediente.',
-          {
-            documentoId: Number(ocr.documento_id),
-            expedienteIdSolicitado: Number(expediente.id),
-            expedienteIdActual: Number(vinculoExistente.expediente_id),
-            tipoRelacionActual: vinculoExistente.tipo_relacion ?? null,
           },
         );
       }
@@ -653,7 +619,7 @@ export class DocumentosRepository {
         tipoDocumental,
         clienteAbreviatura,
         rucComprador: String(expediente.ruc_comprador ?? '').trim(),
-        codigoExpediente: codigoExpedienteSeleccionado,
+        codigoExpediente: String(expediente.codigo_expediente ?? '').trim(),
       });
 
       const metadataSourceOverrides: Record<string, string> = {};
@@ -686,8 +652,79 @@ export class DocumentosRepository {
         tipoDocumental,
         input.tipoRelacion,
       );
-      const esPrincipal = tipoRelacion.startsWith('principal_');
+      const esPrincipal = input.esPrincipal === true;
       const orden = esPrincipal ? 1 : Number(input.orden ?? 0);
+
+      const vinculoDocumentoRows = await tx`
+        SELECT
+          expediente_id,
+          tipo_relacion,
+          es_principal,
+          orden
+        FROM documentos.expediente_documentos
+        WHERE documento_id = ${Number(ocr.documento_id)}::bigint
+        FOR UPDATE
+        LIMIT 1
+      `;
+
+      const vinculoDocumentoActual = vinculoDocumentoRows[0] ?? null;
+
+      if (
+        vinculoDocumentoActual &&
+        Number(vinculoDocumentoActual.expediente_id) !== Number(expediente.id)
+      ) {
+        this.throwDomainError(
+          'DOCUMENTO_YA_VINCULADO_A_OTRO_EXPEDIENTE',
+          'El documento ya está vinculado a otro expediente.',
+          {
+            documentoId: Number(ocr.documento_id),
+            expedienteIdSolicitado: Number(expediente.id),
+            expedienteIdActual: Number(vinculoDocumentoActual.expediente_id),
+            tipoRelacionActual: vinculoDocumentoActual.tipo_relacion ?? null,
+          },
+        );
+      }
+
+      if (esPrincipal) {
+        const principalActualRows = await tx`
+          SELECT
+            ed.documento_id,
+            ed.tipo_relacion,
+            d.tipo_documental,
+            d.serie,
+            d.numero,
+            d.clave_documental
+          FROM documentos.expediente_documentos ed
+          JOIN documentos.documentos d
+            ON d.id = ed.documento_id
+          WHERE ed.expediente_id = ${Number(expediente.id)}::bigint
+            AND ed.es_principal = true
+            AND ed.documento_id <> ${Number(ocr.documento_id)}::bigint
+          ORDER BY ed.orden ASC, ed.creado_en ASC
+          LIMIT 1
+        `;
+
+        if (principalActualRows[0]) {
+          const principalActual = principalActualRows[0];
+          this.throwDomainError(
+            'EXPEDIENTE_YA_TIENE_DOCUMENTO_PRINCIPAL',
+            'El expediente ya tiene un documento principal activo.',
+            {
+              expedienteId: Number(expediente.id),
+              documentoPrincipalActualId: Number(principalActual.documento_id),
+              tipoRelacionActual: principalActual.tipo_relacion ?? null,
+              tipoDocumentalActual: principalActual.tipo_documental ?? null,
+              serieActual: principalActual.serie ?? null,
+              numeroActual: principalActual.numero ?? null,
+              claveDocumentalActual: principalActual.clave_documental ?? null,
+              documentoNuevoId: Number(ocr.documento_id),
+              tipoRelacionNuevo: tipoRelacion,
+              tipoDocumentalNuevo: tipoDocumental,
+              requiereReemplazoExplicito: true,
+            },
+          );
+        }
+      }
 
       const duplicadoRows = await tx`
         SELECT
@@ -830,27 +867,26 @@ export class DocumentosRepository {
         `;
       }
 
-      let vinculo: any = null;
+      const vinculoRows = await tx`
+        UPDATE documentos.expediente_documentos
+        SET
+          tipo_relacion = ${tipoRelacion}::text,
+          es_principal = ${esPrincipal}::boolean,
+          orden = ${orden}::int
+        WHERE expediente_id = ${Number(expediente.id)}::bigint
+          AND documento_id = ${Number(ocr.documento_id)}::bigint
+        RETURNING
+          expediente_id,
+          documento_id,
+          tipo_relacion,
+          es_principal,
+          orden,
+          creado_en
+      `;
 
-      if (vinculoExistente) {
-        const vinculoRows = await tx`
-          UPDATE documentos.expediente_documentos
-          SET
-            tipo_relacion = ${tipoRelacion}::text,
-            es_principal = ${esPrincipal}::boolean,
-            orden = ${orden}::int
-          WHERE documento_id = ${Number(ocr.documento_id)}::bigint
-            AND expediente_id = ${Number(expediente.id)}::bigint
-          RETURNING
-            expediente_id,
-            documento_id,
-            tipo_relacion,
-            es_principal,
-            orden,
-            creado_en
-        `;
-        vinculo = vinculoRows[0] ?? null;
-      } else {
+      let vinculo = vinculoRows[0] ?? null;
+
+      if (!vinculo) {
         const insertedRows = await tx`
           INSERT INTO documentos.expediente_documentos (
             expediente_id,

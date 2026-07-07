@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { sql } from '@documental/database';
@@ -151,6 +151,23 @@ export class DocumentosUploadService {
       documentoId,
       expedienteId,
     });
+
+    if (duplicados.length > 0) {
+      throw new ConflictException({
+        code: 'ARCHIVO_DUPLICADO_EN_CARGA_GUIADA',
+        message: 'Ya existe un archivo equivalente cargado para este documento o expediente.',
+        details: {
+          documentoId,
+          expedienteId,
+          hashSha256: sha256,
+          duplicados: duplicados.map((item) => ({
+            archivoId: item.id,
+            documentoId: item.documento_id,
+          })),
+          accionSugerida: 'abrir_existente',
+        },
+      });
+    }
 
     await this.subirAR2({
       bucket,
