@@ -286,7 +286,11 @@ export class DocumentosService {
 
       return confirmado;
     } catch (error: any) {
-      if (error?.code === 'DOCUMENTO_DUPLICADO_EN_EXPEDIENTE') {
+      if (
+        error?.code === 'DOCUMENTO_DUPLICADO_EN_EXPEDIENTE' ||
+        error?.code === 'DOCUMENTO_YA_VINCULADO_A_OTRO_EXPEDIENTE' ||
+        error?.code === 'CODIGO_EXPEDIENTE_NO_COINCIDE'
+      ) {
         throw new ConflictException({
           code: error.code,
           message: error.message,

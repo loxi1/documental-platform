@@ -569,6 +569,61 @@ export class DocumentosRepository {
         ...(input.metadata ?? {}),
       });
 
+      const codigoExpedienteSeleccionado = String(expediente.codigo_expediente ?? '').trim();
+      const codigoExpedienteDetectado = String(
+        metadataEntrada.codigoExpediente ??
+          input.metadata?.codigoExpediente ??
+          '',
+      ).trim();
+
+      if (
+        codigoExpedienteDetectado &&
+        codigoExpedienteSeleccionado &&
+        codigoExpedienteDetectado !== codigoExpedienteSeleccionado
+      ) {
+        this.throwDomainError(
+          'CODIGO_EXPEDIENTE_NO_COINCIDE',
+          'El código detectado en el documento no coincide con el expediente seleccionado.',
+          {
+            expedienteId: Number(expediente.id),
+            codigoExpedienteSeleccionado,
+            codigoExpedienteDetectado,
+          },
+        );
+      }
+
+      const vinculoExistenteRows = await tx`
+        SELECT
+          expediente_id,
+          documento_id,
+          tipo_relacion,
+          es_principal,
+          orden,
+          creado_en
+        FROM documentos.expediente_documentos
+        WHERE documento_id = ${Number(ocr.documento_id)}::bigint
+        FOR UPDATE
+        LIMIT 1
+      `;
+
+      const vinculoExistente = vinculoExistenteRows[0] ?? null;
+
+      if (
+        vinculoExistente &&
+        Number(vinculoExistente.expediente_id) !== Number(expediente.id)
+      ) {
+        this.throwDomainError(
+          'DOCUMENTO_YA_VINCULADO_A_OTRO_EXPEDIENTE',
+          'El documento ya está vinculado a otro expediente.',
+          {
+            documentoId: Number(ocr.documento_id),
+            expedienteIdSolicitado: Number(expediente.id),
+            expedienteIdActual: Number(vinculoExistente.expediente_id),
+            tipoRelacionActual: vinculoExistente.tipo_relacion ?? null,
+          },
+        );
+      }
+
       const tipoDocumental = this.normalizarTipoDocumentalConfirmacion(
         metadataEntrada.tipoDocumental ??
           input.metadata?.tipoDocumental ??
@@ -598,7 +653,7 @@ export class DocumentosRepository {
         tipoDocumental,
         clienteAbreviatura,
         rucComprador: String(expediente.ruc_comprador ?? '').trim(),
-        codigoExpediente: String(expediente.codigo_expediente ?? '').trim(),
+        codigoExpediente: codigoExpedienteSeleccionado,
       });
 
       const metadataSourceOverrides: Record<string, string> = {};
@@ -705,15 +760,6 @@ export class DocumentosRepository {
         },
       });
 
-      if (esPrincipal) {
-        await tx`
-          UPDATE documentos.expediente_documentos
-          SET es_principal = false
-          WHERE expediente_id = ${Number(expediente.id)}::bigint
-            AND tipo_relacion LIKE 'principal_%'
-        `;
-      }
-
       const documentoRows = await tx`
         UPDATE documentos.documentos d
         SET
@@ -784,26 +830,27 @@ export class DocumentosRepository {
         `;
       }
 
-      const vinculoRows = await tx`
-        UPDATE documentos.expediente_documentos
-        SET
-          tipo_relacion = ${tipoRelacion}::text,
-          es_principal = ${esPrincipal}::boolean,
-          orden = ${orden}::int
-        WHERE expediente_id = ${Number(expediente.id)}::bigint
-          AND documento_id = ${Number(ocr.documento_id)}::bigint
-        RETURNING
-          expediente_id,
-          documento_id,
-          tipo_relacion,
-          es_principal,
-          orden,
-          creado_en
-      `;
+      let vinculo: any = null;
 
-      let vinculo = vinculoRows[0] ?? null;
-
-      if (!vinculo) {
+      if (vinculoExistente) {
+        const vinculoRows = await tx`
+          UPDATE documentos.expediente_documentos
+          SET
+            tipo_relacion = ${tipoRelacion}::text,
+            es_principal = ${esPrincipal}::boolean,
+            orden = ${orden}::int
+          WHERE documento_id = ${Number(ocr.documento_id)}::bigint
+            AND expediente_id = ${Number(expediente.id)}::bigint
+          RETURNING
+            expediente_id,
+            documento_id,
+            tipo_relacion,
+            es_principal,
+            orden,
+            creado_en
+        `;
+        vinculo = vinculoRows[0] ?? null;
+      } else {
         const insertedRows = await tx`
           INSERT INTO documentos.expediente_documentos (
             expediente_id,
