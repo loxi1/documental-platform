@@ -2,7 +2,20 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, Ban, Eye, FileText, FolderKanban, Pencil, RefreshCcw, Save, Search } from "lucide-react";
+import {
+  AlertTriangle,
+  Ban,
+  ChevronLeft,
+  ChevronRight,
+  Eye,
+  FileText,
+  FolderKanban,
+  Pencil,
+  PlusCircle,
+  RefreshCcw,
+  Save,
+  Search,
+} from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -26,6 +39,7 @@ import {
 } from "@/components/ui/table";
 import { formatDateTime, formatText } from "@/lib/format";
 import {
+  createExpedienteMantenimiento,
   getExpedienteMantenimiento,
   getExpedientesMantenimiento,
   updateExpedienteMantenimiento,
@@ -99,6 +113,10 @@ function totalDocumentos(expediente: ExpedienteMantenimiento) {
   return String(total);
 }
 
+function tieneDocumentoPrincipal(expediente: ExpedienteMantenimiento) {
+  return expediente.tieneDocumentoPrincipal === true;
+}
+
 function getErrorMessage(error: unknown, fallback: string) {
   const anyError = error as any;
   return (
@@ -107,6 +125,18 @@ function getErrorMessage(error: unknown, fallback: string) {
     anyError?.message ??
     fallback
   );
+}
+
+function getAnulacionErrorMessage(error: unknown) {
+  const anyError = error as any;
+  const status = anyError?.response?.status ?? anyError?.response?.data?.error?.details?.statusCode;
+  const backendMessage = anyError?.response?.data?.error?.message ?? anyError?.response?.data?.message;
+
+  if (status === 409 || backendMessage === "Error interno del servidor") {
+    return "No se puede anular porque ya tiene documento principal relacionado.";
+  }
+
+  return getErrorMessage(error, "No se pudo anular el centro de costo.");
 }
 
 function Field({ label, value, mono = false }: { label: string; value: React.ReactNode; mono?: boolean }) {
@@ -173,8 +203,93 @@ function DetailPanel({ detail, onClose }: { detail: DetailState; onClose: () => 
             <Field label="Total documentos" value={totalDocumentos(expediente)} />
             <Field label="F. creación" value={creadoEn(expediente)} />
             <Field label="F. actualización" value={actualizadoEn(expediente)} />
+            {expediente.motivoAnulacion ? <Field label="Motivo anulación" value={expediente.motivoAnulacion} /> : null}
           </div>
         ) : null}
+      </aside>
+    </div>
+  );
+}
+
+function CentroCostoFormPanel({
+  title,
+  submitLabel,
+  initialValues,
+  onClose,
+  onSubmit,
+  isSaving,
+  errorMessage,
+  isDisabled = false,
+}: {
+  title: string;
+  submitLabel: string;
+  initialValues?: { codigoExpediente?: string; descripcion?: string };
+  onClose: () => void;
+  onSubmit: (values: { codigoExpediente: string; descripcion: string }) => void;
+  isSaving: boolean;
+  errorMessage?: string | null;
+  isDisabled?: boolean;
+}) {
+  const [codigo, setCodigo] = useState(initialValues?.codigoExpediente ?? "");
+  const [descripcionValue, setDescripcionValue] = useState(initialValues?.descripcion ?? "");
+
+  useEffect(() => {
+    setCodigo(initialValues?.codigoExpediente ?? "");
+    setDescripcionValue(initialValues?.descripcion ?? "");
+  }, [initialValues?.codigoExpediente, initialValues?.descripcion]);
+
+  return (
+    <div className="fixed inset-0 z-50 flex justify-end bg-slate-950/40 backdrop-blur-sm" role="dialog" aria-modal="true">
+      <aside className="h-full w-full max-w-xl overflow-y-auto border-l border-border bg-background p-6 shadow-2xl">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h2 className="text-2xl font-semibold tracking-tight">{title}</h2>
+          </div>
+          <Button variant="outline" onClick={onClose}>Cerrar</Button>
+        </div>
+
+        {isDisabled ? (
+          <div className="mt-6">
+            <ErrorBox title="Centro de costo anulado" description="No se permite editar un centro de costo anulado desde la interfaz." />
+          </div>
+        ) : null}
+
+        {errorMessage ? (
+          <div className="mt-6">
+            <ErrorBox title="No se pudo guardar" description={errorMessage} />
+          </div>
+        ) : null}
+
+        <form
+          className="mt-6 space-y-4"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (isDisabled || isSaving) return;
+            onSubmit({ codigoExpediente: codigo.trim(), descripcion: descripcionValue.trim() });
+          }}
+        >
+          <div>
+            <label className="mb-2 block text-sm font-medium text-foreground">Código</label>
+            <Input value={codigo} onChange={(event) => setCodigo(event.target.value)} disabled={isSaving || isDisabled} required />
+          </div>
+          <div>
+            <label className="mb-2 block text-sm font-medium text-foreground">Descripción</label>
+            <textarea
+              value={descripcionValue}
+              onChange={(event) => setDescripcionValue(event.target.value)}
+              disabled={isSaving || isDisabled}
+              required
+              rows={4}
+              className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none transition focus:border-ring focus:ring-2 focus:ring-ring/20 disabled:cursor-not-allowed disabled:opacity-60"
+            />
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button type="button" variant="outline" onClick={onClose} disabled={isSaving}>Cancelar</Button>
+            <Button type="submit" disabled={isSaving || isDisabled}>
+              <Save className="mr-2 h-4 w-4" />{isSaving ? "Guardando..." : submitLabel}
+            </Button>
+          </div>
+        </form>
       </aside>
     </div>
   );
@@ -193,78 +308,25 @@ function EditPanel({
   isSaving: boolean;
   errorMessage?: string | null;
 }) {
-  const [codigo, setCodigo] = useState("");
-  const [descripcionValue, setDescripcionValue] = useState("");
-
-  useEffect(() => {
-    if (!edit) return;
-    setCodigo(codigoExpediente(edit.fallback) === "—" ? "" : codigoExpediente(edit.fallback));
-    setDescripcionValue(formatText(edit.fallback.descripcion) === "—" ? "" : String(edit.fallback.descripcion ?? ""));
-  }, [edit]);
-
   if (!edit) return null;
 
   const estadoActual = String(edit.fallback.estado ?? "abierto").toLowerCase();
   const isAnulado = estadoActual === "anulado";
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-slate-950/40 backdrop-blur-sm" role="dialog" aria-modal="true">
-      <aside className="h-full w-full max-w-xl overflow-y-auto border-l border-border bg-background p-6 shadow-2xl">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <h2 className="text-2xl font-semibold tracking-tight">Editar centro de costo</h2>
-            <p className="mt-2 text-sm text-muted-foreground">Solo se modifica código y descripción.</p>
-          </div>
-          <Button variant="outline" onClick={onClose}>Cerrar</Button>
-        </div>
-
-        {isAnulado ? (
-          <div className="mt-6">
-            <ErrorBox title="Centro de costo anulado" description="No se permite editar un centro de costo anulado desde la interfaz." />
-          </div>
-        ) : null}
-
-        {errorMessage ? (
-          <div className="mt-6">
-            <ErrorBox title="No se pudo guardar" description={errorMessage} />
-          </div>
-        ) : null}
-
-        <form
-          className="mt-6 space-y-4"
-          onSubmit={(event) => {
-            event.preventDefault();
-            if (isAnulado || isSaving) return;
-            onSubmit({ codigoExpediente: codigo.trim(), descripcion: descripcionValue.trim() });
-          }}
-        >
-          <div>
-            <label className="mb-2 block text-sm font-medium text-foreground">Código</label>
-            <Input value={codigo} onChange={(event) => setCodigo(event.target.value)} disabled={isSaving || isAnulado} required />
-          </div>
-          <div>
-            <label className="mb-2 block text-sm font-medium text-foreground">Descripción</label>
-            <textarea
-              value={descripcionValue}
-              onChange={(event) => setDescripcionValue(event.target.value)}
-              disabled={isSaving || isAnulado}
-              required
-              rows={4}
-              className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none transition focus:border-ring focus:ring-2 focus:ring-ring/20 disabled:cursor-not-allowed disabled:opacity-60"
-            />
-          </div>
-          <div className="rounded-xl border border-border bg-muted/20 p-3 text-sm text-muted-foreground">
-            La empresa y el cliente destino se toman del token del workspace. La unicidad la valida backend por empresa, cliente destino y código.
-          </div>
-          <div className="flex justify-end gap-2 pt-2">
-            <Button type="button" variant="outline" onClick={onClose} disabled={isSaving}>Cancelar</Button>
-            <Button type="submit" disabled={isSaving || isAnulado}>
-              <Save className="mr-2 h-4 w-4" />{isSaving ? "Guardando..." : "Guardar"}
-            </Button>
-          </div>
-        </form>
-      </aside>
-    </div>
+    <CentroCostoFormPanel
+      title="Editar centro de costo"
+      submitLabel="Guardar"
+      initialValues={{
+        codigoExpediente: codigoExpediente(edit.fallback) === "—" ? "" : codigoExpediente(edit.fallback),
+        descripcion: formatText(edit.fallback.descripcion) === "—" ? "" : String(edit.fallback.descripcion ?? ""),
+      }}
+      onClose={onClose}
+      onSubmit={onSubmit}
+      isSaving={isSaving}
+      errorMessage={errorMessage}
+      isDisabled={isAnulado}
+    />
   );
 }
 
@@ -277,14 +339,22 @@ function AnnulPanel({
 }: {
   annul: AnnulState;
   onClose: () => void;
-  onConfirm: () => void;
+  onConfirm: (motivoAnulacion: string) => void;
   isSaving: boolean;
   errorMessage?: string | null;
 }) {
+  const [motivo, setMotivo] = useState("");
+
+  useEffect(() => {
+    if (annul) setMotivo("");
+  }, [annul]);
+
   if (!annul) return null;
 
   const estadoActual = String(annul.fallback.estado ?? "abierto").toLowerCase();
   const isAnulado = estadoActual === "anulado";
+  const hasPrincipal = tieneDocumentoPrincipal(annul.fallback);
+  const isBlocked = isAnulado || hasPrincipal;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-sm" role="dialog" aria-modal="true">
@@ -314,6 +384,27 @@ function AnnulPanel({
           </div>
         ) : null}
 
+        {hasPrincipal ? (
+          <div className="mt-4">
+            <ErrorBox title="No se puede anular" description="No se puede anular porque ya tiene documento principal relacionado." />
+          </div>
+        ) : null}
+
+        {!isBlocked ? (
+          <div className="mt-4">
+            <label className="mb-2 block text-sm font-medium text-foreground">Motivo de anulación</label>
+            <textarea
+              value={motivo}
+              onChange={(event) => setMotivo(event.target.value)}
+              disabled={isSaving}
+              required
+              rows={3}
+              className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none transition focus:border-ring focus:ring-2 focus:ring-ring/20 disabled:cursor-not-allowed disabled:opacity-60"
+              placeholder="Ingrese el motivo de anulación"
+            />
+          </div>
+        ) : null}
+
         {errorMessage ? (
           <div className="mt-4">
             <ErrorBox title="No se pudo anular" description={errorMessage} />
@@ -322,7 +413,11 @@ function AnnulPanel({
 
         <div className="mt-6 flex justify-end gap-2">
           <Button variant="outline" onClick={onClose} disabled={isSaving}>Cancelar</Button>
-          <Button variant="destructive" onClick={onConfirm} disabled={isSaving || isAnulado}>
+          <Button
+            variant="destructive"
+            onClick={() => onConfirm(motivo.trim())}
+            disabled={isSaving || isBlocked || !motivo.trim()}
+          >
             <Ban className="mr-2 h-4 w-4" />{isSaving ? "Anulando..." : "Anular"}
           </Button>
         </div>
@@ -334,19 +429,27 @@ function AnnulPanel({
 export default function MantenimientoExpedientesPage() {
   const queryClient = useQueryClient();
   const [q, setQ] = useState("");
+  const [page, setPage] = useState(1);
+  const pageSize = 50;
   const [detail, setDetail] = useState<DetailState>(null);
   const [edit, setEdit] = useState<EditState>(null);
   const [annul, setAnnul] = useState<AnnulState>(null);
+  const [isCreating, setIsCreating] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
   const [editError, setEditError] = useState<string | null>(null);
   const [annulError, setAnnulError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setPage(1);
+  }, [q]);
 
   const queryParams = useMemo(
     () => ({
       q: q.trim(),
-      page: 1,
-      pageSize: 50,
+      page,
+      pageSize,
     }),
-    [q],
+    [q, page],
   );
 
   const { data, isLoading, error, refetch, isFetching } = useQuery({
@@ -357,6 +460,18 @@ export default function MantenimientoExpedientesPage() {
   const invalidateMantenimiento = async () => {
     await queryClient.invalidateQueries({ queryKey: ["expedientes-mantenimiento"] });
   };
+
+  const createMutation = useMutation({
+    mutationFn: (values: { codigoExpediente: string; descripcion: string }) => createExpedienteMantenimiento(values),
+    onSuccess: async () => {
+      setIsCreating(false);
+      setCreateError(null);
+      await invalidateMantenimiento();
+    },
+    onError: (mutationError) => {
+      setCreateError(getErrorMessage(mutationError, "Backend no aceptó la creación del centro de costo."));
+    },
+  });
 
   const editMutation = useMutation({
     mutationFn: ({ id, values }: { id: number | string; values: { codigoExpediente: string; descripcion: string } }) =>
@@ -372,18 +487,25 @@ export default function MantenimientoExpedientesPage() {
   });
 
   const annulMutation = useMutation({
-    mutationFn: (id: number | string) => updateExpedienteMantenimientoEstado(id, { estado: "anulado" }),
+    mutationFn: ({ id, motivoAnulacion }: { id: number | string; motivoAnulacion: string }) =>
+      updateExpedienteMantenimientoEstado(id, { estado: "anulado", motivoAnulacion }),
     onSuccess: async () => {
       setAnnul(null);
       setAnnulError(null);
       await invalidateMantenimiento();
     },
     onError: (mutationError) => {
-      setAnnulError(getErrorMessage(mutationError, "No se puede anular. Si tiene documento principal relacionado, backend debe bloquear la operación."));
+      setAnnulError(getAnulacionErrorMessage(mutationError));
     },
   });
 
   const items = data?.items ?? [];
+  const currentPage = data?.page ?? page;
+  const totalPages = Math.max(1, data?.totalPages ?? 1);
+  const hasPreviousPage = data?.hasPreviousPage ?? currentPage > 1;
+  const hasNextPage = data?.hasNextPage ?? currentPage < totalPages;
+  const startItem = data?.total && items.length ? (currentPage - 1) * pageSize + 1 : 0;
+  const endItem = data?.total && items.length ? startItem + items.length - 1 : 0;
 
   return (
     <main className="space-y-5">
@@ -410,6 +532,14 @@ export default function MantenimientoExpedientesPage() {
               </div>
               <Button variant="outline" onClick={() => refetch()} disabled={isFetching}>
                 <RefreshCcw className="mr-2 h-4 w-4" />Actualizar
+              </Button>
+              <Button
+                onClick={() => {
+                  setCreateError(null);
+                  setIsCreating(true);
+                }}
+              >
+                <PlusCircle className="mr-2 h-4 w-4" />Nuevo
               </Button>
             </div>
           </div>
@@ -443,6 +573,13 @@ export default function MantenimientoExpedientesPage() {
                 {items.map((expediente) => {
                   const estadoActual = String(expediente.estado ?? "abierto").toLowerCase();
                   const isAnulado = estadoActual === "anulado";
+                  const hasPrincipal = tieneDocumentoPrincipal(expediente);
+                  const anularDisabled = isAnulado || hasPrincipal;
+                  const anularTitle = isAnulado
+                    ? "Ya está anulado"
+                    : hasPrincipal
+                      ? "No se puede anular porque ya tiene documento principal relacionado."
+                      : "Anular centro de costo";
 
                   return (
                     <TableRow key={String(expediente.id)}>
@@ -472,11 +609,12 @@ export default function MantenimientoExpedientesPage() {
                             size="sm"
                             variant="destructive"
                             onClick={() => {
+                              if (anularDisabled) return;
                               setAnnulError(null);
                               setAnnul({ id: expediente.id, fallback: expediente });
                             }}
-                            disabled={isAnulado}
-                            title={isAnulado ? "Ya está anulado" : "Anular si no tiene documento principal relacionado"}
+                            disabled={anularDisabled}
+                            title={anularTitle}
                           >
                             <Ban className="mr-2 h-4 w-4" />Anular
                           </Button>
@@ -487,6 +625,35 @@ export default function MantenimientoExpedientesPage() {
                 })}
               </TableBody>
             </Table>
+          ) : null}
+
+          {!isLoading && !error && data && items.length ? (
+            <div className="mt-4 flex flex-col gap-3 border-t border-border pt-4 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-sm text-muted-foreground">
+                Mostrando {startItem} a {endItem} de {data.total} centros de costo
+              </p>
+              <div className="flex items-center justify-end gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPage((current) => Math.max(1, current - 1))}
+                  disabled={isFetching || !hasPreviousPage}
+                >
+                  <ChevronLeft className="mr-2 h-4 w-4" />Anterior
+                </Button>
+                <span className="rounded-md border border-border px-3 py-1.5 text-sm font-medium">
+                  Página {currentPage} de {totalPages}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
+                  disabled={isFetching || !hasNextPage}
+                >
+                  Siguiente<ChevronRight className="ml-2 h-4 w-4" />
+                </Button>
+              </div>
+            </div>
           ) : null}
 
           {!isLoading && !error && !items.length ? (
@@ -502,6 +669,22 @@ export default function MantenimientoExpedientesPage() {
       </Card>
 
       <DetailPanel detail={detail} onClose={() => setDetail(null)} />
+      {isCreating ? (
+        <CentroCostoFormPanel
+          title="Nuevo centro de costo"
+          submitLabel="Crear"
+          onClose={() => {
+            setIsCreating(false);
+            setCreateError(null);
+          }}
+          onSubmit={(values) => {
+            setCreateError(null);
+            createMutation.mutate(values);
+          }}
+          isSaving={createMutation.isPending}
+          errorMessage={createError}
+        />
+      ) : null}
       <EditPanel
         edit={edit}
         onClose={() => {
@@ -522,10 +705,10 @@ export default function MantenimientoExpedientesPage() {
           setAnnul(null);
           setAnnulError(null);
         }}
-        onConfirm={() => {
+        onConfirm={(motivoAnulacion) => {
           if (!annul) return;
           setAnnulError(null);
-          annulMutation.mutate(annul.id);
+          annulMutation.mutate({ id: annul.id, motivoAnulacion });
         }}
         isSaving={annulMutation.isPending}
         errorMessage={annulError}

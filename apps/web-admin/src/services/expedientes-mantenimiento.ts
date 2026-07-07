@@ -27,6 +27,8 @@ export type ExpedienteMantenimiento = {
   descripcion?: string | null;
   clienteDestino?: string | null;
   cliente_destino?: string | null;
+  clienteDestinoId?: number | string | null;
+  cliente_destino_id?: number | string | null;
   clienteDestinoNombre?: string | null;
   cliente_destino_nombre?: string | null;
   clienteDestinoAbreviatura?: string | null;
@@ -37,7 +39,13 @@ export type ExpedienteMantenimiento = {
   cliente_nombre?: string | null;
   clienteRuc?: string | null;
   totalDocumentos?: number | string | null;
+  tieneDocumentoPrincipal?: boolean | null;
   estado?: ExpedienteMantenimientoEstado | null;
+  creadoPor?: number | string | null;
+  actualizadoPor?: number | string | null;
+  anuladoEn?: string | null;
+  anuladoPor?: number | string | null;
+  motivoAnulacion?: string | null;
   creadoEn?: string | null;
   creado_en?: string | null;
   actualizadoEn?: string | null;
@@ -62,6 +70,11 @@ export type ExpedientesMantenimientoResponse = {
   filters?: Record<string, unknown> | null;
 };
 
+export type CreateExpedienteMantenimientoPayload = {
+  codigoExpediente: string;
+  descripcion: string;
+};
+
 export type UpdateExpedienteMantenimientoPayload = {
   codigoExpediente: string;
   descripcion: string;
@@ -69,6 +82,7 @@ export type UpdateExpedienteMantenimientoPayload = {
 
 export type UpdateExpedienteEstadoPayload = {
   estado: ExpedienteMantenimientoEstado;
+  motivoAnulacion?: string;
 };
 
 function unwrap<T>(payload: T | ApiEnvelope<T>): T {
@@ -135,6 +149,17 @@ export async function getExpedientesMantenimiento(
 export async function getExpedienteMantenimiento(id: number | string) {
   const { data } = await api.get<ApiEnvelope<ExpedienteMantenimiento> | ExpedienteMantenimiento>(
     `/expedientes/mantenimiento/${id}`,
+  );
+
+  return unwrap<ExpedienteMantenimiento>(data);
+}
+
+export async function createExpedienteMantenimiento(
+  payload: CreateExpedienteMantenimientoPayload,
+) {
+  const { data } = await api.post<ApiEnvelope<ExpedienteMantenimiento> | ExpedienteMantenimiento>(
+    "/expedientes/mantenimiento",
+    payload,
   );
 
   return unwrap<ExpedienteMantenimiento>(data);
