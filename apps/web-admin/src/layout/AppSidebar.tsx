@@ -116,6 +116,12 @@ const navGroups: NavGroup[] = [
     label: "Sistema",
     items: [
       {
+        name: "Administración de accesos",
+        path: "/configuracion/accesos",
+        icon: <ShieldCheck className="h-4 w-4" />,
+        adminOnly: true,
+      },
+      {
         name: "Mi Perfil",
         path: "/mi-perfil",
         icon: <UserRound className="h-4 w-4" />,
@@ -137,7 +143,7 @@ function formatPerfil(perfil?: string | null) {
 
 const AppSidebar: React.FC<AppSidebarProps> = ({ userCod }) => {
   const pathname = usePathname();
-  const { contexto, hasMenu, hasAction } = useAuth();
+  const { contexto, hasMenu } = useAuth();
   const {
     isMobileOpen,
     isCollapsed,
