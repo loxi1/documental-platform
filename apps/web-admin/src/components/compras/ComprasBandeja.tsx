@@ -1,9 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
 import { Eye, FilePlus2, Pencil, Plus, Search, X } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { usePathname, useSearchParams } from "next/navigation";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -43,7 +43,6 @@ const EMPRESA_LABELS: Record<string, string> = {
 function empresaLabel(value: string) {
   return EMPRESA_LABELS[value] ?? value;
 }
-
 
 function normalizeExpedientes(input: unknown): Expediente[] {
   if (Array.isArray(input)) return input as Expediente[];
@@ -85,7 +84,8 @@ function getEmpresa(expediente: Expediente) {
 
 function getCodigoExpediente(expediente: Expediente) {
   return text(
-    field(expediente, "codigo_expediente") ?? field(expediente, "codigoExpediente"),
+    field(expediente, "codigo_expediente") ??
+      field(expediente, "codigoExpediente"),
     "",
   );
 }
@@ -130,22 +130,31 @@ function getPrincipal(expediente: Expediente): ExpedienteDocumento | null {
   return (
     documentosPrincipales?.[0] ??
     documentos?.find((documento) => Boolean(field(documento, "esPrincipal"))) ??
-    documentosAdjuntos?.find((documento) => Boolean(field(documento, "esPrincipal"))) ??
+    documentosAdjuntos?.find((documento) =>
+      Boolean(field(documento, "esPrincipal")),
+    ) ??
     null
   );
 }
 
 function getAllDocuments(expediente: Expediente) {
   const documentos = listField<ExpedienteDocumento>(expediente, "documentos");
-  const documentosLista = listField<ExpedienteDocumento>(expediente, "documentosLista");
-  const documentosPrincipales =
-    listField<ExpedienteDocumento>(expediente, "documentosPrincipales");
+  const documentosLista = listField<ExpedienteDocumento>(
+    expediente,
+    "documentosLista",
+  );
+  const documentosPrincipales = listField<ExpedienteDocumento>(
+    expediente,
+    "documentosPrincipales",
+  );
   const documentoPrincipal = field<ExpedienteDocumento | null>(
     expediente,
     "documentoPrincipal",
   );
-  const documentosAdjuntos =
-    listField<ExpedienteDocumento>(expediente, "documentosAdjuntos");
+  const documentosAdjuntos = listField<ExpedienteDocumento>(
+    expediente,
+    "documentosAdjuntos",
+  );
 
   return [
     ...documentos,
@@ -161,8 +170,12 @@ function hasDocument(expediente: Expediente, aliases: string[]) {
 
   return getAllDocuments(expediente).some((documento) => {
     const doc = documento as unknown as Record<string, unknown>;
-    const tipo = String(doc.tipoDocumental ?? doc.tipo_documental ?? "").toUpperCase();
-    const relacion = String(doc.tipoRelacion ?? doc.tipo_relacion ?? "").toUpperCase();
+    const tipo = String(
+      doc.tipoDocumental ?? doc.tipo_documental ?? "",
+    ).toUpperCase();
+    const relacion = String(
+      doc.tipoRelacion ?? doc.tipo_relacion ?? "",
+    ).toUpperCase();
 
     return normalizedAliases.some(
       (alias) => tipo.includes(alias) || relacion.includes(alias),
@@ -177,7 +190,10 @@ function principalLabel(expediente: Expediente) {
 
   const doc = principal as unknown as Record<string, unknown>;
   const tipo = text(
-    doc.tipoDocumental ?? doc.tipo_documental ?? doc.tipoRelacion ?? doc.tipo_relacion,
+    doc.tipoDocumental ??
+      doc.tipo_documental ??
+      doc.tipoRelacion ??
+      doc.tipo_relacion,
     "DOC",
   )
     .replace("PRINCIPAL_", "")
@@ -221,23 +237,40 @@ function ExpedienteCell({ expediente }: { expediente: Expediente }) {
   );
 }
 
-function ActionsCell({ expediente, returnTo }: { expediente: Expediente; returnTo: string }) {
+function ActionsCell({ expediente }: { expediente: Expediente }) {
   const tienePrincipal = Boolean(getPrincipal(expediente));
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const query = searchParams.toString();
+  const returnTo = query ? `${pathname}?${query}` : pathname;
+  const verHref = `/compras/${expediente.id}/ver?returnTo=${encodeURIComponent(returnTo)}`;
+
   return (
     <div className="flex justify-end gap-1">
       <Button asChild size="icon" variant="outline" title="Ver expediente">
-        <Link href={`/compras/${expediente.id}/ver?returnTo=${encodeURIComponent(returnTo)}`} aria-label="Ver expediente">
+        <Link href={verHref} aria-label="Ver expediente">
           <Eye className="h-4 w-4" />
         </Link>
       </Button>
       <Button asChild size="icon" variant="outline" title="Editar expediente">
-        <Link href={`/compras/${expediente.id}/editar`} aria-label="Editar expediente">
+        <Link
+          href={`/compras/${expediente.id}/editar`}
+          aria-label="Editar expediente"
+        >
           <Pencil className="h-4 w-4" />
         </Link>
       </Button>
       {tienePrincipal ? (
-        <Button asChild size="icon" variant="outline" title="Adjuntar documento">
-          <Link href={`/compras/${expediente.id}/editar?accion=adjuntar`} aria-label="Adjuntar documento">
+        <Button
+          asChild
+          size="icon"
+          variant="outline"
+          title="Adjuntar documento"
+        >
+          <Link
+            href={`/compras/${expediente.id}/editar?accion=adjuntar`}
+            aria-label="Adjuntar documento"
+          >
             <FilePlus2 className="h-4 w-4" />
           </Link>
         </Button>
@@ -265,10 +298,7 @@ function PaginationControls({
   const end = Math.min(page * pageSize, totalRows);
   const pages = Array.from({ length: totalPages }, (_, index) => index + 1);
   const visiblePages = pages.filter(
-    (item) =>
-      item === 1 ||
-      item === totalPages ||
-      Math.abs(item - page) <= 1,
+    (item) => item === 1 || item === totalPages || Math.abs(item - page) <= 1,
   );
 
   return (
@@ -323,22 +353,15 @@ function PaginationControls({
 }
 
 export function ComprasBandeja() {
-  const router = useRouter();
-  const searchParams = useSearchParams();
-  const initialEstado = searchParams.get("estado") || "abierto";
-  const initialSearch = searchParams.get("q") || "";
-  const initialPage = Number(searchParams.get("page") || "1");
-
   const [workspaceEmpresa, setWorkspaceEmpresa] = useState("BBTI");
   const [empresa, setEmpresa] = useState("BBTI");
-  const [estado, setEstado] = useState(initialEstado);
-  const [search, setSearch] = useState(initialSearch);
-  const [page, setPage] = useState(Number.isFinite(initialPage) && initialPage > 0 ? initialPage : 1);
+  const [estado, setEstado] = useState("abierto");
+  const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
   const [remoteRows, setRemoteRows] = useState<Expediente[]>([]);
   const [searchMode, setSearchMode] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
-  const didMountFiltersRef = useRef(false);
 
   useEffect(() => {
     const contexto = getContexto();
@@ -360,7 +383,9 @@ export function ComprasBandeja() {
     const value = search.trim().toLowerCase();
 
     if (searchMode) {
-      return remoteRows.filter((expediente) => getEmpresa(expediente) === empresa);
+      return remoteRows.filter(
+        (expediente) => getEmpresa(expediente) === empresa,
+      );
     }
     if (!value) return expedientes;
 
@@ -420,21 +445,7 @@ export function ComprasBandeja() {
     return rows.slice(start, start + PAGE_SIZE);
   }, [currentPage, rows]);
 
-  const returnTo = useMemo(() => {
-    const params = new URLSearchParams();
-    if (estado) params.set("estado", estado);
-    if (search.trim()) params.set("q", search.trim());
-    if (currentPage > 1) params.set("page", String(currentPage));
-    const query = params.toString();
-    return query ? `/compras?${query}` : "/compras";
-  }, [currentPage, estado, search]);
-
   useEffect(() => {
-    if (!didMountFiltersRef.current) {
-      didMountFiltersRef.current = true;
-      return;
-    }
-
     setPage(1);
   }, [empresa, estado, search]);
 
@@ -445,10 +456,6 @@ export function ComprasBandeja() {
       setSearchError(null);
     }
   }, [search]);
-
-  useEffect(() => {
-    router.replace(returnTo, { scroll: false });
-  }, [returnTo, router]);
 
   if (isLoading) {
     return (
@@ -466,7 +473,9 @@ export function ComprasBandeja() {
   }
 
   if (error) {
-    return <div className="p-6 text-red-600">Error cargando bandeja de compras.</div>;
+    return (
+      <div className="p-6 text-red-600">Error cargando bandeja de compras.</div>
+    );
   }
 
   return (
@@ -529,7 +538,12 @@ export function ComprasBandeja() {
                 {isSearching ? "Buscando" : "Buscar"}
               </Button>
               {searchMode ? (
-                <Button type="button" size="sm" variant="outline" onClick={limpiarBusqueda}>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={limpiarBusqueda}
+                >
                   <X className="h-4 w-4" />
                   Limpiar
                 </Button>
@@ -539,10 +553,13 @@ export function ComprasBandeja() {
 
           {searchMode ? (
             <p className="text-xs text-muted-foreground">
-              Búsqueda global activa: {rows.length} resultado(s). La búsqueda se mantiene limitada a la empresa del workspace activo.
+              Búsqueda global activa: {rows.length} resultado(s). La búsqueda se
+              mantiene limitada a la empresa del workspace activo.
             </p>
           ) : null}
-          {searchError ? <p className="text-xs text-red-600">{searchError}</p> : null}
+          {searchError ? (
+            <p className="text-xs text-red-600">{searchError}</p>
+          ) : null}
         </CardHeader>
       </Card>
 
@@ -585,27 +602,40 @@ export function ComprasBandeja() {
                         "ADJUNTO_FACTURA",
                         "PRINCIPAL_FACTURA",
                       ]);
-                      const tieneGuia = hasDocument(expediente, ["GUIA", "GUÍA"]);
+                      const tieneGuia = hasDocument(expediente, [
+                        "GUIA",
+                        "GUÍA",
+                      ]);
 
                       return (
-                        <tr key={expediente.id} className="border-b align-top hover:bg-muted/30">
+                        <tr
+                          key={expediente.id}
+                          className="border-b align-top hover:bg-muted/30"
+                        >
                           <td className="w-[34%] py-3 pr-4">
                             <ExpedienteCell expediente={expediente} />
                           </td>
                           <td className="w-[26%] py-3 pr-4">
-                            <div className="font-medium">{principalLabel(expediente)}</div>
+                            <div className="font-medium">
+                              {principalLabel(expediente)}
+                            </div>
                           </td>
                           <td className="w-[18%] py-3 pr-4">
                             <div className="flex flex-wrap gap-1.5">
-                              <AdjuntosBadge label="FAC" active={tieneFactura} />
+                              <AdjuntosBadge
+                                label="FAC"
+                                active={tieneFactura}
+                              />
                               <AdjuntosBadge label="GUÍA" active={tieneGuia} />
                             </div>
                           </td>
                           <td className="w-[10%] py-3 pr-4">
-                            <Badge variant="secondary">{getEstado(expediente)}</Badge>
+                            <Badge variant="secondary">
+                              {getEstado(expediente)}
+                            </Badge>
                           </td>
                           <td className="w-[12%] py-3 text-right">
-                            <ActionsCell expediente={expediente} returnTo={returnTo} />
+                            <ActionsCell expediente={expediente} />
                           </td>
                         </tr>
                       );
