@@ -20,7 +20,7 @@ import {
   type DocumentoCargaOption,
 } from "../../constants/documentos";
 import { useExpediente } from "@/hooks/useExpedientes";
-import { subirDocumentoGuiado } from "@/services/carga-guiada";
+import { prevalidarDocumentoGuiado, subirDocumentoGuiado } from "@/services/carga-guiada";
 import { api } from "@/services/api";
 import {
   agregarArchivoComoVersion,
@@ -34,7 +34,7 @@ import {
   rechazarOcrResultado,
   type ProcesarOcrResultado,
 } from "@/services/ocr-procesamiento";
-import type { CargaGuiadaPayloadPreview } from "@/types/carga-guiada";
+import type { CargaGuiadaPayloadPreview, CargaGuiadaPrevalidacionResponse } from "@/types/carga-guiada";
 
 function text(value: unknown, fallback = "") {
   if (value === null || value === undefined) return fallback;
@@ -66,6 +66,12 @@ function descripcionAmigable(expediente: any) {
 
 type AccionCargaGuiada = DocumentoCargaOption & {
   grupo: "principal" | "adjunto";
+};
+
+type PrevalidacionExistenteUI = {
+  documentoId?: string | number | null;
+  archivoId?: string | number | null;
+  expedienteId?: string | number | null;
 };
 
 type UploadYProcesarArgs = {
@@ -130,6 +136,17 @@ function isTipoRelacionPrincipal(relacion: string) {
   return relacion.startsWith("principal_");
 }
 
+function isDocumentoPrincipalActivo(doc: DocumentoVinculado | null | undefined) {
+  if (!doc) return false;
+  return (
+    doc.esPrincipal === true ||
+    doc.es_principal === true ||
+    String(doc.esPrincipal ?? "").toLowerCase() === "true" ||
+    String(doc.es_principal ?? "").toLowerCase() === "true" ||
+    String(doc.es_principal ?? "").toLowerCase() === "t"
+  );
+}
+
 const ESTADO_VISUAL_PRIORIDAD: Record<string, number> = {
   error: 70,
   rechazado: 60,
@@ -148,27 +165,30 @@ function getCreatedTime(doc: DocumentoVinculado) {
 }
 
 function pickDocumentoPrincipalActual(
-  documentosPorRelacion: Map<string, DocumentoVinculado[]>,
+  documentos: DocumentoVinculado[],
 ) {
-  const candidatos = DOCUMENTO_PRINCIPAL_OPTIONS
-    .map((option) => {
-      const documentos = documentosPorRelacion.get(option.tipoRelacionSugerida) ?? [];
-      const doc = documentos[0];
-      if (!doc) return null;
+  const candidatos = documentos
+    .filter(isDocumentoPrincipalActivo)
+    .map((doc) => {
+      const relacion = getRelacion(doc);
+      const option =
+        DOCUMENTO_PRINCIPAL_OPTIONS.find((item) => item.tipoRelacionSugerida === relacion) ??
+        DOCUMENTO_PRINCIPAL_OPTIONS.find((item) => item.tipoEsperado === text(doc.tipo_documental ?? doc.tipoDocumental, "")) ??
+        DOCUMENTO_PRINCIPAL_OPTIONS[0];
       const visual = getDocumentoVisualState(doc);
       const estado = String((visual as any).state ?? doc.estado ?? doc.archivo_estado ?? "");
       return {
         option,
-        documentos,
         doc,
+        relacion,
         prioridad: ESTADO_VISUAL_PRIORIDAD[estado] ?? 0,
         createdTime: getCreatedTime(doc),
       };
     })
     .filter(Boolean) as Array<{
       option: DocumentoCargaOption;
-      documentos: DocumentoVinculado[];
       doc: DocumentoVinculado;
+      relacion: string;
       prioridad: number;
       createdTime: number;
     }>;
@@ -179,6 +199,101 @@ function pickDocumentoPrincipalActual(
     if (b.prioridad !== a.prioridad) return b.prioridad - a.prioridad;
     return b.createdTime - a.createdTime;
   })[0];
+}
+
+function prevalidacionCargaMessage(resultado: CargaGuiadaPrevalidacionResponse) {
+  const accion = String(resultado.accionSugerida ?? "");
+  const motivo = String(resultado.motivo ?? "");
+  const duplicado = resultado.duplicados?.[0];
+  const principal = resultado.principalActivo;
+
+  if (accion === "abrir_existente" || resultado.duplicadoArchivo || motivo.includes("DUPLICADO")) {
+    return [
+      "Este archivo ya fue cargado anteriormente. Puedes abrir el documento existente.",
+      duplicado?.documentoId ? `Documento existente: ${duplicado.documentoId}.` : null,
+      duplicado?.archivoId ? `Archivo existente: ${duplicado.archivoId}.` : null,
+      duplicado?.expedienteId ? `Centro de costo vinculado: ${duplicado.expedienteId}.` : null,
+      "No se volvió a subir a R2.",
+    ].filter(Boolean).join("\n");
+  }
+
+  if (resultado.expedienteTienePrincipal || motivo === "EXPEDIENTE_YA_TIENE_DOCUMENTO_PRINCIPAL") {
+    return [
+      "Este centro de costo ya tiene un documento principal activo.",
+      principal?.numero ? `Principal actual: ${String(principal.numero)}.` : null,
+      "No se reemplazará automáticamente. Carga como relacionado o cancela.",
+    ].filter(Boolean).join("\n");
+  }
+
+  if (resultado.codigoExpedienteCoincide === false || motivo === "CODIGO_EXPEDIENTE_NO_COINCIDE") {
+    return [
+      "El código detectado en el documento no coincide con el centro de costo seleccionado.",
+      resultado.codigoExpedienteSeleccionado ? `Centro de costo seleccionado: ${resultado.codigoExpedienteSeleccionado}.` : null,
+      resultado.codigoExpedienteDetectado ? `Código detectado en documento: ${resultado.codigoExpedienteDetectado}.` : null,
+    ].filter(Boolean).join("\n");
+  }
+
+  if (accion === "vincular_existente") {
+    return "El documento ya existe. La vinculación de existentes queda pendiente de contrato funcional.";
+  }
+
+  if (accion === "requiere_confirmacion") {
+    return "La prevalidación requiere confirmación explícita. No se continuará automáticamente.";
+  }
+
+  return "La prevalidación no autorizó continuar con la carga.";
+}
+
+function toIdValue(value: unknown): string | number | null | undefined {
+  if (typeof value === 'string' || typeof value === 'number') {
+    return value;
+  }
+
+  if (value === null || value === undefined) {
+    return value;
+  }
+
+  return undefined;
+}
+
+function getPrevalidacionExistente(
+  resultado: CargaGuiadaPrevalidacionResponse,
+): PrevalidacionExistenteUI | null {
+  const duplicado = resultado.duplicados?.[0];
+  const documentoExistente =
+    resultado.documentoExistente as Record<string, unknown> | null | undefined;
+
+  const documentoId =
+    toIdValue(duplicado?.documentoId) ??
+    toIdValue(documentoExistente?.documentoId) ??
+    toIdValue(documentoExistente?.documento_id) ??
+    toIdValue(documentoExistente?.id) ??
+    toIdValue(resultado.documentoId);
+
+  const archivoId =
+    toIdValue(duplicado?.archivoId) ??
+    toIdValue(documentoExistente?.archivoId) ??
+    toIdValue(documentoExistente?.archivo_id);
+
+  const expedienteId =
+    toIdValue(duplicado?.expedienteId) ??
+    toIdValue(documentoExistente?.expedienteId) ??
+    toIdValue(documentoExistente?.expediente_id) ??
+    toIdValue(resultado.expedienteId);
+
+  if (!documentoId && !archivoId && !expedienteId) return null;
+
+  return { documentoId, archivoId, expedienteId };
+}
+
+class PrevalidacionDetuvoCarga extends Error {
+  existente: PrevalidacionExistenteUI | null;
+
+  constructor(message: string, existente: PrevalidacionExistenteUI | null) {
+    super(message);
+    this.name = "PrevalidacionDetuvoCarga";
+    this.existente = existente;
+  }
 }
 
 function DocumentoExistenteResumen({
@@ -683,7 +798,7 @@ function getTipoRelacionPorTipoDocumental(
 }
 
 function tienePrincipalActivo(documentos?: DocumentoVinculado[]) {
-  return Boolean(documentos?.some((doc) => doc.es_principal === true || String(doc.es_principal).toLowerCase() === "true" || String(doc.es_principal).toLowerCase() === "t"));
+  return Boolean(documentos?.some(isDocumentoPrincipalActivo));
 }
 
 function normalizeAmount(value: string) {
@@ -798,6 +913,7 @@ export function CompraExpedienteEditor({ id }: { id: string | number }) {
   const [resultadoModal, setResultadoModal] = useState<ProcesarOcrResultado | null>(null);
   const [accionActual, setAccionActual] = useState<AccionCargaGuiada | null>(null);
   const [mensajeValidacion, setMensajeValidacion] = useState<string | null>(null);
+  const [prevalidacionExistente, setPrevalidacionExistente] = useState<PrevalidacionExistenteUI | null>(null);
   const [processingStep, setProcessingStep] = useState<OcrProcessingStep>("idle");
   const [processingFileName, setProcessingFileName] = useState<string | null>(null);
   const [processingError, setProcessingError] = useState<string | null>(null);
@@ -819,10 +935,10 @@ export function CompraExpedienteEditor({ id }: { id: string | number }) {
     [documentosQuery.data],
   );
   const principalActual = useMemo(
-    () => pickDocumentoPrincipalActual(documentosPorRelacion),
-    [documentosPorRelacion],
+    () => pickDocumentoPrincipalActual(documentosQuery.data ?? []),
+    [documentosQuery.data],
   );
-  const principalActualRelacion = principalActual?.option.tipoRelacionSugerida ?? "";
+  const principalActualRelacion = principalActual?.relacion ?? principalActual?.option.tipoRelacionSugerida ?? "";
 
   const cargaRealMutation = useMutation<
     ProcesarOcrResultado,
@@ -832,7 +948,8 @@ export function CompraExpedienteEditor({ id }: { id: string | number }) {
     mutationFn: async ({ accion, file }) => {
       setProcessingFileName(file.name);
       setProcessingError(null);
-      setProcessingStep("uploading");
+      setPrevalidacionExistente(null);
+      setProcessingStep("prevalidating");
       const clienteAbreviatura = text(
         (expediente as any)?.empresa_codigo ??
           (expediente as any)?.empresaCodigo ??
@@ -853,8 +970,20 @@ export function CompraExpedienteEditor({ id }: { id: string | number }) {
         tipoRelacionSugerida: accion.tipoRelacionSugerida as CargaGuiadaPayloadPreview["tipoRelacionSugerida"],
         canalIngreso: "COMPRAS_EDITAR_UPLOAD",
         observacion: `Carga desde Compras Editar: ${accion.grupo} - ${accion.label}`,
+        esPrincipal: accion.grupo === "principal",
       };
 
+      setProcessingStep("prevalidating");
+      const prevalidacion = await prevalidarDocumentoGuiado(uploadPayload, file);
+
+      if (prevalidacion.accionSugerida !== "cargar_nuevo") {
+        throw new PrevalidacionDetuvoCarga(
+          prevalidacionCargaMessage(prevalidacion),
+          getPrevalidacionExistente(prevalidacion),
+        );
+      }
+
+      setProcessingStep("uploading");
       const uploadResponse = await subirDocumentoGuiado(uploadPayload, file);
       const archivoId = getArchivoId(uploadResponse as Record<string, unknown>);
 
@@ -898,6 +1027,15 @@ export function CompraExpedienteEditor({ id }: { id: string | number }) {
     },
     onError: (err, { accion }) => {
       setAccionActual(accion);
+
+      if (err instanceof PrevalidacionDetuvoCarga) {
+        setProcessingStep("idle");
+        setProcessingError(null);
+        setMensajeValidacion(err.message);
+        setPrevalidacionExistente(err.existente);
+        return;
+      }
+
       const message = `No se pudo cargar/procesar OCR para ${accion.label}. Revisa Gateway, ms-documentos, R2 o NATS. ${err.message}`;
       setProcessingStep("error");
       setProcessingError(message);
@@ -911,6 +1049,7 @@ export function CompraExpedienteEditor({ id }: { id: string | number }) {
       grupo,
     });
     setMensajeValidacion(null);
+    setPrevalidacionExistente(null);
     fileInputRef.current?.click();
   }
 
@@ -1191,7 +1330,7 @@ export function CompraExpedienteEditor({ id }: { id: string | number }) {
       },
     );
 
-    const esPrincipalFinal = isRelacionPrincipal(tipoRelacionFinal);
+    const esPrincipalFinal = accionActual?.grupo === "principal";
 
     await confirmarOcrConExpediente(ocrResultadoId, {
       expedienteId: id,
@@ -1278,8 +1417,22 @@ export function CompraExpedienteEditor({ id }: { id: string | number }) {
         </div>
 
         {mensajeValidacion ? (
-          <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-300">
-            {mensajeValidacion}
+          <div className="space-y-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-300">
+            <p className="whitespace-pre-line">{mensajeValidacion}</p>
+            {prevalidacionExistente ? (
+              <div className="flex flex-wrap gap-2">
+                {prevalidacionExistente.expedienteId ? (
+                  <>
+                    <Button asChild size="sm" variant="outline">
+                      <Link href={`/compras/${prevalidacionExistente.expedienteId}/ver`}>Ver</Link>
+                    </Button>
+                    <Button asChild size="sm" variant="outline">
+                      <Link href={`/compras/${prevalidacionExistente.expedienteId}/editar`}>Editar</Link>
+                    </Button>
+                  </>
+                ) : null}
+              </div>
+            ) : null}
           </div>
         ) : null}
 
@@ -1306,7 +1459,7 @@ export function CompraExpedienteEditor({ id }: { id: string | number }) {
               <CardTitle>Documento principal</CardTitle>
               {principalActual ? (
                 <span className="rounded-full border bg-primary/5 px-2.5 py-1 text-xs font-medium text-primary">
-                  Actual: {principalActual.option.label}
+                  Principal activo: {principalActual.option.label}
                 </span>
               ) : null}
             </div>
@@ -1316,6 +1469,8 @@ export function CompraExpedienteEditor({ id }: { id: string | number }) {
               {DOCUMENTO_PRINCIPAL_OPTIONS.map((item) => {
                 const documentosItem = documentosPorRelacion.get(item.tipoRelacionSugerida);
                 const principalActivo = principalActualRelacion === item.tipoRelacionSugerida;
+                const tieneCandidatosNoActivos = Boolean(documentosItem?.length && !principalActivo);
+                const bloquearCargaPrincipal = Boolean(principalActual);
 
                 return (
                 <div
@@ -1332,7 +1487,11 @@ export function CompraExpedienteEditor({ id }: { id: string | number }) {
                       </span>
                       {principalActivo ? (
                         <span className="rounded-full border border-primary bg-primary px-2 py-0.5 text-[10px] font-medium text-primary-foreground">
-                          Principal actual
+                          Principal activo
+                        </span>
+                      ) : tieneCandidatosNoActivos ? (
+                        <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-300">
+                          Candidato no activo
                         </span>
                       ) : null}
                     </div>
@@ -1346,19 +1505,27 @@ export function CompraExpedienteEditor({ id }: { id: string | number }) {
                     mostrarContenido={principalActivo}
                   />
 
+                  {bloquearCargaPrincipal ? (
+                    <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-300">
+                      Este expediente ya tiene un documento principal activo. No se reemplazará automáticamente.
+                    </div>
+                  ) : null}
+
                   <Button
                     className="mt-3 w-full"
                     variant="outline"
                     size="sm"
-                    disabled={procesando}
+                    disabled={procesando || bloquearCargaPrincipal}
                     onClick={() => iniciarSeleccionArchivo(item, "principal")}
                   >
                     <FilePlus2 className="h-4 w-4" />
                     {procesando && accionActual?.tipoRelacionSugerida === item.tipoRelacionSugerida
                       ? "Subiendo/procesando..."
                       : principalActivo
-                        ? "Reemplazar principal"
-                        : "Cargar como principal"}
+                        ? "Reemplazar principal no disponible"
+                        : tieneCandidatosNoActivos
+                          ? "Convertir en principal no disponible"
+                          : "Cargar como principal"}
                   </Button>
                 </div>
                 );

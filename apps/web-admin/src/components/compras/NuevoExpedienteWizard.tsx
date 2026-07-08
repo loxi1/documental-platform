@@ -27,7 +27,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { subirDocumentoGuiado } from "@/services/carga-guiada";
+import { prevalidarDocumentoGuiado, subirDocumentoGuiado } from "@/services/carga-guiada";
 import { agregarArchivoComoVersion } from "@/services/documentos";
 import {
   buscarExpedientes,
@@ -41,7 +41,7 @@ import {
   rechazarOcrResultado,
   type ProcesarOcrResultado,
 } from "@/services/ocr-procesamiento";
-import type { CargaGuiadaPayloadPreview } from "@/types/carga-guiada";
+import type { CargaGuiadaPayloadPreview, CargaGuiadaPrevalidacionResponse } from "@/types/carga-guiada";
 
 type TipoInicio = "OC" | "OS" | "FACTURA";
 
@@ -54,6 +54,12 @@ type OpcionInicio = {
   tipoRelacionPrincipal: "principal_oc" | "principal_os" | "principal_factura";
   codigoHint: string;
   codigoPrefix?: string;
+};
+
+type PrevalidacionExistenteUI = {
+  documentoId?: string | number | null;
+  archivoId?: string | number | null;
+  expedienteId?: string | number | null;
 };
 
 const OPTIONS: OpcionInicio[] = [
@@ -138,6 +144,93 @@ function getErrorMessage(error: unknown) {
     (error instanceof Error ? error.message : null) ??
     "No se pudo completar la operación"
   );
+}
+
+function prevalidacionMessage(resultado: CargaGuiadaPrevalidacionResponse) {
+  const accion = String(resultado.accionSugerida ?? "");
+  const motivo = String(resultado.motivo ?? "");
+  const duplicado = resultado.duplicados?.[0];
+  const principal = resultado.principalActivo;
+
+  if (accion === "abrir_existente" || resultado.duplicadoArchivo || motivo.includes("DUPLICADO")) {
+    return [
+      "Este archivo ya fue cargado anteriormente. Puedes abrir el documento existente.",
+      duplicado?.documentoId ? `Documento existente: ${duplicado.documentoId}.` : null,
+      duplicado?.archivoId ? `Archivo existente: ${duplicado.archivoId}.` : null,
+      duplicado?.expedienteId ? `Centro de costo vinculado: ${duplicado.expedienteId}.` : null,
+      "No se volvió a subir a R2.",
+    ].filter(Boolean).join("\n");
+  }
+
+  if (resultado.expedienteTienePrincipal || motivo === "EXPEDIENTE_YA_TIENE_DOCUMENTO_PRINCIPAL") {
+    return [
+      "Este centro de costo ya tiene un documento principal activo.",
+      principal?.numero ? `Principal actual: ${String(principal.numero)}.` : null,
+      "No se reemplazará automáticamente. Cancela o gestiona el expediente.",
+    ].filter(Boolean).join("\n");
+  }
+
+  if (resultado.codigoExpedienteCoincide === false || motivo === "CODIGO_EXPEDIENTE_NO_COINCIDE") {
+    return [
+      "El código detectado en el documento no coincide con el centro de costo seleccionado.",
+      resultado.codigoExpedienteSeleccionado ? `Centro de costo seleccionado: ${resultado.codigoExpedienteSeleccionado}.` : null,
+      resultado.codigoExpedienteDetectado ? `Código detectado en documento: ${resultado.codigoExpedienteDetectado}.` : null,
+      "Revisa el documento o cambia el centro de costo seleccionado antes de confirmar.",
+    ].filter(Boolean).join("\n");
+  }
+
+  if (accion === "vincular_existente") {
+    return "El documento ya existe. La vinculación de existentes queda pendiente de contrato funcional.";
+  }
+
+  if (accion === "requiere_confirmacion") {
+    return "La prevalidación requiere confirmación explícita. No se continuará automáticamente.";
+  }
+
+  if (accion === "bloquear") {
+    return "La prevalidación bloqueó la carga. Revisa el centro de costo o el documento seleccionado.";
+  }
+
+  return "La prevalidación no autorizó continuar con la carga.";
+}
+
+function toIdValue(value: unknown): string | number | null | undefined {
+  if (typeof value === 'string' || typeof value === 'number') {
+    return value;
+  }
+
+  if (value === null || value === undefined) {
+    return value;
+  }
+
+  return undefined;
+}
+
+function getPrevalidacionExistente(resultado: CargaGuiadaPrevalidacionResponse): PrevalidacionExistenteUI | null {
+  const duplicado = resultado.duplicados?.[0];
+  const documentoExistente = resultado.documentoExistente as Record<string, unknown> | null | undefined;
+
+  const documentoId =
+    toIdValue(duplicado?.documentoId) ??
+    toIdValue(documentoExistente?.documentoId) ??
+    toIdValue(documentoExistente?.documento_id) ??
+    toIdValue(documentoExistente?.id) ??
+    toIdValue(resultado.documentoId);
+
+  const archivoId = 
+  toIdValue(duplicado?.archivoId) ?? 
+  toIdValue(documentoExistente?.archivoId) ?? 
+  toIdValue(documentoExistente?.archivo_id);
+
+  const expedienteId = 
+  toIdValue(duplicado?.expedienteId) ?? 
+  toIdValue(documentoExistente?.expedienteId) ?? 
+  toIdValue(documentoExistente?.expediente_id) ?? 
+  toIdValue(resultado.expedienteId);
+
+  if (!documentoId && !archivoId && !expedienteId) return null;
+
+  return { documentoId, archivoId, expedienteId };
 }
 
 function expedienteLabel(expediente: ExpedienteSearchResult) {
@@ -316,6 +409,7 @@ export function NuevoExpedienteWizard() {
   const [archivoIdModal, setArchivoIdModal] = useState<string | number | null>(null);
   const [validacionAbierta, setValidacionAbierta] = useState(false);
   const [accionError, setAccionError] = useState<string | null>(null);
+  const [prevalidacionExistente, setPrevalidacionExistente] = useState<PrevalidacionExistenteUI | null>(null);
   const [isOpeningEditor, setIsOpeningEditor] = useState(false);
 
   const selectedOption = useMemo(
@@ -472,7 +566,8 @@ export function NuevoExpedienteWizard() {
     setProcessingFileName(file.name);
     setProcessingError(null);
     setAccionError(null);
-    setProcessingStep("uploading");
+    setPrevalidacionExistente(null);
+    setProcessingStep("prevalidating");
 
     try {
       const clienteAbreviatura = expedienteSeleccionado.empresaCodigo;
@@ -484,8 +579,21 @@ export function NuevoExpedienteWizard() {
         tipoRelacionSugerida: selectedOption.tipoRelacionPrincipal,
         canalIngreso: "COMPRAS_NUEVO_UPLOAD_PRINCIPAL",
         observacion: `Carga desde Compras Nuevo: ${selectedOption.shortLabel}`,
+        esPrincipal: true,
       };
 
+      const prevalidacion = await prevalidarDocumentoGuiado(uploadPayload, file);
+
+      if (prevalidacion.accionSugerida !== "cargar_nuevo") {
+        const message = prevalidacionMessage(prevalidacion);
+        setProcessingStep("idle");
+        setProcessingError(null);
+        setAccionError(message);
+        setPrevalidacionExistente(getPrevalidacionExistente(prevalidacion));
+        return;
+      }
+
+      setProcessingStep("uploading");
       const uploadResponse = await subirDocumentoGuiado(uploadPayload, file);
       const archivoId = getArchivoId(uploadResponse as Record<string, unknown>);
 
@@ -785,11 +893,11 @@ export function NuevoExpedienteWizard() {
                   variant="outline"
                 >
                   {isOpeningEditor ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                  Abrir sin cargar
+                  Gestionar expediente
                 </Button>
                 <Button type="button" onClick={handleAbrirInicioPrincipal} disabled={!expedienteSeleccionado}>
                   <UploadCloud className="h-4 w-4" />
-                  Cargar {selectedOption.shortLabel}
+                  Continuar con carga
                 </Button>
               </div>
             </CardContent>
@@ -811,7 +919,7 @@ export function NuevoExpedienteWizard() {
               <div>
                 <p className="text-xs uppercase text-muted-foreground">Siguiente paso</p>
                 <p className="text-muted-foreground">
-                  Carga el PDF principal aquí. Al confirmar OCR, se guardará como principal del expediente y se abrirá Compras &gt; Editar para adjuntos.
+                  Carga el PDF principal aquí. Al confirmar OCR, se validará como candidato a principal. Si ya existe un principal activo, el backend bloqueará el reemplazo silencioso.
                 </p>
               </div>
             </CardContent>
@@ -893,7 +1001,7 @@ export function NuevoExpedienteWizard() {
                 <div className="flex items-end justify-end">
                   <Button type="submit" disabled={isSubmitting}>
                     {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                    Crear y cargar principal
+                    Crear y continuar con carga
                   </Button>
                 </div>
               </form>
@@ -941,7 +1049,7 @@ export function NuevoExpedienteWizard() {
               <UploadCloud className="mx-auto h-8 w-8 text-muted-foreground" />
               <p className="mt-2 font-medium">Selecciona el archivo principal</p>
               <p className="mt-1 text-sm text-muted-foreground">
-                Se cargará como {selectedOption.tipoRelacionPrincipal}. Al confirmar, el backend dejará solo un principal activo.
+                Se prevalidará antes de subir. No se reemplazará un principal activo sin flujo explícito.
               </p>
               <input
                 ref={fileInputRef}
@@ -957,8 +1065,22 @@ export function NuevoExpedienteWizard() {
             </div>
 
             {accionError ? (
-              <div className="mt-4 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                {accionError}
+              <div className="mt-4 space-y-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-300">
+                <p className="whitespace-pre-line">{accionError}</p>
+                {prevalidacionExistente ? (
+                  <div className="flex flex-wrap gap-2">
+                    {prevalidacionExistente.expedienteId ? (
+                      <>
+                        <Button asChild size="sm" variant="outline">
+                          <Link href={`/compras/${prevalidacionExistente.expedienteId}/ver`}>Ver en Compras</Link>
+                        </Button>
+                        <Button asChild size="sm" variant="outline">
+                          <Link href={`/compras/${prevalidacionExistente.expedienteId}/editar`}>Editar en Compras</Link>
+                        </Button>
+                      </>
+                    ) : null}
+                  </div>
+                ) : null}
               </div>
             ) : null}
           </div>

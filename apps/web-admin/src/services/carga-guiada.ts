@@ -1,6 +1,7 @@
 import { api } from "./api";
 import type {
   CargaGuiadaPayloadPreview,
+  CargaGuiadaPrevalidacionResponse,
   CargaGuiadaResponse,
 } from "@/types/carga-guiada";
 
@@ -22,7 +23,7 @@ function unwrap<T>(payload: T | ApiEnvelope<T>): T {
   return payload as T;
 }
 
-export async function subirDocumentoGuiado(
+function buildCargaGuiadaFormData(
   payload: CargaGuiadaPayloadPreview,
   file: File,
 ) {
@@ -33,6 +34,10 @@ export async function subirDocumentoGuiado(
   formData.append("tipoEsperado", payload.tipoEsperado);
   formData.append("tipoRelacionSugerida", payload.tipoRelacionSugerida);
   formData.append("canalIngreso", payload.canalIngreso);
+
+  if (payload.esPrincipal !== undefined) {
+    formData.append("esPrincipal", String(payload.esPrincipal));
+  }
 
   if (payload.expedienteId !== undefined && payload.expedienteId !== null) {
     formData.append("expedienteId", String(payload.expedienteId));
@@ -45,6 +50,32 @@ export async function subirDocumentoGuiado(
   if (payload.observacion?.trim()) {
     formData.append("observacion", payload.observacion.trim());
   }
+
+  return formData;
+}
+
+export async function prevalidarDocumentoGuiado(
+  payload: CargaGuiadaPayloadPreview,
+  file: File,
+) {
+  const formData = buildCargaGuiadaFormData(payload, file);
+
+  const { data } = await api.post<
+    ApiEnvelope<CargaGuiadaPrevalidacionResponse> | CargaGuiadaPrevalidacionResponse
+  >("/documentos/carga-guiada/prevalidar", formData, {
+    headers: {
+      "Content-Type": "multipart/form-data",
+    },
+  });
+
+  return unwrap<CargaGuiadaPrevalidacionResponse>(data);
+}
+
+export async function subirDocumentoGuiado(
+  payload: CargaGuiadaPayloadPreview,
+  file: File,
+) {
+  const formData = buildCargaGuiadaFormData(payload, file);
 
   const { data } = await api.post<
     ApiEnvelope<CargaGuiadaResponse> | CargaGuiadaResponse

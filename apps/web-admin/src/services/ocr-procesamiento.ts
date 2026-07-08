@@ -217,6 +217,27 @@ function buildApiErrorMessage(error: unknown, fallback: string) {
     ].filter(Boolean).join("\n");
   }
 
+  const principalInfo = findErrorInfo(payload, ["EXPEDIENTE_YA_TIENE_DOCUMENTO_PRINCIPAL"]);
+  if (principalInfo) {
+    return [
+      "Este centro de costo ya tiene un documento principal activo.",
+      "No se reemplazará automáticamente. Puedes cancelar o cerrar esta ventana.",
+    ].filter(Boolean).join("\n");
+  }
+
+  const archivoDuplicadoInfo = findErrorInfo(payload, ["ARCHIVO_DUPLICADO_EN_CARGA_GUIADA"]);
+  if (archivoDuplicadoInfo) {
+    const duplicado = Array.isArray(archivoDuplicadoInfo.duplicados)
+      ? archivoDuplicadoInfo.duplicados[0] as Record<string, unknown> | undefined
+      : undefined;
+
+    return [
+      "Este archivo ya fue cargado anteriormente. No se subió nuevamente.",
+      duplicado?.documentoId ? `Documento existente: ${duplicado.documentoId}.` : null,
+      duplicado?.archivoId ? `Archivo existente: ${duplicado.archivoId}.` : null,
+    ].filter(Boolean).join("\n");
+  }
+
   const mismatchInfo = findErrorInfo(payload, ["CODIGO_EXPEDIENTE_NO_COINCIDE"]);
   if (mismatchInfo) {
     const codigoSeleccionado =
@@ -354,6 +375,8 @@ export async function confirmarOcrConExpediente(
     const conflictDetails = findErrorInfo(payload, [
       "DOCUMENTO_YA_VINCULADO_A_OTRO_EXPEDIENTE",
       "CODIGO_EXPEDIENTE_NO_COINCIDE",
+      "EXPEDIENTE_YA_TIENE_DOCUMENTO_PRINCIPAL",
+      "ARCHIVO_DUPLICADO_EN_CARGA_GUIADA",
     ]);
 
     throw new OcrApiError(message, {

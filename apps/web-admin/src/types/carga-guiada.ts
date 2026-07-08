@@ -49,6 +49,7 @@ export interface CargaGuiadaPayloadPreview {
   tipoRelacionSugerida: TipoRelacionSugerida;
   canalIngreso: "WEB_ADMIN_GUIADO" | "COMPRAS_EDITAR_UPLOAD" | string;
   observacion?: string;
+  esPrincipal?: boolean;
 }
 
 export interface CargaGuiadaResponse {
@@ -60,5 +61,50 @@ export interface CargaGuiadaResponse {
   metadata?: Record<string, unknown>;
   metadataSource?: Record<string, unknown>;
   mensaje?: string;
+  [key: string]: unknown;
+}
+
+
+export type CargaGuiadaAccionSugerida =
+  | "cargar_nuevo"
+  | "bloquear"
+  | "abrir_existente"
+  | "vincular_existente"
+  | "requiere_confirmacion"
+  | string;
+
+export interface CargaGuiadaDuplicadoArchivo {
+  archivoId?: number | string | null;
+  documentoId?: number | string | null;
+  nombreArchivo?: string | null;
+  storageKey?: string | null;
+  expedienteId?: number | string | null;
+  tipoRelacion?: string | null;
+  esPrincipal?: boolean | null;
+  [key: string]: unknown;
+}
+
+export interface CargaGuiadaPrevalidacionResponse {
+  hashSha256?: string | null;
+  filename?: string | null;
+  contentType?: string | null;
+  clienteAbreviatura?: string | null;
+  tipoEsperado?: string | null;
+  expedienteId?: number | string | null;
+  documentoId?: number | string | null;
+  claveDocumental?: string | null;
+  documentoExistente?: Record<string, unknown> | null;
+  documentoYaVinculado?: Record<string, unknown> | null;
+  expedienteTienePrincipal?: boolean | null;
+  principalActivo?: Record<string, unknown> | null;
+  codigoExpedienteCoincide?: boolean | null;
+  codigoExpedienteSeleccionado?: string | null;
+  codigoExpedienteDetectado?: string | null;
+  duplicadoArchivo?: boolean | null;
+  duplicados?: CargaGuiadaDuplicadoArchivo[];
+  accionSugerida?: CargaGuiadaAccionSugerida | null;
+  motivo?: string | null;
+  persistido?: boolean | null;
+  storageProvider?: string | null;
   [key: string]: unknown;
 }

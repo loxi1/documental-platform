@@ -4,6 +4,7 @@ import { AlertCircle, CheckCircle2, Loader2 } from "lucide-react";
 
 export type OcrProcessingStep =
   | "idle"
+  | "prevalidating"
   | "uploading"
   | "processing_ocr"
   | "preparing_preview"
@@ -27,6 +28,11 @@ type StepItem = {
 
 const STEPS: StepItem[] = [
   {
+    key: "prevalidating",
+    label: "Validando documento",
+    description: "Revisando duplicados, hash y reglas del centro de costo antes de subir.",
+  },
+  {
     key: "uploading",
     label: "Subiendo archivo a R2",
     description: "Registrando el documento en almacenamiento privado.",
@@ -49,10 +55,11 @@ const STEPS: StepItem[] = [
 ];
 
 const STEP_ORDER: Record<Exclude<OcrProcessingStep, "idle" | "error">, number> = {
-  uploading: 0,
-  processing_ocr: 1,
-  preparing_preview: 2,
-  ready: 3,
+  prevalidating: 0,
+  uploading: 1,
+  processing_ocr: 2,
+  preparing_preview: 3,
+  ready: 4,
 };
 
 function getStepState(step: OcrProcessingStep, item: StepItem) {
@@ -88,7 +95,7 @@ export function OcrProcessingDialog({
               Proceso documental
             </div>
             <h2 className="mt-1 text-xl font-bold">
-              {isError ? "No se pudo procesar" : "Subiendo documento"}
+              {isError ? "No se pudo procesar" : step === "prevalidating" ? "Validando documento" : "Subiendo documento"}
             </h2>
             <p className="mt-1 text-sm text-muted-foreground">
               {documentLabel ? `${documentLabel} · ` : null}
