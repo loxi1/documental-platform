@@ -17,6 +17,7 @@ import type {
 import { DocumentoOperativoPrincipalService } from '../documento-operativo-principal.service';
 import { GrupoFacturaDocumentoService } from '../grupo-factura-documento.service';
 import { GrupoFacturaService } from '../grupo-factura.service';
+import { WorkspaceDocumentalV2ViewMapper } from '../mappers/workspace-documental-v2-view.mapper';
 import type {
   AdjuntosNoClasificadosWorkspaceV2,
   DocumentoOperativoPrincipalWorkspaceV2,
@@ -34,6 +35,7 @@ export class WorkspaceDocumentalV2UseCase {
     private readonly documentosOperativos: DocumentoOperativoPrincipalService,
     private readonly gruposFactura: GrupoFacturaService,
     private readonly grupoFacturaDocumentos: GrupoFacturaDocumentoService,
+    private readonly viewMapper: WorkspaceDocumentalV2ViewMapper,
   ) {}
 
   async construirDesdeExpedienteV1(expedienteId: number): Promise<WorkspaceDocumentalV2View> {
@@ -61,7 +63,7 @@ export class WorkspaceDocumentalV2UseCase {
 
     const documentosGrupoFactura = gruposFactura.flatMap((grupo) => grupo.documentos);
 
-    return {
+    const workspace: WorkspaceDocumentalV2View = {
       origen: {
         modeloEntrada: 'V1',
         expedienteId: id,
@@ -92,6 +94,8 @@ export class WorkspaceDocumentalV2UseCase {
         advertencias: compatibilidad.advertencias.length,
       },
     };
+
+    return this.viewMapper.enriquecer(workspace);
   }
 
   private async mapDocumentoOperativoPrincipal(

@@ -113,6 +113,7 @@ export class V1V2CompatibilityAdapter {
         estado: expediente.estado,
         metadata: {
           ...(expediente.metadata ?? {}),
+          fechaCreacion: this.normalizeDate(expediente.creadoEn),
           compatibilidad: {
             origen: 'V1',
             expedienteId: expediente.id,
@@ -184,14 +185,7 @@ export class V1V2CompatibilityAdapter {
       facturaDocumentoId: factura.documentoId,
       documentoOperativoPrincipalDocumentoId: principal?.documentoId ?? null,
       estado: 'pendiente_revision',
-      metadata: {
-        compatibilidad: {
-          origen: 'V1',
-          expedienteId: origen.expedienteId,
-          facturaDocumentoId: factura.documentoId,
-          modo: 'lectura',
-        },
-      },
+      metadata: this.buildDocumentoMetadata(factura),
       documentos,
       origen: {
         ...origen,
@@ -237,6 +231,30 @@ export class V1V2CompatibilityAdapter {
   }
 
   private buildDocumentoMetadata(documento: V1DocumentoExpedienteRow): JsonObject {
+    const documentoV1 = {
+      documentoId: documento.documentoId,
+      tipoDocumental: documento.tipoDocumental,
+      tipoRelacion: documento.tipoRelacion,
+      esPrincipal: documento.esPrincipal,
+      orden: documento.orden,
+      rucEmisor: documento.rucEmisor,
+      razonSocialEmisor: documento.razonSocialEmisor,
+      serie: documento.serie,
+      numero: documento.numero,
+      claveDocumental: documento.claveDocumental,
+      estado: documento.estado,
+      fechaEmision: this.normalizeDate(documento.fechaEmision),
+      moneda: documento.moneda,
+      montoTotal: documento.montoTotal,
+      archivoId: documento.archivoId,
+      nombreArchivo: documento.nombreArchivo,
+      storageProvider: documento.storageProvider,
+      storageBucket: documento.storageBucket,
+      storageKey: documento.storageKey,
+      archivoEstado: documento.archivoEstado,
+      areaOrigen: documento.areaOrigen,
+    };
+
     return {
       ...(documento.metadata ?? {}),
       compatibilidad: {
@@ -252,8 +270,25 @@ export class V1V2CompatibilityAdapter {
         storageProvider: documento.storageProvider,
         storageBucket: documento.storageBucket,
         storageKey: documento.storageKey,
+        documentoV1,
       },
     };
+  }
+
+  private normalizeDate(value: Date | string | null | undefined): string | null {
+    if (value instanceof Date && !Number.isNaN(value.getTime())) {
+      return value.toISOString().slice(0, 10);
+    }
+
+    if (typeof value !== 'string') return null;
+
+    const clean = value.trim();
+    if (!clean) return null;
+
+    const parsed = new Date(clean);
+    if (!Number.isNaN(parsed.getTime())) return parsed.toISOString().slice(0, 10);
+
+    return /^\d{4}-\d{2}-\d{2}$/.test(clean) ? clean : null;
   }
 
   private buildOrigen(expedienteId: number): CompatibilidadV2Origen {

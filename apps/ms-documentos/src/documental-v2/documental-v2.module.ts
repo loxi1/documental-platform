@@ -12,6 +12,8 @@ import { GrupoFacturaRepository } from './grupo-factura.repository';
 import { GrupoFacturaService } from './grupo-factura.service';
 import { V1DocumentalReadOnlyRepository } from './adapters/v1-documental-readonly.repository';
 import { V1V2CompatibilityAdapter } from './adapters/v1-v2-compatibility.adapter';
+import { DocumentoVisualMapper } from './mappers/documento-visual.mapper';
+import { WorkspaceDocumentalV2ViewMapper } from './mappers/workspace-documental-v2-view.mapper';
 import { WorkspaceDocumentalV2UseCase } from './use-cases/workspace-documental-v2.usecase';
 
 @Module({
@@ -27,6 +29,8 @@ import { WorkspaceDocumentalV2UseCase } from './use-cases/workspace-documental-v
     GrupoFacturaDocumentoService,
     V1DocumentalReadOnlyRepository,
     V1V2CompatibilityAdapter,
+    DocumentoVisualMapper,
+    WorkspaceDocumentalV2ViewMapper,
     WorkspaceDocumentalV2UseCase,
   ],
   exports: [
@@ -40,6 +44,8 @@ import { WorkspaceDocumentalV2UseCase } from './use-cases/workspace-documental-v
     GrupoFacturaDocumentoService,
     V1DocumentalReadOnlyRepository,
     V1V2CompatibilityAdapter,
+    DocumentoVisualMapper,
+    WorkspaceDocumentalV2ViewMapper,
     WorkspaceDocumentalV2UseCase,
   ],
 })

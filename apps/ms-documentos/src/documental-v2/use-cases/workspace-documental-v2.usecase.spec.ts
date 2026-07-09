@@ -81,6 +81,9 @@ describe('WorkspaceDocumentalV2UseCase', () => {
   const grupoFacturaDocumentos = {
     buscarActivoPorDocumentoId: jest.fn(),
   };
+  const viewMapper = {
+    enriquecer: jest.fn((workspace) => workspace),
+  };
 
   let useCase: WorkspaceDocumentalV2UseCase;
 
@@ -92,6 +95,7 @@ describe('WorkspaceDocumentalV2UseCase', () => {
       documentosOperativos as any,
       gruposFactura as any,
       grupoFacturaDocumentos as any,
+      viewMapper as any,
     );
   });
 
@@ -111,6 +115,7 @@ describe('WorkspaceDocumentalV2UseCase', () => {
     });
     expect(documentosOperativos.buscarPorDocumentoId).toHaveBeenCalledWith(1);
     expect(gruposFactura.buscarPorFacturaDocumentoId).toHaveBeenCalledWith(2);
+    expect(viewMapper.enriquecer).toHaveBeenCalledTimes(1);
     expect(result.resumen).toEqual({
       documentosOperativosPrincipales: 1,
       documentosOperativosPrincipalesPersistidos: 1,
