@@ -1,5 +1,7 @@
 import { Module } from '@nestjs/common';
 
+import { DocumentalV2Controller } from './documental-v2.controller';
+
 import { ContenedorOperativoRepository } from './contenedor-operativo.repository';
 import { ContenedorOperativoService } from './contenedor-operativo.service';
 import { DocumentoOperativoPrincipalRepository } from './documento-operativo-principal.repository';
@@ -10,6 +12,7 @@ import { GrupoFacturaRepository } from './grupo-factura.repository';
 import { GrupoFacturaService } from './grupo-factura.service';
 
 @Module({
+  controllers: [DocumentalV2Controller],
   providers: [
     ContenedorOperativoRepository,
     DocumentoOperativoPrincipalRepository,
