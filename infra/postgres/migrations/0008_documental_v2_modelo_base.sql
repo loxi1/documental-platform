@@ -76,11 +76,6 @@ CREATE TABLE IF NOT EXISTS documentos.documentos_operativos_principales (
     UNIQUE (contenedor_operativo_id, documento_id)
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS uq_documento_operativo_principal_activo
-ON documentos.documentos_operativos_principales (contenedor_operativo_id)
-WHERE es_principal_activo = true
-  AND estado = 'activo';
-
 CREATE TABLE IF NOT EXISTS documentos.grupos_factura (
   id BIGSERIAL PRIMARY KEY,
 
@@ -91,16 +86,6 @@ CREATE TABLE IF NOT EXISTS documentos.grupos_factura (
   factura_documento_id BIGINT NOT NULL
     REFERENCES documentos.documentos(id)
     ON DELETE RESTRICT,
-
-  proveedor_ruc VARCHAR(20) NULL,
-  proveedor_nombre VARCHAR(255) NULL,
-
-  serie VARCHAR(50) NULL,
-  numero VARCHAR(80) NULL,
-  fecha_emision DATE NULL,
-
-  moneda VARCHAR(10) NULL,
-  monto_total NUMERIC(18, 2) NULL,
 
   estado VARCHAR(30) NOT NULL DEFAULT 'pendiente_revision',
 
@@ -115,10 +100,7 @@ CREATE TABLE IF NOT EXISTS documentos.grupos_factura (
   motivo_anulacion TEXT NULL,
 
   CONSTRAINT uq_grupo_factura_documento
-    UNIQUE (factura_documento_id),
-
-  CONSTRAINT uq_grupo_factura_por_principal_clave
-    UNIQUE (documento_operativo_principal_id, proveedor_ruc, serie, numero)
+    UNIQUE (factura_documento_id)
 );
 
 CREATE TABLE IF NOT EXISTS documentos.grupo_factura_documentos (
@@ -150,6 +132,10 @@ CREATE TABLE IF NOT EXISTS documentos.grupo_factura_documentos (
     UNIQUE (grupo_factura_id, documento_id, tipo_relacion)
 );
 
+CREATE UNIQUE INDEX IF NOT EXISTS uq_grupo_factura_documento_activo
+ON documentos.grupo_factura_documentos (documento_id)
+WHERE estado = 'activo';
+
 CREATE INDEX IF NOT EXISTS idx_contenedores_operativos_empresa
 ON documentos.contenedores_operativos (empresa_codigo, cliente_destino_id);
 
@@ -170,12 +156,6 @@ ON documentos.documentos_operativos_principales (tipo_principal, estado);
 
 CREATE INDEX IF NOT EXISTS idx_grupos_factura_principal
 ON documentos.grupos_factura (documento_operativo_principal_id);
-
-CREATE INDEX IF NOT EXISTS idx_grupos_factura_fecha
-ON documentos.grupos_factura (fecha_emision);
-
-CREATE INDEX IF NOT EXISTS idx_grupos_factura_proveedor
-ON documentos.grupos_factura (proveedor_ruc);
 
 CREATE INDEX IF NOT EXISTS idx_grupos_factura_estado
 ON documentos.grupos_factura (estado);
