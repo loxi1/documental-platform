@@ -9,6 +9,7 @@ import { AuthModule } from './auth/auth.module';
 import { NatsModule } from './nats/nats.module';
 import { DocumentosGatewayModule } from './documentos/documentos.module';
 import { ExpedientesGatewayModule } from './expedientes/expedientes.module';
+import { DocumentalV2GatewayModule } from './documental-v2/documental-v2-gateway.module';
 
 @Module({
   imports: [
@@ -21,6 +22,7 @@ import { ExpedientesGatewayModule } from './expedientes/expedientes.module';
     AuthModule,
     DocumentosGatewayModule,
     ExpedientesGatewayModule,
+    DocumentalV2GatewayModule,
   ],
   controllers: [AppController],
   providers: [AppService],
