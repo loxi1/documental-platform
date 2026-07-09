@@ -4,6 +4,7 @@ type RouteAccessRule = {
   prefix: string;
   label: string;
   menuKey?: string;
+  menuKeys?: string[];
   actionKeys?: string[];
   alwaysVisible?: boolean;
   adminOnly?: boolean;
@@ -14,6 +15,18 @@ export const workspaceRouteRules: RouteAccessRule[] = [
   { prefix: "/configuracion", label: "Configuración", adminOnly: true },
   { prefix: "/dashboard", label: "Dashboard", menuKey: "dashboard" },
   { prefix: "/expedientes", label: "Expedientes", menuKey: "expedientes" },
+  {
+    prefix: "/workspace/expedientes-v1",
+    label: "Workspace Documental V2",
+    menuKeys: ["documental_v2.workspace", "workspace_documental_v2"],
+    actionKeys: ["documental_v2.workspace", "workspace_documental_v2", "documental_v2.workspace.ver", "workspace_documental_v2.ver"],
+  },
+  {
+    prefix: "/documental-v2/workspace",
+    label: "Workspace Documental V2",
+    menuKeys: ["documental_v2.workspace", "workspace_documental_v2"],
+    actionKeys: ["documental_v2.workspace", "workspace_documental_v2", "documental_v2.workspace.ver", "workspace_documental_v2.ver"],
+  },
   { prefix: "/compras", label: "Compras", menuKey: "compras" },
   { prefix: "/almacen", label: "Almacén", menuKey: "almacen" },
   { prefix: "/finanzas", label: "Finanzas", menuKey: "finanzas" },
@@ -38,7 +51,11 @@ const defaultRouteOrder = [
 ];
 
 function isAdmin(contexto?: AuthContext | null) {
-  return contexto?.perfil === "admin";
+  const record = (contexto ?? {}) as AuthContext & { perfilNombre?: string | null };
+  const perfil = String(record.perfil ?? "").toLowerCase();
+  const perfilNombre = String(record.perfilNombre ?? "").toLowerCase();
+
+  return perfil === "admin" || perfilNombre.includes("admin");
 }
 
 function matchesPath(pathname: string, prefix: string) {
@@ -59,12 +76,17 @@ export function canAccessPath(pathname: string, contexto?: AuthContext | null) {
   if (rule.adminOnly) return false;
 
   const menus = contexto.permisos?.menus ?? [];
-  const hasMenu = rule.menuKey ? menus.includes(rule.menuKey) : false;
+  const actions = contexto.permisos?.actions ?? [];
+  const routeMenuKeys = [rule.menuKey, ...(rule.menuKeys ?? [])].filter((item): item is string => Boolean(item));
+  const hasMenu = routeMenuKeys.some((menuKey) => menus.includes(menuKey));
+  const hasAction = rule.actionKeys?.some((actionKey) => actions.includes(actionKey)) ?? false;
 
   // Las rutas técnicas de documentos/carga/OCR no se habilitan por acciones.
   // Para perfiles operativos se accede a esas funciones desde su módulo principal
   // (/compras, /almacen, /finanzas, /revision-contable), no como menú/ruta directa.
-  return hasMenu;
+  // Excepción controlada Sprint 1.6H: Workspace Documental V2 puede habilitarse
+  // por acción explícita del token o por perfil admin, sin abrirlo a todos los módulos.
+  return hasMenu || hasAction;
 }
 
 export function getDefaultPathForContext(contexto?: AuthContext | null) {
