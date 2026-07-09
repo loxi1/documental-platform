@@ -10,6 +10,8 @@ import { GrupoFacturaDocumentoRepository } from './grupo-factura-documento.repos
 import { GrupoFacturaDocumentoService } from './grupo-factura-documento.service';
 import { GrupoFacturaRepository } from './grupo-factura.repository';
 import { GrupoFacturaService } from './grupo-factura.service';
+import { V1DocumentalReadOnlyRepository } from './adapters/v1-documental-readonly.repository';
+import { V1V2CompatibilityAdapter } from './adapters/v1-v2-compatibility.adapter';
 
 @Module({
   controllers: [DocumentalV2Controller],
@@ -22,6 +24,8 @@ import { GrupoFacturaService } from './grupo-factura.service';
     DocumentoOperativoPrincipalService,
     GrupoFacturaService,
     GrupoFacturaDocumentoService,
+    V1DocumentalReadOnlyRepository,
+    V1V2CompatibilityAdapter,
   ],
   exports: [
     ContenedorOperativoRepository,
@@ -32,6 +36,8 @@ import { GrupoFacturaService } from './grupo-factura.service';
     DocumentoOperativoPrincipalService,
     GrupoFacturaService,
     GrupoFacturaDocumentoService,
+    V1DocumentalReadOnlyRepository,
+    V1V2CompatibilityAdapter,
   ],
 })
 export class DocumentalV2Module {}
