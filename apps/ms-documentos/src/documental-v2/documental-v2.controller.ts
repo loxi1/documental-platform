@@ -16,6 +16,7 @@ import type {
 import { DocumentoOperativoPrincipalService } from './documento-operativo-principal.service';
 import { GrupoFacturaDocumentoService } from './grupo-factura-documento.service';
 import { GrupoFacturaService } from './grupo-factura.service';
+import { WorkspaceDocumentalV2UseCase } from './use-cases/workspace-documental-v2.usecase';
 
 @ApiTags('documental-v2')
 @Controller('documental-v2')
@@ -25,7 +26,16 @@ export class DocumentalV2Controller {
     private readonly documentosOperativos: DocumentoOperativoPrincipalService,
     private readonly gruposFactura: GrupoFacturaService,
     private readonly grupoFacturaDocumentos: GrupoFacturaDocumentoService,
+    private readonly workspaceDocumentalV2: WorkspaceDocumentalV2UseCase,
   ) {}
+
+
+  @ApiOperation({ summary: 'Construir vista interna Workspace Documental V2 desde Expediente V1' })
+  @ApiParam({ name: 'expedienteId', example: 41 })
+  @Get('workspace/expedientes-v1/:expedienteId')
+  construirWorkspaceDesdeExpedienteV1(@Param('expedienteId', ParseIntPipe) expedienteId: number) {
+    return this.workspaceDocumentalV2.construirDesdeExpedienteV1(expedienteId);
+  }
 
   @ApiOperation({ summary: 'Crear Contenedor Operativo V2' })
   @Post('contenedores')

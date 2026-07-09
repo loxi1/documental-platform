@@ -39,6 +39,10 @@ describe('DocumentalV2Controller', () => {
     anular: jest.fn(),
   };
 
+  const workspaceDocumentalV2 = {
+    construirDesdeExpedienteV1: jest.fn(),
+  };
+
   let controller: DocumentalV2Controller;
 
   beforeEach(() => {
@@ -48,6 +52,7 @@ describe('DocumentalV2Controller', () => {
       documentosOperativos as any,
       gruposFactura as any,
       grupoFacturaDocumentos as any,
+      workspaceDocumentalV2 as any,
     );
   });
 
@@ -139,5 +144,25 @@ describe('DocumentalV2Controller', () => {
       documentoId: 300,
       tipoRelacion: 'guia',
     });
+  });
+
+
+  it('construye vista interna workspace V2 desde expediente V1', async () => {
+    const esperado = {
+      origen: {
+        modeloEntrada: 'V1',
+        expedienteId: 41,
+        modo: 'lectura',
+      },
+      resumen: {
+        documentosOperativosPrincipales: 1,
+        gruposFactura: 1,
+      },
+    };
+    workspaceDocumentalV2.construirDesdeExpedienteV1.mockResolvedValue(esperado);
+
+    await expect(controller.construirWorkspaceDesdeExpedienteV1(41)).resolves.toBe(esperado);
+
+    expect(workspaceDocumentalV2.construirDesdeExpedienteV1).toHaveBeenCalledWith(41);
   });
 });
