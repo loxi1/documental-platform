@@ -2,19 +2,9 @@
 
 ## Propósito
 
-Este documento describe la jerarquía funcional propuesta para el Modelo Documental V2, tomando como referencia obligatoria el documento arquitectónico raíz:
+Este documento define la jerarquía funcional propuesta para el Modelo Documental V2 considerando el nuevo contexto operativo validado por negocio.
 
-```text
-docs/17-domain/contenedor-operativo.md
-```
-
-## Principio rector
-
-El dominio gobierna la implementación.
-
-La jerarquía funcional no debe derivarse de las tablas existentes, sino de cómo trabaja el negocio.
-
-## Jerarquía propuesta
+## Jerarquía base
 
 ```text
 Contenedor Operativo
@@ -23,96 +13,121 @@ Contenedor Operativo
           -> Adjuntos
 ```
 
-## Nivel 1: Contenedor Operativo
 
-Representa la entidad superior que identifica una operación documental.
+## Jerarquías por módulo
 
-No es necesariamente el nombre visible final. Puede materializarse funcionalmente como:
+El Modelo Documental V2 mantiene un motor documental común, pero reconoce que no todos los módulos tienen la misma jerarquía funcional.
 
-- Expediente
-- Centro de costo
-- Orden de Producción
-- Proyecto
-- PR
-- otra entidad equivalente
+### Compras
 
-Su responsabilidad es agrupar bajo una misma trazabilidad los documentos operativos, grupos de factura, adjuntos, eventos y auditoría.
+Compras se organiza así:
 
-## Nivel 2: Documento Operativo Principal
+```text
+Contenedor Operativo
+  -> Documento Operativo Principal
+      -> Grupo de Factura
+          -> Adjuntos
+```
 
-Representa el documento que abre o soporta la operación documental dentro del contenedor.
+Donde el Documento Operativo Principal actualmente puede materializarse como OC, OS o Requerimiento de Compra, sin cerrar la lista para futuras decisiones de negocio.
 
-**Documento Operativo Principal** es el concepto estable del dominio.
+### Caja Chica y Rendición de Requerimientos
+
+Caja Chica y Rendición se organizan así:
+
+```text
+Contexto Operativo
+  -> Requerimiento de Fondo
+      -> Transferencia opcional
+      -> Rendición
+          -> Sustentos documentales múltiples
+```
+
+En estos módulos no debe exigirse OC, OS ni Requerimiento de Compra.
+
+El Requerimiento de Fondo abre el contexto de control. La transferencia bancaria es opcional al inicio y puede regularizarse posteriormente.
+
+La Rendición agrupa los sustentos documentales. Una rendición puede contener varios documentos del mismo tipo: facturas, boletas, recibos, comprobantes, tickets u otros.
+
+Estos documentos no se consideran duplicados por compartir tipo documental. Solo se consideran duplicados cuando coinciden por hash de archivo o por clave documental específica del comprobante.
+
+## Contenedor Operativo
+
+El Contenedor Operativo representa la entidad superior que identifica una operación documental.
+
+Puede materializarse de forma distinta según empresa, módulo y contexto:
+
+- Para BBTI y BB Tecnología: Centro de costo + OP.
+- Para consorcios y obras: Consorcio/Obra como Centro de costo automático.
+- Para Caja Chica: Requerimiento de Fondo o contexto equivalente.
+- Para Rendición de Requerimientos: Requerimiento de Fondo o documento equivalente.
+
+El nombre visible puede variar, pero el concepto común debe conservarse.
+
+## Documento Operativo Principal
+
+El Documento Operativo Principal es el documento que abre o gobierna la operación documental dentro de Compras.
 
 Actualmente puede materializarse como:
 
-- OC
-- OS
-- Requerimiento de Compra
+- OC.
+- OS.
+- Requerimiento de Compra.
 
-Esta lista podrá ampliarse mediante decisiones futuras de negocio, por ejemplo: Contrato, Convenio, Orden de Servicio Externa, Acta de Inicio u otros documentos operativos equivalentes.
+Esta lista podrá ampliarse mediante decisiones futuras de negocio.
 
-La Factura deja de ser documento principal formal.
+La Factura no es Documento Operativo Principal formal en V2.
 
-## Nivel 3: Grupo de Factura
+## Grupo de Factura
 
-La Factura no vive sola. Cada Factura abre un grupo documental.
+El Grupo de Factura es el conjunto documental que nace alrededor de una Factura.
 
-Un Documento Operativo Principal puede tener uno o varios Grupos de Factura.
+Incluye la Factura y sus documentos asociados.
 
-Cada Grupo de Factura contiene:
+La Factura no cuelga sola como documento aislado; abre un grupo documental.
 
-- Factura
-- documentos de recepción
-- documentos de pago
-- documentos tributarios relacionados
-- eventos y validaciones propias
+## Adjuntos
 
-## Nivel 4: Adjuntos
+Los Adjuntos pertenecen al Grupo de Factura.
 
-Los adjuntos son documentos derivados o complementarios asociados a una Factura específica.
+Pueden incluir:
 
-Ejemplos:
+- Guía.
+- Nota de ingreso.
+- Transferencia.
+- Detracción.
+- Recibo.
+- Otros documentos relacionados.
 
-- Guía
-- Nota de ingreso
-- Transferencia
-- Detracción
-- Recibo
-- Otros documentos relacionados
+## Caja Chica y Rendición de Requerimientos
 
-## Reglas base
+Caja Chica y Rendición de Requerimientos no siguen necesariamente el patrón OC/OS/RC.
 
-1. La Factura no es raíz del dominio.
-2. La Factura no es documento principal formal.
-3. La Factura abre un Grupo de Factura.
-4. Los adjuntos pertenecen al Grupo de Factura.
-5. Contabilidad revisa principalmente por Grupo de Factura.
-6. El filtro contable debe poder usar fecha de emisión de Factura.
-7. Legacy Python no gobierna esta jerarquía.
+Pueden iniciar con Requerimiento de Fondo.
 
-## Casos especiales
+Deben compartir el motor documental común, aunque tengan tablas de negocio propias.
 
-Quedan pendientes de análisis:
+La ausencia temporal de transferencia no debe bloquear una rendición cuando el trabajador haya pagado con dinero propio o cuando la transferencia esté pendiente de regularización.
 
-- documentos sin Documento Operativo Principal formal
-- facturas recibidas antes de la OC formal
-- guías recibidas antes de la factura
-- múltiples documentos principales dentro de un mismo contenedor
-- reemplazo de principal
-- distribución posterior por almacén
+## Motor documental común
 
-## Relación con otros documentos
+Compras, Caja Chica y Rendición de Requerimientos deben compartir:
 
-Este documento depende conceptualmente de:
+- documentos.
+- archivos.
+- OCR.
+- eventos.
+- alertas.
+- relaciones.
+- revisión contable.
 
-```text
-docs/17-domain/contenedor-operativo.md
-```
+No deben existir motores documentales distintos por módulo.
 
-Y sirve como base para:
+## Pendientes
 
-- grupos-factura.md
-- requerimiento-compra.md
-- modelo-relacional-documental-v2.md
-- futuras definiciones UX y backend
+Quedan pendientes:
+
+- Definir nombre visible final del Contenedor Operativo por módulo.
+- Definir si un Contenedor Operativo admite uno o varios Documentos Operativos Principales.
+- Definir flujo excepcional para documentos sin Documento Operativo Principal.
+- Definir la distribución posterior de Almacén por centro de costo.
