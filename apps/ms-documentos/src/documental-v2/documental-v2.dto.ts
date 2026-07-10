@@ -10,6 +10,7 @@ import type {
   CrearGrupoFacturaInput,
 } from './documental-v2.types';
 
+
 export type CrearContenedorOperativoDto = CrearContenedorOperativoInput;
 export type ActualizarContenedorOperativoDto = Omit<ActualizarContenedorOperativoInput, 'id'>;
 export type BuscarContenedoresOperativosDto = BuscarContenedoresOperativosFiltro;
@@ -26,4 +27,18 @@ export type ActualizarGrupoFacturaDocumentoDto = Omit<ActualizarGrupoFacturaDocu
 export type AnularDocumentalV2Dto = {
   usuarioId?: number | null;
   motivo?: string | null;
+};
+
+export type AsociarDocumentoPrincipalV2Dto = {
+  contenedorOperativoId: number;
+  documentoId: number;
+  tipoPrincipal: string;
+};
+
+export type BuscarDocumentosCandidatosPrincipalDto = {
+  empresaCodigo: string;
+  tipoPrincipal: string;
+  q?: string;
+  estado?: string;
+  limit?: number | string;
 };

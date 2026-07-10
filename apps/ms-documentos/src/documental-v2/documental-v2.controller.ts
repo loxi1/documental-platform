@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, ParseIntPipe, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseIntPipe, Headers, Patch, Post, Query } from '@nestjs/common';
 import { ApiOperation, ApiParam, ApiQuery, ApiTags } from '@nestjs/swagger';
 
 import { ContenedorOperativoService } from './contenedor-operativo.service';
@@ -18,6 +18,9 @@ import { GrupoFacturaDocumentoService } from './grupo-factura-documento.service'
 import { GrupoFacturaService } from './grupo-factura.service';
 import { WorkspaceDocumentalV2UseCase } from './use-cases/workspace-documental-v2.usecase';
 
+import { AsociarDocumentoPrincipalV2UseCase } from './use-cases/asociar-documento-principal-v2.usecase';
+import { DocumentoExistenteReadonlyRepository } from './documento-existente-readonly.repository';
+
 @ApiTags('documental-v2')
 @Controller('documental-v2')
 export class DocumentalV2Controller {
@@ -27,6 +30,8 @@ export class DocumentalV2Controller {
     private readonly gruposFactura: GrupoFacturaService,
     private readonly grupoFacturaDocumentos: GrupoFacturaDocumentoService,
     private readonly workspaceDocumentalV2: WorkspaceDocumentalV2UseCase,
+    private readonly asociarDocumentoPrincipalV2UseCase: AsociarDocumentoPrincipalV2UseCase,
+    private readonly documentoExistenteReadonlyRepository: DocumentoExistenteReadonlyRepository,
   ) {}
 
 
@@ -249,6 +254,58 @@ export class DocumentalV2Controller {
     @Body() body: ActualizarGrupoFacturaDocumentoDto,
   ) {
     return this.grupoFacturaDocumentos.actualizar({ ...body, id });
+  }
+
+  @ApiOperation({ summary: 'Asociar documento existente como Documento Operativo Principal V2' })
+  @Post('documentos-operativos-principales/asociar')
+  async asociarDocumentoPrincipal(
+    @Body() dto: any,
+    @Headers('x-user-id') userId?: string,
+    @Headers('x-user-email') userEmail?: string,
+    @Headers('x-workspace-id') workspaceId?: string,
+    @Headers('x-empresa-codigo') empresaCodigo?: string,
+    @Headers('x-cliente-destino-id') clienteDestinoId?: string,
+  ) {
+    return this.asociarDocumentoPrincipalV2UseCase.execute({
+      contenedorOperativoId: Number(dto.contenedorOperativoId),
+      documentoId: Number(dto.documentoId),
+      tipoPrincipal: dto.tipoPrincipal,
+      usuario: {
+        id: userId ? Number(userId) : null,
+        email: userEmail ?? null,
+        workspaceId: workspaceId ? Number(workspaceId) : null,
+        empresaCodigo: empresaCodigo ?? null,
+        clienteDestinoId: clienteDestinoId ? Number(clienteDestinoId) : null,
+      },
+    });
+  }
+
+  @ApiOperation({ summary: 'Listar documentos candidatos para Documento Operativo Principal V2' })
+  @Get('documentos-candidatos-principal')
+  async listarCandidatosPrincipal(@Query() query: any) {
+    const data = await this.documentoExistenteReadonlyRepository.listarCandidatosPrincipal({
+      empresaCodigo: query.empresaCodigo,
+      tipoPrincipal: query.tipoPrincipal,
+      q: query.q,
+      estado: query.estado,
+      limit: query.limit ? Number(query.limit) : undefined,
+    });
+
+    return data.map((documento) => ({
+      documentoId: documento.id,
+      tipoDocumental: documento.tipoDocumental,
+      tipoDocumentalLabel: documento.tipoDocumental === 'OC' ? 'Orden de compra' : documento.tipoDocumental,
+      numeroDocumento: documento.numero,
+      titulo: `${documento.tipoDocumental} ${documento.numero ?? documento.id}`,
+      proveedorNombre: documento.razonSocialEmisor,
+      proveedorRuc: documento.rucEmisor,
+      fechaEmision: documento.fechaEmision,
+      montoTotal: documento.montoTotal,
+      moneda: documento.moneda,
+      estado: documento.estado,
+      nombreArchivo: documento.nombreArchivo,
+      yaEsPrincipalV2: documento.yaEsPrincipalV2,
+    }));
   }
 
   @ApiOperation({ summary: 'Anular vínculo de documento con Grupo de Factura V2' })
