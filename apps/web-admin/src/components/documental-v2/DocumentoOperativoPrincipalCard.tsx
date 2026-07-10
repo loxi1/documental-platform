@@ -5,11 +5,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { WorkspaceV2Documento } from "@/types/documental-v2-workspace";
 import {
   documentoLabel,
+  getDocumentoArchivo,
   getDocumentoId,
   getDocumentoTipo,
   getEstado,
   getFechaDocumento,
   getMontoDocumento,
+  getNumeroDocumento,
   getProveedor,
   getRucProveedor,
   isPrincipal,
@@ -65,8 +67,8 @@ export function DocumentoOperativoPrincipalCard({ documento }: { documento?: Wor
             <dd className="mt-1 font-medium">{getDocumentoTipo(documento)}</dd>
           </div>
           <div>
-            <dt className="text-xs font-medium uppercase text-muted-foreground">Documento ID</dt>
-            <dd className="mt-1 font-medium">{textValue(getDocumentoId(documento))}</dd>
+            <dt className="text-xs font-medium uppercase text-muted-foreground">Número</dt>
+            <dd className="mt-1 font-medium">{getNumeroDocumento(documento)}</dd>
           </div>
           <div className="lg:col-span-2">
             <dt className="text-xs font-medium uppercase text-muted-foreground">Proveedor</dt>
@@ -80,6 +82,14 @@ export function DocumentoOperativoPrincipalCard({ documento }: { documento?: Wor
           <div>
             <dt className="text-xs font-medium uppercase text-muted-foreground">Monto</dt>
             <dd className="mt-1 font-medium">{getMontoDocumento(documento)}</dd>
+          </div>
+          <div>
+            <dt className="text-xs font-medium uppercase text-muted-foreground">Documento ID</dt>
+            <dd className="mt-1 font-medium text-muted-foreground">{textValue(getDocumentoId(documento))}</dd>
+          </div>
+          <div className="sm:col-span-2 lg:col-span-5">
+            <dt className="text-xs font-medium uppercase text-muted-foreground">Archivo</dt>
+            <dd className="mt-1 truncate font-medium">{getDocumentoArchivo(documento)}</dd>
           </div>
         </dl>
       </CardContent>

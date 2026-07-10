@@ -5,18 +5,18 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { WorkspaceV2GrupoFactura } from "@/types/documental-v2-workspace";
 import { AdjuntosList } from "./AdjuntosList";
 import {
-  documentoLabel,
   getAdjuntosGrupo,
   getEstado,
-  getFacturaFromGrupo,
-  getFechaDocumento,
-  getProveedor,
-  getRucProveedor,
+  getGrupoFacturaId,
+  getGrupoFacturaLabel,
+  getGrupoFecha,
+  getGrupoImporte,
+  getGrupoProveedor,
+  getGrupoRucProveedor,
   textValue,
 } from "./workspace-v2-utils";
 
 export function GrupoFacturaCard({ grupo, index }: { grupo: WorkspaceV2GrupoFactura; index: number }) {
-  const factura = getFacturaFromGrupo(grupo);
   const adjuntos = getAdjuntosGrupo(grupo);
 
   return (
@@ -29,9 +29,7 @@ export function GrupoFacturaCard({ grupo, index }: { grupo: WorkspaceV2GrupoFact
             </div>
             <div>
               <CardTitle>Grupo de Factura {index + 1}</CardTitle>
-              <p className="text-sm text-muted-foreground">
-                {factura ? documentoLabel(factura) : "Factura no informada por el Workspace"}
-              </p>
+              <p className="text-sm text-muted-foreground">{getGrupoFacturaLabel(grupo)}</p>
             </div>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -41,23 +39,24 @@ export function GrupoFacturaCard({ grupo, index }: { grupo: WorkspaceV2GrupoFact
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="grid gap-4 rounded-lg bg-muted/20 p-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-4 rounded-lg bg-muted/20 p-4 sm:grid-cols-2 lg:grid-cols-5">
           <div>
             <p className="text-xs font-medium uppercase text-muted-foreground">Factura</p>
-            <p className="mt-1 font-medium">{factura ? documentoLabel(factura) : "—"}</p>
+            <p className="mt-1 font-medium">{getGrupoFacturaLabel(grupo)}</p>
+            <p className="text-xs text-muted-foreground">ID: {textValue(getGrupoFacturaId(grupo))}</p>
           </div>
-          <div>
+          <div className="lg:col-span-2">
             <p className="text-xs font-medium uppercase text-muted-foreground">Proveedor</p>
-            <p className="mt-1 font-medium">{factura ? getProveedor(factura) : textValue(grupo.proveedor)}</p>
-            <p className="text-xs text-muted-foreground">RUC: {factura ? getRucProveedor(factura) : "—"}</p>
+            <p className="mt-1 font-medium">{getGrupoProveedor(grupo)}</p>
+            <p className="text-xs text-muted-foreground">RUC: {getGrupoRucProveedor(grupo)}</p>
           </div>
           <div>
             <p className="text-xs font-medium uppercase text-muted-foreground">Fecha</p>
-            <p className="mt-1 font-medium">{factura ? getFechaDocumento(factura) : textValue(grupo.fecha)}</p>
+            <p className="mt-1 font-medium">{getGrupoFecha(grupo)}</p>
           </div>
           <div>
-            <p className="text-xs font-medium uppercase text-muted-foreground">Adjuntos</p>
-            <p className="mt-1 font-medium">{adjuntos.length}</p>
+            <p className="text-xs font-medium uppercase text-muted-foreground">Importe</p>
+            <p className="mt-1 font-medium">{getGrupoImporte(grupo)}</p>
           </div>
         </div>
 

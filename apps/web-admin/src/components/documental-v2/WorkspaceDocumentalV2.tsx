@@ -36,7 +36,7 @@ export function WorkspaceDocumentalV2({ workspace }: { workspace: WorkspaceDocum
             <div>
               <CardTitle>Grupos de Factura</CardTitle>
               <p className="text-sm text-muted-foreground">
-                Cada tarjeta representa la agrupación visual devuelta o derivada por el Workspace V2.
+                Cada tarjeta representa un Grupo de Factura devuelto por el Workspace V2.
               </p>
             </div>
           </div>

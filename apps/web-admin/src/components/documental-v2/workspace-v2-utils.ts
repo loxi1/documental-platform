@@ -4,7 +4,6 @@ import type {
   WorkspaceV2ContextoOperativo,
   WorkspaceV2Documento,
   WorkspaceV2GrupoFactura,
-  WorkspaceV2Record,
 } from "@/types/documental-v2-workspace";
 
 type AnyRecord = Record<string, unknown>;
@@ -19,9 +18,9 @@ export function asRecord(value: unknown): AnyRecord {
 }
 
 /**
- * El contrato oficial Sprint 1.6H devuelve entidades V2 con forma:
+ * El contrato oficial V2 entrega entidades con forma:
  * { estadoPersistencia, vista, persistido }.
- * Esta función lee siempre la vista real sin modificar ni persistir nada.
+ * El frontend solo representa campos normalizados de vista.
  */
 export function entityVista<T = AnyRecord>(value: unknown): T {
   const record = asRecord(value);
@@ -34,34 +33,6 @@ export function entityPersistencia(value: unknown) {
   return typeof record.estadoPersistencia === "string" ? record.estadoPersistencia : null;
 }
 
-export function parseMetadata(value: unknown): WorkspaceV2Record {
-  const normalized = entityVista(value);
-  if (!normalized) return {};
-  if (typeof normalized === "object" && !Array.isArray(normalized)) return normalized as WorkspaceV2Record;
-  if (typeof normalized === "string") {
-    try {
-      const parsed = JSON.parse(normalized) as unknown;
-      return parsed && typeof parsed === "object" ? (parsed as WorkspaceV2Record) : {};
-    } catch {
-      return {};
-    }
-  }
-  return {};
-}
-
-export function nestedMetadata(documento?: WorkspaceV2Documento | null) {
-  const vista = entityVista<AnyRecord>(documento);
-  const metadata = parseMetadata(vista.metadata);
-  const candidates = [metadata, metadata.ocr, metadata.ocrMetadata, metadata.resultadoOcr, metadata.metadata, metadata.compatibilidad];
-
-  for (const candidate of candidates) {
-    const parsed = parseMetadata(candidate);
-    if (Object.keys(parsed).length > 0) return parsed;
-  }
-
-  return metadata;
-}
-
 export function firstArray<T>(...values: unknown[]) {
   for (const value of values) {
     if (Array.isArray(value)) return value as T[];
@@ -69,17 +40,21 @@ export function firstArray<T>(...values: unknown[]) {
   return [] as T[];
 }
 
-export function normalizeText(value: unknown) {
-  return String(value ?? "")
-    .trim()
-    .toUpperCase()
-    .replace(/[\s-]+/g, "_");
-}
-
 export function formatDate(value: unknown) {
   if (!value) return "—";
-  const parsed = new Date(String(value).replace(" ", "T"));
-  if (Number.isNaN(parsed.getTime())) return String(value).slice(0, 10);
+
+  const rawValue = String(value).trim();
+
+  // Las fechas documentales del contrato V2 llegan como YYYY-MM-DD.
+  // No deben parsearse con Date porque el timezone local puede retroceder un día.
+  const dateOnlyMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(rawValue);
+  if (dateOnlyMatch) {
+    const [, year, month, day] = dateOnlyMatch;
+    return `${day}/${month}/${year}`;
+  }
+
+  const parsed = new Date(rawValue.replace(" ", "T"));
+  if (Number.isNaN(parsed.getTime())) return rawValue.slice(0, 10);
 
   return parsed.toLocaleDateString("es-PE", {
     day: "2-digit",
@@ -92,7 +67,16 @@ export function formatMoney(value: unknown, currency?: unknown) {
   if (value === null || value === undefined || value === "") return "—";
   const numericValue = Number(value);
   if (Number.isNaN(numericValue)) return String(value);
-  const currencyCode = String(currency ?? "").toUpperCase().includes("USD") ? "USD" : "PEN";
+  const normalizedCurrency = String(currency ?? "").trim().toUpperCase();
+
+  if (!normalizedCurrency) {
+    return new Intl.NumberFormat("es-PE", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(numericValue);
+  }
+
+  const currencyCode = normalizedCurrency.includes("USD") || normalizedCurrency.includes("DOLAR") ? "USD" : "PEN";
 
   return new Intl.NumberFormat("es-PE", {
     style: "currency",
@@ -103,9 +87,9 @@ export function formatMoney(value: unknown, currency?: unknown) {
 export function isPrincipal(documento?: WorkspaceV2Documento | null) {
   const vista = entityVista<AnyRecord>(documento);
 
-  // Contrato V2 oficial: esPrincipalActivo viene calculado por backend desde esPrincipal V1.
+  // Contrato V2 oficial: esPrincipalActivo viene calculado por backend.
   // No se infiere desde tipoRelacion.
-  return vista.esPrincipal === true || vista.es_principal === true || vista.esPrincipalActivo === true;
+  return vista.esPrincipal === true || vista.es_principal === true || vista.esPrincipalActivo === true || vista.es_principal_activo === true;
 }
 
 export function getContexto(workspace: WorkspaceDocumentalV2): WorkspaceV2ContextoOperativo {
@@ -165,6 +149,8 @@ export function getAdjuntosNoClasificados(workspace: WorkspaceDocumentalV2) {
   return firstArray<WorkspaceV2Documento>(
     workspace.adjuntosSinClasificar,
     workspace.adjuntos_sin_clasificar,
+    workspace.adjuntosNoClasificados,
+    workspace.adjuntos_no_clasificados,
     workspace.documentosPendientesClasificacion,
     workspace.documentos_pendientes_clasificacion,
     workspace.documentosNoClasificados,
@@ -199,110 +185,96 @@ export function getDocumentoId(documento?: WorkspaceV2Documento | null) {
 
 export function getDocumentoTipo(documento?: WorkspaceV2Documento | null) {
   const vista = entityVista<AnyRecord>(documento);
-  const metadata = nestedMetadata(vista as WorkspaceV2Documento);
 
   return textValue(
-    vista.tipoDocumental ??
-      vista.tipo_documental ??
+    vista.tipoDocumentalLabel ??
+      vista.tipo_documental_label ??
       vista.tipoPrincipal ??
       vista.tipo_principal ??
-      vista.tipoRelacionSugerida ??
-      vista.tipo_relacion_sugerida ??
-      vista.tipo ??
-      metadata.tipoDocumental ??
-      metadata.tipo_documental ??
-      metadata.tipoRelacion ??
-      metadata.tipo_relacion,
+      vista.tipoDocumental ??
+      vista.tipo_documental ??
+      vista.tipo,
     "Documento",
   );
 }
 
 export function getEstado(value?: { estado?: string | null } | null) {
   const vista = entityVista<AnyRecord>(value);
-  return textValue(vista.estado ?? entityPersistencia(value), "Sin estado");
+  return textValue(vista.estadoRevisionLabel ?? vista.estado_revision_label ?? vista.estado ?? entityPersistencia(value), "Sin estado");
 }
 
-export function getSerieNumero(documento?: WorkspaceV2Documento | null) {
+export function getNumeroDocumento(documento?: WorkspaceV2Documento | null) {
   const vista = entityVista<AnyRecord>(documento);
-  const metadata = nestedMetadata(vista as WorkspaceV2Documento);
-  const serie = vista.serie ?? metadata.serie;
-  const numero = vista.numero ?? metadata.numero;
-  if (serie || numero) return `${textValue(serie, "")}-${textValue(numero, "")}`.replace(/^-|-$/g, "");
-  return textValue(vista.claveDocumental ?? vista.clave_documental ?? metadata.claveDocumental ?? metadata.clave_documental ?? getDocumentoId(vista as WorkspaceV2Documento));
+  return textValue(vista.numeroDocumento ?? vista.numero_documento ?? vista.numero, "No informado");
 }
 
 export function getProveedor(documento?: WorkspaceV2Documento | null) {
   const vista = entityVista<AnyRecord>(documento);
-  const metadata = nestedMetadata(vista as WorkspaceV2Documento);
-  return textValue(
-    vista.proveedor ??
-      vista.razonSocialEmisor ??
-      vista.razon_social_emisor ??
-      metadata.proveedor ??
-      metadata.razonSocialEmisor ??
-      metadata.razon_social_emisor,
-  );
+  return textValue(vista.proveedorNombre ?? vista.proveedor_nombre ?? vista.proveedor, "No informado");
 }
 
 export function getRucProveedor(documento?: WorkspaceV2Documento | null) {
   const vista = entityVista<AnyRecord>(documento);
-  const metadata = nestedMetadata(vista as WorkspaceV2Documento);
-  return textValue(
-    vista.rucProveedor ??
-      vista.ruc_proveedor ??
-      vista.rucEmisor ??
-      vista.ruc_emisor ??
-      metadata.rucProveedor ??
-      metadata.ruc_proveedor ??
-      metadata.rucEmisor ??
-      metadata.ruc_emisor,
-  );
+  return textValue(vista.proveedorRuc ?? vista.proveedor_ruc ?? vista.rucProveedor ?? vista.ruc_proveedor, "No informado");
 }
 
 export function getFechaDocumento(documento?: WorkspaceV2Documento | null) {
   const vista = entityVista<AnyRecord>(documento);
-  const metadata = nestedMetadata(vista as WorkspaceV2Documento);
-  return formatDate(vista.fechaEmision ?? vista.fecha_emision ?? vista.fecha ?? metadata.fechaEmision ?? metadata.fecha_emision);
+  return formatDate(vista.fechaEmision ?? vista.fecha_emision ?? vista.fecha);
 }
 
 export function getMontoDocumento(documento?: WorkspaceV2Documento | null) {
   const vista = entityVista<AnyRecord>(documento);
-  const metadata = nestedMetadata(vista as WorkspaceV2Documento);
-  const moneda = vista.moneda ?? metadata.moneda;
-  return formatMoney(vista.montoTotal ?? vista.monto_total ?? vista.monto ?? metadata.montoTotal ?? metadata.monto_total, moneda);
+  const moneda = vista.moneda;
+  return formatMoney(vista.montoTotal ?? vista.monto_total ?? vista.monto ?? vista.importeTotal ?? vista.importe_total, moneda);
 }
 
 export function documentoLabel(documento?: WorkspaceV2Documento | null) {
-  return `${getDocumentoTipo(documento)} ${getSerieNumero(documento)}`.trim();
+  const vista = entityVista<AnyRecord>(documento);
+  return textValue(vista.titulo ?? vista.documentoLabel ?? vista.documento_label, "Documento no informado");
 }
 
-export function getFacturaFromGrupo(grupo: WorkspaceV2GrupoFactura) {
-  const grupoRecord = asRecord(grupo);
-  const vista = entityVista<AnyRecord>(grupo);
-  const factura = vista.factura ?? vista.documentoFactura ?? vista.documento_factura ?? grupoRecord.factura ?? grupoRecord.documentoFactura ?? grupoRecord.documento_factura;
+export function getDocumentoArchivo(documento?: WorkspaceV2Documento | null) {
+  const vista = entityVista<AnyRecord>(documento);
+  return textValue(vista.nombreArchivo ?? vista.nombre_archivo, "No informado");
+}
 
-  if (factura) return entityVista<WorkspaceV2Documento>(factura);
+export function getGrupoVista(grupo: WorkspaceV2GrupoFactura) {
+  return entityVista<WorkspaceV2GrupoFactura>(grupo);
+}
 
-  const facturaDocumentoId = vista.facturaDocumentoId ?? vista.factura_documento_id;
-  if (!facturaDocumentoId) return null;
+export function getGrupoFacturaLabel(grupo: WorkspaceV2GrupoFactura) {
+  const vista = getGrupoVista(grupo) as AnyRecord;
+  return textValue(vista.facturaLabel ?? vista.factura_label, "Factura no informada");
+}
 
-  // El contrato Sprint 1.6H expone el id de la factura en la vista del grupo.
-  // Si no viene la factura completa, se crea solo una representación visual no persistida.
-  return {
-    documentoId: facturaDocumentoId,
-    tipoDocumental: "FACTURA",
-    estado: vista.estado,
-    metadata: vista.metadata,
-  } as WorkspaceV2Documento;
+export function getGrupoFacturaId(grupo: WorkspaceV2GrupoFactura) {
+  const vista = getGrupoVista(grupo) as AnyRecord;
+  return vista.facturaDocumentoId ?? vista.factura_documento_id;
+}
+
+export function getGrupoProveedor(grupo: WorkspaceV2GrupoFactura) {
+  const vista = getGrupoVista(grupo) as AnyRecord;
+  return textValue(vista.proveedorNombre ?? vista.proveedor_nombre ?? vista.proveedor, "No informado");
+}
+
+export function getGrupoRucProveedor(grupo: WorkspaceV2GrupoFactura) {
+  const vista = getGrupoVista(grupo) as AnyRecord;
+  return textValue(vista.proveedorRuc ?? vista.proveedor_ruc, "No informado");
+}
+
+export function getGrupoFecha(grupo: WorkspaceV2GrupoFactura) {
+  const vista = getGrupoVista(grupo) as AnyRecord;
+  return formatDate(vista.fechaEmision ?? vista.fecha_emision ?? vista.fecha);
+}
+
+export function getGrupoImporte(grupo: WorkspaceV2GrupoFactura) {
+  const vista = getGrupoVista(grupo) as AnyRecord;
+  return formatMoney(vista.importeTotal ?? vista.importe_total, vista.moneda);
 }
 
 export function getAdjuntosGrupo(grupo: WorkspaceV2GrupoFactura) {
   const grupoRecord = asRecord(grupo);
   const vista = entityVista<AnyRecord>(grupo);
-  const documentos = firstArray<WorkspaceV2Documento>(grupoRecord.documentos, vista.documentos, grupoRecord.adjuntos, vista.adjuntos);
-  const factura = getFacturaFromGrupo(grupo);
-  const facturaId = getDocumentoId(factura);
-
-  if (!facturaId) return documentos;
-  return documentos.filter((documento) => getDocumentoId(documento) !== facturaId);
+  return firstArray<WorkspaceV2Documento>(grupoRecord.documentos, vista.documentos, grupoRecord.adjuntos, vista.adjuntos);
 }
