@@ -37,3 +37,6 @@ deployment/env/.env.production
 backups/*.sql
 backups/*.sq
 *.sql
+
+# Allow official PostgreSQL migrations
+!infra/postgres/migrations/*.sql

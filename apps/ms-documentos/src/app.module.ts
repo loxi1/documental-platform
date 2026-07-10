@@ -6,6 +6,7 @@ import configuration from './config/configuration';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { DocumentosModule } from './documentos/documentos.module';
+import { DocumentalV2Module } from './documental-v2/documental-v2.module';
 import { GruposModule } from './grupos/grupos.module';
 import { RequestIdMiddleware } from './common/middleware/request-id.middleware';
 import { ExpedientesModule } from './expedientes/expedientes.module';
@@ -18,6 +19,7 @@ import { ExpedientesModule } from './expedientes/expedientes.module';
       load: [configuration],
     }),
     DocumentosModule,
+    DocumentalV2Module,
     GruposModule,
     NatsModule,
     ExpedientesModule,
