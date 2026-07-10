@@ -6,7 +6,6 @@ import type { WorkspaceV2Documento } from "@/types/documental-v2-workspace";
 import {
   documentoLabel,
   getDocumentoArchivo,
-  getDocumentoId,
   getDocumentoTipo,
   getEstado,
   getFechaDocumento,
@@ -15,7 +14,6 @@ import {
   getProveedor,
   getRucProveedor,
   isPrincipal,
-  textValue,
 } from "./workspace-v2-utils";
 
 export function DocumentoOperativoPrincipalCard({ documento }: { documento?: WorkspaceV2Documento | null }) {
@@ -83,11 +81,7 @@ export function DocumentoOperativoPrincipalCard({ documento }: { documento?: Wor
             <dt className="text-xs font-medium uppercase text-muted-foreground">Monto</dt>
             <dd className="mt-1 font-medium">{getMontoDocumento(documento)}</dd>
           </div>
-          <div>
-            <dt className="text-xs font-medium uppercase text-muted-foreground">Documento ID</dt>
-            <dd className="mt-1 font-medium text-muted-foreground">{textValue(getDocumentoId(documento))}</dd>
-          </div>
-          <div className="sm:col-span-2 lg:col-span-5">
+          <div className="sm:col-span-2 lg:col-span-2">
             <dt className="text-xs font-medium uppercase text-muted-foreground">Archivo</dt>
             <dd className="mt-1 truncate font-medium">{getDocumentoArchivo(documento)}</dd>
           </div>

@@ -23,22 +23,35 @@ function getHttpStatus(error: unknown) {
 function ErrorState({ error }: { error: unknown }) {
   const status = getHttpStatus(error);
   const isAuthError = status === 401 || status === 403;
+  const isNotFound = status === 404;
+
+  const title = isAuthError
+    ? "No autorizado para ver este Workspace"
+    : isNotFound
+      ? "Contexto operativo no encontrado"
+      : "No se pudo cargar el Workspace Documental V2";
+
+  const description = isAuthError
+    ? "Verifica que exista un accessToken de workspace vigente para consumir el API Gateway."
+    : isNotFound
+      ? "No existe un contexto con el código solicitado o no está disponible para el workspace actual."
+      : "La vista consume exclusivamente GET /api/v1/documental-v2/workspace/expedientes-v1/:id por API Gateway.";
 
   return (
     <Card>
       <CardContent className="py-10">
         <div className="mx-auto flex max-w-xl flex-col items-center text-center">
           <div className="rounded-full bg-muted p-4 text-muted-foreground">
-            {isAuthError ? <ShieldAlert className="h-8 w-8" /> : <WifiOff className="h-8 w-8" />}
+            {isAuthError ? (
+              <ShieldAlert className="h-8 w-8" />
+            ) : isNotFound ? (
+              <FileSearch className="h-8 w-8" />
+            ) : (
+              <WifiOff className="h-8 w-8" />
+            )}
           </div>
-          <h2 className="mt-4 text-lg font-semibold">
-            {isAuthError ? "No autorizado para ver este Workspace" : "No se pudo cargar el Workspace Documental V2"}
-          </h2>
-          <p className="mt-2 text-sm text-muted-foreground">
-            {isAuthError
-              ? "Verifica que exista un accessToken de workspace vigente para consumir el API Gateway."
-              : "La vista consume exclusivamente GET /api/v1/documental-v2/workspace/expedientes-v1/:id por API Gateway."}
-          </p>
+          <h2 className="mt-4 text-lg font-semibold">{title}</h2>
+          <p className="mt-2 text-sm text-muted-foreground">{description}</p>
           <Button asChild variant="outline" className="mt-5">
             <Link href="/compras">Volver a Compras</Link>
           </Button>

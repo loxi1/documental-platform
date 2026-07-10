@@ -7,13 +7,11 @@ import { AdjuntosList } from "./AdjuntosList";
 import {
   getAdjuntosGrupo,
   getEstado,
-  getGrupoFacturaId,
   getGrupoFacturaLabel,
   getGrupoFecha,
   getGrupoImporte,
   getGrupoProveedor,
   getGrupoRucProveedor,
-  textValue,
 } from "./workspace-v2-utils";
 
 export function GrupoFacturaCard({ grupo, index }: { grupo: WorkspaceV2GrupoFactura; index: number }) {
@@ -43,7 +41,6 @@ export function GrupoFacturaCard({ grupo, index }: { grupo: WorkspaceV2GrupoFact
           <div>
             <p className="text-xs font-medium uppercase text-muted-foreground">Factura</p>
             <p className="mt-1 font-medium">{getGrupoFacturaLabel(grupo)}</p>
-            <p className="text-xs text-muted-foreground">ID: {textValue(getGrupoFacturaId(grupo))}</p>
           </div>
           <div className="lg:col-span-2">
             <p className="text-xs font-medium uppercase text-muted-foreground">Proveedor</p>

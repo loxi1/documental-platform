@@ -2,7 +2,7 @@ import { FileText } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import type { WorkspaceV2Documento } from "@/types/documental-v2-workspace";
-import { documentoLabel, getDocumentoId, getDocumentoTipo, getEstado, getFechaDocumento, getMontoDocumento, textValue } from "./workspace-v2-utils";
+import { documentoLabel, getDocumentoId, getDocumentoTipo, getEstado, getFechaDocumento, getMontoDocumento } from "./workspace-v2-utils";
 
 export function AdjuntosList({ documentos }: { documentos: WorkspaceV2Documento[] }) {
   if (!documentos.length) {
@@ -30,7 +30,7 @@ export function AdjuntosList({ documentos }: { documentos: WorkspaceV2Documento[
                 <Badge variant="outline">{getDocumentoTipo(documento)}</Badge>
               </div>
               <p className="mt-1 text-xs text-muted-foreground">
-                ID documento: {textValue(getDocumentoId(documento))} · Fecha: {getFechaDocumento(documento)} · Monto: {getMontoDocumento(documento)}
+                Fecha: {getFechaDocumento(documento)} · Monto: {getMontoDocumento(documento)}
               </p>
             </div>
           </div>

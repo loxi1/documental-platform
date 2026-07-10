@@ -17,6 +17,19 @@ export function asRecord(value: unknown): AnyRecord {
   return value && typeof value === "object" ? (value as AnyRecord) : {};
 }
 
+const WORKSPACE_WARNING_LABELS: Record<string, string> = {
+  EXPEDIENTE_V1_SIN_FACTURA: "No existen facturas asociadas.",
+  EXPEDIENTE_V1_SIN_DOCUMENTO_PRINCIPAL: "Falta asociar un documento operativo principal.",
+  EXPEDIENTE_V1_CON_MULTIPLES_FACTURAS_REQUIERE_ASIGNACION_EXPLICITA:
+    "Existen varias facturas pendientes de asignación explícita.",
+};
+
+function humanizeWorkspaceWarning(value: unknown) {
+  const code = textValue(value, "");
+  if (!code) return "Sin descripción adicional";
+  return WORKSPACE_WARNING_LABELS[code] ?? code;
+}
+
 /**
  * El contrato oficial V2 entrega entidades con forma:
  * { estadoPersistencia, vista, persistido }.
@@ -169,12 +182,20 @@ export function getAlertas(workspace: WorkspaceDocumentalV2) {
         id: `advertencia-${index}`,
         tipo: "Advertencia",
         titulo: "Advertencia del Workspace",
-        mensaje: item,
+        mensaje: humanizeWorkspaceWarning(item),
+        codigoTecnico: item,
         estado: "informativo",
       } as WorkspaceV2Alerta;
     }
 
-    return item as WorkspaceV2Alerta;
+    const alerta = item as WorkspaceV2Alerta;
+    const mensaje = alerta.mensaje ?? alerta.descripcion;
+
+    return {
+      ...alerta,
+      mensaje: humanizeWorkspaceWarning(mensaje),
+      codigoTecnico: mensaje,
+    } as WorkspaceV2Alerta;
   });
 }
 
