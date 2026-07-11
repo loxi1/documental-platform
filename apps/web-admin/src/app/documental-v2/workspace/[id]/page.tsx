@@ -65,7 +65,7 @@ export default function DocumentalV2WorkspacePage() {
   const params = useParams<{ id: string }>();
   const id = params?.id;
 
-  const { data, error, isLoading, isError } = useQuery({
+  const { data, error, isLoading, isError, refetch } = useQuery({
     queryKey: ["documental-v2-workspace", id],
     queryFn: () => getWorkspaceDocumentalV2(id),
     enabled: Boolean(id),
@@ -102,7 +102,7 @@ export default function DocumentalV2WorkspacePage() {
         </Card>
       ) : null}
 
-      {data ? <WorkspaceDocumentalV2 workspace={data} /> : null}
+      {data ? <WorkspaceDocumentalV2 workspace={data} onRefresh={() => refetch()} /> : null}
     </main>
   );
 }

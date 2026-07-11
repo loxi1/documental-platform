@@ -106,24 +106,25 @@ export function isPrincipal(documento?: WorkspaceV2Documento | null) {
 }
 
 export function getContexto(workspace: WorkspaceDocumentalV2): WorkspaceV2ContextoOperativo {
-  const compatibilidad = asRecord((workspace as AnyRecord).compatibilidad);
+  const record = workspace as AnyRecord;
+  const compatibilidad = asRecord(record.compatibilidad);
 
   const candidate =
+    record.contenedorOperativo ??
+    record.contenedor_operativo ??
     workspace.contextoOperativo ??
     workspace.contexto_operativo ??
     workspace.contexto ??
-    (workspace as AnyRecord).contenedorOperativo ??
-    (workspace as AnyRecord).contenedor_operativo ??
     compatibilidad.contenedorOperativo ??
     compatibilidad.contenedor_operativo;
 
-  const contexto = entityVista<WorkspaceV2ContextoOperativo>(candidate);
+  const contexto = asRecord(candidate);
 
   return Object.keys(contexto).length
-    ? contexto
-    : {
+    ? (contexto as WorkspaceV2ContextoOperativo)
+    : ({
         id: workspace.expedienteId ?? workspace.expediente_id ?? workspace.id,
-      };
+      } as WorkspaceV2ContextoOperativo);
 }
 
 export function getDocumentoPrincipal(workspace: WorkspaceDocumentalV2) {
@@ -298,4 +299,38 @@ export function getAdjuntosGrupo(grupo: WorkspaceV2GrupoFactura) {
   const grupoRecord = asRecord(grupo);
   const vista = entityVista<AnyRecord>(grupo);
   return firstArray<WorkspaceV2Documento>(grupoRecord.documentos, vista.documentos, grupoRecord.adjuntos, vista.adjuntos);
+}
+
+function stringOrNumberOrNull(value: unknown): string | number | null {
+  if (typeof value === "string" || typeof value === "number") return value;
+  return null;
+}
+
+export function getContextoOperativoId(
+  contexto?: WorkspaceV2ContextoOperativo | null,
+): string | number | null {
+  const record = asRecord(contexto);
+  const vista = entityVista<AnyRecord>(contexto);
+  const persistido = asRecord(record.persistido);
+
+  return stringOrNumberOrNull(
+    persistido.id ??
+      persistido.contenedorOperativoId ??
+      persistido.contenedor_operativo_id ??
+      vista.contenedorOperativoId ??
+      vista.contenedor_operativo_id ??
+      vista.id ??
+      record.contenedorOperativoId ??
+      record.contenedor_operativo_id ??
+      record.id,
+  );
+}
+
+export function getContextoEmpresaCodigo(
+  contexto?: WorkspaceV2ContextoOperativo | null,
+): string {
+  const vista = entityVista<AnyRecord>(contexto);
+  const value = vista.empresaCodigo ?? vista.empresa_codigo ?? vista.empresa;
+  if (typeof value === "string" || typeof value === "number") return String(value);
+  return "";
 }

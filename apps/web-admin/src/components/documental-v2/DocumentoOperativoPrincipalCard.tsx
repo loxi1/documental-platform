@@ -2,9 +2,12 @@ import { FileCheck2, Info } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import type { WorkspaceV2Documento } from "@/types/documental-v2-workspace";
+import type { AsociarDocumentoPrincipalV2Result, WorkspaceV2ContextoOperativo, WorkspaceV2Documento } from "@/types/documental-v2-workspace";
+import { AsociarDocumentoPrincipalPanel } from "./AsociarDocumentoPrincipalPanel";
 import {
   documentoLabel,
+  getContextoEmpresaCodigo,
+  getContextoOperativoId,
   getDocumentoArchivo,
   getDocumentoTipo,
   getEstado,
@@ -16,8 +19,19 @@ import {
   isPrincipal,
 } from "./workspace-v2-utils";
 
-export function DocumentoOperativoPrincipalCard({ documento }: { documento?: WorkspaceV2Documento | null }) {
+export function DocumentoOperativoPrincipalCard({
+  documento,
+  contexto,
+  onWorkspaceRefresh,
+}: {
+  documento?: WorkspaceV2Documento | null;
+  contexto?: WorkspaceV2ContextoOperativo | null;
+  onWorkspaceRefresh?: (result: AsociarDocumentoPrincipalV2Result) => Promise<unknown> | unknown;
+}) {
   if (!documento) {
+    const contenedorOperativoId = getContextoOperativoId(contexto);
+    const empresaCodigo = getContextoEmpresaCodigo(contexto);
+
     return (
       <Card>
         <CardHeader className="border-b">
@@ -30,7 +44,17 @@ export function DocumentoOperativoPrincipalCard({ documento }: { documento?: Wor
         </CardHeader>
         <CardContent>
           <div className="rounded-lg border border-dashed bg-muted/20 p-4 text-sm text-muted-foreground">
-            El Workspace no devolvió un Documento Operativo Principal para este contexto.
+            <p className="font-medium text-foreground">Sin Documento Operativo Principal</p>
+            <p className="mt-1">
+              Asocia un documento existente como Documento Operativo Principal de este contexto.
+            </p>
+            <div className="mt-4">
+              <AsociarDocumentoPrincipalPanel
+                contenedorOperativoId={contenedorOperativoId}
+                empresaCodigo={empresaCodigo}
+                onAssociated={onWorkspaceRefresh}
+              />
+            </div>
           </div>
         </CardContent>
       </Card>
