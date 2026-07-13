@@ -9,11 +9,13 @@ import type {
 } from '../adapters/v1-v2-compatibility.types';
 import { ContenedorOperativoService } from '../contenedor-operativo.service';
 import type {
-  ContenedorOperativoRow,
   DocumentoOperativoPrincipalRow,
   GrupoFacturaDocumentoRow,
   GrupoFacturaRow,
+  JsonObject,
 } from '../documental-v2.types';
+import { DocumentoExistenteReadonlyRepository } from '../documento-existente-readonly.repository';
+import type { DocumentoExistenteV2 } from '../documento-existente-readonly.repository';
 import { DocumentoOperativoPrincipalService } from '../documento-operativo-principal.service';
 import { GrupoFacturaDocumentoService } from '../grupo-factura-documento.service';
 import { GrupoFacturaService } from '../grupo-factura.service';
@@ -33,6 +35,7 @@ export class WorkspaceDocumentalV2UseCase {
     private readonly compatibilityAdapter: V1V2CompatibilityAdapter,
     private readonly contenedores: ContenedorOperativoService,
     private readonly documentosOperativos: DocumentoOperativoPrincipalService,
+    private readonly documentosExistentes: DocumentoExistenteReadonlyRepository,
     private readonly gruposFactura: GrupoFacturaService,
     private readonly grupoFacturaDocumentos: GrupoFacturaDocumentoService,
     private readonly viewMapper: WorkspaceDocumentalV2ViewMapper,
@@ -41,17 +44,30 @@ export class WorkspaceDocumentalV2UseCase {
   async construirDesdeExpedienteV1(expedienteId: number): Promise<WorkspaceDocumentalV2View> {
     const id = this.normalizeId(expedienteId, 'expedienteId');
     const compatibilidad = await this.compatibilityAdapter.construirVistaV2DesdeExpedienteV1(id);
+
     const contenedorPersistido = await this.contenedores.buscarPorClave({
       empresaCodigo: compatibilidad.contenedorOperativo.empresaCodigo,
       tipoContexto: compatibilidad.contenedorOperativo.tipoContexto,
       codigo: compatibilidad.contenedorOperativo.codigo,
     });
 
-    const documentosOperativosPrincipales = await Promise.all(
+    const documentosOperativosPrincipalesCompatibilidad = await Promise.all(
       compatibilidad.documentosOperativosPrincipales.map((documento) =>
         this.mapDocumentoOperativoPrincipal(documento),
       ),
     );
+
+    const documentosOperativosPrincipalesPersistidos =
+      await this.mapDocumentosOperativosPrincipalesPersistidosPorContenedor(
+        contenedorPersistido?.id ? Number(contenedorPersistido.id) : null,
+        documentosOperativosPrincipalesCompatibilidad,
+        id,
+      );
+
+    const documentosOperativosPrincipales = [
+      ...documentosOperativosPrincipalesCompatibilidad,
+      ...documentosOperativosPrincipalesPersistidos,
+    ];
 
     const gruposFactura = await Promise.all(
       compatibilidad.gruposFactura.map((grupo) => this.mapGrupoFactura(grupo)),
@@ -103,6 +119,106 @@ export class WorkspaceDocumentalV2UseCase {
   ): Promise<DocumentoOperativoPrincipalWorkspaceV2> {
     const persistido = await this.documentosOperativos.buscarPorDocumentoId(documento.documentoId);
     return this.wrap(documento, persistido);
+  }
+
+  private async mapDocumentosOperativosPrincipalesPersistidosPorContenedor(
+    contenedorOperativoId: number | null,
+    documentosYaMapeados: DocumentoOperativoPrincipalWorkspaceV2[],
+    expedienteId: number,
+  ): Promise<DocumentoOperativoPrincipalWorkspaceV2[]> {
+    if (!contenedorOperativoId) return [];
+
+    const persistidos =
+      await this.documentosOperativos.listarActivosPorContenedorOperativoId(contenedorOperativoId);
+
+    const documentosYaIncluidos = new Set(
+      documentosYaMapeados
+        .map((documento) => {
+          const persistidoDocumentoId = documento.persistido?.documentoId;
+          const vistaDocumentoId = documento.vista?.documentoId;
+
+          return Number(persistidoDocumentoId ?? vistaDocumentoId);
+        })
+        .filter((documentoId) => Number.isInteger(documentoId) && documentoId > 0),
+    );
+
+    const soloV2 = persistidos.filter(
+      (principal) => !documentosYaIncluidos.has(Number(principal.documentoId)),
+    );
+
+    return Promise.all(
+      soloV2.map((principal) =>
+        this.mapDocumentoOperativoPrincipalPersistido(principal, expedienteId),
+      ),
+    );
+  }
+
+  private async mapDocumentoOperativoPrincipalPersistido(
+    principal: DocumentoOperativoPrincipalRow,
+    expedienteId: number,
+  ): Promise<DocumentoOperativoPrincipalWorkspaceV2> {
+    const documento = await this.documentosExistentes.buscarPorId(Number(principal.documentoId));
+
+    const vista: DocumentoOperativoPrincipalCompatibilidadView = {
+      documentoId: Number(principal.documentoId),
+      tipoPrincipal: String(principal.tipoPrincipal ?? '').trim().toUpperCase(),
+      esPrincipalActivo: Boolean(principal.esPrincipalActivo),
+      estado: documento?.estado ?? principal.estado,
+      metadata: this.buildMetadataPrincipalPersistido(principal, documento),
+      origen: {
+        modelo: 'V1',
+        expedienteId,
+        modo: 'lectura',
+        tipoRelacionV1: null,
+        esPrincipalV1: false,
+      },
+    };
+
+    return this.wrap(vista, principal);
+  }
+
+  private buildMetadataPrincipalPersistido(
+    principal: DocumentoOperativoPrincipalRow,
+    documento: DocumentoExistenteV2 | null,
+  ): JsonObject {
+    const metadataBase =
+      principal.metadata && typeof principal.metadata === 'object'
+        ? (principal.metadata as JsonObject)
+        : {};
+
+    const compatibilidadBase =
+      metadataBase.compatibilidad &&
+      typeof metadataBase.compatibilidad === 'object' &&
+      !Array.isArray(metadataBase.compatibilidad)
+        ? (metadataBase.compatibilidad as JsonObject)
+        : {};
+
+    return {
+      ...metadataBase,
+      compatibilidad: {
+        ...compatibilidadBase,
+        origen: 'V2',
+        documentoOperativoPrincipalId: principal.id,
+        documentoV1: documento ? this.buildDocumentoV1Metadata(documento) : null,
+      },
+    };
+  }
+
+  private buildDocumentoV1Metadata(documento: DocumentoExistenteV2): JsonObject {
+    return {
+      documentoId: documento.id,
+      tipoDocumental: documento.tipoDocumental,
+      rucEmisor: documento.rucEmisor,
+      razonSocialEmisor: documento.razonSocialEmisor,
+      serie: documento.serie,
+      numero: documento.numero,
+      claveDocumental: documento.claveDocumental,
+      estado: documento.estado,
+      fechaEmision: documento.fechaEmision,
+      moneda: documento.moneda,
+      montoTotal: documento.montoTotal,
+      nombreArchivo: documento.nombreArchivo,
+    };
   }
 
   private async mapGrupoFactura(

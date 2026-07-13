@@ -16,6 +16,8 @@ export class DocumentoOperativoPrincipalService {
     private readonly contenedorRepository: ContenedorOperativoRepository,
   ) {}
 
+  
+
   async crear(input: CrearDocumentoOperativoPrincipalInput): Promise<DocumentoOperativoPrincipalRow> {
     const data = this.normalizeCrearInput(input);
     const contenedor = await this.contenedorRepository.buscarPorId(data.contenedorOperativoId);
@@ -61,6 +63,13 @@ export class DocumentoOperativoPrincipalService {
   async listarPorContenedor(contenedorOperativoId: number): Promise<DocumentoOperativoPrincipalRow[]> {
     const id = this.normalizeId(contenedorOperativoId, 'contenedorOperativoId');
     return this.repository.listarPorContenedor(id);
+  }
+
+  async listarActivosPorContenedorOperativoId(
+    contenedorOperativoId: number,
+  ): Promise<DocumentoOperativoPrincipalRow[]> {
+    const id = this.normalizeId(contenedorOperativoId, 'contenedorOperativoId');
+    return this.repository.listarActivosPorContenedorOperativoId(id);
   }
 
   async actualizar(input: ActualizarDocumentoOperativoPrincipalInput): Promise<DocumentoOperativoPrincipalRow> {

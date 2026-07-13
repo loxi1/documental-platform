@@ -74,6 +74,10 @@ describe('WorkspaceDocumentalV2UseCase', () => {
   };
   const documentosOperativos = {
     buscarPorDocumentoId: jest.fn(),
+    listarActivosPorContenedorOperativoId: jest.fn(),
+  };
+  const documentosExistentes = {
+    buscarPorId: jest.fn(),
   };
   const gruposFactura = {
     buscarPorFacturaDocumentoId: jest.fn(),
@@ -89,10 +93,15 @@ describe('WorkspaceDocumentalV2UseCase', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+
+    documentosOperativos.listarActivosPorContenedorOperativoId.mockResolvedValue([]);
+    documentosExistentes.buscarPorId.mockResolvedValue(null);
+
     useCase = new WorkspaceDocumentalV2UseCase(
       adapter as any,
       contenedores as any,
       documentosOperativos as any,
+      documentosExistentes as any,
       gruposFactura as any,
       grupoFacturaDocumentos as any,
       viewMapper as any,
@@ -116,6 +125,7 @@ describe('WorkspaceDocumentalV2UseCase', () => {
     expect(documentosOperativos.buscarPorDocumentoId).toHaveBeenCalledWith(1);
     expect(gruposFactura.buscarPorFacturaDocumentoId).toHaveBeenCalledWith(2);
     expect(viewMapper.enriquecer).toHaveBeenCalledTimes(1);
+    expect(documentosOperativos.listarActivosPorContenedorOperativoId).toHaveBeenCalledWith(1);
     expect(result.resumen).toEqual({
       documentosOperativosPrincipales: 1,
       documentosOperativosPrincipalesPersistidos: 1,
@@ -146,6 +156,78 @@ describe('WorkspaceDocumentalV2UseCase', () => {
     expect(documentosOperativos.buscarPorDocumentoId).toHaveBeenCalledTimes(1);
     expect(gruposFactura.buscarPorFacturaDocumentoId).toHaveBeenCalledTimes(1);
     expect(grupoFacturaDocumentos.buscarActivoPorDocumentoId).not.toHaveBeenCalled();
+
+    expect(documentosOperativos.listarActivosPorContenedorOperativoId).not.toHaveBeenCalled();
+    expect(documentosExistentes.buscarPorId).not.toHaveBeenCalled();
+  });
+
+  it('incluye documentos operativos principales V2 persistidos aunque V1 no traiga principal', async () => {
+    const compatibilidadSinPrincipal = {
+      ...compatibilidadBase,
+      documentosOperativosPrincipales: [],
+    };
+
+    adapter.construirVistaV2DesdeExpedienteV1.mockResolvedValue(compatibilidadSinPrincipal);
+    contenedores.buscarPorClave.mockResolvedValue({
+      id: 2,
+      empresaCodigo: 'BBTI',
+      clienteDestinoId: 2,
+      tipoContexto: 'expediente_v1',
+      codigo: '900003',
+      estado: 'activo',
+    });
+
+    documentosOperativos.buscarPorDocumentoId.mockResolvedValue(null);
+    documentosOperativos.listarActivosPorContenedorOperativoId.mockResolvedValue([
+      {
+        id: 3,
+        contenedorOperativoId: 2,
+        documentoId: 910001,
+        tipoPrincipal: 'OC',
+        esPrincipalActivo: true,
+        estado: 'activo',
+        metadata: {},
+        creadoPor: 1,
+        creadoEn: '2026-07-13 13:00:00+00',
+        actualizadoPor: null,
+        actualizadoEn: null,
+        anuladoPor: null,
+        anuladoEn: null,
+        motivoAnulacion: null,
+      },
+    ]);
+
+    documentosExistentes.buscarPorId.mockResolvedValue({
+      id: 910001,
+      clienteAbreviatura: 'BBTI',
+      tipoDocumental: 'OC',
+      rucEmisor: '20100011111',
+      razonSocialEmisor: 'PROVEEDOR SANDBOX OC A S.A.C.',
+      serie: null,
+      numero: 'OC-900001',
+      claveDocumental: 'BBTI|OC|OC-900001',
+      estado: 'confirmado',
+      fechaEmision: '2026-07-01',
+      moneda: 'PEN',
+      montoTotal: 1200,
+      nombreArchivo: 'OC_OC-900001.pdf',
+    });
+
+    gruposFactura.buscarPorFacturaDocumentoId.mockResolvedValue(null);
+
+    const result = await useCase.construirDesdeExpedienteV1(900003);
+
+    expect(documentosOperativos.buscarPorDocumentoId).not.toHaveBeenCalled();
+    expect(documentosOperativos.listarActivosPorContenedorOperativoId).toHaveBeenCalledWith(2);
+    expect(documentosExistentes.buscarPorId).toHaveBeenCalledWith(910001);
+
+    expect(result.documentosOperativosPrincipales).toHaveLength(1);
+    expect(result.documentosOperativosPrincipales[0].estadoPersistencia).toBe('persistido');
+    expect(result.documentosOperativosPrincipales[0].persistido?.id).toBe(3);
+    expect(result.documentosOperativosPrincipales[0].persistido?.documentoId).toBe(910001);
+
+    expect(result.resumen.documentosOperativosPrincipales).toBe(1);
+    expect(result.resumen.documentosOperativosPrincipalesPersistidos).toBe(1);
   });
 
   it('rechaza expedienteId inválido', async () => {

@@ -155,6 +155,34 @@ export class DocumentoOperativoPrincipalRepository {
     return (rows[0] as unknown as DocumentoOperativoPrincipalRow | undefined) ?? null;
   }
 
+  async listarActivosPorContenedorOperativoId(
+    contenedorOperativoId: number,
+  ): Promise<DocumentoOperativoPrincipalRow[]> {
+    const rows = await sql`
+      SELECT
+        id,
+        contenedor_operativo_id AS "contenedorOperativoId",
+        documento_id AS "documentoId",
+        tipo_principal AS "tipoPrincipal",
+        es_principal_activo AS "esPrincipalActivo",
+        estado,
+        metadata,
+        creado_por AS "creadoPor",
+        creado_en AS "creadoEn",
+        actualizado_por AS "actualizadoPor",
+        actualizado_en AS "actualizadoEn",
+        anulado_por AS "anuladoPor",
+        anulado_en AS "anuladoEn",
+        motivo_anulacion AS "motivoAnulacion"
+      FROM documentos.documentos_operativos_principales
+      WHERE contenedor_operativo_id = ${contenedorOperativoId}::bigint
+        AND estado = 'activo'
+      ORDER BY es_principal_activo DESC, creado_en DESC, id DESC
+    `;
+
+    return rows as unknown as DocumentoOperativoPrincipalRow[];
+  }
+
   async anular(params: { id: number; usuarioId?: number | null; motivo?: string | null }): Promise<DocumentoOperativoPrincipalRow | null> {
     const rows = await sql`
       UPDATE documentos.documentos_operativos_principales
