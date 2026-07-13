@@ -19,6 +19,7 @@ import { GrupoFacturaService } from './grupo-factura.service';
 import { WorkspaceDocumentalV2UseCase } from './use-cases/workspace-documental-v2.usecase';
 
 import { AsociarDocumentoPrincipalV2UseCase } from './use-cases/asociar-documento-principal-v2.usecase';
+import { AsociarGrupoFacturaV2UseCase } from './use-cases/asociar-grupo-factura-v2.usecase';
 import { DocumentoExistenteReadonlyRepository } from './documento-existente-readonly.repository';
 
 @ApiTags('documental-v2')
@@ -31,6 +32,7 @@ export class DocumentalV2Controller {
     private readonly grupoFacturaDocumentos: GrupoFacturaDocumentoService,
     private readonly workspaceDocumentalV2: WorkspaceDocumentalV2UseCase,
     private readonly asociarDocumentoPrincipalV2UseCase: AsociarDocumentoPrincipalV2UseCase,
+    private readonly asociarGrupoFacturaV2UseCase: AsociarGrupoFacturaV2UseCase,
     private readonly documentoExistenteReadonlyRepository: DocumentoExistenteReadonlyRepository,
   ) {}
 
@@ -306,6 +308,69 @@ export class DocumentalV2Controller {
       nombreArchivo: documento.nombreArchivo,
       yaEsPrincipalV2: documento.yaEsPrincipalV2,
     }));
+  }
+
+
+
+  @ApiOperation({ summary: 'Listar Facturas candidatas para crear Grupo de Factura V2' })
+  @Get('facturas-candidatas')
+  async listarFacturasCandidatas(
+    @Query('documentoOperativoPrincipalId') documentoOperativoPrincipalId: string,
+    @Query('texto') texto?: string,
+    @Query('pagina') pagina?: string,
+    @Query('limite') limite?: string,
+    @Headers('x-user-id') userId?: string,
+    @Headers('x-user-email') userEmail?: string,
+    @Headers('x-workspace-id') workspaceId?: string,
+    @Headers('x-empresa-codigo') empresaCodigo?: string,
+    @Headers('x-cliente-destino-id') clienteDestinoId?: string,
+    @Headers('x-request-id') requestId?: string,
+    @Headers('x-correlation-id') correlationId?: string,
+  ) {
+    return this.asociarGrupoFacturaV2UseCase.listarFacturasCandidatas({
+      documentoOperativoPrincipalId: Number(documentoOperativoPrincipalId),
+      texto,
+      pagina: pagina ? Number(pagina) : undefined,
+      limite: limite ? Number(limite) : undefined,
+      usuario: {
+        id: userId ? Number(userId) : null,
+        email: userEmail ?? null,
+        workspaceId: workspaceId ? Number(workspaceId) : null,
+        empresaCodigo: empresaCodigo ?? null,
+        clienteDestinoId: clienteDestinoId ? Number(clienteDestinoId) : null,
+        requestId: requestId ?? null,
+        correlationId: correlationId ?? null,
+        origen: 'api-gateway',
+      },
+    });
+  }
+
+  @ApiOperation({ summary: 'Asociar Factura existente creando Grupo de Factura V2' })
+  @Post('grupos-factura/asociar')
+  async asociarGrupoFactura(
+    @Body() dto: any,
+    @Headers('x-user-id') userId?: string,
+    @Headers('x-user-email') userEmail?: string,
+    @Headers('x-workspace-id') workspaceId?: string,
+    @Headers('x-empresa-codigo') empresaCodigo?: string,
+    @Headers('x-cliente-destino-id') clienteDestinoId?: string,
+    @Headers('x-request-id') requestId?: string,
+    @Headers('x-correlation-id') correlationId?: string,
+  ) {
+    return this.asociarGrupoFacturaV2UseCase.execute({
+      documentoOperativoPrincipalId: Number(dto.documentoOperativoPrincipalId),
+      facturaDocumentoId: Number(dto.facturaDocumentoId),
+      usuario: {
+        id: userId ? Number(userId) : null,
+        email: userEmail ?? null,
+        workspaceId: workspaceId ? Number(workspaceId) : null,
+        empresaCodigo: empresaCodigo ?? null,
+        clienteDestinoId: clienteDestinoId ? Number(clienteDestinoId) : null,
+        requestId: requestId ?? null,
+        correlationId: correlationId ?? null,
+        origen: 'api-gateway',
+      },
+    });
   }
 
   @ApiOperation({ summary: 'Anular vínculo de documento con Grupo de Factura V2' })

@@ -81,6 +81,7 @@ describe('WorkspaceDocumentalV2UseCase', () => {
   };
   const gruposFactura = {
     buscarPorFacturaDocumentoId: jest.fn(),
+    listarPorDocumentoOperativoPrincipal: jest.fn(),
   };
   const grupoFacturaDocumentos = {
     buscarActivoPorDocumentoId: jest.fn(),
@@ -96,6 +97,7 @@ describe('WorkspaceDocumentalV2UseCase', () => {
 
     documentosOperativos.listarActivosPorContenedorOperativoId.mockResolvedValue([]);
     documentosExistentes.buscarPorId.mockResolvedValue(null);
+    gruposFactura.listarPorDocumentoOperativoPrincipal.mockResolvedValue([]);
 
     useCase = new WorkspaceDocumentalV2UseCase(
       adapter as any,
@@ -233,6 +235,104 @@ describe('WorkspaceDocumentalV2UseCase', () => {
     expect(result.resumen.documentosOperativosPrincipalesPersistidos).toBe(1);
     expect(result.advertencias).toHaveLength(0);
     expect(result.resumen.advertencias).toBe(0);
+  });
+
+  it('incluye Grupos de Factura V2 persistidos aunque V1 no traiga grupo base', async () => {
+    const compatibilidadSinGrupo = {
+      ...compatibilidadBase,
+      gruposFactura: [],
+    };
+
+    adapter.construirVistaV2DesdeExpedienteV1.mockResolvedValue(compatibilidadSinGrupo);
+    contenedores.buscarPorClave.mockResolvedValue({
+      id: 2,
+      empresaCodigo: 'BBTI',
+      clienteDestinoId: 2,
+      tipoContexto: 'expediente_v1',
+      codigo: '900003',
+      estado: 'activo',
+    });
+
+    documentosOperativos.buscarPorDocumentoId.mockResolvedValue(null);
+    documentosOperativos.listarActivosPorContenedorOperativoId.mockResolvedValue([
+      {
+        id: 3,
+        contenedorOperativoId: 2,
+        documentoId: 910001,
+        tipoPrincipal: 'OC',
+        esPrincipalActivo: true,
+        estado: 'activo',
+        metadata: {},
+        creadoPor: 1,
+        creadoEn: '2026-07-13 13:00:00+00',
+        actualizadoPor: null,
+        actualizadoEn: null,
+        anuladoPor: null,
+        anuladoEn: null,
+        motivoAnulacion: null,
+      },
+    ]);
+
+    gruposFactura.buscarPorFacturaDocumentoId.mockResolvedValue(null);
+    gruposFactura.listarPorDocumentoOperativoPrincipal.mockResolvedValue([
+      {
+        id: 4,
+        documentoOperativoPrincipalId: 3,
+        facturaDocumentoId: 910002,
+        estado: 'pendiente_revision',
+        metadata: {},
+        creadoPor: 1,
+        creadoEn: '2026-07-13 13:10:00+00',
+        actualizadoPor: null,
+        actualizadoEn: null,
+        anuladoPor: null,
+        anuladoEn: null,
+        motivoAnulacion: null,
+      },
+    ]);
+
+    documentosExistentes.buscarPorId.mockResolvedValueOnce({
+      id: 910001,
+      clienteAbreviatura: 'BBTI',
+      tipoDocumental: 'OC',
+      rucEmisor: '20100011111',
+      razonSocialEmisor: 'PROVEEDOR SANDBOX OC A S.A.C.',
+      serie: null,
+      numero: 'OC-900001',
+      claveDocumental: 'BBTI|OC|OC-900001',
+      estado: 'confirmado',
+      fechaEmision: '2026-07-01',
+      moneda: 'PEN',
+      montoTotal: 1500,
+      nombreArchivo: 'OC_OC-900001.pdf',
+    }).mockResolvedValueOnce({
+      id: 910002,
+      clienteAbreviatura: 'BBTI',
+      tipoDocumental: 'FACTURA',
+      rucEmisor: '20100022222',
+      razonSocialEmisor: 'PROVEEDOR SANDBOX FACTURA A S.A.C.',
+      serie: 'F001',
+      numero: '00009001',
+      claveDocumental: 'BBTI|FACTURA|F001|00009001',
+      estado: 'confirmado',
+      fechaEmision: '2026-07-02',
+      moneda: 'PEN',
+      montoTotal: 1800,
+      nombreArchivo: 'FACTURA_F001-00009001.pdf',
+    });
+
+    const result = await useCase.construirDesdeExpedienteV1(900003);
+
+    expect(gruposFactura.listarPorDocumentoOperativoPrincipal).toHaveBeenCalledWith(3);
+    expect(documentosExistentes.buscarPorId).toHaveBeenCalledWith(910002);
+    expect(result.gruposFactura).toHaveLength(1);
+    expect(result.gruposFactura[0].estadoPersistencia).toBe('persistido');
+    expect(Number(result.gruposFactura[0].persistido?.id)).toBe(4);
+    expect(Number(result.gruposFactura[0].persistido?.facturaDocumentoId)).toBe(910002);
+    expect(result.gruposFactura[0].documentos).toHaveLength(0);
+    expect(result.resumen.gruposFactura).toBe(1);
+    expect(result.resumen.gruposFacturaPersistidos).toBe(1);
+    expect(result.resumen.documentosGrupoFactura).toBe(0);
   });
 
   it('rechaza expedienteId inválido', async () => {

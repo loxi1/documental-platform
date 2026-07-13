@@ -42,3 +42,15 @@ export type BuscarDocumentosCandidatosPrincipalDto = {
   estado?: string;
   limit?: number | string;
 };
+
+export type AsociarGrupoFacturaV2Dto = {
+  documentoOperativoPrincipalId: number;
+  facturaDocumentoId: number;
+};
+
+export type BuscarFacturasCandidatasGrupoFacturaDto = {
+  documentoOperativoPrincipalId: number | string;
+  texto?: string;
+  pagina?: number | string;
+  limite?: number | string;
+};

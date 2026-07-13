@@ -45,6 +45,7 @@ export class DocumentalV2GatewayController {
     return {
       ...(authorization ? { authorization } : {}),
       ...(requestId ? { [REQUEST_ID_HEADER]: requestId } : {}),
+      ...(requestId ? { 'x-correlation-id': requestId } : {}),
     };
   }
 
@@ -137,6 +138,67 @@ export class DocumentalV2GatewayController {
     try {
       const response = await axios.post(
         `${this.getBaseUrl()}/documental-v2/documentos-operativos-principales/asociar`,
+        body,
+        {
+          headers: this.buildDocumentosForwardHeaders(
+            authorization,
+            requestId,
+            contexto,
+          ),
+        },
+      );
+
+      return this.unwrap(response);
+    } catch (error: any) {
+      this.throwUpstreamHttpException(error);
+    }
+  }
+
+
+  @ApiOperation({
+    summary: 'Listar facturas candidatas para crear Grupo de Factura V2',
+  })
+  @Get('facturas-candidatas')
+  async listarFacturasCandidatas(
+    @Headers('authorization') authorization: string | undefined,
+    @Headers(REQUEST_ID_HEADER) requestId: string | undefined,
+    @Query() query: any,
+  ) {
+    const contexto = await this.validateAuthorization(authorization);
+
+    try {
+      const response = await axios.get(
+        `${this.getBaseUrl()}/documental-v2/facturas-candidatas`,
+        {
+          params: query,
+          headers: this.buildDocumentosForwardHeaders(
+            authorization,
+            requestId,
+            contexto,
+          ),
+        },
+      );
+
+      return this.unwrap(response);
+    } catch (error: any) {
+      this.throwUpstreamHttpException(error);
+    }
+  }
+
+  @ApiOperation({
+    summary: 'Crear o asociar Grupo de Factura V2 desde Factura fundadora',
+  })
+  @Post('grupos-factura/asociar')
+  async asociarGrupoFactura(
+    @Headers('authorization') authorization: string | undefined,
+    @Headers(REQUEST_ID_HEADER) requestId: string | undefined,
+    @Body() body: any,
+  ) {
+    const contexto = await this.validateAuthorization(authorization);
+
+    try {
+      const response = await axios.post(
+        `${this.getBaseUrl()}/documental-v2/grupos-factura/asociar`,
         body,
         {
           headers: this.buildDocumentosForwardHeaders(

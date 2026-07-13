@@ -74,9 +74,20 @@ export class WorkspaceDocumentalV2UseCase {
       documentosOperativosPrincipales,
     );
 
-    const gruposFactura = await Promise.all(
+    const gruposFacturaCompatibilidad = await Promise.all(
       compatibilidad.gruposFactura.map((grupo) => this.mapGrupoFactura(grupo)),
     );
+
+    const gruposFacturaPersistidos = await this.mapGruposFacturaPersistidosPorPrincipales(
+      documentosOperativosPrincipales,
+      gruposFacturaCompatibilidad,
+      id,
+    );
+
+    const gruposFactura = [
+      ...gruposFacturaCompatibilidad,
+      ...gruposFacturaPersistidos,
+    ];
 
     const adjuntosNoClasificados = await Promise.all(
       compatibilidad.adjuntosNoClasificados.map((adjunto) => this.mapAdjuntoNoClasificado(adjunto)),
@@ -223,6 +234,106 @@ export class WorkspaceDocumentalV2UseCase {
       moneda: documento.moneda,
       montoTotal: documento.montoTotal,
       nombreArchivo: documento.nombreArchivo,
+    };
+  }
+
+
+  private async mapGruposFacturaPersistidosPorPrincipales(
+    documentosOperativosPrincipales: DocumentoOperativoPrincipalWorkspaceV2[],
+    gruposYaMapeados: GrupoFacturaWorkspaceV2[],
+    expedienteId: number,
+  ): Promise<GrupoFacturaWorkspaceV2[]> {
+    const principalesPersistidos = documentosOperativosPrincipales
+      .map((principal) => principal.persistido)
+      .filter((principal): principal is DocumentoOperativoPrincipalRow => Boolean(principal));
+
+    if (principalesPersistidos.length === 0) return [];
+
+    const facturasYaIncluidas = new Set(
+      gruposYaMapeados
+        .map((grupo) => {
+          const persistidoFacturaId = grupo.persistido?.facturaDocumentoId;
+          const vistaFacturaId = grupo.vista?.facturaDocumentoId;
+
+          return Number(persistidoFacturaId ?? vistaFacturaId);
+        })
+        .filter((facturaDocumentoId) => Number.isInteger(facturaDocumentoId) && facturaDocumentoId > 0),
+    );
+
+    const gruposPorPrincipal = await Promise.all(
+      principalesPersistidos.map(async (principal) => {
+        const grupos = await this.gruposFactura.listarPorDocumentoOperativoPrincipal(
+          Number(principal.id),
+        );
+
+        return grupos.map((grupo) => ({ grupo, principal }));
+      }),
+    );
+
+    const gruposPersistidos = gruposPorPrincipal
+      .flat()
+      .filter(({ grupo }) => !facturasYaIncluidas.has(Number(grupo.facturaDocumentoId)));
+
+    return Promise.all(
+      gruposPersistidos.map(({ grupo, principal }) =>
+        this.mapGrupoFacturaPersistido(grupo, principal, expedienteId),
+      ),
+    );
+  }
+
+  private async mapGrupoFacturaPersistido(
+    grupo: GrupoFacturaRow,
+    principal: DocumentoOperativoPrincipalRow,
+    expedienteId: number,
+  ): Promise<GrupoFacturaWorkspaceV2> {
+    const factura = await this.documentosExistentes.buscarPorId(Number(grupo.facturaDocumentoId));
+
+    const vista: GrupoFacturaCompatibilidadView = {
+      facturaDocumentoId: Number(grupo.facturaDocumentoId),
+      documentoOperativoPrincipalDocumentoId: Number(principal.documentoId),
+      estado: 'pendiente_revision',
+      metadata: this.buildMetadataGrupoFacturaPersistido(grupo, factura),
+      documentos: [],
+      origen: {
+        modelo: 'V1',
+        expedienteId,
+        modo: 'lectura',
+        tipoDocumentalV1: 'FACTURA',
+        tipoRelacionV1: null,
+      },
+    };
+
+    return {
+      ...this.wrap(vista, grupo),
+      documentos: [],
+    };
+  }
+
+  private buildMetadataGrupoFacturaPersistido(
+    grupo: GrupoFacturaRow,
+    factura: DocumentoExistenteV2 | null,
+  ): JsonObject {
+    const metadataBase =
+      grupo.metadata && typeof grupo.metadata === 'object'
+        ? (grupo.metadata as JsonObject)
+        : {};
+
+    const compatibilidadBase =
+      metadataBase.compatibilidad &&
+      typeof metadataBase.compatibilidad === 'object' &&
+      !Array.isArray(metadataBase.compatibilidad)
+        ? (metadataBase.compatibilidad as JsonObject)
+        : {};
+
+    return {
+      ...metadataBase,
+      compatibilidad: {
+        ...compatibilidadBase,
+        origen: 'V2',
+        grupoFacturaId: grupo.id,
+        documentoFundador: 'FACTURA',
+        documentoV1: factura ? this.buildDocumentoV1Metadata(factura) : null,
+      },
     };
   }
 

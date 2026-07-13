@@ -117,4 +117,59 @@ export class DocumentoExistenteReadonlyRepository {
       yaEsPrincipalV2: row.ya_es_principal_v2 === true,
     }));
   }
+
+  async listarFacturasCandidatas(input: {
+    empresaCodigo: string;
+    texto?: string;
+    pagina?: number;
+    limite?: number;
+  }): Promise<Array<DocumentoExistenteV2 & { yaTieneGrupoFacturaV2: boolean }>> {
+    const texto = input.texto?.trim();
+    const pagina = Math.max(input.pagina ?? 1, 1);
+    const limite = Math.min(Math.max(input.limite ?? 20, 1), 50);
+    const offset = (pagina - 1) * limite;
+
+    const rows = await sql<any[]>`
+      SELECT
+        d.id,
+        d.cliente_abreviatura,
+        d.tipo_documental,
+        d.ruc_emisor,
+        d.razon_social_emisor,
+        d.serie,
+        d.numero,
+        d.clave_documental,
+        d.estado,
+        d.fecha_emision,
+        d.moneda,
+        d.monto_total,
+        da.nombre_archivo,
+        CASE WHEN gf.id IS NULL THEN false ELSE true END AS ya_tiene_grupo_factura_v2
+      FROM documentos.documentos d
+      LEFT JOIN documentos.documentos_archivos da
+        ON da.documento_id = d.id
+       AND da.es_version_actual = true
+      LEFT JOIN documentos.grupos_factura gf
+        ON gf.factura_documento_id = d.id
+      WHERE d.cliente_abreviatura = ${input.empresaCodigo}
+        AND d.tipo_documental = 'FACTURA'
+        AND d.estado = 'confirmado'
+        AND (
+          ${texto ?? null}::text IS NULL
+          OR d.numero ILIKE '%' || ${texto ?? ''} || '%'
+          OR d.serie ILIKE '%' || ${texto ?? ''} || '%'
+          OR d.razon_social_emisor ILIKE '%' || ${texto ?? ''} || '%'
+          OR d.ruc_emisor ILIKE '%' || ${texto ?? ''} || '%'
+        )
+      ORDER BY d.fecha_emision DESC NULLS LAST, d.id DESC
+      LIMIT ${limite}
+      OFFSET ${offset}
+    `;
+
+    return rows.map((row) => ({
+      ...mapDocumento(row),
+      yaTieneGrupoFacturaV2: row.ya_tiene_grupo_factura_v2 === true,
+    }));
+  }
+
 }
