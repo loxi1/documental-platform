@@ -18,7 +18,7 @@ export function WorkspaceHeader({ id }: { id: string | number }) {
           <h1 className="text-2xl font-bold tracking-tight">Workspace Documental V2</h1>
           <Badge variant="secondary" className="gap-1">
             <BadgeCheck className="h-3 w-3" />
-            Solo lectura
+            Operación controlada
           </Badge>
         </div>
         <p className="mt-1 text-sm text-muted-foreground">
