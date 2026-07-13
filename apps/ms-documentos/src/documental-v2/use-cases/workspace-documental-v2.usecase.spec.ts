@@ -165,6 +165,9 @@ describe('WorkspaceDocumentalV2UseCase', () => {
     const compatibilidadSinPrincipal = {
       ...compatibilidadBase,
       documentosOperativosPrincipales: [],
+      advertencias: [
+        'EXPEDIENTE_V1_SIN_DOCUMENTO_PRINCIPAL: Falta asociar un documento operativo principal.',
+      ],
     };
 
     adapter.construirVistaV2DesdeExpedienteV1.mockResolvedValue(compatibilidadSinPrincipal);
@@ -228,9 +231,12 @@ describe('WorkspaceDocumentalV2UseCase', () => {
 
     expect(result.resumen.documentosOperativosPrincipales).toBe(1);
     expect(result.resumen.documentosOperativosPrincipalesPersistidos).toBe(1);
+    expect(result.advertencias).toHaveLength(0);
+    expect(result.resumen.advertencias).toBe(0);
   });
 
   it('rechaza expedienteId inválido', async () => {
     await expect(useCase.construirDesdeExpedienteV1(0)).rejects.toBeInstanceOf(BadRequestException);
   });
+
 });

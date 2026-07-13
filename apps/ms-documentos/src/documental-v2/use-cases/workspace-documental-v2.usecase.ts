@@ -69,6 +69,11 @@ export class WorkspaceDocumentalV2UseCase {
       ...documentosOperativosPrincipalesPersistidos,
     ];
 
+    const advertencias = this.filtrarAdvertenciasResueltasPorPersistencia(
+      compatibilidad.advertencias,
+      documentosOperativosPrincipales,
+    );
+
     const gruposFactura = await Promise.all(
       compatibilidad.gruposFactura.map((grupo) => this.mapGrupoFactura(grupo)),
     );
@@ -92,7 +97,7 @@ export class WorkspaceDocumentalV2UseCase {
       documentosOperativosPrincipales,
       gruposFactura,
       adjuntosNoClasificados,
-      advertencias: compatibilidad.advertencias,
+      advertencias,
       resumen: {
         documentosOperativosPrincipales: documentosOperativosPrincipales.length,
         documentosOperativosPrincipalesPersistidos: documentosOperativosPrincipales.filter(
@@ -107,7 +112,7 @@ export class WorkspaceDocumentalV2UseCase {
           (documento) => documento.estadoPersistencia === 'persistido',
         ).length,
         adjuntosNoClasificados: adjuntosNoClasificados.length,
-        advertencias: compatibilidad.advertencias.length,
+        advertencias: advertencias.length,
       },
     };
 
@@ -262,6 +267,33 @@ export class WorkspaceDocumentalV2UseCase {
       vista,
       persistido,
     };
+  }
+
+  private filtrarAdvertenciasResueltasPorPersistencia(
+    advertencias: string[],
+    documentosOperativosPrincipales: DocumentoOperativoPrincipalWorkspaceV2[],
+  ): string[] {
+    const existePrincipal = documentosOperativosPrincipales.some(
+      (documento) =>
+        documento.estadoPersistencia === 'persistido' ||
+        Boolean(documento.persistido) ||
+        Boolean(documento.vista?.documentoId),
+    );
+
+    if (!existePrincipal) {
+      return advertencias;
+    }
+
+    return advertencias.filter((advertencia) => {
+      const texto = String(advertencia ?? '').toUpperCase();
+
+      return !(
+        texto.includes('SIN_DOCUMENTO_PRINCIPAL') ||
+        texto.includes('FALTA_ASOCIAR_DOCUMENTO_OPERATIVO_PRINCIPAL') ||
+        texto.includes('FALTA ASOCIAR UN DOCUMENTO OPERATIVO PRINCIPAL') ||
+        texto.includes('EXPEDIENTE_V1_SIN_DOCUMENTO_PRINCIPAL')
+      );
+    });
   }
 
   private normalizeId(value: unknown, field: string): number {
