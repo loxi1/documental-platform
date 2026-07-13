@@ -1,7 +1,10 @@
 import {
   Controller,
   ForbiddenException,
+  Body,
+  Post,
   Get,
+  Query,
   Headers,
   HttpException,
   Inject,
@@ -43,6 +46,111 @@ export class DocumentalV2GatewayController {
       ...(authorization ? { authorization } : {}),
       ...(requestId ? { [REQUEST_ID_HEADER]: requestId } : {}),
     };
+  }
+
+  private buildDocumentosForwardHeaders(
+    authorization: string | undefined,
+    requestId: string | undefined,
+    payload: any,
+  ) {
+    const empresaCodigo = this.getEmpresaFromContext(payload);
+    const clienteDestinoId = this.getClienteDestinoIdFromContext(payload);
+
+    return {
+      ...this.buildForwardHeaders(authorization, requestId),
+      ...(payload?.sub ? { 'x-user-id': String(payload.sub) } : {}),
+      ...(payload?.id ? { 'x-user-id': String(payload.id) } : {}),
+      ...(payload?.email ? { 'x-user-email': String(payload.email) } : {}),
+      ...(payload?.workspaceId
+        ? { 'x-workspace-id': String(payload.workspaceId) }
+        : {}),
+      ...(empresaCodigo ? { 'x-empresa-codigo': empresaCodigo } : {}),
+      ...(clienteDestinoId
+        ? { 'x-cliente-destino-id': String(clienteDestinoId) }
+        : {}),
+    };
+  }
+
+  private assertEmpresaQueryPermitida(payload: any, empresaCodigo?: string) {
+    const empresaContexto = this.getEmpresaFromContext(payload);
+    const empresaSolicitada = String(empresaCodigo ?? '')
+      .trim()
+      .toUpperCase();
+
+    if (!empresaContexto) {
+      throw new ForbiddenException('El token no tiene empresa de workspace válida');
+    }
+
+    if (!empresaSolicitada) {
+      throw new ForbiddenException('Debe indicar empresaCodigo');
+    }
+
+    if (empresaSolicitada !== empresaContexto) {
+      throw new ForbiddenException(
+        `No tienes permiso para operar documentos de la empresa ${empresaSolicitada}`,
+      );
+    }
+  }
+
+  @ApiOperation({
+    summary: 'Listar documentos candidatos para Documento Operativo Principal V2',
+  })
+  @Get('documentos-candidatos-principal')
+  async listarCandidatosPrincipal(
+    @Headers('authorization') authorization: string | undefined,
+    @Headers(REQUEST_ID_HEADER) requestId: string | undefined,
+    @Query() query: any,
+  ) {
+    const contexto = await this.validateAuthorization(authorization);
+    this.assertEmpresaQueryPermitida(contexto, query?.empresaCodigo);
+
+    try {
+      const response = await axios.get(
+        `${this.getBaseUrl()}/documental-v2/documentos-candidatos-principal`,
+        {
+          params: query,
+          headers: this.buildDocumentosForwardHeaders(
+            authorization,
+            requestId,
+            contexto,
+          ),
+        },
+      );
+
+      return this.unwrap(response);
+    } catch (error: any) {
+      this.throwUpstreamHttpException(error);
+    }
+  }
+
+  @ApiOperation({
+    summary: 'Asociar Documento Operativo Principal V2',
+  })
+  @Post('documentos-operativos-principales/asociar')
+  async asociarDocumentoPrincipal(
+    @Headers('authorization') authorization: string | undefined,
+    @Headers(REQUEST_ID_HEADER) requestId: string | undefined,
+    @Body() body: any,
+  ) {
+    const contexto = await this.validateAuthorization(authorization);
+
+    try {
+      const response = await axios.post(
+        `${this.getBaseUrl()}/documental-v2/documentos-operativos-principales/asociar`,
+        body,
+        {
+          headers: this.buildDocumentosForwardHeaders(
+            authorization,
+            requestId,
+            contexto,
+          ),
+        },
+      );
+
+      return this.unwrap(response);
+    } catch (error: any) {
+      this.throwUpstreamHttpException(error);
+    }
   }
 
   private unwrap(response: any) {

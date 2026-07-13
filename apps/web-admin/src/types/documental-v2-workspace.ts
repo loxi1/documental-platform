@@ -170,3 +170,49 @@ export type ApiEnvelope<T> = {
   message?: string;
   error?: string;
 };
+
+export type DocumentoPrincipalCandidato = {
+  documentoId: string | number;
+  tipoDocumental?: string | null;
+  tipoDocumentalLabel?: string | null;
+  numeroDocumento?: string | null;
+  titulo?: string | null;
+  proveedorNombre?: string | null;
+  proveedorRuc?: string | null;
+  fechaEmision?: string | null;
+  montoTotal?: string | number | null;
+  moneda?: string | null;
+  estado?: string | null;
+  nombreArchivo?: string | null;
+  yaEsPrincipalV2?: boolean;
+};
+
+export type GetDocumentosCandidatosPrincipalParams = {
+  empresaCodigo: string;
+  tipoPrincipal: "OC";
+  q?: string;
+  estado?: string;
+  limit?: number;
+};
+
+export type AsociarDocumentoPrincipalV2Request = {
+  contenedorOperativoId: string | number;
+  documentoId: string | number;
+  tipoPrincipal: "OC";
+};
+
+export type DocumentoOperativoPrincipalAsociado = {
+  id: string | number;
+  contenedorOperativoId: string | number;
+  documentoId: string | number;
+  tipoPrincipal: string;
+  esPrincipalActivo?: boolean;
+  estado?: string | null;
+  vista?: WorkspaceV2Documento;
+};
+
+export type AsociarDocumentoPrincipalV2Result = {
+  documentoOperativoPrincipal: DocumentoOperativoPrincipalAsociado;
+  idempotente: boolean;
+  workspaceDebeRefrescar: boolean;
+};

@@ -1,5 +1,12 @@
 import { api } from "@/services/api";
-import type { ApiEnvelope, WorkspaceDocumentalV2 } from "@/types/documental-v2-workspace";
+import type {
+  ApiEnvelope,
+  AsociarDocumentoPrincipalV2Request,
+  AsociarDocumentoPrincipalV2Result,
+  DocumentoPrincipalCandidato,
+  GetDocumentosCandidatosPrincipalParams,
+  WorkspaceDocumentalV2,
+} from "@/types/documental-v2-workspace";
 
 function unwrapWorkspace(payload: unknown): WorkspaceDocumentalV2 {
   let current = payload as any;
@@ -27,4 +34,42 @@ export async function getWorkspaceDocumentalV2(id: string | number) {
   );
 
   return unwrapWorkspace(data);
+}
+
+
+function unwrapData<T>(payload: unknown, fallback: T): T {
+  if (payload && typeof payload === "object" && "data" in payload) {
+    const data = (payload as { data?: unknown }).data;
+    return (data ?? fallback) as T;
+  }
+
+  return (payload ?? fallback) as T;
+}
+
+export async function getDocumentosCandidatosPrincipal(params: GetDocumentosCandidatosPrincipalParams) {
+  const { data } = await api.get<ApiEnvelope<DocumentoPrincipalCandidato[]> | DocumentoPrincipalCandidato[]>(
+    "/documental-v2/documentos-candidatos-principal",
+    { params },
+  );
+
+  return unwrapData<DocumentoPrincipalCandidato[]>(data, []);
+}
+
+export async function asociarDocumentoPrincipalV2(payload: AsociarDocumentoPrincipalV2Request) {
+  const { data } = await api.post<ApiEnvelope<AsociarDocumentoPrincipalV2Result> | AsociarDocumentoPrincipalV2Result>(
+    "/documental-v2/documentos-operativos-principales/asociar",
+    payload,
+  );
+
+  return unwrapData<AsociarDocumentoPrincipalV2Result>(data, {
+    documentoOperativoPrincipal: {
+      id: "",
+      contenedorOperativoId: payload.contenedorOperativoId,
+      documentoId: payload.documentoId,
+      tipoPrincipal: payload.tipoPrincipal,
+      estado: "activo",
+    },
+    idempotente: false,
+    workspaceDebeRefrescar: true,
+  });
 }

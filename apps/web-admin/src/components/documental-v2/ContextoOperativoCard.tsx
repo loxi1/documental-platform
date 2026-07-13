@@ -3,19 +3,42 @@ import { Building2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { WorkspaceV2ContextoOperativo } from "@/types/documental-v2-workspace";
-import { textValue } from "./workspace-v2-utils";
+import { entityVista, textValue } from "./workspace-v2-utils";
 
-function contextoCodigo(contexto: WorkspaceV2ContextoOperativo) {
+type ContextoVistaRecord = Record<string, unknown>;
+
+function contextoCodigo(vista: ContextoVistaRecord) {
   return textValue(
-    contexto.codigo ?? contexto.codigoCentroCosto ?? contexto.codigo_centro_costo ?? contexto.codigoExpediente ?? contexto.codigo_expediente ?? contexto.id,
+    vista.codigo ??
+      vista.codigoCentroCosto ??
+      vista.codigo_centro_costo ??
+      vista.codigoExpediente ??
+      vista.codigo_expediente ??
+      vista.id,
   );
 }
 
-export function ContextoOperativoCard({ contexto }: { contexto: WorkspaceV2ContextoOperativo }) {
-  const empresa = textValue(contexto.empresa ?? contexto.empresaCodigo ?? contexto.empresa_codigo);
-  const cliente = textValue(contexto.clienteDestino ?? contexto.cliente_destino ?? contexto.clienteDestinoNombre ?? contexto.cliente_destino_nombre);
-  const codigo = contextoCodigo(contexto);
-  const descripcion = textValue(contexto.descripcion ?? contexto.nombre);
+export function ContextoOperativoCard({
+  contexto,
+}: {
+  contexto: WorkspaceV2ContextoOperativo;
+}) {
+  const vista = entityVista<ContextoVistaRecord>(contexto);
+
+  const empresa = textValue(
+    vista.empresa ?? vista.empresaCodigo ?? vista.empresa_codigo,
+  );
+
+  const cliente = textValue(
+    vista.clienteDestino ??
+      vista.cliente_destino ??
+      vista.clienteDestinoNombre ??
+      vista.cliente_destino_nombre,
+  );
+
+  const codigo = contextoCodigo(vista);
+  const descripcion = textValue(vista.descripcion ?? vista.nombre);
+  const estado = textValue(vista.estado, "Sin estado");
 
   return (
     <Card>
@@ -27,25 +50,33 @@ export function ContextoOperativoCard({ contexto }: { contexto: WorkspaceV2Conte
             </div>
             <CardTitle>Contexto Operativo</CardTitle>
           </div>
-          <Badge variant="outline">{textValue(contexto.estado, "Sin estado")}</Badge>
+          <Badge variant="outline">{estado}</Badge>
         </div>
       </CardHeader>
       <CardContent>
         <dl className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
           <div>
-            <dt className="text-xs font-medium uppercase text-muted-foreground">Empresa</dt>
+            <dt className="text-xs font-medium uppercase text-muted-foreground">
+              Empresa
+            </dt>
             <dd className="mt-1 font-medium">{empresa}</dd>
           </div>
           <div>
-            <dt className="text-xs font-medium uppercase text-muted-foreground">Código / Centro</dt>
+            <dt className="text-xs font-medium uppercase text-muted-foreground">
+              Código / Centro
+            </dt>
             <dd className="mt-1 font-medium">{codigo}</dd>
           </div>
           <div className="lg:col-span-2">
-            <dt className="text-xs font-medium uppercase text-muted-foreground">Descripción</dt>
+            <dt className="text-xs font-medium uppercase text-muted-foreground">
+              Descripción
+            </dt>
             <dd className="mt-1 font-medium">{descripcion}</dd>
           </div>
           <div>
-            <dt className="text-xs font-medium uppercase text-muted-foreground">Cliente destino</dt>
+            <dt className="text-xs font-medium uppercase text-muted-foreground">
+              Cliente destino
+            </dt>
             <dd className="mt-1 font-medium">{cliente}</dd>
           </div>
         </dl>

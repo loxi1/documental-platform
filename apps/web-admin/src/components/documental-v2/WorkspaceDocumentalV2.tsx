@@ -1,7 +1,7 @@
 import { Layers3 } from "lucide-react";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import type { WorkspaceDocumentalV2 as WorkspaceDocumentalV2Type } from "@/types/documental-v2-workspace";
+import type { AsociarDocumentoPrincipalV2Result, WorkspaceDocumentalV2 as WorkspaceDocumentalV2Type } from "@/types/documental-v2-workspace";
 import { AdjuntosList } from "./AdjuntosList";
 import { ContextoOperativoCard } from "./ContextoOperativoCard";
 import { DocumentoOperativoPrincipalCard } from "./DocumentoOperativoPrincipalCard";
@@ -15,7 +15,13 @@ import {
   getGruposFactura,
 } from "./workspace-v2-utils";
 
-export function WorkspaceDocumentalV2({ workspace }: { workspace: WorkspaceDocumentalV2Type }) {
+export function WorkspaceDocumentalV2({
+  workspace,
+  onRefresh,
+}: {
+  workspace: WorkspaceDocumentalV2Type;
+  onRefresh?: (result: AsociarDocumentoPrincipalV2Result) => Promise<unknown> | unknown;
+}) {
   const contexto = getContexto(workspace);
   const principal = getDocumentoPrincipal(workspace);
   const gruposFactura = getGruposFactura(workspace);
@@ -25,7 +31,7 @@ export function WorkspaceDocumentalV2({ workspace }: { workspace: WorkspaceDocum
   return (
     <div className="space-y-4">
       <ContextoOperativoCard contexto={contexto} />
-      <DocumentoOperativoPrincipalCard documento={principal} />
+      <DocumentoOperativoPrincipalCard documento={principal} contexto={contexto} onWorkspaceRefresh={onRefresh} />
 
       <Card>
         <CardHeader className="border-b">
