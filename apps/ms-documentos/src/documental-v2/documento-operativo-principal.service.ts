@@ -16,7 +16,7 @@ export class DocumentoOperativoPrincipalService {
     private readonly contenedorRepository: ContenedorOperativoRepository,
   ) {}
 
-  
+
 
   async crear(input: CrearDocumentoOperativoPrincipalInput): Promise<DocumentoOperativoPrincipalRow> {
     const data = this.normalizeCrearInput(input);

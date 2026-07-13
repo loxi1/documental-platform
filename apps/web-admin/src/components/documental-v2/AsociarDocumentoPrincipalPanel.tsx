@@ -193,7 +193,7 @@ export function AsociarDocumentoPrincipalPanel({
       ? "El Workspace no expone empresaCodigo para buscar candidatos."
       : null;
 
-  
+
   return (
     <>
       <Button disabled={disabled || Boolean(disabledReason)} onClick={() => setOpen(true)}>

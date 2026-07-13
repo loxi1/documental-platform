@@ -2,10 +2,10 @@
 
 ## Estado
 
-**Roadmap:** 2.0 — Operación Documental V2  
-**Sprint:** 2.0A  
-**Nombre:** Alta operativa de Documento Operativo Principal V2  
-**Responsable:** Maestro Sucesor II — UX / Web Admin / Frontend  
+**Roadmap:** 2.0 — Operación Documental V2
+**Sprint:** 2.0A
+**Nombre:** Alta operativa de Documento Operativo Principal V2
+**Responsable:** Maestro Sucesor II — UX / Web Admin / Frontend
 **Estado:** UX actualizado con contrato final y runtime aprobado en `ms-documentos`. React sigue bloqueado hasta validación Gateway.
 
 ---
