@@ -2,13 +2,27 @@ import { FileText } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import type { WorkspaceV2Documento } from "@/types/documental-v2-workspace";
-import { documentoLabel, getDocumentoId, getDocumentoTipo, getEstado, getFechaDocumento, getMontoDocumento } from "./workspace-v2-utils";
+import {
+  documentoLabel,
+  getDocumentoArchivo,
+  getDocumentoId,
+  getDocumentoTipo,
+  getEstado,
+  getFechaDocumento,
+  getMontoDocumento,
+} from "./workspace-v2-utils";
 
-export function AdjuntosList({ documentos }: { documentos: WorkspaceV2Documento[] }) {
+export function AdjuntosList({
+  documentos,
+  emptyLabel = "Sin adjuntos informados por el Workspace V2.",
+}: {
+  documentos: WorkspaceV2Documento[];
+  emptyLabel?: string;
+}) {
   if (!documentos.length) {
     return (
       <div className="rounded-lg border border-dashed bg-muted/20 p-3 text-sm text-muted-foreground">
-        Sin adjuntos informados por el Workspace V2.
+        {emptyLabel}
       </div>
     );
   }
@@ -32,6 +46,7 @@ export function AdjuntosList({ documentos }: { documentos: WorkspaceV2Documento[
               <p className="mt-1 text-xs text-muted-foreground">
                 Fecha: {getFechaDocumento(documento)} · Monto: {getMontoDocumento(documento)}
               </p>
+              <p className="mt-1 truncate text-xs text-muted-foreground">Archivo: {getDocumentoArchivo(documento)}</p>
             </div>
           </div>
           <Badge variant="secondary">{getEstado(documento)}</Badge>

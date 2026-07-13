@@ -27,6 +27,9 @@ export type WorkspaceV2ContextoOperativo = {
 };
 
 export type WorkspaceV2Documento = {
+  estadoPersistencia?: string | null;
+  vista?: WorkspaceV2Documento | null;
+  persistido?: WorkspaceV2Record | null;
   id?: string | number | null;
   documentoId?: string | number | null;
   documento_id?: string | number | null;
@@ -84,6 +87,9 @@ export type WorkspaceV2Documento = {
 };
 
 export type WorkspaceV2GrupoFactura = {
+  estadoPersistencia?: string | null;
+  vista?: WorkspaceV2GrupoFactura | null;
+  persistido?: WorkspaceV2Record | null;
   id?: string | number | null;
   grupoFacturaId?: string | number | null;
   grupo_factura_id?: string | number | null;
@@ -162,6 +168,50 @@ export type WorkspaceDocumentalV2 = {
   advertencias?: WorkspaceV2Advertencia[];
   resumen?: WorkspaceV2Record;
   [key: string]: unknown;
+};
+
+
+export type DocumentoGrupoFacturaCandidatoV2 = {
+  documentoId: string | number;
+  tipoDocumental?: string | null;
+  tipoDocumentalLabel?: string | null;
+  tipoRelacion: string;
+  numeroDocumento?: string | null;
+  proveedorNombre?: string | null;
+  proveedorRuc?: string | null;
+  fecha?: string | null;
+  estado?: string | null;
+  nombreArchivo?: string | null;
+  yaAsociadoGrupoV2?: boolean;
+};
+
+export type GetDocumentosCandidatosGrupoFacturaParams = {
+  grupoFacturaId: string | number;
+  tipoDocumental?: string;
+  texto?: string;
+  pagina?: number;
+  limite?: number;
+};
+
+export type AsociarDocumentoGrupoFacturaV2Request = {
+  grupoFacturaId: string | number;
+  documentoId: string | number;
+  tipoRelacion: string;
+};
+
+export type DocumentoGrupoFacturaAsociadoV2 = {
+  id: string | number;
+  grupoFacturaId: string | number;
+  documentoId: string | number;
+  tipoRelacion: string;
+  estado?: string | null;
+  vista?: WorkspaceV2Documento;
+};
+
+export type AsociarDocumentoGrupoFacturaV2Result = {
+  documentoGrupoFactura: DocumentoGrupoFacturaAsociadoV2;
+  idempotente: boolean;
+  workspaceDebeRefrescar: boolean;
 };
 
 export type ApiEnvelope<T> = {
