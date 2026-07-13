@@ -215,6 +215,66 @@ export class DocumentalV2GatewayController {
     }
   }
 
+  @ApiOperation({
+    summary: 'Listar documentos candidatos para asociar a Grupo de Factura V2',
+  })
+  @Get('documentos-candidatos-grupo')
+  async listarDocumentosCandidatosGrupo(
+    @Headers('authorization') authorization: string | undefined,
+    @Headers(REQUEST_ID_HEADER) requestId: string | undefined,
+    @Query() query: any,
+  ) {
+    const contexto = await this.validateAuthorization(authorization);
+
+    try {
+      const response = await axios.get(
+        `${this.getBaseUrl()}/documental-v2/documentos-candidatos-grupo`,
+        {
+          params: query,
+          headers: this.buildDocumentosForwardHeaders(
+            authorization,
+            requestId,
+            contexto,
+          ),
+        },
+      );
+
+      return this.unwrap(response);
+    } catch (error: any) {
+      this.throwUpstreamHttpException(error);
+    }
+  }
+
+  @ApiOperation({
+    summary: 'Asociar documento existente a Grupo de Factura V2',
+  })
+  @Post('grupos-factura/documentos/asociar')
+  async asociarDocumentoGrupoFactura(
+    @Headers('authorization') authorization: string | undefined,
+    @Headers(REQUEST_ID_HEADER) requestId: string | undefined,
+    @Body() body: any,
+  ) {
+    const contexto = await this.validateAuthorization(authorization);
+
+    try {
+      const response = await axios.post(
+        `${this.getBaseUrl()}/documental-v2/grupos-factura/documentos/asociar`,
+        body,
+        {
+          headers: this.buildDocumentosForwardHeaders(
+            authorization,
+            requestId,
+            contexto,
+          ),
+        },
+      );
+
+      return this.unwrap(response);
+    } catch (error: any) {
+      this.throwUpstreamHttpException(error);
+    }
+  }
+
   private unwrap(response: any) {
     return response?.data?.data ?? response?.data;
   }

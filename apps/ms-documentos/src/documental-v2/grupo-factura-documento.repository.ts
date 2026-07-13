@@ -95,6 +95,39 @@ export class GrupoFacturaDocumentoRepository {
     return (rows[0] as unknown as GrupoFacturaDocumentoRow | undefined) ?? null;
   }
 
+
+
+  async buscarActivoPorGrupoDocumentoRelacion(params: {
+    grupoFacturaId: number;
+    documentoId: number;
+    tipoRelacion: string;
+  }): Promise<GrupoFacturaDocumentoRow | null> {
+    const rows = await sql`
+      SELECT
+        id,
+        grupo_factura_id AS "grupoFacturaId",
+        documento_id AS "documentoId",
+        tipo_relacion AS "tipoRelacion",
+        estado,
+        metadata,
+        creado_por AS "creadoPor",
+        creado_en AS "creadoEn",
+        actualizado_por AS "actualizadoPor",
+        actualizado_en AS "actualizadoEn",
+        anulado_por AS "anuladoPor",
+        anulado_en AS "anuladoEn",
+        motivo_anulacion AS "motivoAnulacion"
+      FROM documentos.grupo_factura_documentos
+      WHERE grupo_factura_id = ${params.grupoFacturaId}::bigint
+        AND documento_id = ${params.documentoId}::bigint
+        AND tipo_relacion = ${params.tipoRelacion}::text
+        AND estado = 'activo'
+      LIMIT 1
+    `;
+
+    return (rows[0] as unknown as GrupoFacturaDocumentoRow | undefined) ?? null;
+  }
+
   async listarPorGrupoFactura(grupoFacturaId: number): Promise<GrupoFacturaDocumentoRow[]> {
     const rows = await sql`
       SELECT

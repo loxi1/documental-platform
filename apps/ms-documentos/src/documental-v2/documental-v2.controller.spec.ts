@@ -52,6 +52,11 @@ describe('DocumentalV2Controller', () => {
     listarFacturasCandidatas: jest.fn(),
   };
 
+  const asociarDocumentoGrupoFacturaV2UseCase = {
+    execute: jest.fn(),
+    listarDocumentosCandidatos: jest.fn(),
+  };
+
   const documentoExistenteReadonlyRepository = {
     listarCandidatosPrincipal: jest.fn(),
   };
@@ -68,6 +73,7 @@ describe('DocumentalV2Controller', () => {
       workspaceDocumentalV2 as any,
       asociarDocumentoPrincipalV2UseCase as any,
       asociarGrupoFacturaV2UseCase as any,
+      asociarDocumentoGrupoFacturaV2UseCase as any,
       documentoExistenteReadonlyRepository as any,
     );
   });
@@ -213,6 +219,84 @@ describe('DocumentalV2Controller', () => {
         clienteDestinoId: 2,
         requestId: 'req-1',
         correlationId: 'corr-1',
+        origen: 'api-gateway',
+      },
+    });
+  });
+
+  it('lista documentos candidatos para Grupo de Factura V2 usando el usecase operativo', async () => {
+    const esperado = [{ documentoId: 910007, tipoDocumental: 'GUIA_REMISION' }];
+    asociarDocumentoGrupoFacturaV2UseCase.listarDocumentosCandidatos.mockResolvedValue(esperado);
+
+    await expect(
+      controller.listarDocumentosCandidatosGrupo(
+        '2',
+        'GUIA_REMISION',
+        'T001',
+        '1',
+        '20',
+        '1',
+        'admin@documental.local',
+        '1',
+        'BBTI',
+        '2',
+        'req-2',
+        'corr-2',
+      ),
+    ).resolves.toBe(esperado);
+
+    expect(asociarDocumentoGrupoFacturaV2UseCase.listarDocumentosCandidatos).toHaveBeenCalledWith({
+      grupoFacturaId: 2,
+      tipoDocumental: 'GUIA_REMISION',
+      texto: 'T001',
+      pagina: 1,
+      limite: 20,
+      usuario: {
+        id: 1,
+        email: 'admin@documental.local',
+        workspaceId: 1,
+        empresaCodigo: 'BBTI',
+        clienteDestinoId: 2,
+        requestId: 'req-2',
+        correlationId: 'corr-2',
+        origen: 'api-gateway',
+      },
+    });
+  });
+
+  it('asocia un documento a Grupo de Factura V2 usando el usecase operativo', async () => {
+    const esperado = {
+      documentoGrupoFactura: { id: 1, grupoFacturaId: 2, documentoId: 910007 },
+      idempotente: false,
+      workspaceDebeRefrescar: true,
+    };
+    asociarDocumentoGrupoFacturaV2UseCase.execute.mockResolvedValue(esperado);
+
+    await expect(
+      controller.asociarDocumentoGrupoFactura(
+        { grupoFacturaId: 2, documentoId: 910007, tipoRelacion: 'adjunto_guia' },
+        '1',
+        'admin@documental.local',
+        '1',
+        'BBTI',
+        '2',
+        'req-2',
+        'corr-2',
+      ),
+    ).resolves.toBe(esperado);
+
+    expect(asociarDocumentoGrupoFacturaV2UseCase.execute).toHaveBeenCalledWith({
+      grupoFacturaId: 2,
+      documentoId: 910007,
+      tipoRelacion: 'adjunto_guia',
+      usuario: {
+        id: 1,
+        email: 'admin@documental.local',
+        workspaceId: 1,
+        empresaCodigo: 'BBTI',
+        clienteDestinoId: 2,
+        requestId: 'req-2',
+        correlationId: 'corr-2',
         origen: 'api-gateway',
       },
     });

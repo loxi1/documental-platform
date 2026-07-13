@@ -242,4 +242,129 @@ describe('DocumentalV2GatewayController', () => {
     expect(result).toEqual(respuesta);
   });
 
+
+
+  it('expone documentos candidatos de Grupo Factura por proxy controlado', async () => {
+    const { controller, nats } = buildController({
+      sub: 1,
+      email: 'admin@documental.local',
+      workspaceId: 1,
+    });
+
+    const candidatos = [
+      {
+        documentoId: 910007,
+        tipoDocumental: 'GUIA_REMISION',
+        tipoDocumentalLabel: 'Guía de remisión',
+        tipoRelacion: 'adjunto_guia',
+      },
+    ];
+
+    (axios.get as jest.Mock).mockResolvedValueOnce({
+      data: {
+        success: true,
+        data: candidatos,
+      },
+    });
+
+    const result = await controller.listarDocumentosCandidatosGrupo(
+      'Bearer token-valido',
+      'req-4',
+      {
+        grupoFacturaId: '2',
+        tipoDocumental: 'GUIA_REMISION',
+        texto: 'T001',
+        pagina: '1',
+        limite: '20',
+      },
+    );
+
+    expect(nats.send).toHaveBeenCalledWith('auth.validate-token', {
+      token: 'token-valido',
+    });
+    expect(axios.get).toHaveBeenCalledWith(
+      'http://ms-documentos:3002/api/v1/documental-v2/documentos-candidatos-grupo',
+      {
+        params: {
+          grupoFacturaId: '2',
+          tipoDocumental: 'GUIA_REMISION',
+          texto: 'T001',
+          pagina: '1',
+          limite: '20',
+        },
+        headers: {
+          authorization: 'Bearer token-valido',
+          'x-user-id': '1',
+          'x-user-email': 'admin@documental.local',
+          'x-workspace-id': '1',
+          'x-empresa-codigo': 'BBTI',
+          'x-cliente-destino-id': '2',
+          'x-request-id': 'req-4',
+          'x-correlation-id': 'req-4',
+        },
+      },
+    );
+    expect(result).toEqual(candidatos);
+  });
+
+  it('expone asociación de documento a Grupo Factura por proxy controlado', async () => {
+    const { controller, nats } = buildController({
+      sub: 1,
+      email: 'admin@documental.local',
+      workspaceId: 1,
+    });
+
+    const respuesta = {
+      documentoGrupoFactura: {
+        id: 1,
+        grupoFacturaId: 2,
+        documentoId: 910007,
+        tipoRelacion: 'adjunto_guia',
+        estado: 'activo',
+      },
+      idempotente: false,
+      workspaceDebeRefrescar: true,
+    };
+
+    (axios.post as jest.Mock).mockResolvedValueOnce({
+      data: {
+        success: true,
+        data: respuesta,
+      },
+    });
+
+    const body = {
+      grupoFacturaId: 2,
+      documentoId: 910007,
+      tipoRelacion: 'adjunto_guia',
+    };
+
+    const result = await controller.asociarDocumentoGrupoFactura(
+      'Bearer token-valido',
+      'req-5',
+      body,
+    );
+
+    expect(nats.send).toHaveBeenCalledWith('auth.validate-token', {
+      token: 'token-valido',
+    });
+    expect(axios.post).toHaveBeenCalledWith(
+      'http://ms-documentos:3002/api/v1/documental-v2/grupos-factura/documentos/asociar',
+      body,
+      {
+        headers: {
+          authorization: 'Bearer token-valido',
+          'x-user-id': '1',
+          'x-user-email': 'admin@documental.local',
+          'x-workspace-id': '1',
+          'x-empresa-codigo': 'BBTI',
+          'x-cliente-destino-id': '2',
+          'x-request-id': 'req-5',
+          'x-correlation-id': 'req-5',
+        },
+      },
+    );
+    expect(result).toEqual(respuesta);
+  });
+
 });
