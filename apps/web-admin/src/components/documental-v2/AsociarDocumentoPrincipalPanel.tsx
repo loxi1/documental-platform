@@ -38,34 +38,59 @@ const ERROR_MESSAGES: Record<string, string> = {
   ERROR_ASOCIAR_DOCUMENTO_PRINCIPAL: "No se pudo asociar el documento principal. Intenta nuevamente.",
 };
 
-function getErrorCode(error: unknown) {
-  if (!error || typeof error !== "object" || !("response" in error)) return null;
+function extractFunctionalErrorCode(value: unknown): string | null {
+  if (!value || typeof value !== "object") return null;
 
-  const response = (error as { response?: { data?: unknown } }).response;
-  const data = response?.data as
-    | {
-        error?: {
-          code?: string;
-          message?: string;
-          details?: { code?: string; message?: string };
-        };
-      }
-    | undefined;
+  const record = value as Record<string, unknown>;
+  const code = typeof record.code === "string" ? record.code : null;
 
-  return data?.error?.details?.code ?? data?.error?.code ?? null;
+  if (code && ERROR_MESSAGES[code]) {
+    return code;
+  }
+
+  return (
+    extractFunctionalErrorCode(record.details) ??
+    extractFunctionalErrorCode(record.error) ??
+    extractFunctionalErrorCode(record.upstream) ??
+    code
+  );
+}
+
+function extractErrorPayload(error: unknown): unknown {
+  if (!error || typeof error !== "object") return error;
+
+  if ("response" in error) {
+    return (error as { response?: { data?: unknown } }).response?.data ?? error;
+  }
+
+  return error;
+}
+
+function extractBackendMessage(value: unknown): string | null {
+  if (!value || typeof value !== "object") return null;
+
+  const record = value as Record<string, unknown>;
+
+  if (typeof record.message === "string" && record.message.trim()) {
+    return record.message;
+  }
+
+  return (
+    extractBackendMessage(record.details) ??
+    extractBackendMessage(record.error) ??
+    extractBackendMessage(record.upstream)
+  );
 }
 
 function getErrorMessage(error: unknown) {
-  const code = getErrorCode(error);
-  if (code && ERROR_MESSAGES[code]) return ERROR_MESSAGES[code];
+  const payload = extractErrorPayload(error);
+  const code = extractFunctionalErrorCode(payload);
 
-  if (error && typeof error === "object" && "response" in error) {
-    const response = (error as { response?: { data?: unknown } }).response;
-    const data = response?.data as { error?: { message?: string; details?: { message?: string } } } | undefined;
-    return data?.error?.details?.message ?? data?.error?.message ?? "No se pudo asociar el documento principal.";
+  if (code && ERROR_MESSAGES[code]) {
+    return ERROR_MESSAGES[code];
   }
 
-  return "No se pudo asociar el documento principal.";
+  return extractBackendMessage(payload) ?? "No se pudo asociar el documento principal.";
 }
 
 function candidatoLabel(candidato: DocumentoPrincipalCandidato) {
@@ -168,6 +193,7 @@ export function AsociarDocumentoPrincipalPanel({
       ? "El Workspace no expone empresaCodigo para buscar candidatos."
       : null;
 
+  
   return (
     <>
       <Button disabled={disabled || Boolean(disabledReason)} onClick={() => setOpen(true)}>
