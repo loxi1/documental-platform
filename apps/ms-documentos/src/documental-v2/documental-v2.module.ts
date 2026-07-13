@@ -17,6 +17,7 @@ import { WorkspaceDocumentalV2ViewMapper } from './mappers/workspace-documental-
 import { WorkspaceDocumentalV2UseCase } from './use-cases/workspace-documental-v2.usecase';
 import { DocumentoExistenteReadonlyRepository } from './documento-existente-readonly.repository';
 import { AsociarDocumentoPrincipalV2UseCase } from './use-cases/asociar-documento-principal-v2.usecase';
+import { AsociarGrupoFacturaV2UseCase } from './use-cases/asociar-grupo-factura-v2.usecase';
 
 @Module({
   controllers: [DocumentalV2Controller],
@@ -36,6 +37,7 @@ import { AsociarDocumentoPrincipalV2UseCase } from './use-cases/asociar-document
     WorkspaceDocumentalV2UseCase,
     DocumentoExistenteReadonlyRepository,
     AsociarDocumentoPrincipalV2UseCase,
+    AsociarGrupoFacturaV2UseCase,
   ],
   exports: [
     ContenedorOperativoRepository,

@@ -6,6 +6,7 @@ jest.mock('@documental/shared', () => ({
 jest.mock('axios', () => {
   const request = {
     get: jest.fn(),
+    post: jest.fn(),
     isAxiosError: jest.fn((error: any) => Boolean(error?.isAxiosError)),
   };
   return {
@@ -92,6 +93,7 @@ describe('DocumentalV2GatewayController', () => {
         headers: {
           authorization: 'Bearer token-valido',
           'x-request-id': 'req-1',
+          'x-correlation-id': 'req-1',
         },
       },
     );
@@ -121,4 +123,123 @@ describe('DocumentalV2GatewayController', () => {
       controller.construirWorkspaceDesdeExpedienteV1('Bearer token-valido', 'req-1', '41'),
     ).rejects.toBeInstanceOf(ForbiddenException);
   });
+
+  it('expone facturas candidatas por proxy controlado', async () => {
+    const { controller, nats } = buildController({
+      sub: 1,
+      email: 'admin@documental.local',
+      workspaceId: 1,
+    });
+
+    const candidatos = [
+      {
+        documentoId: 910002,
+        tipoDocumental: 'FACTURA',
+        numeroDocumento: 'F001-00009001',
+      },
+    ];
+
+    (axios.get as jest.Mock).mockResolvedValueOnce({
+      data: {
+        success: true,
+        data: candidatos,
+      },
+    });
+
+    const result = await controller.listarFacturasCandidatas(
+      'Bearer token-valido',
+      'req-2',
+      {
+        documentoOperativoPrincipalId: '3',
+        texto: 'F001',
+        pagina: '1',
+        limite: '20',
+      },
+    );
+
+    expect(nats.send).toHaveBeenCalledWith('auth.validate-token', {
+      token: 'token-valido',
+    });
+    expect(axios.get).toHaveBeenCalledWith(
+      'http://ms-documentos:3002/api/v1/documental-v2/facturas-candidatas',
+      {
+        params: {
+          documentoOperativoPrincipalId: '3',
+          texto: 'F001',
+          pagina: '1',
+          limite: '20',
+        },
+        headers: {
+          authorization: 'Bearer token-valido',
+          'x-user-id': '1',
+          'x-user-email': 'admin@documental.local',
+          'x-workspace-id': '1',
+          'x-empresa-codigo': 'BBTI',
+          'x-cliente-destino-id': '2',
+          'x-request-id': 'req-2',
+          'x-correlation-id': 'req-2',
+        },
+      },
+    );
+    expect(result).toEqual(candidatos);
+  });
+
+  it('expone asociación de Grupo Factura V2 por proxy controlado', async () => {
+    const { controller, nats } = buildController({
+      sub: 1,
+      email: 'admin@documental.local',
+      workspaceId: 1,
+    });
+
+    const respuesta = {
+      grupoFactura: {
+        id: 4,
+        documentoOperativoPrincipalId: 3,
+        facturaDocumentoId: 910002,
+        estado: 'pendiente_revision',
+      },
+      idempotente: false,
+      workspaceDebeRefrescar: true,
+    };
+
+    (axios.post as jest.Mock).mockResolvedValueOnce({
+      data: {
+        success: true,
+        data: respuesta,
+      },
+    });
+
+    const body = {
+      documentoOperativoPrincipalId: 3,
+      facturaDocumentoId: 910002,
+    };
+
+    const result = await controller.asociarGrupoFactura(
+      'Bearer token-valido',
+      'req-3',
+      body,
+    );
+
+    expect(nats.send).toHaveBeenCalledWith('auth.validate-token', {
+      token: 'token-valido',
+    });
+    expect(axios.post).toHaveBeenCalledWith(
+      'http://ms-documentos:3002/api/v1/documental-v2/grupos-factura/asociar',
+      body,
+      {
+        headers: {
+          authorization: 'Bearer token-valido',
+          'x-user-id': '1',
+          'x-user-email': 'admin@documental.local',
+          'x-workspace-id': '1',
+          'x-empresa-codigo': 'BBTI',
+          'x-cliente-destino-id': '2',
+          'x-request-id': 'req-3',
+          'x-correlation-id': 'req-3',
+        },
+      },
+    );
+    expect(result).toEqual(respuesta);
+  });
+
 });

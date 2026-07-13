@@ -43,6 +43,19 @@ describe('DocumentalV2Controller', () => {
     construirDesdeExpedienteV1: jest.fn(),
   };
 
+  const asociarDocumentoPrincipalV2UseCase = {
+    execute: jest.fn(),
+  };
+
+  const asociarGrupoFacturaV2UseCase = {
+    execute: jest.fn(),
+    listarFacturasCandidatas: jest.fn(),
+  };
+
+  const documentoExistenteReadonlyRepository = {
+    listarCandidatosPrincipal: jest.fn(),
+  };
+
   let controller: DocumentalV2Controller;
 
   beforeEach(() => {
@@ -53,6 +66,9 @@ describe('DocumentalV2Controller', () => {
       gruposFactura as any,
       grupoFacturaDocumentos as any,
       workspaceDocumentalV2 as any,
+      asociarDocumentoPrincipalV2UseCase as any,
+      asociarGrupoFacturaV2UseCase as any,
+      documentoExistenteReadonlyRepository as any,
     );
   });
 
@@ -124,6 +140,81 @@ describe('DocumentalV2Controller', () => {
     expect(gruposFactura.crear).toHaveBeenCalledWith({
       documentoOperativoPrincipalId: 10,
       facturaDocumentoId: 200,
+    });
+  });
+
+  it('lista facturas candidatas para Grupo de Factura V2 usando el usecase operativo', async () => {
+    const esperado = [{ documentoId: 910002, facturaLabel: 'Factura F001-00009001' }];
+    asociarGrupoFacturaV2UseCase.listarFacturasCandidatas.mockResolvedValue(esperado);
+
+    await expect(
+      controller.listarFacturasCandidatas(
+        '3',
+        'F001',
+        '1',
+        '20',
+        '1',
+        'admin@documental.local',
+        '1',
+        'BBTI',
+        '2',
+        'req-1',
+        'corr-1',
+      ),
+    ).resolves.toBe(esperado);
+
+    expect(asociarGrupoFacturaV2UseCase.listarFacturasCandidatas).toHaveBeenCalledWith({
+      documentoOperativoPrincipalId: 3,
+      texto: 'F001',
+      pagina: 1,
+      limite: 20,
+      usuario: {
+        id: 1,
+        email: 'admin@documental.local',
+        workspaceId: 1,
+        empresaCodigo: 'BBTI',
+        clienteDestinoId: 2,
+        requestId: 'req-1',
+        correlationId: 'corr-1',
+        origen: 'api-gateway',
+      },
+    });
+  });
+
+  it('asocia una factura creando Grupo de Factura V2 usando el usecase operativo', async () => {
+    const esperado = {
+      grupoFactura: { id: 4, documentoOperativoPrincipalId: 3, facturaDocumentoId: 910002 },
+      idempotente: false,
+      workspaceDebeRefrescar: true,
+    };
+    asociarGrupoFacturaV2UseCase.execute.mockResolvedValue(esperado);
+
+    await expect(
+      controller.asociarGrupoFactura(
+        { documentoOperativoPrincipalId: 3, facturaDocumentoId: 910002 },
+        '1',
+        'admin@documental.local',
+        '1',
+        'BBTI',
+        '2',
+        'req-1',
+        'corr-1',
+      ),
+    ).resolves.toBe(esperado);
+
+    expect(asociarGrupoFacturaV2UseCase.execute).toHaveBeenCalledWith({
+      documentoOperativoPrincipalId: 3,
+      facturaDocumentoId: 910002,
+      usuario: {
+        id: 1,
+        email: 'admin@documental.local',
+        workspaceId: 1,
+        empresaCodigo: 'BBTI',
+        clienteDestinoId: 2,
+        requestId: 'req-1',
+        correlationId: 'corr-1',
+        origen: 'api-gateway',
+      },
     });
   });
 
