@@ -18,6 +18,7 @@ import { WorkspaceDocumentalV2UseCase } from './use-cases/workspace-documental-v
 import { DocumentoExistenteReadonlyRepository } from './documento-existente-readonly.repository';
 import { AsociarDocumentoPrincipalV2UseCase } from './use-cases/asociar-documento-principal-v2.usecase';
 import { AsociarGrupoFacturaV2UseCase } from './use-cases/asociar-grupo-factura-v2.usecase';
+import { AsociarDocumentoGrupoFacturaV2UseCase } from './use-cases/asociar-documento-grupo-factura-v2.usecase';
 
 @Module({
   controllers: [DocumentalV2Controller],
@@ -38,6 +39,7 @@ import { AsociarGrupoFacturaV2UseCase } from './use-cases/asociar-grupo-factura-
     DocumentoExistenteReadonlyRepository,
     AsociarDocumentoPrincipalV2UseCase,
     AsociarGrupoFacturaV2UseCase,
+    AsociarDocumentoGrupoFacturaV2UseCase,
   ],
   exports: [
     ContenedorOperativoRepository,

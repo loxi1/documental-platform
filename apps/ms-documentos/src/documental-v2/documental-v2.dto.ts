@@ -54,3 +54,18 @@ export type BuscarFacturasCandidatasGrupoFacturaDto = {
   pagina?: number | string;
   limite?: number | string;
 };
+
+
+export type AsociarDocumentoGrupoFacturaV2Dto = {
+  grupoFacturaId: number;
+  documentoId: number;
+  tipoRelacion: string;
+};
+
+export type BuscarDocumentosCandidatosGrupoFacturaDto = {
+  grupoFacturaId: number | string;
+  tipoDocumental?: string;
+  texto?: string;
+  pagina?: number | string;
+  limite?: number | string;
+};

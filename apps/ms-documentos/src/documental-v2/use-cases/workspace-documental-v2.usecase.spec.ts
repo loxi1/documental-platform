@@ -85,6 +85,7 @@ describe('WorkspaceDocumentalV2UseCase', () => {
   };
   const grupoFacturaDocumentos = {
     buscarActivoPorDocumentoId: jest.fn(),
+    listarPorGrupoFactura: jest.fn(),
   };
   const viewMapper = {
     enriquecer: jest.fn((workspace) => workspace),
@@ -98,6 +99,8 @@ describe('WorkspaceDocumentalV2UseCase', () => {
     documentosOperativos.listarActivosPorContenedorOperativoId.mockResolvedValue([]);
     documentosExistentes.buscarPorId.mockResolvedValue(null);
     gruposFactura.listarPorDocumentoOperativoPrincipal.mockResolvedValue([]);
+    grupoFacturaDocumentos.buscarActivoPorDocumentoId.mockResolvedValue(null);
+    grupoFacturaDocumentos.listarPorGrupoFactura.mockResolvedValue([]);
 
     useCase = new WorkspaceDocumentalV2UseCase(
       adapter as any,

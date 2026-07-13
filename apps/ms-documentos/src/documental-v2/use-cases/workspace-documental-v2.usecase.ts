@@ -288,12 +288,18 @@ export class WorkspaceDocumentalV2UseCase {
   ): Promise<GrupoFacturaWorkspaceV2> {
     const factura = await this.documentosExistentes.buscarPorId(Number(grupo.facturaDocumentoId));
 
+    const documentos = await this.mapGrupoFacturaDocumentosPersistidos(
+      Number(grupo.id),
+      [],
+      expedienteId,
+    );
+
     const vista: GrupoFacturaCompatibilidadView = {
       facturaDocumentoId: Number(grupo.facturaDocumentoId),
       documentoOperativoPrincipalDocumentoId: Number(principal.documentoId),
       estado: 'pendiente_revision',
       metadata: this.buildMetadataGrupoFacturaPersistido(grupo, factura),
-      documentos: [],
+      documentos: documentos.map((documento) => documento.vista),
       origen: {
         modelo: 'V1',
         expedienteId,
@@ -305,7 +311,7 @@ export class WorkspaceDocumentalV2UseCase {
 
     return {
       ...this.wrap(vista, grupo),
-      documentos: [],
+      documentos,
     };
   }
 
@@ -341,12 +347,23 @@ export class WorkspaceDocumentalV2UseCase {
     grupo: GrupoFacturaCompatibilidadView,
   ): Promise<GrupoFacturaWorkspaceV2> {
     const persistido = await this.gruposFactura.buscarPorFacturaDocumentoId(grupo.facturaDocumentoId);
-    const documentos = await Promise.all(
+    const documentosCompatibilidad = await Promise.all(
       grupo.documentos.map((documento) => this.mapGrupoFacturaDocumento(documento)),
+    );
+    const documentos = await this.mapGrupoFacturaDocumentosPersistidos(
+      persistido?.id ? Number(persistido.id) : null,
+      documentosCompatibilidad,
+      grupo.origen.expedienteId,
     );
 
     return {
-      ...this.wrap(grupo, persistido),
+      ...this.wrap(
+        {
+          ...grupo,
+          documentos: documentos.map((documento) => documento.vista),
+        },
+        persistido,
+      ),
       documentos,
     };
   }
@@ -358,6 +375,91 @@ export class WorkspaceDocumentalV2UseCase {
       documento.documentoId,
     );
     return this.wrap(documento, persistido);
+  }
+
+
+  private async mapGrupoFacturaDocumentosPersistidos(
+    grupoFacturaId: number | null,
+    documentosCompatibilidad: GrupoFacturaDocumentoWorkspaceV2[],
+    expedienteId: number,
+  ): Promise<GrupoFacturaDocumentoWorkspaceV2[]> {
+    if (!grupoFacturaId) return documentosCompatibilidad;
+
+    const persistidos = await this.grupoFacturaDocumentos.listarPorGrupoFactura(grupoFacturaId);
+    const documentosCompatibilidadIds = new Set(
+      documentosCompatibilidad
+        .map((documento) => {
+          const persistidoDocumentoId = documento.persistido?.documentoId;
+          const vistaDocumentoId = documento.vista?.documentoId;
+
+          return Number(persistidoDocumentoId ?? vistaDocumentoId);
+        })
+        .filter((documentoId) => Number.isInteger(documentoId) && documentoId > 0),
+    );
+
+    const soloPersistidosV2 = persistidos.filter(
+      (documento) => !documentosCompatibilidadIds.has(Number(documento.documentoId)),
+    );
+
+    const documentosPersistidos = await Promise.all(
+      soloPersistidosV2.map((documento) =>
+        this.mapGrupoFacturaDocumentoPersistido(documento, expedienteId),
+      ),
+    );
+
+    return [...documentosCompatibilidad, ...documentosPersistidos];
+  }
+
+  private async mapGrupoFacturaDocumentoPersistido(
+    documentoGrupo: GrupoFacturaDocumentoRow,
+    expedienteId: number,
+  ): Promise<GrupoFacturaDocumentoWorkspaceV2> {
+    const documento = await this.documentosExistentes.buscarPorId(Number(documentoGrupo.documentoId));
+
+    const vista: GrupoFacturaDocumentoCompatibilidadView = {
+      documentoId: Number(documentoGrupo.documentoId),
+      tipoRelacion: String(documentoGrupo.tipoRelacion ?? '').trim().toLowerCase(),
+      estado: documentoGrupo.estado ?? 'activo',
+      metadata: this.buildMetadataGrupoFacturaDocumentoPersistido(documentoGrupo, documento),
+      origen: {
+        modelo: 'V1',
+        expedienteId,
+        modo: 'lectura',
+        tipoDocumentalV1: documento?.tipoDocumental ?? null,
+        tipoRelacionV1: documentoGrupo.tipoRelacion,
+      },
+    };
+
+    return this.wrap(vista, documentoGrupo);
+  }
+
+  private buildMetadataGrupoFacturaDocumentoPersistido(
+    documentoGrupo: GrupoFacturaDocumentoRow,
+    documento: DocumentoExistenteV2 | null,
+  ): JsonObject {
+    const metadataBase =
+      documentoGrupo.metadata && typeof documentoGrupo.metadata === 'object'
+        ? (documentoGrupo.metadata as JsonObject)
+        : {};
+
+    const compatibilidadBase =
+      metadataBase.compatibilidad &&
+      typeof metadataBase.compatibilidad === 'object' &&
+      !Array.isArray(metadataBase.compatibilidad)
+        ? (metadataBase.compatibilidad as JsonObject)
+        : {};
+
+    return {
+      ...metadataBase,
+      compatibilidad: {
+        ...compatibilidadBase,
+        origen: 'V2',
+        grupoFacturaDocumentoId: documentoGrupo.id,
+        grupoFacturaId: documentoGrupo.grupoFacturaId,
+        tipoRelacion: documentoGrupo.tipoRelacion,
+        documentoV1: documento ? this.buildDocumentoV1Metadata(documento) : null,
+      },
+    };
   }
 
   private async mapAdjuntoNoClasificado(

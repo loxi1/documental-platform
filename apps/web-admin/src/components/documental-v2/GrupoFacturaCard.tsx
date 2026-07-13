@@ -2,9 +2,11 @@ import { ReceiptText } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import type { WorkspaceV2GrupoFactura } from "@/types/documental-v2-workspace";
+import type { AsociarDocumentoGrupoFacturaV2Result, WorkspaceV2GrupoFactura } from "@/types/documental-v2-workspace";
 import { AdjuntosList } from "./AdjuntosList";
+import { AsociarDocumentoGrupoFacturaPanel } from "./AsociarDocumentoGrupoFacturaPanel";
 import {
+  asRecord,
   getAdjuntosGrupo,
   getEstado,
   getGrupoFacturaLabel,
@@ -14,8 +16,27 @@ import {
   getGrupoRucProveedor,
 } from "./workspace-v2-utils";
 
-export function GrupoFacturaCard({ grupo, index }: { grupo: WorkspaceV2GrupoFactura; index: number }) {
+function getGrupoFacturaPersistidoId(grupo: WorkspaceV2GrupoFactura) {
+  const persistido = asRecord(grupo.persistido);
+  const id = persistido.id ?? persistido.grupoFacturaId ?? persistido.grupo_factura_id;
+
+  if (typeof id === "string" || typeof id === "number") return id;
+
+  return null;
+}
+
+export function GrupoFacturaCard({
+  grupo,
+  index,
+  onWorkspaceRefresh,
+}: {
+  grupo: WorkspaceV2GrupoFactura;
+  index: number;
+  onWorkspaceRefresh?: (result: AsociarDocumentoGrupoFacturaV2Result) => Promise<unknown> | unknown;
+}) {
   const adjuntos = getAdjuntosGrupo(grupo);
+  const grupoFacturaId = getGrupoFacturaPersistidoId(grupo);
+  const puedeOperar = Boolean(grupoFacturaId);
 
   return (
     <Card>
@@ -30,9 +51,11 @@ export function GrupoFacturaCard({ grupo, index }: { grupo: WorkspaceV2GrupoFact
               <p className="text-sm text-muted-foreground">{getGrupoFacturaLabel(grupo)}</p>
             </div>
           </div>
-          <div className="flex flex-wrap gap-2">
-            <Badge variant="outline">Agrupación visual</Badge>
+          <div className="flex flex-wrap items-center gap-2">
             <Badge variant="secondary">{getEstado(grupo)}</Badge>
+            {puedeOperar ? (
+              <AsociarDocumentoGrupoFacturaPanel grupoFacturaId={grupoFacturaId} onAssociated={onWorkspaceRefresh} />
+            ) : null}
           </div>
         </div>
       </CardHeader>
@@ -58,11 +81,11 @@ export function GrupoFacturaCard({ grupo, index }: { grupo: WorkspaceV2GrupoFact
         </div>
 
         <div>
-          <div className="mb-2 flex items-center justify-between gap-2">
-            <h3 className="text-sm font-semibold">Adjuntos del grupo</h3>
-            <span className="text-xs text-muted-foreground">Guías, notas de ingreso, transferencias, detracciones u otros</span>
+          <div className="mb-2 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+            <h3 className="text-sm font-semibold">Documentos del grupo</h3>
+            <span className="text-xs text-muted-foreground">Guías, notas de ingreso, transferencias y detracciones</span>
           </div>
-          <AdjuntosList documentos={adjuntos} />
+          <AdjuntosList documentos={adjuntos} emptyLabel="Sin documentos asociados todavía." />
         </div>
       </CardContent>
     </Card>

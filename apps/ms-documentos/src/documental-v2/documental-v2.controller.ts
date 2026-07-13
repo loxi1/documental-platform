@@ -20,6 +20,7 @@ import { WorkspaceDocumentalV2UseCase } from './use-cases/workspace-documental-v
 
 import { AsociarDocumentoPrincipalV2UseCase } from './use-cases/asociar-documento-principal-v2.usecase';
 import { AsociarGrupoFacturaV2UseCase } from './use-cases/asociar-grupo-factura-v2.usecase';
+import { AsociarDocumentoGrupoFacturaV2UseCase } from './use-cases/asociar-documento-grupo-factura-v2.usecase';
 import { DocumentoExistenteReadonlyRepository } from './documento-existente-readonly.repository';
 
 @ApiTags('documental-v2')
@@ -33,6 +34,7 @@ export class DocumentalV2Controller {
     private readonly workspaceDocumentalV2: WorkspaceDocumentalV2UseCase,
     private readonly asociarDocumentoPrincipalV2UseCase: AsociarDocumentoPrincipalV2UseCase,
     private readonly asociarGrupoFacturaV2UseCase: AsociarGrupoFacturaV2UseCase,
+    private readonly asociarDocumentoGrupoFacturaV2UseCase: AsociarDocumentoGrupoFacturaV2UseCase,
     private readonly documentoExistenteReadonlyRepository: DocumentoExistenteReadonlyRepository,
   ) {}
 
@@ -360,6 +362,70 @@ export class DocumentalV2Controller {
     return this.asociarGrupoFacturaV2UseCase.execute({
       documentoOperativoPrincipalId: Number(dto.documentoOperativoPrincipalId),
       facturaDocumentoId: Number(dto.facturaDocumentoId),
+      usuario: {
+        id: userId ? Number(userId) : null,
+        email: userEmail ?? null,
+        workspaceId: workspaceId ? Number(workspaceId) : null,
+        empresaCodigo: empresaCodigo ?? null,
+        clienteDestinoId: clienteDestinoId ? Number(clienteDestinoId) : null,
+        requestId: requestId ?? null,
+        correlationId: correlationId ?? null,
+        origen: 'api-gateway',
+      },
+    });
+  }
+
+  @ApiOperation({ summary: 'Listar documentos candidatos para asociar a Grupo de Factura V2' })
+  @Get('documentos-candidatos-grupo')
+  async listarDocumentosCandidatosGrupo(
+    @Query('grupoFacturaId') grupoFacturaId: string,
+    @Query('tipoDocumental') tipoDocumental?: string,
+    @Query('texto') texto?: string,
+    @Query('pagina') pagina?: string,
+    @Query('limite') limite?: string,
+    @Headers('x-user-id') userId?: string,
+    @Headers('x-user-email') userEmail?: string,
+    @Headers('x-workspace-id') workspaceId?: string,
+    @Headers('x-empresa-codigo') empresaCodigo?: string,
+    @Headers('x-cliente-destino-id') clienteDestinoId?: string,
+    @Headers('x-request-id') requestId?: string,
+    @Headers('x-correlation-id') correlationId?: string,
+  ) {
+    return this.asociarDocumentoGrupoFacturaV2UseCase.listarDocumentosCandidatos({
+      grupoFacturaId: Number(grupoFacturaId),
+      tipoDocumental,
+      texto,
+      pagina: pagina ? Number(pagina) : undefined,
+      limite: limite ? Number(limite) : undefined,
+      usuario: {
+        id: userId ? Number(userId) : null,
+        email: userEmail ?? null,
+        workspaceId: workspaceId ? Number(workspaceId) : null,
+        empresaCodigo: empresaCodigo ?? null,
+        clienteDestinoId: clienteDestinoId ? Number(clienteDestinoId) : null,
+        requestId: requestId ?? null,
+        correlationId: correlationId ?? null,
+        origen: 'api-gateway',
+      },
+    });
+  }
+
+  @ApiOperation({ summary: 'Asociar documento existente a Grupo de Factura V2' })
+  @Post('grupos-factura/documentos/asociar')
+  async asociarDocumentoGrupoFactura(
+    @Body() dto: any,
+    @Headers('x-user-id') userId?: string,
+    @Headers('x-user-email') userEmail?: string,
+    @Headers('x-workspace-id') workspaceId?: string,
+    @Headers('x-empresa-codigo') empresaCodigo?: string,
+    @Headers('x-cliente-destino-id') clienteDestinoId?: string,
+    @Headers('x-request-id') requestId?: string,
+    @Headers('x-correlation-id') correlationId?: string,
+  ) {
+    return this.asociarDocumentoGrupoFacturaV2UseCase.execute({
+      grupoFacturaId: Number(dto.grupoFacturaId),
+      documentoId: Number(dto.documentoId),
+      tipoRelacion: dto.tipoRelacion,
       usuario: {
         id: userId ? Number(userId) : null,
         email: userEmail ?? null,

@@ -1,9 +1,13 @@
 import { api } from "@/services/api";
 import type {
   ApiEnvelope,
+  AsociarDocumentoGrupoFacturaV2Request,
+  AsociarDocumentoGrupoFacturaV2Result,
   AsociarDocumentoPrincipalV2Request,
   AsociarDocumentoPrincipalV2Result,
+  DocumentoGrupoFacturaCandidatoV2,
   DocumentoPrincipalCandidato,
+  GetDocumentosCandidatosGrupoFacturaParams,
   GetDocumentosCandidatosPrincipalParams,
   WorkspaceDocumentalV2,
 } from "@/types/documental-v2-workspace";
@@ -67,6 +71,33 @@ export async function asociarDocumentoPrincipalV2(payload: AsociarDocumentoPrinc
       contenedorOperativoId: payload.contenedorOperativoId,
       documentoId: payload.documentoId,
       tipoPrincipal: payload.tipoPrincipal,
+      estado: "activo",
+    },
+    idempotente: false,
+    workspaceDebeRefrescar: true,
+  });
+}
+
+export async function getDocumentosCandidatosGrupoFacturaV2(params: GetDocumentosCandidatosGrupoFacturaParams) {
+  const { data } = await api.get<ApiEnvelope<DocumentoGrupoFacturaCandidatoV2[]> | DocumentoGrupoFacturaCandidatoV2[]>(
+    "/documental-v2/documentos-candidatos-grupo",
+    { params },
+  );
+
+  return unwrapData<DocumentoGrupoFacturaCandidatoV2[]>(data, []);
+}
+
+export async function asociarDocumentoGrupoFacturaV2(payload: AsociarDocumentoGrupoFacturaV2Request) {
+  const { data } = await api.post<
+    ApiEnvelope<AsociarDocumentoGrupoFacturaV2Result> | AsociarDocumentoGrupoFacturaV2Result
+  >("/documental-v2/grupos-factura/documentos/asociar", payload);
+
+  return unwrapData<AsociarDocumentoGrupoFacturaV2Result>(data, {
+    documentoGrupoFactura: {
+      id: "",
+      grupoFacturaId: payload.grupoFacturaId,
+      documentoId: payload.documentoId,
+      tipoRelacion: payload.tipoRelacion,
       estado: "activo",
     },
     idempotente: false,
