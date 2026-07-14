@@ -22,6 +22,7 @@ import { AsociarDocumentoPrincipalV2UseCase } from './use-cases/asociar-document
 import { AsociarGrupoFacturaV2UseCase } from './use-cases/asociar-grupo-factura-v2.usecase';
 import { AsociarDocumentoGrupoFacturaV2UseCase } from './use-cases/asociar-documento-grupo-factura-v2.usecase';
 import { DocumentoExistenteReadonlyRepository } from './documento-existente-readonly.repository';
+import { ConsultarTrazabilidadV2UseCase } from './use-cases/consultar-trazabilidad-v2.usecase';
 
 @ApiTags('documental-v2')
 @Controller('documental-v2')
@@ -35,6 +36,7 @@ export class DocumentalV2Controller {
     private readonly asociarDocumentoPrincipalV2UseCase: AsociarDocumentoPrincipalV2UseCase,
     private readonly asociarGrupoFacturaV2UseCase: AsociarGrupoFacturaV2UseCase,
     private readonly asociarDocumentoGrupoFacturaV2UseCase: AsociarDocumentoGrupoFacturaV2UseCase,
+    private readonly consultarTrazabilidadV2UseCase: ConsultarTrazabilidadV2UseCase,
     private readonly documentoExistenteReadonlyRepository: DocumentoExistenteReadonlyRepository,
   ) {}
 
@@ -44,6 +46,23 @@ export class DocumentalV2Controller {
   @Get('workspace/expedientes-v1/:expedienteId')
   construirWorkspaceDesdeExpedienteV1(@Param('expedienteId', ParseIntPipe) expedienteId: number) {
     return this.workspaceDocumentalV2.construirDesdeExpedienteV1(expedienteId);
+  }
+
+  @ApiOperation({ summary: 'Consultar trazabilidad canónica V2 por Contenedor Operativo' })
+  @ApiParam({ name: 'contenedorOperativoId', example: 2 })
+  @Get('trazabilidad/contenedores/:contenedorOperativoId')
+  consultarTrazabilidadPorContenedor(
+    @Param('contenedorOperativoId', ParseIntPipe) contenedorOperativoId: number,
+    @Headers('x-empresa-codigo') empresaCodigo?: string,
+    @Headers('x-cliente-destino-id') clienteDestinoId?: string,
+  ) {
+    return this.consultarTrazabilidadV2UseCase.execute({
+      contenedorOperativoId,
+      usuario: {
+        empresaCodigo: empresaCodigo ?? null,
+        clienteDestinoId: clienteDestinoId ? Number(clienteDestinoId) : null,
+      },
+    });
   }
 
   @ApiOperation({ summary: 'Crear Contenedor Operativo V2' })

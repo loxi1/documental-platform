@@ -275,6 +275,37 @@ export class DocumentalV2GatewayController {
     }
   }
 
+
+  @ApiOperation({
+    summary: 'Consultar trazabilidad canónica V2 por Contenedor Operativo',
+  })
+  @ApiParam({ name: 'contenedorOperativoId', example: 2 })
+  @Get('trazabilidad/contenedores/:contenedorOperativoId')
+  async consultarTrazabilidadPorContenedor(
+    @Headers('authorization') authorization: string | undefined,
+    @Headers(REQUEST_ID_HEADER) requestId: string | undefined,
+    @Param('contenedorOperativoId') contenedorOperativoId: string,
+  ) {
+    const contexto = await this.validateAuthorization(authorization);
+
+    try {
+      const response = await axios.get(
+        `${this.getBaseUrl()}/documental-v2/trazabilidad/contenedores/${contenedorOperativoId}`,
+        {
+          headers: this.buildDocumentosForwardHeaders(
+            authorization,
+            requestId,
+            contexto,
+          ),
+        },
+      );
+
+      return this.unwrap(response);
+    } catch (error: any) {
+      this.throwUpstreamHttpException(error);
+    }
+  }
+
   private unwrap(response: any) {
     return response?.data?.data ?? response?.data;
   }

@@ -61,6 +61,10 @@ describe('DocumentalV2Controller', () => {
     listarCandidatosPrincipal: jest.fn(),
   };
 
+  const consultarTrazabilidadV2UseCase = {
+    execute: jest.fn(),
+  };
+
   let controller: DocumentalV2Controller;
 
   beforeEach(() => {
@@ -74,8 +78,33 @@ describe('DocumentalV2Controller', () => {
       asociarDocumentoPrincipalV2UseCase as any,
       asociarGrupoFacturaV2UseCase as any,
       asociarDocumentoGrupoFacturaV2UseCase as any,
+      consultarTrazabilidadV2UseCase as any,
       documentoExistenteReadonlyRepository as any,
     );
+  });
+
+
+  it('consulta trazabilidad canónica V2 por contenedor operativo', async () => {
+    const esperado = {
+      version: 1,
+      contenedorOperativoId: 2,
+      items: [],
+      cobertura: { auditoria: false, documentoEventos: false, parcial: true },
+      advertencias: ['SIN_EVENTOS_DOCUMENTALES'],
+    };
+    consultarTrazabilidadV2UseCase.execute.mockResolvedValue(esperado);
+
+    await expect(
+      controller.consultarTrazabilidadPorContenedor(2, 'BBTI', '2'),
+    ).resolves.toBe(esperado);
+
+    expect(consultarTrazabilidadV2UseCase.execute).toHaveBeenCalledWith({
+      contenedorOperativoId: 2,
+      usuario: {
+        empresaCodigo: 'BBTI',
+        clienteDestinoId: 2,
+      },
+    });
   });
 
   it('crea un contenedor operativo usando el service V2', async () => {
