@@ -4,6 +4,7 @@ import { ContenedorOperativoRepository } from '../contenedor-operativo.repositor
 import { DocumentoExistenteReadonlyRepository, DocumentoExistenteV2 } from '../documento-existente-readonly.repository';
 import { DocumentoOperativoPrincipalRepository } from '../documento-operativo-principal.repository';
 import type { DocumentoOperativoPrincipalRow } from '../documental-v2.types';
+import { AuditoriaOperativaV2Repository } from '../auditoria-operativa-v2.repository';
 
 const TIPOS_PRINCIPALES_PERMITIDOS = new Set(['OC']);
 
@@ -17,6 +18,11 @@ export type AsociarDocumentoPrincipalV2Input = {
     workspaceId?: number | null;
     empresaCodigo?: string | null;
     clienteDestinoId?: number | null;
+    requestId?: string | null;
+    correlationId?: string | null;
+    origen?: string | null;
+    sistemaCodigo?: string | null;
+    perfilCodigo?: string | null;
   };
 };
 
@@ -72,6 +78,7 @@ export class AsociarDocumentoPrincipalV2UseCase {
     private readonly contenedores: ContenedorOperativoRepository,
     private readonly principales: DocumentoOperativoPrincipalRepository,
     private readonly documentos: DocumentoExistenteReadonlyRepository,
+    private readonly auditoria: AuditoriaOperativaV2Repository,
   ) {}
 
   async execute(input: AsociarDocumentoPrincipalV2Input): Promise<AsociarDocumentoPrincipalV2Result> {
@@ -164,6 +171,24 @@ export class AsociarDocumentoPrincipalV2UseCase {
         },
       },
       creadoPor: input.usuario?.id ?? null,
+    });
+
+    await this.auditoria.registrarCreacion({
+      accion: 'ASOCIAR_DOCUMENTO_PRINCIPAL',
+      entidad: 'documento_operativo_principal',
+      entidadId: creado.id,
+      descripcion: 'Documento Operativo Principal asociado desde operación V2.',
+      empresaCodigo: contenedor.empresaCodigo,
+      usuario: input.usuario,
+      despues: {
+        contenedorOperativoId: input.contenedorOperativoId,
+        documentoOperativoPrincipalId: creado.id,
+        documentoId: input.documentoId,
+        tipoPrincipal,
+        empresaCodigo: contenedor.empresaCodigo,
+        tipoContexto: contenedor.tipoContexto,
+        codigo: contenedor.codigo,
+      },
     });
 
     return {

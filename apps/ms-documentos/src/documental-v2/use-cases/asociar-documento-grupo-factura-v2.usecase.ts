@@ -8,6 +8,7 @@ import {
 import { DocumentoOperativoPrincipalRepository } from '../documento-operativo-principal.repository';
 import { GrupoFacturaDocumentoRepository } from '../grupo-factura-documento.repository';
 import { GrupoFacturaRepository } from '../grupo-factura.repository';
+import { AuditoriaOperativaV2Repository } from '../auditoria-operativa-v2.repository';
 import type {
   ContenedorOperativoRow,
   DocumentoOperativoPrincipalRow,
@@ -117,6 +118,7 @@ export class AsociarDocumentoGrupoFacturaV2UseCase {
     private readonly gruposFactura: GrupoFacturaRepository,
     private readonly grupoFacturaDocumentos: GrupoFacturaDocumentoRepository,
     private readonly documentos: DocumentoExistenteReadonlyRepository,
+    private readonly auditoria: AuditoriaOperativaV2Repository,
   ) {}
 
   async listarDocumentosCandidatos(input: {
@@ -250,6 +252,27 @@ export class AsociarDocumentoGrupoFacturaV2UseCase {
         metadata: metadataFinal,
         actualizadoPor: input.usuario?.id ?? null,
       })) ?? creadoInicial;
+
+    await this.auditoria.registrarCreacion({
+      accion: 'DOCUMENTO_GRUPO_FACTURA_ASOCIADO',
+      entidad: 'grupo_factura_documento',
+      entidadId: creado.id,
+      descripcion: 'Documento asociado al Grupo de Factura desde operación V2.',
+      empresaCodigo: contexto.contenedor.empresaCodigo,
+      usuario: input.usuario,
+      despues: {
+        contenedorOperativoId: contexto.contenedor.id,
+        documentoOperativoPrincipalId: contexto.principal.id,
+        grupoFacturaId,
+        grupoFacturaDocumentoId: creado.id,
+        facturaDocumentoId: contexto.grupo.facturaDocumentoId,
+        documentoId,
+        tipoDocumental: documento.tipoDocumental,
+        tipoRelacion,
+        empresaCodigo: contexto.contenedor.empresaCodigo,
+        estado: creado.estado,
+      },
+    });
 
     return {
       documentoGrupoFactura: this.enriquecerVista(creado, documento),
