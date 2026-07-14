@@ -4,6 +4,7 @@ import { ContenedorOperativoRepository } from '../contenedor-operativo.repositor
 import { DocumentoExistenteReadonlyRepository, DocumentoExistenteV2 } from '../documento-existente-readonly.repository';
 import { DocumentoOperativoPrincipalRepository } from '../documento-operativo-principal.repository';
 import { GrupoFacturaRepository } from '../grupo-factura.repository';
+import { AuditoriaOperativaV2Repository } from '../auditoria-operativa-v2.repository';
 import type {
   ContenedorOperativoRow,
   DocumentoOperativoPrincipalRow,
@@ -116,6 +117,7 @@ export class AsociarGrupoFacturaV2UseCase {
     private readonly principales: DocumentoOperativoPrincipalRepository,
     private readonly gruposFactura: GrupoFacturaRepository,
     private readonly documentos: DocumentoExistenteReadonlyRepository,
+    private readonly auditoria: AuditoriaOperativaV2Repository,
   ) {}
 
 
@@ -276,6 +278,24 @@ export class AsociarGrupoFacturaV2UseCase {
         metadata: metadataFinal,
         actualizadoPor: input.usuario?.id ?? null,
       })) ?? creadoInicial;
+
+    await this.auditoria.registrarCreacion({
+      accion: 'GRUPO_FACTURA_CREADO',
+      entidad: 'grupo_factura',
+      entidadId: creado.id,
+      descripcion: 'Grupo de Factura creado desde operación V2.',
+      empresaCodigo: contenedor.empresaCodigo,
+      usuario: input.usuario,
+      despues: {
+        contenedorOperativoId: contenedor.id,
+        documentoOperativoPrincipalId,
+        grupoFacturaId: creado.id,
+        facturaDocumentoId,
+        documentoOperativoPrincipalDocumentoId: principal.documentoId,
+        empresaCodigo: contenedor.empresaCodigo,
+        estado: creado.estado,
+      },
+    });
 
     return {
       grupoFactura: this.enriquecerVista(creado, principal, factura),

@@ -269,6 +269,8 @@ export class DocumentalV2Controller {
     @Headers('x-workspace-id') workspaceId?: string,
     @Headers('x-empresa-codigo') empresaCodigo?: string,
     @Headers('x-cliente-destino-id') clienteDestinoId?: string,
+    @Headers('x-request-id') requestId?: string,
+    @Headers('x-correlation-id') correlationId?: string,
   ) {
     return this.asociarDocumentoPrincipalV2UseCase.execute({
       contenedorOperativoId: Number(dto.contenedorOperativoId),
@@ -280,6 +282,9 @@ export class DocumentalV2Controller {
         workspaceId: workspaceId ? Number(workspaceId) : null,
         empresaCodigo: empresaCodigo ?? null,
         clienteDestinoId: clienteDestinoId ? Number(clienteDestinoId) : null,
+        requestId: requestId ?? null,
+        correlationId: correlationId ?? null,
+        origen: 'api-gateway',
       },
     });
   }

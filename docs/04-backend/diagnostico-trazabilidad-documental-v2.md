@@ -595,3 +595,57 @@ Por tanto:
 - no debe implementarse endpoint consolidado sin decisión superior;
 - no debe exponerse metadata cruda como contrato principal;
 - debe elevarse este diagnóstico al Maestro Intermedio para decidir el siguiente camino.
+
+## Anexo — Validación runtime controlada 2.0D.1A
+
+Después del diagnóstico inicial, el Maestro Intermedio autorizó la subfase 2.0D.1A para corregir y validar la instrumentación real de auditoría operativa V2 sobre `core.auditoria_eventos`.
+
+El diagnóstico inicial había demostrado que la base inspeccionada no contenía registros físicos para:
+
+- `ASOCIAR_DOCUMENTO_PRINCIPAL`;
+- `GRUPO_FACTURA_CREADO`;
+- `DOCUMENTO_GRUPO_FACTURA_ASOCIADO`.
+
+Luego de la instrumentación y validación runtime controlada, se comprobó cobertura física para las tres operaciones.
+
+Resultado final:
+
+| Operación | Entidad | Entidad ID validado | Auditoría |
+|---|---|---:|---:|
+| `ASOCIAR_DOCUMENTO_PRINCIPAL` | `documento_operativo_principal` | 4 | 1 |
+| `GRUPO_FACTURA_CREADO` | `grupo_factura` | 3 | 1 |
+| `DOCUMENTO_GRUPO_FACTURA_ASOCIADO` | `grupo_factura_documento` | 5 | 1 |
+
+También se validó que las llamadas idempotentes no generan duplicados de auditoría.
+
+Para validar la tercera operación se creó un documento sandbox controlado:
+
+- `documentoId`: 920001;
+- `cliente_abreviatura`: BBTI;
+- `tipo_documental`: GUIA_REMISION;
+- `serie`: AUD;
+- `numero`: 000001;
+- `estado`: confirmado;
+- `metadata.sandbox`: true;
+- `metadata.sprint`: 2.0D.1A;
+- `metadata.origen`: SEED_CONTROLADO_AUDITORIA_V2.
+
+La validación no introdujo:
+
+- migraciones;
+- escritura en `documentos.documento_eventos`;
+- endpoint público de trazabilidad;
+- React;
+- Timeline Visual;
+- Auditoría Visual;
+- OCR;
+- R2;
+- NATS;
+- alertas.
+
+Conclusión:
+
+El diagnóstico debe leerse en dos momentos:
+
+1. diagnóstico inicial: ausencia de evidencia física en la base inspeccionada;
+2. validación runtime controlada: evidencia positiva de auditoría física para 3 de 3 operaciones V2 implementadas hasta `v2-rc4`.

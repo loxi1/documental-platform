@@ -19,6 +19,7 @@ import { DocumentoExistenteReadonlyRepository } from './documento-existente-read
 import { AsociarDocumentoPrincipalV2UseCase } from './use-cases/asociar-documento-principal-v2.usecase';
 import { AsociarGrupoFacturaV2UseCase } from './use-cases/asociar-grupo-factura-v2.usecase';
 import { AsociarDocumentoGrupoFacturaV2UseCase } from './use-cases/asociar-documento-grupo-factura-v2.usecase';
+import { AuditoriaOperativaV2Repository } from './auditoria-operativa-v2.repository';
 
 @Module({
   controllers: [DocumentalV2Controller],
@@ -40,6 +41,7 @@ import { AsociarDocumentoGrupoFacturaV2UseCase } from './use-cases/asociar-docum
     AsociarDocumentoPrincipalV2UseCase,
     AsociarGrupoFacturaV2UseCase,
     AsociarDocumentoGrupoFacturaV2UseCase,
+    AuditoriaOperativaV2Repository,
   ],
   exports: [
     ContenedorOperativoRepository,
@@ -55,6 +57,7 @@ import { AsociarDocumentoGrupoFacturaV2UseCase } from './use-cases/asociar-docum
     DocumentoVisualMapper,
     WorkspaceDocumentalV2ViewMapper,
     WorkspaceDocumentalV2UseCase,
+    AuditoriaOperativaV2Repository,
   ],
 })
 export class DocumentalV2Module {}
