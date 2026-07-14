@@ -45,9 +45,12 @@ No se ha elegido fuente definitiva.
 | Fuente candidata | Estado | Nivel | Observación |
 | ---------------- | ------ | ----: | ----------- |
 | Auditoría existente | Candidata | D | Útil para operaciones V2, pero no necesariamente modela eventos funcionales completos. |
-| `documento_eventos` | Candidata | D | Requiere validar modelo real y cobertura. |
+| `documento_eventos` | Infraestructura existente; fuente candidata | A para existencia de infraestructura; B para cobertura V2; D para fuente oficial | La tabla/módulo existen. Falta validar cobertura específica sobre operaciones V2 2.0A-2.0C y decidir si será fuente oficial del Timeline. |
 | Operaciones V2 persistidas | Candidata | D | Puede reconstruir parte del historial operativo. |
 | Proyección combinada | Candidata | D | Requiere diseño específico. |
+
+
+La infraestructura `documentos.documento_eventos` existe en el sistema. No está validado que cubra las operaciones V2 consolidadas hasta `v2-rc4`, ni se ha decidido que sea la fuente oficial del Timeline. Su idoneidad como fuente del Timeline permanece pendiente de decisión.
 
 Decisión pendiente:
 
@@ -145,7 +148,7 @@ No se debe:
 - crear UI de Timeline en 2.0D.0;
 - crear endpoint de Timeline en 2.0D.0;
 - declarar auditoría como fuente definitiva;
-- declarar `documento_eventos` como fuente definitiva;
+- declarar `documento_eventos` como fuente definitiva, aunque su infraestructura exista;
 - reconstruir Timeline desde React;
 - usar Timeline como base de permisos;
 - modificar runtime.

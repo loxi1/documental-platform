@@ -78,7 +78,7 @@ Estos roles pertenecen al diseño funcional del ERP, pero no constituyen matriz 
 | Almacén | Guías y notas de ingreso. | Propuesto | C |
 | Finanzas | Transferencias y detracciones. | Propuesto | C |
 | Contabilidad | Revisión documental, control de completitud, auditoría visual. | Propuesto | C |
-| Admin | Operación total en sandbox y pruebas. | Implementado para validación | A |
+| Admin | Operaciones V2 implementadas hasta `v2-rc4`, validadas en sandbox y pruebas. | Implementado para validación | A |
 
 ---
 

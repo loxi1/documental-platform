@@ -47,8 +47,8 @@ La auditoría de operaciones V2 debe considerar como datos mínimos:
 | `tipoOperacion` | Backend | Implementado | A |
 | `entidadTipo` | Backend | Implementado | A |
 | `entidadId` | Backend | Implementado | A |
-| `usuario.id` | Contexto autenticado | Implementado | A |
-| `usuario.email` | Contexto autenticado | Implementado | A |
+| `usuarioId` | Contexto autenticado / metadata observada | Implementado para operaciones V2 validadas | A |
+| `usuarioEmail` | Contexto autenticado / metadata observada | Implementado para operaciones V2 validadas | A |
 | `workspaceId` | Contexto autenticado | Implementado | A |
 | `empresaCodigo` | Contexto autenticado | Implementado | A |
 | `clienteDestinoId` | Contexto autenticado | Implementado | A |
@@ -56,6 +56,8 @@ La auditoría de operaciones V2 debe considerar como datos mínimos:
 | `correlationId` | Request context | Implementado | A |
 | `origen` | Gateway/backend | Implementado | A |
 | `resultadoOperacion` | Backend | Implementado / operación específica | B |
+
+Nota: los nombres `usuarioId` y `usuarioEmail` corresponden a la metadata observada actualmente. Cualquier representación agrupada como `usuario.id` o `usuario.email` es conceptual y no constituye contrato físico. Los campos que no estén presentes de manera uniforme en las operaciones V2 deben permanecer en Nivel B hasta nueva verificación runtime.
 
 ---
 
@@ -83,12 +85,14 @@ Clasificación:
 
 No confundir:
 
-| Concepto | Propósito | Estado |
-| -------- | --------- | ------ |
-| Auditoría | Registrar quién hizo qué, cuándo, desde dónde y con qué contexto. | Implementado para operaciones V2 específicas. |
-| Evento documental | Representar hechos del ciclo documental para timeline, alertas o proyecciones. | Existencia a verificar por sprint futuro. |
-| Timeline | Vista cronológica de hechos u operaciones. | Roadmap. |
-| Auditoría Visual | UI para consultar auditoría. | Roadmap. |
+| Concepto | Propósito | Estado | Nivel |
+| -------- | --------- | ------ | ----: |
+| Auditoría | Registrar quién hizo qué, cuándo, desde dónde y con qué contexto. | Implementado para operaciones V2 específicas. | A/B según operación |
+| Evento documental / `documento_eventos` | Representar hechos del ciclo documental para timeline, alertas o proyecciones. La infraestructura `documentos.documento_eventos` existe en el sistema. | Infraestructura existente; cobertura V2 pendiente de verificar. | A para existencia de infraestructura; B para cobertura V2; D para fuente oficial de Timeline |
+| Timeline | Vista cronológica de hechos u operaciones. | Roadmap. | D |
+| Auditoría Visual | UI para consultar auditoría. | Roadmap. | D |
+
+La infraestructura `documentos.documento_eventos` existe en el sistema. No está validado que cubra las operaciones V2 consolidadas hasta `v2-rc4`, ni se ha decidido que sea la fuente oficial del Timeline. Su idoneidad como fuente del Timeline permanece pendiente de decisión.
 
 ---
 
@@ -101,7 +105,7 @@ Auditoría ≠ Documento Evento ≠ Timeline Visual
 | Concepto | Qué es | Qué no es | Estado | Nivel |
 | -------- | ------ | --------- | ------ | ----: |
 | Auditoría | Evidencia técnica/operativa de una acción ejecutada con contexto autenticado. | No es por sí sola una vista cronológica funcional. | Implementado para operaciones V2 específicas | A/B según operación |
-| Documento Evento | Hecho documental potencialmente útil para timeline, alertas o proyecciones. | No debe asumirse como fuente definitiva de Timeline sin sprint específico. | Pendiente de decisión | D |
+| Documento Evento | Hecho documental potencialmente útil para timeline, alertas o proyecciones. La infraestructura `documentos.documento_eventos` existe. | No debe asumirse como fuente definitiva de Timeline sin sprint específico. | Infraestructura existente; cobertura V2 pendiente de verificar | A para existencia de infraestructura; B para cobertura V2; D para fuente oficial de Timeline |
 | Timeline Visual | Representación UX cronológica de hechos u operaciones. | No existe actualmente como funcionalidad implementada. | Roadmap | D |
 
 Ningún documento auxiliar debe presentar Auditoría Visual o Timeline Visual como implementados.
