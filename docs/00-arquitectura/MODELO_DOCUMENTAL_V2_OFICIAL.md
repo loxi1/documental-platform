@@ -60,9 +60,9 @@ Una regla no es Nivel A solo porque aparece en código. Para ser Nivel A debe es
 | Documento Operativo Principal | Operativo | A | v2-rc2 / Sprint 2.0A | Asociación operativa validada. |
 | Grupo de Factura | Operativo | A | v2-rc3 / Sprint 2.0B | Creación desde factura existente validada. |
 | Documentos del Grupo de Factura | Operativo | A | v2-rc4 / Sprint 2.0C | Guía, Nota de ingreso, Transferencia y Detracción validadas. |
-| Auditoría `ASOCIAR_DOCUMENTO_PRINCIPAL` | Implementada, pendiente de validación metadata runtime exacta | B | v2-rc2 / Sprint 2.0A | Nombre exacto encontrado en código; falta confirmar metadata runtime. |
-| Auditoría `GRUPO_FACTURA_CREADO` | Operativa | A | v2-rc3 / Sprint 2.0B | Validada en metadata/runtime. |
-| Auditoría `DOCUMENTO_GRUPO_FACTURA_ASOCIADO` | Operativa | A | v2-rc4 / Sprint 2.0C | Validada en metadata/runtime. |
+| Auditoría `ASOCIAR_DOCUMENTO_PRINCIPAL` | Operativa | A | v2-rc4.1 / Sprint 2.0D.1A | Validada runtime en `core.auditoria_eventos`. |
+| Auditoría `GRUPO_FACTURA_CREADO` | Operativa | A | v2-rc4.1 / Sprint 2.0D.1A | Validada runtime en `core.auditoria_eventos`. |
+| Auditoría `DOCUMENTO_GRUPO_FACTURA_ASOCIADO` | Operativa | A | v2-rc4.1 / Sprint 2.0D.1A | Validada runtime en `core.auditoria_eventos`. |
 | Timeline Documental visual | Roadmap | D | — | No existe implementación visual vigente. |
 | Auditoría Visual | Roadmap | D | — | No existe UI vigente. |
 | Reemplazo de Documento Principal | Pendiente | C | — | Reconocido como necesidad futura; no autorizado para implementación hasta sprint específico. |
@@ -483,7 +483,54 @@ Reglas vigentes:
 
 ---
 
-## 17. Matriz de verificación inicial
+## 17. Consulta Canónica de Trazabilidad
+
+La Consulta Canónica de Trazabilidad representa el historial operativo del dominio documental, no una consulta directa a tablas físicas de auditoría.
+
+Nivel: **C** durante el Sprint 2.0D.1B hasta completar implementación y validación runtime.
+
+Principios aprobados:
+
+| Regla | Nivel | Observación |
+| ----- | ----: | ----------- |
+| La API representa historial operativo del dominio. | C | El consumidor no conoce la fuente física. |
+| Toda información externa proviene de una proyección estable del dominio. | C | No se exponen estructuras físicas de persistencia. |
+| Los campos de enriquecimiento pueden provenir de JSON interno. | C | El contrato público no depende de la estructura de ese JSON. |
+| `categoria` y `tipo` son obligatorios. | C | Preparado para mezclar Auditoría, Documento, OCR, Workflow y Sistema. |
+| `items[]` se ordena por fecha DESC desde backend. | C | React no ordena. |
+| El contrato incluye `version`. | C | Permite evolución sin romper consumidores. |
+| La cobertura forma parte del contrato. | C | Permite diagnosticar sin inspeccionar tablas. |
+| Las advertencias usan códigos normalizados. | C | No se devuelven textos arbitrarios. |
+
+Contrato conceptual:
+
+```json
+{
+  "version": 1,
+  "contenedorOperativoId": 2,
+  "items": [],
+  "cobertura": {
+    "auditoria": true,
+    "documentoEventos": false,
+    "parcial": true
+  },
+  "advertencias": [
+    "SIN_EVENTOS_DOCUMENTALES"
+  ]
+}
+```
+
+Restricciones vigentes:
+
+- no exponer `antes`, `despues` ni `metadata` cruda;
+- no acoplar React a `core.auditoria_eventos`;
+- no construir Timeline Visual en este sprint;
+- no construir Auditoría Visual en este sprint;
+- no incorporar nuevas escrituras ni migraciones sin autorización.
+
+---
+
+## 18. Matriz de verificación inicial
 
 | Regla | Fuente comprobada | Nivel | Observación |
 | ----- | ----------------- | ----: | ----------- |
@@ -491,9 +538,9 @@ Reglas vigentes:
 | Documento Operativo Principal | service + Gateway + runtime 2.0A | A | Operativo desde v2-rc2. |
 | Grupo de Factura persistido | migración + service + runtime 2.0B | A | Operativo desde v2-rc3. |
 | Asociación de documentos al grupo | service + Gateway + Workspace 2.0C | A | Operativo desde v2-rc4. |
-| Auditoría `ASOCIAR_DOCUMENTO_PRINCIPAL` | código / contrato 2.0A | B | Nombre exacto identificado; pendiente confirmar metadata runtime exacta. |
-| Auditoría `GRUPO_FACTURA_CREADO` | runtime Workspace/metadata 2.0B | A | Operativo desde v2-rc3. |
-| Auditoría `DOCUMENTO_GRUPO_FACTURA_ASOCIADO` | runtime Workspace/metadata 2.0C | A | Operativo desde v2-rc4. |
+| Auditoría `ASOCIAR_DOCUMENTO_PRINCIPAL` | runtime 2.0D.1A / `core.auditoria_eventos` | A | Validada físicamente en v2-rc4.1. |
+| Auditoría `GRUPO_FACTURA_CREADO` | runtime 2.0D.1A / `core.auditoria_eventos` | A | Validada físicamente en v2-rc4.1. |
+| Auditoría `DOCUMENTO_GRUPO_FACTURA_ASOCIADO` | runtime 2.0D.1A / `core.auditoria_eventos` | A | Validada físicamente en v2-rc4.1. |
 | Grupos V1 adaptados solo consulta | Workspace + UI 2.0B/2.0C | A | No muestran acciones. |
 | React consume solo Gateway | Web Admin + servicios frontend | A | No consumir `ms-documentos`. |
 | React usa `vista` como fuente visual | Workspace V2 + UI 2.0C | A | No usar metadata OCR. |
@@ -505,7 +552,7 @@ Reglas vigentes:
 
 ---
 
-## 18. Contradicciones históricas conocidas
+## 19. Contradicciones históricas conocidas
 
 No se debe reescribir masivamente documentación histórica. La estrategia vigente es:
 
@@ -533,7 +580,7 @@ Términos que requieren revisión en documentación histórica:
 
 ---
 
-## 19. Criterio de modificación futura
+## 20. Criterio de modificación futura
 
 Toda modificación futura al Modelo Documental V2 debe cumplir:
 

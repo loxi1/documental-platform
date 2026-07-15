@@ -20,6 +20,9 @@ import { AsociarDocumentoPrincipalV2UseCase } from './use-cases/asociar-document
 import { AsociarGrupoFacturaV2UseCase } from './use-cases/asociar-grupo-factura-v2.usecase';
 import { AsociarDocumentoGrupoFacturaV2UseCase } from './use-cases/asociar-documento-grupo-factura-v2.usecase';
 import { AuditoriaOperativaV2Repository } from './auditoria-operativa-v2.repository';
+import { TrazabilidadV2Repository } from './trazabilidad-v2.repository';
+import { TrazabilidadV2ProjectionMapper } from './trazabilidad-v2.projection.mapper';
+import { ConsultarTrazabilidadV2UseCase } from './use-cases/consultar-trazabilidad-v2.usecase';
 
 @Module({
   controllers: [DocumentalV2Controller],
@@ -42,6 +45,9 @@ import { AuditoriaOperativaV2Repository } from './auditoria-operativa-v2.reposit
     AsociarGrupoFacturaV2UseCase,
     AsociarDocumentoGrupoFacturaV2UseCase,
     AuditoriaOperativaV2Repository,
+    TrazabilidadV2Repository,
+    TrazabilidadV2ProjectionMapper,
+    ConsultarTrazabilidadV2UseCase,
   ],
   exports: [
     ContenedorOperativoRepository,
@@ -58,6 +64,9 @@ import { AuditoriaOperativaV2Repository } from './auditoria-operativa-v2.reposit
     WorkspaceDocumentalV2ViewMapper,
     WorkspaceDocumentalV2UseCase,
     AuditoriaOperativaV2Repository,
+    TrazabilidadV2Repository,
+    TrazabilidadV2ProjectionMapper,
+    ConsultarTrazabilidadV2UseCase,
   ],
 })
 export class DocumentalV2Module {}

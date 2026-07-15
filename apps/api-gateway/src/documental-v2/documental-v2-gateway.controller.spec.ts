@@ -14,6 +14,95 @@ jest.mock('axios', () => {
     default: request,
     ...request,
   };
+
+  it('expone trazabilidad canónica V2 por proxy controlado', async () => {
+    const { controller, nats } = buildController({
+      sub: 1,
+      email: 'admin@documental.local',
+      workspaceId: 1,
+    });
+
+    const respuesta = {
+      version: 1,
+      contenedorOperativoId: 2,
+      items: [
+        {
+          id: 'auditoria:348',
+          fecha: '2026-07-14T21:23:43.735Z',
+          categoria: 'AUDITORIA',
+          tipo: 'DOCUMENTO_GRUPO_FACTURA_ASOCIADO',
+          descripcion: 'Documento asociado al Grupo de Factura desde operación V2.',
+          actor: { usuarioId: 1, email: 'admin@documental.local' },
+          entidad: { tipo: 'grupo_factura_documento', id: '5' },
+          resultado: 'CREADO',
+          origen: 'api-gateway',
+          requestId: 'req-6',
+          correlationId: 'req-6',
+        },
+      ],
+      cobertura: { auditoria: true, documentoEventos: false, parcial: true },
+      advertencias: ['TRAZABILIDAD_PARCIAL', 'SIN_EVENTOS_DOCUMENTALES'],
+    };
+
+    (axios.get as jest.Mock).mockResolvedValueOnce({
+      data: {
+        success: true,
+        data: respuesta,
+      },
+    });
+
+    const result = await controller.consultarTrazabilidadPorContenedor(
+      'Bearer token-valido',
+      'req-6',
+      '2',
+    );
+
+    expect(nats.send).toHaveBeenCalledWith('auth.validate-token', {
+      token: 'token-valido',
+    });
+    expect(axios.get).toHaveBeenCalledWith(
+      'http://ms-documentos:3002/api/v1/documental-v2/trazabilidad/contenedores/2',
+      {
+        headers: {
+          authorization: 'Bearer token-valido',
+          'x-user-id': '1',
+          'x-user-email': 'admin@documental.local',
+          'x-workspace-id': '1',
+          'x-empresa-codigo': 'BBTI',
+          'x-cliente-destino-id': '2',
+          'x-request-id': 'req-6',
+          'x-correlation-id': 'req-6',
+        },
+      },
+    );
+    expect(result).toEqual(respuesta);
+  });
+
+  it('propaga errores upstream de trazabilidad V2 como HttpException controlada', async () => {
+    const { controller } = buildController({
+      sub: 1,
+      email: 'admin@documental.local',
+      workspaceId: 1,
+    });
+
+    (axios.get as jest.Mock).mockRejectedValueOnce({
+      isAxiosError: true,
+      response: {
+        status: 404,
+        data: {
+          error: {
+            code: 'CONTENEDOR_OPERATIVO_NO_ENCONTRADO',
+            message: 'Contenedor Operativo no encontrado',
+          },
+        },
+      },
+    });
+
+    await expect(
+      controller.consultarTrazabilidadPorContenedor('Bearer token-valido', 'req-7', '999'),
+    ).rejects.toMatchObject({ status: 404 });
+  });
+
 });
 
 import { ConfigService } from '@nestjs/config';
@@ -365,6 +454,95 @@ describe('DocumentalV2GatewayController', () => {
       },
     );
     expect(result).toEqual(respuesta);
+  });
+
+
+  it('expone trazabilidad canónica V2 por proxy controlado', async () => {
+    const { controller, nats } = buildController({
+      sub: 1,
+      email: 'admin@documental.local',
+      workspaceId: 1,
+    });
+
+    const respuesta = {
+      version: 1,
+      contenedorOperativoId: 2,
+      items: [
+        {
+          id: 'auditoria:348',
+          fecha: '2026-07-14T21:23:43.735Z',
+          categoria: 'AUDITORIA',
+          tipo: 'DOCUMENTO_GRUPO_FACTURA_ASOCIADO',
+          descripcion: 'Documento asociado al Grupo de Factura desde operación V2.',
+          actor: { usuarioId: 1, email: 'admin@documental.local' },
+          entidad: { tipo: 'grupo_factura_documento', id: '5' },
+          resultado: 'CREADO',
+          origen: 'api-gateway',
+          requestId: 'req-6',
+          correlationId: 'req-6',
+        },
+      ],
+      cobertura: { auditoria: true, documentoEventos: false, parcial: true },
+      advertencias: ['TRAZABILIDAD_PARCIAL', 'SIN_EVENTOS_DOCUMENTALES'],
+    };
+
+    (axios.get as jest.Mock).mockResolvedValueOnce({
+      data: {
+        success: true,
+        data: respuesta,
+      },
+    });
+
+    const result = await controller.consultarTrazabilidadPorContenedor(
+      'Bearer token-valido',
+      'req-6',
+      '2',
+    );
+
+    expect(nats.send).toHaveBeenCalledWith('auth.validate-token', {
+      token: 'token-valido',
+    });
+    expect(axios.get).toHaveBeenCalledWith(
+      'http://ms-documentos:3002/api/v1/documental-v2/trazabilidad/contenedores/2',
+      {
+        headers: {
+          authorization: 'Bearer token-valido',
+          'x-user-id': '1',
+          'x-user-email': 'admin@documental.local',
+          'x-workspace-id': '1',
+          'x-empresa-codigo': 'BBTI',
+          'x-cliente-destino-id': '2',
+          'x-request-id': 'req-6',
+          'x-correlation-id': 'req-6',
+        },
+      },
+    );
+    expect(result).toEqual(respuesta);
+  });
+
+  it('propaga errores upstream de trazabilidad V2 como HttpException controlada', async () => {
+    const { controller } = buildController({
+      sub: 1,
+      email: 'admin@documental.local',
+      workspaceId: 1,
+    });
+
+    (axios.get as jest.Mock).mockRejectedValueOnce({
+      isAxiosError: true,
+      response: {
+        status: 404,
+        data: {
+          error: {
+            code: 'CONTENEDOR_OPERATIVO_NO_ENCONTRADO',
+            message: 'Contenedor Operativo no encontrado',
+          },
+        },
+      },
+    });
+
+    await expect(
+      controller.consultarTrazabilidadPorContenedor('Bearer token-valido', 'req-7', '999'),
+    ).rejects.toMatchObject({ status: 404 });
   });
 
 });
