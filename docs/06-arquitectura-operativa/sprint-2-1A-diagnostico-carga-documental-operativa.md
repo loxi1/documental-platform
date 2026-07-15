@@ -1156,9 +1156,15 @@ PENDIENTE DE DIAGNÓSTICO
 
 ---
 
-## 30. Cierre parcial
+## 30. Hallazgo provisional — Transición expediente → contenedor → principal
 
-El diagnóstico confirma que la plataforma base de la Fase I está operativa, pero el flujo de negocio de Fase II requiere cerrar primero la transición entre:
+El diagnóstico confirma que la plataforma base de la Fase I está operativa para lectura, consulta y representación inicial del Workspace Documental V2.
+
+Sin embargo, este hallazgo no constituye cierre del Sprint 2.1A.
+
+### Hallazgo provisional
+
+La transición entre:
 
 ```text
 documentos.expedientes
@@ -1170,4 +1176,954 @@ y:
 documentos.contenedores_operativos
 ```
 
-La prioridad técnica-funcional no es todavía upload ni OCR. El bloqueo inmediato es asegurar que un expediente/contexto actual pueda obtener o materializar un contenedor operativo V2 persistido, siempre mediante Gateway/backend, antes de asociar Documento Operativo Principal y permitir adjuntos documentales.
+sigue siendo el primer bloqueo técnico-funcional detectado para operar documentos sobre expedientes actuales.
+
+### Estado observado
+
+```text
+Expediente V1:
+visible por Gateway y Workspace
+
+Workspace V2:
+puede representarlo mediante adapter
+
+Contenedor V2 persistido:
+no se materializa automáticamente
+
+Documento Operativo Principal:
+requiere contenedorOperativoId persistido
+```
+
+### Conclusión provisional
+
+Antes de asociar Documento Operativo Principal y permitir adjuntos documentales, el backend/Gateway deberá contar con una operación controlada para obtener o materializar el contenedor operativo del expediente actual.
+
+Esta conclusión es provisional porque el Sprint 2.1A aún debe completar el diagnóstico de:
+
+- adjuntos;
+- upload;
+- R2;
+- hash;
+- duplicado físico;
+- duplicado documental;
+- permisos por tipo documental/perfil;
+- OCR;
+- confirmación;
+- versionado;
+- fechas;
+- estados;
+- flujo contable.
+
+---
+
+## 31. Reenfoque Product Owner — MVP funcional
+
+Durante la revisión del Sprint 2.1A, el Product Owner redujo el objetivo del diagnóstico al mínimo necesario para implementar y desplegar un MVP funcional.
+
+El Sprint 2.1A ya no debe intentar cerrar reglas futuras de todo el ciclo documental avanzado. Debe dejar listo el mapa técnico-funcional necesario para programar el MVP.
+
+### MVP requerido
+
+```text
+Compras:
+  - selecciona o crea expediente/contexto;
+  - registra Documento Operativo Principal: OC, OS o Requerimiento de Compra;
+  - no puede adjuntar documentos sin principal;
+  - adjunta Factura y documentos propios de Compras.
+
+Almacén:
+  - adjunta Guía de Remisión;
+  - adjunta Nota de Ingreso.
+
+Finanzas:
+  - adjunta Transferencia;
+  - adjunta Detracción.
+
+Contabilidad:
+  - revisa el Workspace completo;
+  - filtra por empresa, año y mes contable;
+  - para el MVP, año y mes se derivan inicialmente de la fecha de emisión de la Factura.
+```
+
+### Restricciones técnicas del MVP
+
+```text
+Todo debe pasar por API Gateway.
+React no sube directamente a R2.
+
+Antes de almacenar en R2, backend debe:
+  - validar permisos;
+  - calcular hash;
+  - comprobar duplicado físico;
+  - comprobar duplicado documental.
+```
+
+### Migración mínima para deploy
+
+```text
+usuarios;
+perfiles/workspaces necesarios;
+documentos.expedientes;
+catálogos mínimos relacionados.
+```
+
+### Fuera del MVP
+
+```text
+alertas;
+versionado documental completo;
+reemplazo de principal;
+movimiento o eliminación de asociaciones;
+Timeline avanzado;
+Auditoría Visual adicional;
+OCR avanzado;
+cierres/reaperturas contables;
+Caja Chica y Rendiciones;
+mantenimiento de usuarios/perfiles.
+```
+
+---
+
+## 32. Niveles de autoridad del diagnóstico MVP
+
+Para evitar que una observación sea confundida con regla aprobada, cada GAP del bloque MVP usará estos niveles:
+
+```text
+Nivel A:
+Evidencia técnica observada en runtime, SQL, código o Gateway.
+
+Nivel B:
+Criterio funcional definido por Product Owner para el MVP.
+
+Nivel C:
+Decisión de diseño o implementación pendiente para un sprint posterior.
+
+Nivel D:
+Backlog futuro no bloqueante para el MVP.
+```
+
+---
+
+## GAP 2.1A-010 — Expediente / Contexto Operativo V2 para MVP
+
+### Estado actual
+
+Los expedientes existen en `documentos.expedientes` y son visibles por Gateway y Workspace V2 mediante adapter V1/V2.
+
+Sin embargo, los expedientes actuales no materializan automáticamente un `contenedor_operativo` persistido.
+
+### Evidencia encontrada
+
+Se validó que el expediente `id = 16` responde por Workspace V2, pero con:
+
+```text
+contenedorOperativo.estadoPersistencia: no_persistido
+contenedorOperativo.persistido: null
+```
+
+También se validó que la creación actual de expedientes inserta en `documentos.expedientes`, pero no crea `documentos.contenedores_operativos`.
+
+### Riesgo
+
+Compras puede seleccionar un expediente visible, pero no podrá asociar Documento Operativo Principal V2 si no existe `contenedorOperativoId` persistido.
+
+### Decisión pendiente
+
+Definir una operación backend/Gateway para obtener o materializar el contenedor operativo desde el expediente actual.
+
+### Recomendación futura
+
+Implementar en el primer sprint del MVP una operación controlada:
+
+```text
+obtener_o_materializar_contenedor_operativo(expedienteId)
+```
+
+Reglas mínimas:
+
+```text
+React no crea contenedores.
+Gateway valida workspace.
+Backend lee documentos.expedientes.
+Backend busca contenedor por clave.
+Si existe, retorna contenedorOperativoId.
+Si no existe, lo crea y retorna contenedorOperativoId.
+```
+
+### Nivel de autoridad
+
+```text
+Nivel A:
+Evidencia observada.
+
+Nivel B:
+Necesario para MVP.
+```
+
+---
+
+## GAP 2.1A-011 — Documento Operativo Principal obligatorio
+
+### Estado actual
+
+Existen endpoints Gateway para candidatos y asociación de Documento Operativo Principal:
+
+```http
+GET  /api/v1/documental-v2/documentos-candidatos-principal
+POST /api/v1/documental-v2/documentos-operativos-principales/asociar
+```
+
+El endpoint de candidatos funciona cuando se envía `tipoPrincipal`.
+
+### Evidencia encontrada
+
+Para `tipoPrincipal=OC`, el endpoint devuelve candidatos. Para `OS` y `REQUERIMIENTO_COMPRA`, el endpoint responde correctamente, pero sin data en el dataset actual.
+
+También se observó que si falta `tipoPrincipal`, el backend devuelve error interno 500 en lugar de 400.
+
+### Riesgo
+
+Sin principal obligatorio, Compras, Almacén o Finanzas podrían adjuntar documentos sin una operación base clara.
+
+### Decisión pendiente
+
+Separar explícitamente:
+
+```text
+soporte técnico del filtro REQUERIMIENTO_COMPRA
+```
+
+de:
+
+```text
+aprobación funcional de Requerimiento de Compra como Documento Operativo Principal del MVP
+```
+
+### Recomendación futura
+
+Para el MVP:
+
+```text
+No permitir adjuntos si no existe Documento Operativo Principal asociado.
+Validar tipoPrincipal obligatorio con 400 BAD_REQUEST.
+Confirmar catálogo mínimo de tipos principales: OC, OS, Requerimiento de Compra.
+```
+
+### Nivel de autoridad
+
+```text
+Nivel A:
+Endpoints y comportamiento observados.
+
+Nivel B:
+Principal obligatorio definido por Product Owner para MVP.
+
+Nivel C:
+Validación 400 y soporte funcional de Requerimiento requieren implementación posterior.
+```
+
+---
+
+## GAP 2.1A-012 — Documentos por área para el MVP
+
+### Estado actual
+
+El Modelo V2 ya trabaja con relaciones para documentos asociados a Grupo de Factura, incluyendo:
+
+```text
+Factura
+Guía de Remisión
+Nota de Ingreso
+Transferencia
+Detracción
+```
+
+Pero el diagnóstico aún debe confirmar el flujo operativo por perfil y tipo documental en Gateway/backend.
+
+### Evidencia encontrada
+
+Se validó que Compras puede listar expedientes pero no puede ingresar a mantenimiento contable, lo cual es correcto.
+
+Los permisos actuales de workspace muestran acciones documentales genéricas, pero no se ha confirmado una autorización granular por tipo documental y perfil.
+
+### Riesgo
+
+Si se usa un permiso genérico como `documentos.subir`, cualquier área podría cargar cualquier tipo documental.
+
+### Decisión pendiente
+
+Definir reglas mínimas del MVP:
+
+```text
+Compras:
+  Documento Principal, Factura y documentos propios de Compras.
+
+Almacén:
+  Guía de Remisión y Nota de Ingreso.
+
+Finanzas:
+  Transferencia y Detracción.
+
+Contabilidad:
+  revisión, no carga operativa principal del MVP salvo decisión posterior.
+```
+
+### Recomendación futura
+
+Implementar validación backend por:
+
+```text
+workspace/perfil;
+tipo documental;
+operación solicitada;
+empresa;
+cliente destino.
+```
+
+No confiar solo en ocultamiento visual desde React.
+
+### Nivel de autoridad
+
+```text
+Nivel A:
+Permisos actuales y 403 de Compras sobre mantenimiento contable observados.
+
+Nivel B:
+Distribución por áreas definida por Product Owner para MVP.
+
+Nivel C:
+Validación granular por tipo documental requiere implementación posterior.
+```
+
+---
+
+## GAP 2.1A-013 — Upload seguro vía Gateway/backend
+
+### Estado actual
+
+El diagnóstico aún no confirma un flujo completo y seguro de upload documental para el MVP.
+
+La regla objetivo del Product Owner es que React no suba directamente a R2.
+
+### Evidencia encontrada
+
+Durante la Fase I se consolidó el principio:
+
+```text
+React representa.
+React no autoriza.
+Gateway propaga.
+Backend decide.
+```
+
+La directriz del MVP agrega:
+
+```text
+React no sube directamente a R2.
+Todo documento debe pasar por API Gateway.
+```
+
+### Riesgo
+
+Si React sube directo a R2, el sistema puede almacenar archivos sin validar permisos, hash, duplicados, identidad documental o trazabilidad.
+
+### Decisión pendiente
+
+Diagnosticar el endpoint actual de upload y confirmar:
+
+```text
+quién recibe el archivo;
+si pasa por Gateway;
+si ms-documentos valida antes de R2;
+qué ocurre si R2 sube y BD falla;
+qué respuesta recibe React;
+qué auditoría se registra.
+```
+
+### Recomendación futura
+
+Flujo mínimo para MVP:
+
+```text
+React
+  ↓
+API Gateway
+  ↓
+ms-documentos
+  ↓
+validación de permisos
+  ↓
+cálculo hash
+  ↓
+validación duplicado físico/documental
+  ↓
+R2
+  ↓
+BD
+  ↓
+auditoría
+  ↓
+Workspace
+```
+
+### Nivel de autoridad
+
+```text
+Nivel B:
+Regla del Product Owner para MVP.
+
+Nivel C:
+Requiere diagnóstico de endpoints y posterior implementación.
+```
+
+---
+
+## GAP 2.1A-014 — R2 y consistencia de almacenamiento
+
+### Estado actual
+
+R2 está dentro de la arquitectura objetivo, pero el diagnóstico debe confirmar el flujo real de almacenamiento actual.
+
+### Evidencia encontrada
+
+El principio requerido para MVP es:
+
+```text
+Ningún archivo será almacenado en R2 sin validación previa del backend.
+```
+
+Aún no se ha documentado evidencia suficiente de:
+
+```text
+endpoint de upload real;
+orden exacto BD/R2;
+rollback;
+manejo de errores;
+referencia archivo-documento.
+```
+
+### Riesgo
+
+Puede quedar un archivo en R2 sin registro válido en BD o un registro en BD apuntando a un objeto inexistente.
+
+### Decisión pendiente
+
+Definir estrategia mínima de consistencia:
+
+```text
+validar antes de subir;
+subir a R2;
+registrar BD;
+si BD falla, marcar error o limpiar objeto;
+si R2 falla, no crear documento confirmado;
+registrar auditoría.
+```
+
+### Recomendación futura
+
+No habilitar upload productivo hasta que exista contrato claro de error y compensación R2/BD.
+
+### Nivel de autoridad
+
+```text
+Nivel B:
+R2 solo vía backend para MVP.
+
+Nivel C:
+Consistencia R2/BD requiere implementación posterior.
+```
+
+---
+
+## GAP 2.1A-015 — Hash y duplicado físico
+
+### Estado actual
+
+El MVP requiere calcular hash antes de almacenar en R2.
+
+No se ha cerrado todavía si el sistema actual calcula y persiste SHA-256 antes del upload.
+
+### Evidencia encontrada
+
+La regla del Product Owner indica:
+
+```text
+Antes de almacenar en R2, backend debe calcular hash y comprobar duplicado físico.
+```
+
+### Riesgo
+
+Sin hash previo:
+
+```text
+mismo PDF puede almacenarse varias veces;
+se incrementa costo R2;
+se reprocesa OCR;
+se duplica trazabilidad;
+se confunde al usuario.
+```
+
+### Decisión pendiente
+
+Confirmar si existe campo persistido para hash en `documentos.documentos_archivos` u otra tabla, y si existe índice/consulta para buscar por hash.
+
+### Recomendación futura
+
+Para el MVP:
+
+```text
+calcular SHA-256 en backend antes de R2;
+buscar hash existente;
+si existe, no subir nuevamente;
+devolver referencia o conflicto controlado según regla funcional;
+registrar auditoría.
+```
+
+### Nivel de autoridad
+
+```text
+Nivel B:
+Hash obligatorio antes de R2 para MVP.
+
+Nivel C:
+Persistencia e índice de hash requieren verificación/implementación.
+```
+
+---
+
+## GAP 2.1A-016 — Identidad documental y duplicado documental
+
+### Estado actual
+
+El MVP requiere distinguir duplicado físico de duplicado documental.
+
+### Evidencia encontrada
+
+La identidad documental objetivo mínima es:
+
+```text
+empresa + tipo documental + RUC + serie + número
+```
+
+El hash no resuelve por sí solo el caso de un documento lógico con archivo corregido.
+
+### Riesgo
+
+Sin duplicado documental:
+
+```text
+misma factura puede ingresar dos veces con archivos distintos;
+una versión corregida puede confundirse con documento nuevo;
+un documento distinto puede rechazarse incorrectamente;
+Contabilidad puede validar una factura duplicada.
+```
+
+### Decisión pendiente
+
+Definir campos obligatorios por tipo documental para el MVP:
+
+```text
+Factura: RUC, serie, número, fecha emisión.
+OC/OS/Requerimiento: tipo, número/código, empresa.
+Guía/NI/Transferencia/Detracción: identidad mínima por tipo.
+```
+
+### Recomendación futura
+
+Para el MVP, validar duplicado documental antes de registrar documento nuevo y antes de confirmar asociación al Workspace.
+
+### Nivel de autoridad
+
+```text
+Nivel B:
+Duplicado documental obligatorio para MVP.
+
+Nivel C:
+Reglas por tipo documental requieren diseño de implementación.
+```
+
+---
+
+## GAP 2.1A-017 — Permisos actuales por perfil y tipo documental
+
+### Estado actual
+
+Usuarios, perfiles y workspaces ya existen. No habrá mantenimiento de usuarios por ahora.
+
+### Evidencia encontrada
+
+Usuarios observados:
+
+```text
+admin
+compras
+almacen
+finanzas
+contabilidad
+```
+
+Workspaces BBTI existen y se validó comportamiento de Compras:
+
+```text
+Compras lista expedientes.
+Compras no accede a mantenimiento contable.
+```
+
+### Riesgo
+
+El MVP puede fallar si los permisos actuales no cubren la distribución real por área o si son demasiado genéricos.
+
+### Decisión pendiente
+
+Definir si el MVP usará permisos existentes o si requiere nuevos actions mínimos, por ejemplo:
+
+```text
+documentos.cargar_factura
+documentos.cargar_guia
+documentos.cargar_nota_ingreso
+documentos.cargar_transferencia
+documentos.cargar_detraccion
+documentos.asociar_principal
+```
+
+### Recomendación futura
+
+No crear mantenimiento de usuarios. Solo migrar usuarios/workspaces necesarios y, si hace falta, ajustar permisos mínimos por seed controlado.
+
+### Nivel de autoridad
+
+```text
+Nivel A:
+Usuarios y workspaces observados.
+
+Nivel B:
+No habrá mantenimiento de usuarios en MVP.
+
+Nivel C:
+Actions granulares deben evaluarse para implementación.
+```
+
+---
+
+## GAP 2.1A-018 — Revisión contable por fecha de emisión de Factura
+
+### Estado actual
+
+Contabilidad requiere revisar por empresa, año y mes contable.
+
+Para el MVP, año y mes se derivan inicialmente de la fecha de emisión de la Factura.
+
+### Evidencia encontrada
+
+Durante Fase I ya existe entrada de revisión contable y Workspace. El Product Owner define para MVP:
+
+```text
+Contabilidad:
+  - revisa Workspace completo;
+  - filtra por empresa, año y mes contable;
+  - año y mes se derivan inicialmente de fecha de emisión de Factura.
+```
+
+### Riesgo
+
+Si se mezcla revisión contable con flujo operativo de Compras, la UI puede forzar navegación incorrecta para ambas áreas.
+
+### Decisión pendiente
+
+Definir contrato mínimo para consulta contable MVP:
+
+```text
+empresa;
+año;
+mes;
+fecha_emision_factura;
+estado de completitud documental;
+link al Workspace.
+```
+
+### Recomendación futura
+
+Mantener dos entradas funcionales:
+
+```text
+Compras:
+Contexto → Principal → Documentos asociados
+
+Contabilidad:
+Empresa → Año/Mes → Factura → Workspace
+```
+
+No tratar cierres, reaperturas ni reglas contables avanzadas en el MVP.
+
+### Nivel de autoridad
+
+```text
+Nivel B:
+Filtro por fecha de emisión de Factura definido para MVP.
+
+Nivel D:
+Reglas contables avanzadas quedan fuera del MVP.
+```
+
+---
+
+## GAP 2.1A-019 — Migración mínima para deploy MVP
+
+### Estado actual
+
+La data de expedientes BBTI/BBTEC fue cargada y validada. Usuarios/workspaces existen en entorno actual.
+
+### Evidencia encontrada
+
+Seed de expedientes validado:
+
+```text
+BBTEC: 7 expedientes
+BBTI: 109 expedientes
+códigos vacíos: 0
+```
+
+Usuarios/perfiles/workspaces observados:
+
+```text
+admin
+compras
+almacen
+finanzas
+contabilidad
+```
+
+### Riesgo
+
+Si el deploy no migra la data mínima correcta, el MVP puede fallar aunque el código esté listo.
+
+### Decisión pendiente
+
+Definir script de producción para:
+
+```text
+usuarios;
+perfiles;
+workspaces;
+expedientes;
+catálogos mínimos;
+permisos mínimos;
+clientes destino;
+proveedores si aplica;
+tipos documentales si aplica.
+```
+
+### Recomendación futura
+
+Separar seeds por dominio:
+
+```text
+infra/postgres/seeds/*expedientes*.sql
+infra/postgres/seeds/*auth_workspaces*.sql
+infra/postgres/seeds/*catalogos_minimos*.sql
+```
+
+### Nivel de autoridad
+
+```text
+Nivel A:
+Seed local de expedientes validado.
+
+Nivel B:
+Migración mínima requerida por Product Owner.
+
+Nivel C:
+Script final de producción pendiente.
+```
+
+---
+
+## GAP 2.1A-020 — OCR y confirmación básica para MVP
+
+### Estado actual
+
+OCR avanzado queda fuera del MVP, pero el flujo debe considerar cómo se confirmará documentalmente lo cargado.
+
+### Evidencia encontrada
+
+Existen endpoints y estados de OCR/confirmación en la plataforma, pero el Sprint 2.1A aún no ha diagnosticado si el MVP usará OCR automático, manual o validación mínima por usuario.
+
+### Riesgo
+
+Si se exige OCR avanzado antes del MVP, se retrasa el deploy. Si se omite toda confirmación, Contabilidad puede revisar documentos no confiables.
+
+### Decisión pendiente
+
+Definir para MVP:
+
+```text
+qué campos se capturan manualmente;
+qué campos puede sugerir OCR si existe;
+quién confirma cada tipo documental;
+qué estado habilita visibilidad en Workspace y revisión contable.
+```
+
+### Recomendación futura
+
+Para MVP, permitir validación/confirmación básica sin depender de OCR avanzado, dejando OCR avanzado como mejora posterior.
+
+### Nivel de autoridad
+
+```text
+Nivel B:
+OCR avanzado fuera del MVP.
+
+Nivel C:
+Confirmación básica requiere definición de implementación.
+```
+
+---
+
+## 33. Matriz MVP de ciclo documental operativo
+
+| Etapa | Existe hoy | Responsable MVP | Estado diagnóstico | GAP |
+|---|---:|---|---|---|
+| Expediente / contexto | Parcial | Compras / Gateway / Backend | Visible, no siempre persistido V2 | 2.1A-010 |
+| Documento principal | Parcial | Compras | Endpoints existen; falta flujo Compras | 2.1A-011 |
+| Adjuntos por área | Parcial | Compras / Almacén / Finanzas | Reglas por perfil pendientes | 2.1A-012 |
+| Upload seguro | Pendiente | Gateway / Backend | Flujo no cerrado | 2.1A-013 |
+| R2 | Pendiente | Backend | Consistencia no diagnosticada | 2.1A-014 |
+| Hash | Pendiente | Backend | Obligatorio para MVP | 2.1A-015 |
+| Duplicado físico | Pendiente | Backend | Depende de hash | 2.1A-015 |
+| Duplicado documental | Pendiente | Backend | Identidad por tipo pendiente | 2.1A-016 |
+| Permisos por tipo | Parcial | Backend / Gateway | Workspaces existen; granularidad pendiente | 2.1A-017 |
+| Revisión contable | Parcial | Contabilidad | Fecha emisión como criterio inicial MVP | 2.1A-018 |
+| Migración mínima | Parcial | Infra / Backend | Expedientes validados; auth/catalogos pendientes | 2.1A-019 |
+| OCR / confirmación básica | Parcial | Usuario / Backend | OCR avanzado fuera de MVP | 2.1A-020 |
+
+---
+
+## 34. Backlog explícito fuera del MVP
+
+Los siguientes temas quedan registrados como backlog y no deben bloquear el cierre del diagnóstico mínimo del MVP:
+
+```text
+Versionado documental completo.
+Alertas.
+Estados avanzados del ciclo documental.
+Reglas contables futuras.
+Cierres y reaperturas contables.
+Reemplazo controlado de Documento Principal.
+Movimiento o eliminación de asociaciones.
+Timeline avanzado.
+Auditoría Visual adicional.
+OCR avanzado.
+Caja Chica.
+Rendiciones.
+Mantenimiento de usuarios y perfiles.
+```
+
+Estos temas podrán requerir Decisiones Arquitectónicas o sprints específicos posteriores.
+
+---
+
+## 35. Roadmap corto recomendado para MVP
+
+```text
+2.1B
+Materialización de Contexto Operativo desde expediente actual
+
+↓
+
+2.1C
+Flujo de Compras: contexto + Documento Operativo Principal obligatorio
+
+↓
+
+2.1D
+Upload Seguro vía Gateway/backend
+
+↓
+
+2.1E
+Hash, R2 y prevención de duplicado físico
+
+↓
+
+2.1F
+Identidad documental y duplicado documental
+
+↓
+
+2.1G
+Adjuntos por área: Compras / Almacén / Finanzas
+
+↓
+
+2.1H
+Confirmación básica y visibilidad en Workspace
+
+↓
+
+2.1I
+Revisión Contable MVP por empresa, año, mes y fecha de emisión de Factura
+
+↓
+
+2.1J
+Migración mínima y preparación de deploy
+```
+
+Este roadmap es una recomendación de diagnóstico. La apertura de cada sprint requiere autorización formal.
+
+---
+
+## 36. Dictamen actual del Sprint 2.1A
+
+```text
+Sprint:
+2.1A — Diagnóstico End-to-End de Carga Documental Operativa
+
+Estado:
+CONTINÚA
+
+Bloque Arquitectura:
+APROBADO
+
+Bloque MVP funcional:
+REENFOCADO
+
+Implementación:
+NO AUTORIZADA
+
+Runtime:
+SOLO OBSERVACIÓN
+
+Cierre formal:
+PENDIENTE DE VALIDACIÓN FINAL
+```
+
+### Criterio de éxito MVP adoptado
+
+```text
+Compras crea el flujo documental.
+Almacén y Finanzas completan sus documentos.
+Contabilidad revisa por mes.
+El sistema puede pasar a testing y luego deploy.
+```
+
+### Conclusión actual
+
+El diagnóstico debe cerrarse alrededor del MVP funcional, no alrededor de todos los escenarios futuros del ciclo documental.
+
+La prioridad queda acotada a:
+
+```text
+expediente/contexto V2;
+principal obligatorio;
+documentos por área;
+upload seguro;
+R2;
+duplicados;
+permisos actuales;
+revisión contable por fecha de emisión;
+migración mínima;
+roadmap corto de implementación.
+```
+
+Los temas avanzados quedan en backlog y no deben bloquear el inicio del MVP una vez cubiertos los GAPs mínimos anteriores.
