@@ -7,6 +7,53 @@
 
 ---
 
+
+## Consulta Canónica
+
+La API de trazabilidad V2 no expone una tabla de auditoría ni una tabla de eventos documentales.
+
+Aunque la fuente principal actual sea `core.auditoria_eventos`, el contrato público representa el historial operativo del dominio documental, no la estructura física de persistencia.
+
+Del mismo modo, `documentos.documento_eventos` puede ser una fuente complementaria futura, pero el consumidor no debe conocer ni depender de esa fuente.
+
+La respuesta pública se construye como una proyección estable del dominio:
+
+```text
+Fuente física
+  ↓
+Repository
+  ↓
+UseCase
+  ↓
+Projection Mapper
+  ↓
+DTO
+  ↓
+Controller
+  ↓
+Contrato público
+```
+
+Por esta razón, el endpoint no devuelve `antes`, `despues`, `metadata` ni estructuras JSONB crudas.
+
+El contrato público mantiene campos estables como:
+
+- `version`;
+- `contenedorOperativoId`;
+- `items`;
+- `categoria`;
+- `tipo`;
+- `actor`;
+- `entidad`;
+- `resultado`;
+- `origen`;
+- `cobertura`;
+- `advertencias`.
+
+Esto permite que futuros consumidores como Timeline Documental, Auditoría Visual o Dashboard puedan evolucionar sin acoplarse a tablas internas.
+
+---
+
 ## 1. Objetivo
 
 Construir la primera API canónica de lectura de trazabilidad del Modelo Documental V2.
