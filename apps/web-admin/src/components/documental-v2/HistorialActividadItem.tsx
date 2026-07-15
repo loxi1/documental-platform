@@ -9,7 +9,7 @@ function getTipoLabel(tipo: string) {
     DOCUMENTO_GRUPO_FACTURA_ASOCIADO: "Documento asociado al grupo de factura",
   };
 
-  return labels[tipo] ?? "Actividad registrada";
+  return labels[tipo] ?? "Operación registrada";
 }
 
 function getCategoriaLabel(categoria: string) {
