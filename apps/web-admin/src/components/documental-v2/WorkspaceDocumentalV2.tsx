@@ -10,6 +10,7 @@ import { AdjuntosList } from "./AdjuntosList";
 import { ContextoOperativoCard } from "./ContextoOperativoCard";
 import { DocumentoOperativoPrincipalCard } from "./DocumentoOperativoPrincipalCard";
 import { GrupoFacturaCard } from "./GrupoFacturaCard";
+import { HistorialActividadV2 } from "./HistorialActividadV2";
 import { WorkspaceAlertas } from "./WorkspaceAlertas";
 import {
   getAdjuntosNoClasificados,
@@ -18,6 +19,24 @@ import {
   getDocumentoPrincipal,
   getGruposFactura,
 } from "./workspace-v2-utils";
+
+function getContenedorOperativoId(workspace: WorkspaceDocumentalV2Type, contexto: unknown) {
+  const contextoRecord = (contexto ?? {}) as Record<string, unknown>;
+  const workspaceRecord = (workspace ?? {}) as Record<string, unknown>;
+
+  const candidates = [
+    contextoRecord.contenedorOperativoId,
+    contextoRecord.contenedor_operativo_id,
+    contextoRecord.id,
+    workspaceRecord.contenedorOperativoId,
+    workspaceRecord.contenedor_operativo_id,
+  ];
+
+  return candidates.find((value) => value !== undefined && value !== null && `${value}`.trim() !== "") as
+    | string
+    | number
+    | undefined;
+}
 
 export function WorkspaceDocumentalV2({
   workspace,
@@ -31,6 +50,7 @@ export function WorkspaceDocumentalV2({
   const gruposFactura = getGruposFactura(workspace);
   const adjuntosNoClasificados = getAdjuntosNoClasificados(workspace);
   const alertas = getAlertas(workspace);
+  const contenedorOperativoId = getContenedorOperativoId(workspace, contexto);
 
   return (
     <div className="space-y-4">
@@ -84,6 +104,8 @@ export function WorkspaceDocumentalV2({
           </CardContent>
         </Card>
       ) : null}
+
+      <HistorialActividadV2 contenedorOperativoId={contenedorOperativoId} />
 
       <WorkspaceAlertas alertas={alertas} />
     </div>
