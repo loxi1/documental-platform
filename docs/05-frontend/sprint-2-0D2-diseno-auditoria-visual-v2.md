@@ -2,12 +2,12 @@
 
 **Documento:** `docs/05-frontend/sprint-2-0D2-diseno-auditoria-visual-v2.md`
 **Tipo:** Diseño UX/UI frontend
-**Estado:** Aprobado como base oficial de diseño UX/UI para futura implementación React
+**Estado:** Implementación React realizada; pendiente de validación visual y cierre formal.
 **Rama sugerida:** `feat/documental-v2-auditoria-visual-2-0D2`
 **Nota de rama:** crear únicamente cuando el Maestro Intermedio abra formalmente el Sprint 2.0D.2
 **Base funcional:** `v2-rc4.2`
 **Contrato canónico:** `GET /api/v1/documental-v2/trazabilidad/contenedores/:contenedorOperativoId`
-**React:** bloqueado hasta apertura formal del Sprint 2.0D.2
+**React:** autorizado e implementado en la rama feat/documental-v2-auditoria-visual-2-0D2.
 **Backend/Gateway:** sin cambios en este documento
 **Runtime:** sin cambios
 
@@ -563,6 +563,6 @@ Estas capacidades requieren apertura de sprint específico y no deben implementa
 
 ## 17. Nota final
 
-Este documento prepara el diseño UX/UI de Auditoría Visual V2, pero no autoriza implementación React.
+Este documento preparó el diseño UX/UI de Auditoría Visual V2 y sirvió como base para la implementación React autorizada del Sprint 2.0D.2.
 
-La implementación deberá esperar apertura formal del Sprint 2.0D.2 y validación del Maestro Intermedio.
+Este documento constituyó la base UX/UI de la implementación React del Sprint 2.0D.2. La implementación queda sujeta a validación visual, build y cierre formal.
