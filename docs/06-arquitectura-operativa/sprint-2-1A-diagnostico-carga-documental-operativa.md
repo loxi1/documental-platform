@@ -1216,6 +1216,8 @@ Esta conclusión es provisional porque el Sprint 2.1A aún debe completar el dia
 
 ---
 
+---
+
 ## 31. Reenfoque Product Owner — MVP funcional
 
 Durante la revisión del Sprint 2.1A, el Product Owner redujo el objetivo del diagnóstico al mínimo necesario para implementar y desplegar un MVP funcional.
@@ -2126,4 +2128,186 @@ migración mínima;
 roadmap corto de implementación.
 ```
 
-Los temas avanzados quedan en backlog y no deben bloquear el inicio del MVP una vez cubiertos los GAPs mínimos anteriores.
+Los temas avanzados quedan en backlog y no deben bloquear el inicio del MVP una vez cubiertos los GAPs mínimos anteriores.---
+
+## 37. Criterio de Aceptación del MVP
+
+El MVP se considerará funcionalmente completo cuando, como mínimo, se cumplan los siguientes criterios:
+
+```text
+✓ Compras puede crear un Contexto Operativo.
+
+✓ Compras puede registrar un Documento Operativo Principal
+  (OC, OS o Requerimiento de Compra según decisión funcional).
+
+✓ El sistema impide registrar documentos asociados
+  cuando no existe Documento Principal.
+
+✓ Compras puede adjuntar la Factura y los documentos propios de su flujo.
+
+✓ Almacén puede adjuntar Guía y Nota de Ingreso
+  a la operación correspondiente.
+
+✓ Finanzas puede adjuntar Transferencia y Detracción
+  cuando correspondan.
+
+✓ Todo ingreso documental pasa obligatoriamente por API Gateway.
+
+✓ React nunca realiza upload directo a R2.
+
+✓ Backend valida autorización antes de cualquier operación.
+
+✓ Backend valida permisos antes de almacenar.
+
+✓ Backend calcula hash del archivo.
+
+✓ Backend valida duplicado documental antes del almacenamiento físico.
+
+✓ Backend detecta duplicado físico.
+
+✓ El upload hacia R2 solo ocurre después de las validaciones del backend.
+
+✓ Workspace refleja correctamente la estructura documental.
+
+✓ Contabilidad puede consultar la información filtrando por:
+  - Empresa
+  - Año
+  - Período contable derivado inicialmente de la fecha de emisión de la factura.
+
+✓ La auditoría registra las operaciones implementadas.
+
+✓ La trazabilidad refleja correctamente el historial operativo.
+
+✓ El Historial de Actividad muestra la información utilizando exclusivamente la API canónica.
+
+✓ Todo el flujo puede ejecutarse de extremo a extremo sobre BBTI SAC y BB Tecnología utilizando usuarios reales del sistema.
+```
+
+---
+
+## 38. Alcance explícitamente fuera del MVP
+
+Los siguientes elementos no bloquean el despliegue inicial del MVP:
+
+```text
+✗ OCR automático.
+
+✗ Alertas operativas.
+
+✗ Reemplazo de Documento Principal.
+
+✗ Movimiento de documentos entre operaciones.
+
+✗ Versionado documental completo.
+
+✗ Timeline avanzado.
+
+✗ Auditoría Visual avanzada.
+
+✗ Permisos operativos granulares.
+
+✗ Flujo completo de Caja Chica.
+
+✗ Flujo completo de Rendiciones.
+
+✗ Automatizaciones contables.
+```
+
+Estos elementos pasan al roadmap de la Fase II y fases posteriores.
+
+---
+
+## 39. Conclusión definitiva del Sprint 2.1A
+
+El Sprint 2.1A concluye el diagnóstico integral necesario para implementar el primer MVP operativo del Modelo Documental V2.
+
+El análisis permitió identificar:
+
+- el estado actual de la arquitectura;
+- los componentes reutilizables;
+- los vacíos funcionales;
+- las prioridades de implementación;
+- las restricciones técnicas del MVP;
+- las capacidades que quedan fuera del despliegue inicial.
+
+Todo esto se realizó sin introducir cambios en runtime ni modificar el Modelo Documental V2.
+
+Con este diagnóstico, el proyecto dispone de una hoja de ruta clara para ejecutar la implementación incremental del MVP sobre una base arquitectónica consolidada.
+
+Estado final:
+
+```text
+Sprint 2.1A:
+CERRADO
+
+Arquitectura:
+APROBADA
+
+Diagnóstico:
+COMPLETO PARA MVP
+
+Roadmap:
+APROBADO
+
+Implementación:
+AUTORIZADA CON CONTRATO TÉCNICO PREVIO
+
+Repositorio:
+CONSISTENTE
+
+Documentación:
+ACTUALIZADA
+
+Baseline:
+v2-rc4.3
+
+Runtime:
+SIN CAMBIOS
+
+Backend:
+SIN CAMBIOS
+
+API Gateway:
+SIN CAMBIOS
+
+React:
+SIN CAMBIOS
+
+PostgreSQL:
+SIN MIGRACIONES
+
+Contratos públicos:
+SIN CAMBIOS
+```
+
+---
+
+## 40. Apertura condicionada del Sprint 2.1B
+
+Con la publicación de este ajuste documental, el Sprint 2.1A queda formalmente cerrado.
+
+Queda autorizada la preparación del Contrato Técnico del Sprint 2.1B.
+
+El Sprint 2.1B se enfocará en:
+
+```text
+Materialización del Contexto Operativo
+y alta/asociación del Documento Operativo Principal.
+```
+
+Antes de escribir una sola línea de código, el contrato técnico deberá definir:
+
+- endpoint o endpoints;
+- payloads;
+- respuestas;
+- reglas de idempotencia;
+- validaciones funcionales;
+- autorización;
+- auditoría;
+- impacto sobre Workspace;
+- estrategia de pruebas;
+- criterios de aceptación.
+
+Solo después de la aprobación formal de ese contrato técnico podrá iniciarse la implementación del Sprint 2.1B.
+
+Con este acto queda formalmente concluido el Sprint 2.1A y el proyecto entra en la primera fase de implementación del MVP sobre la línea base `v2-rc4.3`.
