@@ -422,3 +422,26 @@ REUTILIZADO CORRECTAMENTE
 Bloque 3:
 NO AUTORIZADO TODAVÍA
 ```
+## Aclaraciones posteriores a validación Maestro Intermedio
+
+### 1. Evidencia Git posterior al commit documental
+
+Después de documentar la evidencia runtime del Bloque 2, se validó el estado Git:
+
+```text
+git status --short
+Resultado: limpio
+
+git branch --show-current
+Resultado: feat/documental-v2-operacion-2-1B
+
+git log --oneline --decorate -9
+a8238479 docs(documental-v2): document Sprint 2.1B bloque 2 runtime evidence
+92efe23c docs(documental-v2): document Sprint 2.1B bloque 1 runtime evidence
+431d8978 fix(documental-v2): normalize contexto cliente destino comparison
+3dc8a544 feat(documental-v2): expose materializar contexto gateway endpoint
+89fe96a9 feat(documental-v2): expose materializar contexto internal endpoint
+114081d7 feat(documental-v2): implement materializar contexto use case
+e301f55d chore: remove obsolete docs archive
+714c3abc feat(documental-v2): add idempotent contexto repository insert
+ffc6ca62 docs: close Sprint 2.1A MVP diagnostic
