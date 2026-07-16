@@ -93,6 +93,32 @@ export class DocumentalV2GatewayController {
     }
   }
 
+  private getWorkspaceActions(payload: any): string[] {
+    const candidates = [
+      payload?.permisos?.actions,
+      payload?.permissions?.actions,
+      payload?.actions,
+      Array.isArray(payload?.permisos) ? payload.permisos : null,
+      Array.isArray(payload?.permissions) ? payload.permissions : null,
+    ];
+
+    return candidates
+      .filter(Array.isArray)
+      .flat()
+      .map((action) => String(action ?? '').trim())
+      .filter((action) => action.length > 0);
+  }
+
+  private assertPuedeMaterializarContexto(payload: any) {
+    const actions = this.getWorkspaceActions(payload);
+
+    if (!actions.includes('documentos.vincular_expediente')) {
+      throw new ForbiddenException(
+        'No tienes permiso para materializar Contexto Operativo',
+      );
+    }
+  }
+
   @ApiOperation({
     summary: 'Listar documentos candidatos para Documento Operativo Principal V2',
   })
@@ -291,6 +317,38 @@ export class DocumentalV2GatewayController {
     try {
       const response = await axios.get(
         `${this.getBaseUrl()}/documental-v2/trazabilidad/contenedores/${contenedorOperativoId}`,
+        {
+          headers: this.buildDocumentosForwardHeaders(
+            authorization,
+            requestId,
+            contexto,
+          ),
+        },
+      );
+
+      return this.unwrap(response);
+    } catch (error: any) {
+      this.throwUpstreamHttpException(error);
+    }
+  }
+
+  @ApiOperation({
+    summary: 'Materializar Contexto Operativo V2 desde Expediente V1',
+  })
+  @ApiParam({ name: 'expedienteId', example: 16 })
+  @Post('workspace/expedientes-v1/:expedienteId/materializar-contenedor')
+  async materializarContextoOperativoDesdeExpedienteV1(
+    @Headers('authorization') authorization: string | undefined,
+    @Headers(REQUEST_ID_HEADER) requestId: string | undefined,
+    @Param('expedienteId') expedienteId: string,
+  ) {
+    const contexto = await this.validateAuthorization(authorization);
+    this.assertPuedeMaterializarContexto(contexto);
+
+    try {
+      const response = await axios.post(
+        `${this.getBaseUrl()}/documental-v2/workspace/expedientes-v1/${expedienteId}/materializar-contenedor`,
+        {},
         {
           headers: this.buildDocumentosForwardHeaders(
             authorization,

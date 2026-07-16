@@ -189,6 +189,85 @@ describe('DocumentalV2GatewayController', () => {
     expect(result).toEqual(workspace);
   });
 
+  it('materializa contexto operativo desde expediente V1 por proxy controlado', async () => {
+    const { controller, nats } = buildController({
+      sub: 1,
+      email: 'admin@documental.local',
+      workspaceId: 1,
+      permisos: {
+        actions: ['documentos.vincular_expediente'],
+      },
+    });
+
+    const respuesta = {
+      expedienteId: 16,
+      contenedorOperativo: {
+        id: 10,
+        empresaCodigo: 'BBTI',
+        clienteDestinoId: 2,
+        tipoContexto: 'expediente_v1',
+        codigo: '0501',
+        estado: 'activo',
+      },
+      idempotente: false,
+      workspaceDebeRefrescar: true,
+    };
+
+    (axios.post as jest.Mock).mockResolvedValueOnce({
+      data: {
+        success: true,
+        data: respuesta,
+      },
+    });
+
+    const result = await controller.materializarContextoOperativoDesdeExpedienteV1(
+      'Bearer token-valido',
+      'req-materializar-1',
+      '16',
+    );
+
+    expect(nats.send).toHaveBeenCalledWith('auth.validate-token', {
+      token: 'token-valido',
+    });
+    expect(axios.post).toHaveBeenCalledWith(
+      'http://ms-documentos:3002/api/v1/documental-v2/workspace/expedientes-v1/16/materializar-contenedor',
+      {},
+      {
+        headers: {
+          authorization: 'Bearer token-valido',
+          'x-user-id': '1',
+          'x-user-email': 'admin@documental.local',
+          'x-workspace-id': '1',
+          'x-empresa-codigo': 'BBTI',
+          'x-cliente-destino-id': '2',
+          'x-request-id': 'req-materializar-1',
+          'x-correlation-id': 'req-materializar-1',
+        },
+      },
+    );
+    expect(result).toEqual(respuesta);
+  });
+
+  it('rechaza materialización si el workspace no contiene documentos.vincular_expediente', async () => {
+    const { controller } = buildController({
+      sub: 4,
+      email: 'compras@documental.local',
+      workspaceId: 4,
+      permisos: {
+        actions: ['documentos.ver'],
+      },
+    });
+
+    await expect(
+      controller.materializarContextoOperativoDesdeExpedienteV1(
+        'Bearer token-valido',
+        'req-materializar-2',
+        '16',
+      ),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(axios.post).not.toHaveBeenCalled();
+  });
+
   it('rechaza requests sin token bearer', async () => {
     const { controller } = buildController();
 
