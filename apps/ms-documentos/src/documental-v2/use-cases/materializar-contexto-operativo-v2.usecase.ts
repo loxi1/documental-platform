@@ -272,7 +272,7 @@ export class MaterializarContextoOperativoV2UseCase {
 
   private assertContenedorActivoYCompatible(
     contenedor: ContenedorOperativoRow,
-    clienteDestinoIdEsperado: number | null,
+    clienteDestinoIdEsperado: number | string | null,
   ) {
     if (contenedor.estado !== 'activo') {
       throw new ConflictException(
@@ -284,11 +284,12 @@ export class MaterializarContextoOperativoV2UseCase {
     }
 
     const clienteDestinoIdContenedor = normalizarClienteDestinoId(contenedor.clienteDestinoId);
+    const clienteDestinoIdEsperadoNormalizado = normalizarClienteDestinoId(clienteDestinoIdEsperado);
 
     if (
-      clienteDestinoIdEsperado &&
+      clienteDestinoIdEsperadoNormalizado &&
       clienteDestinoIdContenedor &&
-      clienteDestinoIdContenedor !== clienteDestinoIdEsperado
+      clienteDestinoIdContenedor !== clienteDestinoIdEsperadoNormalizado
     ) {
       throw new ForbiddenException(
         crearError(
@@ -297,7 +298,7 @@ export class MaterializarContextoOperativoV2UseCase {
           {
             contenedorOperativoId: contenedor.id,
             clienteDestinoIdContenedor,
-            clienteDestinoIdEsperado,
+            clienteDestinoIdEsperado: clienteDestinoIdEsperadoNormalizado,
           },
         ),
       );
