@@ -23,6 +23,7 @@ import { AsociarGrupoFacturaV2UseCase } from './use-cases/asociar-grupo-factura-
 import { AsociarDocumentoGrupoFacturaV2UseCase } from './use-cases/asociar-documento-grupo-factura-v2.usecase';
 import { DocumentoExistenteReadonlyRepository } from './documento-existente-readonly.repository';
 import { ConsultarTrazabilidadV2UseCase } from './use-cases/consultar-trazabilidad-v2.usecase';
+import { MaterializarContextoOperativoV2UseCase } from './use-cases/materializar-contexto-operativo-v2.usecase';
 
 @ApiTags('documental-v2')
 @Controller('documental-v2')
@@ -33,6 +34,7 @@ export class DocumentalV2Controller {
     private readonly gruposFactura: GrupoFacturaService,
     private readonly grupoFacturaDocumentos: GrupoFacturaDocumentoService,
     private readonly workspaceDocumentalV2: WorkspaceDocumentalV2UseCase,
+    private readonly materializarContextoOperativoV2UseCase: MaterializarContextoOperativoV2UseCase,
     private readonly asociarDocumentoPrincipalV2UseCase: AsociarDocumentoPrincipalV2UseCase,
     private readonly asociarGrupoFacturaV2UseCase: AsociarGrupoFacturaV2UseCase,
     private readonly asociarDocumentoGrupoFacturaV2UseCase: AsociarDocumentoGrupoFacturaV2UseCase,
@@ -46,6 +48,34 @@ export class DocumentalV2Controller {
   @Get('workspace/expedientes-v1/:expedienteId')
   construirWorkspaceDesdeExpedienteV1(@Param('expedienteId', ParseIntPipe) expedienteId: number) {
     return this.workspaceDocumentalV2.construirDesdeExpedienteV1(expedienteId);
+  }
+
+  @ApiOperation({ summary: 'Materializar Contexto Operativo V2 desde Expediente V1 existente' })
+  @ApiParam({ name: 'expedienteId', example: 16 })
+  @Post('workspace/expedientes-v1/:expedienteId/materializar-contenedor')
+  materializarContextoOperativoDesdeExpedienteV1(
+    @Param('expedienteId', ParseIntPipe) expedienteId: number,
+    @Headers('x-user-id') userId?: string,
+    @Headers('x-user-email') userEmail?: string,
+    @Headers('x-workspace-id') workspaceId?: string,
+    @Headers('x-empresa-codigo') empresaCodigo?: string,
+    @Headers('x-cliente-destino-id') clienteDestinoId?: string,
+    @Headers('x-request-id') requestId?: string,
+    @Headers('x-correlation-id') correlationId?: string,
+  ) {
+    return this.materializarContextoOperativoV2UseCase.execute({
+      expedienteId,
+      usuario: {
+        id: userId ? Number(userId) : null,
+        email: userEmail ?? null,
+        workspaceId: workspaceId ? Number(workspaceId) : null,
+        empresaCodigo: empresaCodigo ?? null,
+        clienteDestinoId: clienteDestinoId ? Number(clienteDestinoId) : null,
+        requestId: requestId ?? null,
+        correlationId: correlationId ?? null,
+        origen: 'api-gateway',
+      },
+    });
   }
 
   @ApiOperation({ summary: 'Consultar trazabilidad canónica V2 por Contenedor Operativo' })

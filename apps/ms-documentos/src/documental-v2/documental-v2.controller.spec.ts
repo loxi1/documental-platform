@@ -43,6 +43,10 @@ describe('DocumentalV2Controller', () => {
     construirDesdeExpedienteV1: jest.fn(),
   };
 
+  const materializarContextoOperativoV2UseCase = {
+    execute: jest.fn(),
+  };
+
   const asociarDocumentoPrincipalV2UseCase = {
     execute: jest.fn(),
   };
@@ -75,6 +79,7 @@ describe('DocumentalV2Controller', () => {
       gruposFactura as any,
       grupoFacturaDocumentos as any,
       workspaceDocumentalV2 as any,
+      materializarContextoOperativoV2UseCase as any,
       asociarDocumentoPrincipalV2UseCase as any,
       asociarGrupoFacturaV2UseCase as any,
       asociarDocumentoGrupoFacturaV2UseCase as any,
@@ -83,6 +88,50 @@ describe('DocumentalV2Controller', () => {
     );
   });
 
+
+  it('materializa contexto operativo desde expediente V1 propagando headers confiables', async () => {
+    const esperado = {
+      expedienteId: 16,
+      contenedorOperativo: {
+        id: 10,
+        empresaCodigo: 'BBTI',
+        clienteDestinoId: 2,
+        tipoContexto: 'expediente_v1',
+        codigo: '0501',
+        estado: 'activo',
+      },
+      idempotente: false,
+      workspaceDebeRefrescar: true,
+    };
+    materializarContextoOperativoV2UseCase.execute.mockResolvedValue(esperado);
+
+    await expect(
+      controller.materializarContextoOperativoDesdeExpedienteV1(
+        16,
+        '1',
+        'admin@documental.local',
+        '1',
+        'BBTI',
+        '2',
+        'req-1',
+        'corr-1',
+      ),
+    ).resolves.toBe(esperado);
+
+    expect(materializarContextoOperativoV2UseCase.execute).toHaveBeenCalledWith({
+      expedienteId: 16,
+      usuario: {
+        id: 1,
+        email: 'admin@documental.local',
+        workspaceId: 1,
+        empresaCodigo: 'BBTI',
+        clienteDestinoId: 2,
+        requestId: 'req-1',
+        correlationId: 'corr-1',
+        origen: 'api-gateway',
+      },
+    });
+  });
 
   it('consulta trazabilidad canónica V2 por contenedor operativo', async () => {
     const esperado = {
