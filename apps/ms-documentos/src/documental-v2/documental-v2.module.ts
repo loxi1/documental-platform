@@ -23,6 +23,7 @@ import { AuditoriaOperativaV2Repository } from './auditoria-operativa-v2.reposit
 import { TrazabilidadV2Repository } from './trazabilidad-v2.repository';
 import { TrazabilidadV2ProjectionMapper } from './trazabilidad-v2.projection.mapper';
 import { ConsultarTrazabilidadV2UseCase } from './use-cases/consultar-trazabilidad-v2.usecase';
+import { MaterializarContextoOperativoV2UseCase } from './use-cases/materializar-contexto-operativo-v2.usecase';
 
 @Module({
   controllers: [DocumentalV2Controller],
@@ -48,6 +49,8 @@ import { ConsultarTrazabilidadV2UseCase } from './use-cases/consultar-trazabilid
     TrazabilidadV2Repository,
     TrazabilidadV2ProjectionMapper,
     ConsultarTrazabilidadV2UseCase,
+    MaterializarContextoOperativoV2UseCase,
+    MaterializarContextoOperativoV2UseCase,
   ],
   exports: [
     ContenedorOperativoRepository,

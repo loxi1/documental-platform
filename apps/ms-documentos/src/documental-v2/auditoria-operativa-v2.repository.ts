@@ -4,13 +4,18 @@ import { sql } from '@documental/database';
 type JsonRecord = Record<string, unknown>;
 
 type AccionAuditoriaV2 =
+  | 'MATERIALIZAR_CONTEXTO_OPERATIVO'
   | 'ASOCIAR_DOCUMENTO_PRINCIPAL'
   | 'GRUPO_FACTURA_CREADO'
   | 'DOCUMENTO_GRUPO_FACTURA_ASOCIADO';
 
 export interface RegistrarAuditoriaOperativaV2Input {
   accion: AccionAuditoriaV2;
-  entidad: 'documento_operativo_principal' | 'grupo_factura' | 'grupo_factura_documento';
+  entidad:
+    | 'contenedor_operativo'
+    | 'documento_operativo_principal'
+    | 'grupo_factura'
+    | 'grupo_factura_documento';
   entidadId: string | number;
   descripcion: string;
   empresaCodigo?: string | null;
