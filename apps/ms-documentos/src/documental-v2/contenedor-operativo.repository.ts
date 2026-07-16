@@ -65,6 +65,63 @@ export class ContenedorOperativoRepository {
     return rows[0] as unknown as ContenedorOperativoRow;
   }
 
+  async crearSiNoExistePorClave(input: CrearContenedorOperativoInput): Promise<ContenedorOperativoRow | null> {
+    const rows = await sql`
+      INSERT INTO documentos.contenedores_operativos (
+        empresa_codigo,
+        cliente_destino_id,
+        tipo_contexto,
+        codigo,
+        nombre,
+        descripcion,
+        centro_costo_codigo,
+        orden_produccion_codigo,
+        proyecto_codigo,
+        estado,
+        metadata,
+        creado_por
+      )
+      VALUES (
+        ${input.empresaCodigo}::text,
+        ${input.clienteDestinoId ?? null}::bigint,
+        ${input.tipoContexto}::text,
+        ${input.codigo}::text,
+        ${input.nombre ?? null}::text,
+        ${input.descripcion ?? null}::text,
+        ${input.centroCostoCodigo ?? null}::text,
+        ${input.ordenProduccionCodigo ?? null}::text,
+        ${input.proyectoCodigo ?? null}::text,
+        ${input.estado ?? 'activo'}::text,
+        ${JSON.stringify(input.metadata ?? {})}::jsonb,
+        ${input.creadoPor ?? null}::bigint
+      )
+      ON CONFLICT ON CONSTRAINT uq_contenedor_operativo_empresa_tipo_codigo
+      DO NOTHING
+      RETURNING
+        id,
+        empresa_codigo AS "empresaCodigo",
+        cliente_destino_id AS "clienteDestinoId",
+        tipo_contexto AS "tipoContexto",
+        codigo,
+        nombre,
+        descripcion,
+        centro_costo_codigo AS "centroCostoCodigo",
+        orden_produccion_codigo AS "ordenProduccionCodigo",
+        proyecto_codigo AS "proyectoCodigo",
+        estado,
+        metadata,
+        creado_por AS "creadoPor",
+        creado_en AS "creadoEn",
+        actualizado_por AS "actualizadoPor",
+        actualizado_en AS "actualizadoEn",
+        anulado_por AS "anuladoPor",
+        anulado_en AS "anuladoEn",
+        motivo_anulacion AS "motivoAnulacion"
+    `;
+
+    return (rows[0] as unknown as ContenedorOperativoRow | undefined) ?? null;
+  }
+
   async buscarPorId(id: number): Promise<ContenedorOperativoRow | null> {
     const rows = await sql`
       SELECT
