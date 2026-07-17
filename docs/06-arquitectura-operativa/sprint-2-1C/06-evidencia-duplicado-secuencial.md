@@ -331,10 +331,12 @@ Mensaje de retorno previo:
 CONFIRMADO POR RUNTIME
 
 Nueva llamada PutObject:
-PENDIENTE DE DESCARTAR POR CÓDIGO O LOG
+DESCARTADA POR CÓDIGO
+
+Fundamento:
+La búsqueda por SHA-256 y el lanzamiento de ConflictException ocurren antes de continuar hacia subirAR2(). El envío físico a R2 se realiza mediante S3Client.send(new PutObjectCommand(...)), ruta que no se alcanza cuando existe un duplicado previo.
 ```
 
-No debe afirmarse todavía que la llamada física `PutObject` fue descartada de forma absoluta sin revisar la ruta de código o contar con logs/instrumentación de R2.
 
 ## 9. Resultado consolidado
 
@@ -355,8 +357,41 @@ No debe afirmarse todavía que la llamada física `PutObject` fue descartada de 
 | Evento con request ID duplicado | No | DESCARTADO POR SQL |
 | Nuevo `storageKey` | No observado | CONFIRMADO POR SQL |
 | Nueva subida R2 | No observada | CONFIRMADO POR RUNTIME + SQL |
-| Nueva llamada `PutObject` | No determinada de forma absoluta | PENDIENTE DE REVISIÓN POR CÓDIGO O LOG |
+| Nueva llamada `PutObject` | No | DESCARTADA POR CÓDIGO |
 | Concurrencia | No probada | FUERA DE ALCANCE |
+
+## 9.1 Alcance efectivo de la búsqueda por SHA-256
+
+La consulta implementada es:
+
+```sql
+WHERE da.hash_sha256 = ${params.sha256}
+  AND da.estado <> 'duplicado_absorbido'
+  AND (
+    ${params.documentoId}::bigint IS NULL
+    OR da.documento_id = ${params.documentoId}::bigint
+    OR ${params.expedienteId}::bigint IS NULL
+    OR ed.expediente_id = ${params.expedienteId}::bigint
+  )
+```
+
+Comportamiento efectivo:
+
+| Parámetros recibidos | Alcance |
+|---|---|
+| `documentoId = null`, `expedienteId` informado | Global por SHA-256 |
+| `documentoId` informado, `expedienteId = null` | Global por SHA-256 |
+| Ambos valores nulos | Global por SHA-256 |
+| Ambos valores informados | Mismo documento o mismo expediente |
+
+No existen filtros por cliente, empresa, workspace ni cliente destino.
+
+Clasificación:
+
+- Alcance general: **GLOBAL POR SHA-256**.
+- Exclusión: archivos con estado `duplicado_absorbido`.
+- Restricción condicional: solo cuando `documentoId` y `expedienteId` tienen ambos valor.
+- `EVID-2.1C-021`: **CONFIRMADO POR CÓDIGO**.
 
 ## 10. Impacto contractual
 
@@ -377,8 +412,8 @@ La prueba demuestra que el comportamiento actual es:
 Queda pendiente definir contractualmente:
 
 ```text
-Alcance de la búsqueda por hash:
-global / empresa / cliente / workspace / expediente
+Política definitiva de deduplicación:
+confirmar si se mantiene el alcance global por SHA-256 observado en código
 
 Forma pública definitiva del error:
 CONFLICT + código específico
@@ -392,8 +427,8 @@ no recomendada en contrato público
 Auditoría del intento rechazado:
 sin evento actualmente
 
-Garantía de no invocación a R2:
-pendiente de revisión por código o logs
+Garantía de no invocación a R2 en el duplicado secuencial:
+confirmada por control de flujo del código
 
 Concurrencia:
 pendiente de plan y GO separados
@@ -421,7 +456,7 @@ Nueva subida R2:
 NO OBSERVADA
 
 Nueva llamada PutObject:
-PENDIENTE DE DESCARTAR POR CÓDIGO O LOG
+DESCARTADA POR CÓDIGO
 
 Concurrencia:
 FUERA DE ALCANCE
@@ -445,8 +480,8 @@ NO REALIZADO
 
 ## 13. Siguiente acción
 
-1. Actualizar `EVID-2.1C-018` en la matriz maestra.
-2. Revisar por código si el retorno por duplicado ocurre antes de `PutObject`.
+1. Presentar `EVID-2.1C-018` y `EVID-2.1C-021` al Maestro Intermedio.
+2. Presentar al Maestro Intermedio la evidencia de retorno previo a `PutObject`.
 3. Clasificar el alcance real de la búsqueda por SHA-256.
 4. Presentar matriz y evidencia al Maestro Intermedio.
 5. No ejecutar prueba concurrente.
