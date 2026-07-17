@@ -321,6 +321,29 @@ export class DocumentosGatewayController {
     };
   }
 
+  private buildAuditForwardHeaders(
+    authorization: string | undefined,
+    requestId: string | undefined,
+    contexto: any,
+  ): Record<string, string> {
+    const empresaCodigo = this.getEmpresaFromContext(contexto);
+    const clienteDestinoId = Number(contexto?.clienteDestinoId ?? NaN);
+
+    return {
+      ...this.buildForwardHeaders(authorization, requestId),
+      ...(contexto?.sub ? { 'x-user-id': String(contexto.sub) } : {}),
+      ...(contexto?.email ? { 'x-user-email': String(contexto.email) } : {}),
+      ...(contexto?.workspaceId
+        ? { 'x-workspace-id': String(contexto.workspaceId) }
+        : {}),
+      ...(empresaCodigo ? { 'x-empresa-codigo': empresaCodigo } : {}),
+      ...(Number.isFinite(clienteDestinoId) && clienteDestinoId > 0
+        ? { 'x-cliente-destino-id': String(clienteDestinoId) }
+        : {}),
+      ...(requestId ? { 'x-correlation-id': requestId } : {}),
+    };
+  }
+
   private unwrap(response: any) {
     return response?.data?.data ?? response?.data;
   }
@@ -359,6 +382,7 @@ export class DocumentosGatewayController {
     requestId?: string;
     query?: Record<string, any>;
     body?: unknown;
+    headers?: Record<string, string>;
   }) {
     await this.validateAuthorization(params.authorization);
 
@@ -368,10 +392,13 @@ export class DocumentosGatewayController {
         url: `${this.getBaseUrl()}${params.path}`,
         params: params.query,
         data: params.body,
-        headers: this.buildForwardHeaders(
-          params.authorization,
-          params.requestId,
-        ),
+        headers: {
+          ...this.buildForwardHeaders(
+            params.authorization,
+            params.requestId,
+          ),
+          ...(params.headers ?? {}),
+        },
       });
 
       return this.unwrap(response);
@@ -648,6 +675,11 @@ export class DocumentosGatewayController {
       authorization,
       requestId,
       body,
+      headers: this.buildAuditForwardHeaders(
+        authorization,
+        requestId,
+        contexto,
+      ),
     });
   }
 
