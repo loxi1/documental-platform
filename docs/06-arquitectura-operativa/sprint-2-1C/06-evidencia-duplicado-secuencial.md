@@ -31,13 +31,28 @@ Baseline oficial integrada:
 main / origin/main
 → ffc6ca62
 
-Baseline funcional de referencia:
+Código de carga inspeccionado:
+baseline heredada del flujo documental existente
+
+Referencia funcional V2 obligatoria:
 feat/documental-v2-operacion-2-1B
 → 178cf9db
 
-Baseline documental 2.1C:
+Rama documental de la evidencia:
 docs/sprint-2-1C-contrato-carga-documental-segura
-→ a3f4e8e9
+
+Commit desplegado durante la prueba:
+no determinado
+
+Commit de consolidación de evidencia:
+be9f8fd0
+
+Alcance del commit:
+cierra únicamente EVID-2.1C-018 y EVID-2.1C-021
+No cierra el Sprint 2.1C.
+
+Estado del Sprint 2.1C:
+ABIERTO
 ```
 
 ```text
@@ -392,6 +407,15 @@ Clasificación:
 - Exclusión: archivos con estado `duplicado_absorbido`.
 - Restricción condicional: solo cuando `documentoId` y `expedienteId` tienen ambos valor.
 - `EVID-2.1C-021`: **CONFIRMADO POR CÓDIGO**.
+
+### 9.2 Distinción entre deduplicación física y lógica
+
+La deduplicación física del objeto no equivale a la unicidad del
+documento lógico ni impide, por sí sola, que el mismo contenido pueda
+asociarse a contextos operativos diferentes.
+
+El alcance global por SHA-256 está confirmado como comportamiento actual,
+pero no está aprobado como política definitiva.
 
 ## 10. Impacto contractual
 

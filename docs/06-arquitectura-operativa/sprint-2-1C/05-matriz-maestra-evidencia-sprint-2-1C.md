@@ -28,9 +28,21 @@ docs/sprint-2-1B-contrato-tecnico
 PUBLICADA EN RAMA
 PENDIENTE DE INTEGRACIÓN A MAIN
 
-Baseline documental específica de 2.1C:
+Rama documental de la evidencia:
 docs/sprint-2-1C-contrato-carga-documental-segura
-→ ef880be0
+
+Commit desplegado durante la prueba:
+no determinado
+
+Commit de consolidación de evidencia:
+be9f8fd0
+
+Alcance del commit:
+cierra únicamente EVID-2.1C-018 y EVID-2.1C-021
+No cierra el Sprint 2.1C.
+
+Estado del Sprint 2.1C:
+ABIERTO
 ```
 
 Sprint 2.1B no forma parte actualmente de la baseline oficial integrada.
