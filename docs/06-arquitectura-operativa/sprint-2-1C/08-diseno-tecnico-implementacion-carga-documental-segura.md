@@ -2279,3 +2279,68 @@ Se solicita al Maestro Intermedio revisar:
 - decisiones aún pendientes.
 
 No se solicita autorización de implementación.
+
+---
+
+# 39. Matriz de resolución del Dictamen Técnico del Maestro Intermedio
+
+El diseño arquitectónico del Sprint 2.1C fue aprobado con ajustes obligatorios.
+
+La implementación permanece bloqueada hasta que el documento `09-diseno-detallado-persistencia-y-plan-implementacion.md` resuelva el diseño detallado y exista un GO independiente.
+
+| N.º | Decisión del dictamen | Estado | Resolución documental | Condición de implementación |
+|---:|---|---|---|---|
+| 1 | `workspaceId` como identidad canónica | RESUELTO | Se adopta desde JWT/contexto autenticado | Debe propagarse y validarse |
+| 2 | `empresaCodigo` como identidad canónica | RESUELTO | Se adopta normalizada desde contexto | No aceptar desde body como autoridad |
+| 3 | `clienteDestinoId` fuera de la deduplicación | RESUELTO | Se mantiene como contexto y auditoría | No incluir en unicidad física |
+| 4 | Tabla `documentos.carga_operaciones` | RESUELTO | Nombre y esquema aprobados | Requiere migración autorizada |
+| 5 | Columnas mínimas de operación | RESUELTO | Definidas en documento 09 | Requiere DDL aprobado |
+| 6 | Ventana idempotente mínima de 24 horas | RESUELTO | `expira_en` marca fin de reproducción | No implica eliminación física |
+| 7 | Retención separada de idempotencia | RESUELTO | Sin borrado automático inicial | Política futura de auditoría |
+| 8 | Fingerprint canónico versionado | RESUELTO | `canonical-json-v1` + SHA-256 | Pruebas unitarias obligatorias |
+| 9 | Código de error idempotente | RESUELTO | `ARCHIVO_IDEMPOTENCY_KEY_REUTILIZADA_CON_PAYLOAD_DISTINTO` | Validar estilo Gateway |
+| 10 | Unique de idempotencia | RESUELTO | `(workspace_id, empresa_codigo, idempotency_key)` | Requiere constraint |
+| 11 | Reserva activa por ámbito y hash | RESUELTO CON PROPUESTA | Unique parcial sobre estados activos | Validar PostgreSQL real |
+| 12 | Restricción sobre archivo activo | PENDIENTE CONTROLADO | Diseño propuesto en documento 09 | Requiere decisión de versionado |
+| 13 | Outbox transaccional | RESUELTO CON PROPUESTA | Tabla outbox candidata | No duplicar infraestructura existente |
+| 14 | Memoria como estrategia MVP | RESUELTO | Se mantiene `file.buffer` con límites | Prohibidos límites infinitos |
+| 15 | Eliminar binario duplicado | RESUELTO | Solo `file` canónico | `archivo` solo compatibilidad de recepción |
+| 16 | Límite configurable | RESUELTO CON PROPUESTA | `DOCUMENT_UPLOAD_MAX_BYTES`, 20 MiB candidato | Ratificación previa al GO |
+| 17 | Un archivo por solicitud | RESUELTO | `maxCount: 1` | Aplicar en Gateway y microservicio |
+| 18 | PDF como formato inicial | RESUELTO CON PROPUESTA | MIME/extensión/firma PDF | Confirmar requerimiento funcional |
+| 19 | Magic bytes y validación estructural | RESUELTO CON PROPUESTA | `%PDF-` + parser controlado | Seleccionar librería aprobada |
+| 20 | Storage key sin nombre original | RESUELTO | `documentos/<scope-seguro>/<año>/<mes>/<uuid>.pdf` | No exponer en API |
+| 21 | Migraciones A/B/C | RESUELTO EN DISEÑO | Operación, ámbito de archivo, outbox | No ejecutar sin GO |
+| 22 | Legacy nullable | RESUELTO | No inventar workspace | Constraints solo con scope completo |
+| 23 | Feature flag | RESUELTO | `DOCUMENTOS_CARGA_SEGURA_2_1C_ENABLED=false` | Activación controlada |
+| 24 | Coordinación con Sucesor II | RESUELTO | Web Admin separado por dominio | No implementar UX unilateralmente |
+| 25 | Matriz trazable de pruebas | RESUELTO | Incluida en documento 09 | Pruebas siguen no autorizadas |
+| 26 | Rollback funcional y de datos | RESUELTO | Flag + conservación de operaciones | No borrar auditoría |
+
+## 39.1 Estado consolidado
+
+```text
+Diseño arquitectónico:
+APROBADO
+
+Ajustes obligatorios:
+RESUELTOS DOCUMENTALMENTE EN EL DOCUMENTO 09
+
+Diseño detallado:
+PREPARADO PARA REVISIÓN
+
+Implementación:
+NO AUTORIZADA
+
+Migraciones:
+NO AUTORIZADAS
+
+Pruebas:
+NO AUTORIZADAS
+
+Concurrencia:
+NO AUTORIZADA
+
+Push:
+NO AUTORIZADO
+```
