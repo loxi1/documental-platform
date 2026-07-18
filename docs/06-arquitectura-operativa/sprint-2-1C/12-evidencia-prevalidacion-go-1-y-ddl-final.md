@@ -380,7 +380,7 @@ CREATE TABLE documentos.carga_operaciones (
   requiere_reconciliacion BOOLEAN NOT NULL DEFAULT false,
 
   nombre_archivo_original TEXT NOT NULL,
-  content_type VARCHAR(150) NULL,
+  content_type VARCHAR(150) NOT NULL,
   tamano_bytes BIGINT NOT NULL,
   hash_sha256 VARCHAR(64) NOT NULL,
 
@@ -430,8 +430,17 @@ CREATE TABLE documentos.carga_operaciones (
       AND idempotency_key !~ '[[:cntrl:]]'
     ),
 
+  CONSTRAINT ck_carga_operaciones_canal_ingreso
+    CHECK (length(trim(canal_ingreso)) > 0),
+
+  CONSTRAINT ck_carga_operaciones_nombre_archivo
+    CHECK (length(trim(nombre_archivo_original)) > 0),
+
+  CONSTRAINT ck_carga_operaciones_content_type
+    CHECK (length(trim(content_type)) > 0),
+
   CONSTRAINT ck_carga_operaciones_tamano
-    CHECK (tamano_bytes >= 0),
+    CHECK (tamano_bytes > 0),
 
   CONSTRAINT ck_carga_operaciones_hash_sha256
     CHECK (hash_sha256 ~ '^[0-9a-f]{64}$'),
@@ -444,9 +453,18 @@ CREATE TABLE documentos.carga_operaciones (
 
   CONSTRAINT ck_carga_operaciones_reconciliacion
     CHECK (
-      (estado = 'requiere_reconciliacion' AND requiere_reconciliacion = true)
-      OR
-      (estado <> 'requiere_reconciliacion')
+      requiere_reconciliacion = (estado = 'requiere_reconciliacion')
+    ),
+
+  CONSTRAINT ck_carga_operaciones_expiracion
+    CHECK (expira_en > iniciada_en),
+
+  CONSTRAINT ck_carga_operaciones_fechas_estado
+    CHECK (
+      (estado <> 'almacenada' OR almacenada_en IS NOT NULL)
+      AND (estado <> 'completada' OR completada_en IS NOT NULL)
+      AND (estado <> 'fallida' OR fallida_en IS NOT NULL)
+      AND NOT (completada_en IS NOT NULL AND fallida_en IS NOT NULL)
     )
 );
 
@@ -501,122 +519,94 @@ COMMIT;
 - `requiere_reconciliacion` existe como bandera y como estado contractual.
 - La autoridad de deduplicación es `carga_operaciones`, mediante la reserva parcial por scope + hash.
 - Los hashes y fingerprints se almacenan normalizados en minúsculas.
+- `content_type` representa el MIME validado por el backend después de inspeccionar el archivo; no es únicamente el valor declarado por el cliente.
+- `expira_en` debe ser posterior a `iniciada_en`.
+- `almacenada`, `completada` y `fallida` exigen sus timestamps correspondientes; una operación no puede estar simultáneamente completada y fallida.
+
+### Transición de fallo, compensación y reconciliación
+
+```text
+fallo después de PutObject
+→ intentar compensación
+
+compensación exitosa
+→ estado = fallida
+→ requiere_reconciliacion = false
+→ no queda objeto físico pendiente
+
+compensación fallida
+→ estado = requiere_reconciliacion
+→ requiere_reconciliacion = true
+→ queda objeto pendiente de tratamiento controlado
+```
+
+Una operación no puede persistirse como `fallida` mientras conserve un objeto no reconciliado.
 
 ## 14.2 Migración `0012` — scope y auditoría en `documentos_archivos`
 
 Todas las columnas nuevas permanecen nullable para preservar los 19 registros históricos.
 
+La migración versionada no utiliza `IF NOT EXISTS`: debe fallar de forma visible si el estado real difiere de la prevalidación aprobada. Antes de materializarla, el runner o una prevalidación explícita deberá comprobar ausencia de columnas, constraints e índices y detenerse ante cualquier drift.
+
 ```sql
 BEGIN;
 
 ALTER TABLE documentos.documentos_archivos
-  ADD COLUMN IF NOT EXISTS workspace_id INTEGER NULL,
-  ADD COLUMN IF NOT EXISTS empresa_codigo VARCHAR(20) NULL,
-  ADD COLUMN IF NOT EXISTS cliente_destino_id INTEGER NULL,
-  ADD COLUMN IF NOT EXISTS expediente_id BIGINT NULL,
-  ADD COLUMN IF NOT EXISTS carga_operacion_id BIGINT NULL,
-  ADD COLUMN IF NOT EXISTS creado_por INTEGER NULL,
-  ADD COLUMN IF NOT EXISTS actualizado_por INTEGER NULL,
-  ADD COLUMN IF NOT EXISTS actualizado_en TIMESTAMPTZ NULL,
-  ADD COLUMN IF NOT EXISTS anulado_por INTEGER NULL,
-  ADD COLUMN IF NOT EXISTS anulado_en TIMESTAMPTZ NULL,
-  ADD COLUMN IF NOT EXISTS motivo_anulacion TEXT NULL;
+  ADD COLUMN workspace_id INTEGER NULL,
+  ADD COLUMN empresa_codigo VARCHAR(20) NULL,
+  ADD COLUMN cliente_destino_id INTEGER NULL,
+  ADD COLUMN expediente_id BIGINT NULL,
+  ADD COLUMN carga_operacion_id BIGINT NULL,
+  ADD COLUMN creado_por INTEGER NULL,
+  ADD COLUMN actualizado_por INTEGER NULL,
+  ADD COLUMN actualizado_en TIMESTAMPTZ NULL,
+  ADD COLUMN anulado_por INTEGER NULL,
+  ADD COLUMN anulado_en TIMESTAMPTZ NULL,
+  ADD COLUMN motivo_anulacion TEXT NULL;
 
-DO $$
-BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_constraint
-    WHERE conname = 'documentos_archivos_cliente_destino_id_fkey'
-      AND conrelid = 'documentos.documentos_archivos'::regclass
-  ) THEN
-    ALTER TABLE documentos.documentos_archivos
-      ADD CONSTRAINT documentos_archivos_cliente_destino_id_fkey
-      FOREIGN KEY (cliente_destino_id)
-      REFERENCES core.clientes_destino(id)
-      ON DELETE RESTRICT;
-  END IF;
+ALTER TABLE documentos.documentos_archivos
+  ADD CONSTRAINT documentos_archivos_cliente_destino_id_fkey
+  FOREIGN KEY (cliente_destino_id)
+  REFERENCES core.clientes_destino(id)
+  ON DELETE RESTRICT,
 
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_constraint
-    WHERE conname = 'documentos_archivos_expediente_id_fkey'
-      AND conrelid = 'documentos.documentos_archivos'::regclass
-  ) THEN
-    ALTER TABLE documentos.documentos_archivos
-      ADD CONSTRAINT documentos_archivos_expediente_id_fkey
-      FOREIGN KEY (expediente_id)
-      REFERENCES documentos.expedientes(id)
-      ON DELETE RESTRICT;
-  END IF;
+  ADD CONSTRAINT documentos_archivos_expediente_id_fkey
+  FOREIGN KEY (expediente_id)
+  REFERENCES documentos.expedientes(id)
+  ON DELETE RESTRICT,
 
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_constraint
-    WHERE conname = 'documentos_archivos_carga_operacion_id_fkey'
-      AND conrelid = 'documentos.documentos_archivos'::regclass
-  ) THEN
-    ALTER TABLE documentos.documentos_archivos
-      ADD CONSTRAINT documentos_archivos_carga_operacion_id_fkey
-      FOREIGN KEY (carga_operacion_id)
-      REFERENCES documentos.carga_operaciones(id)
-      ON DELETE SET NULL;
-  END IF;
+  ADD CONSTRAINT documentos_archivos_carga_operacion_id_fkey
+  FOREIGN KEY (carga_operacion_id)
+  REFERENCES documentos.carga_operaciones(id)
+  ON DELETE SET NULL,
 
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_constraint
-    WHERE conname = 'documentos_archivos_creado_por_fkey'
-      AND conrelid = 'documentos.documentos_archivos'::regclass
-  ) THEN
-    ALTER TABLE documentos.documentos_archivos
-      ADD CONSTRAINT documentos_archivos_creado_por_fkey
-      FOREIGN KEY (creado_por)
-      REFERENCES auth.usuarios(id)
-      ON DELETE SET NULL;
-  END IF;
+  ADD CONSTRAINT documentos_archivos_creado_por_fkey
+  FOREIGN KEY (creado_por)
+  REFERENCES auth.usuarios(id)
+  ON DELETE SET NULL,
 
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_constraint
-    WHERE conname = 'documentos_archivos_actualizado_por_fkey'
-      AND conrelid = 'documentos.documentos_archivos'::regclass
-  ) THEN
-    ALTER TABLE documentos.documentos_archivos
-      ADD CONSTRAINT documentos_archivos_actualizado_por_fkey
-      FOREIGN KEY (actualizado_por)
-      REFERENCES auth.usuarios(id)
-      ON DELETE SET NULL;
-  END IF;
+  ADD CONSTRAINT documentos_archivos_actualizado_por_fkey
+  FOREIGN KEY (actualizado_por)
+  REFERENCES auth.usuarios(id)
+  ON DELETE SET NULL,
 
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_constraint
-    WHERE conname = 'documentos_archivos_anulado_por_fkey'
-      AND conrelid = 'documentos.documentos_archivos'::regclass
-  ) THEN
-    ALTER TABLE documentos.documentos_archivos
-      ADD CONSTRAINT documentos_archivos_anulado_por_fkey
-      FOREIGN KEY (anulado_por)
-      REFERENCES auth.usuarios(id)
-      ON DELETE SET NULL;
-  END IF;
+  ADD CONSTRAINT documentos_archivos_anulado_por_fkey
+  FOREIGN KEY (anulado_por)
+  REFERENCES auth.usuarios(id)
+  ON DELETE SET NULL,
 
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_constraint
-    WHERE conname = 'documentos_archivos_anulacion_coherente_ck'
-      AND conrelid = 'documentos.documentos_archivos'::regclass
-  ) THEN
-    ALTER TABLE documentos.documentos_archivos
-      ADD CONSTRAINT documentos_archivos_anulacion_coherente_ck
-      CHECK (
-        (anulado_en IS NULL AND anulado_por IS NULL AND motivo_anulacion IS NULL)
-        OR
-        (
-          anulado_en IS NOT NULL
-          AND anulado_por IS NOT NULL
-          AND length(trim(motivo_anulacion)) > 0
-        )
-      );
-  END IF;
-END
-$$;
+  ADD CONSTRAINT documentos_archivos_anulacion_coherente_ck
+  CHECK (
+    (anulado_en IS NULL AND anulado_por IS NULL AND motivo_anulacion IS NULL)
+    OR
+    (
+      anulado_en IS NOT NULL
+      AND anulado_por IS NOT NULL
+      AND length(trim(motivo_anulacion)) > 0
+    )
+  );
 
-CREATE INDEX IF NOT EXISTS idx_documentos_archivos_scope_hash
+CREATE INDEX idx_documentos_archivos_scope_hash
   ON documentos.documentos_archivos (
     workspace_id,
     empresa_codigo,
@@ -626,11 +616,11 @@ CREATE INDEX IF NOT EXISTS idx_documentos_archivos_scope_hash
     AND empresa_codigo IS NOT NULL
     AND hash_sha256 IS NOT NULL;
 
-CREATE INDEX IF NOT EXISTS idx_documentos_archivos_carga_operacion
+CREATE INDEX idx_documentos_archivos_carga_operacion
   ON documentos.documentos_archivos (carga_operacion_id)
   WHERE carga_operacion_id IS NOT NULL;
 
-CREATE INDEX IF NOT EXISTS idx_documentos_archivos_expediente
+CREATE INDEX idx_documentos_archivos_expediente
   ON documentos.documentos_archivos (expediente_id)
   WHERE expediente_id IS NOT NULL;
 
@@ -735,11 +725,38 @@ CREATE TABLE documentos.documento_eventos_outbox (
       AND event_key !~ '[[:cntrl:]]'
     ),
 
-  CONSTRAINT ck_documento_eventos_outbox_lease
+  CONSTRAINT ck_documento_eventos_outbox_lease_estado
     CHECK (
-      (locked_by IS NULL AND locked_until IS NULL)
+      (
+        estado = 'procesando'
+        AND locked_by IS NOT NULL
+        AND locked_until IS NOT NULL
+      )
       OR
-      (locked_by IS NOT NULL AND locked_until IS NOT NULL)
+      (
+        estado <> 'procesando'
+        AND locked_by IS NULL
+        AND locked_until IS NULL
+      )
+    ),
+
+  CONSTRAINT ck_documento_eventos_outbox_publicacion
+    CHECK (
+      (estado = 'publicado' AND publicado_en IS NOT NULL)
+      OR
+      (estado <> 'publicado' AND publicado_en IS NULL)
+    ),
+
+  CONSTRAINT ck_documento_eventos_outbox_fallo_permanente
+    CHECK (
+      estado <> 'fallido_permanente'
+      OR intentos >= max_intentos
+    ),
+
+  CONSTRAINT ck_documento_eventos_outbox_pendiente
+    CHECK (
+      estado <> 'pendiente'
+      OR proximo_intento_en IS NOT NULL
     )
 );
 
@@ -777,10 +794,52 @@ COMMIT;
 - `event_key` es la idempotencia propia del evento y permite varios eventos por una misma carga.
 - `idempotency_key` se conserva como correlación con la solicitud de carga, sin restricción unique en la outbox.
 - Un worker reclama un evento cambiando `pendiente → procesando`, asignando `locked_by` y `locked_until` dentro de una transacción con bloqueo de fila.
+- La reclamación concurrente debe usar `SELECT ... FOR UPDATE SKIP LOCKED`, o mecanismo equivalente, dentro de una transacción.
 - Un fallo reintentable devuelve el evento a `pendiente`, incrementa `intentos`, registra `ultimo_error` y calcula `proximo_intento_en` con backoff.
 - Cuando `intentos` alcanza `max_intentos`, pasa a `fallido_permanente` y deja de ser elegible automáticamente.
 - Un lease vencido puede ser recuperado por otro worker mediante reconciliación controlada.
 - `publicado` requiere `publicado_en` y liberación del lease.
+
+Invariantes por estado:
+
+```text
+pendiente:
+  lease libre
+  proximo_intento_en obligatorio
+  publicado_en nulo
+
+procesando:
+  locked_by y locked_until obligatorios
+  publicado_en nulo
+
+publicado:
+  publicado_en obligatorio
+  lease libre
+
+fallido_permanente:
+  intentos >= max_intentos
+  lease libre
+  no elegible automáticamente
+```
+
+Patrón conceptual de reclamación:
+
+```sql
+BEGIN;
+
+SELECT id
+FROM documentos.documento_eventos_outbox
+WHERE estado = 'pendiente'
+  AND proximo_intento_en <= now()
+ORDER BY proximo_intento_en, id
+FOR UPDATE SKIP LOCKED
+LIMIT :lote;
+
+-- Actualización de las filas reclamadas a estado procesando,
+-- asignando locked_by y locked_until dentro de la misma transacción.
+
+COMMIT;
+```
 
 Ejemplos de `event_key`:
 
@@ -932,14 +991,32 @@ La existencia del objeto no prueba que su definición sea correcta.
 
 # 18. Riesgos y asuntos pendientes
 
-1. Falta inspeccionar el runner oficial de migraciones antes de materializar archivos SQL.
+1. Falta inspeccionar el runner oficial de migraciones antes de materializar archivos SQL; cualquier drift debe producir error visible.
 2. Debe confirmarse el catálogo vigente de `documentos_archivos.estado` antes de ligar obligatoriamente `estado = 'anulado'` al check de anulación.
 3. Debe definirse si el worker de outbox usa `platform_app` o un rol técnico separado; `UPDATE` directo se acepta solo provisionalmente si ambos componentes comparten rol.
 4. No se realizará backfill de actores, `storage_key` ni scope para registros históricos sin evidencia.
 5. La outbox y la operación documental deben escribirse en una misma transacción PostgreSQL.
 6. La publicación debe ser idempotente, con leasing y reintentos controlados.
 
-# 19. Dictamen GO-1B corregido
+# 19. Matriz de observaciones finales
+
+| # | Invariante final | Estado documental |
+|---:|---|---|
+| 1 | equivalencia estado/bandera de reconciliación | corregida bidireccionalmente |
+| 2 | archivo con tamaño mayor que cero | incorporada |
+| 3 | expiración posterior al inicio | incorporada |
+| 4 | timestamps obligatorios por estado | incorporados |
+| 5 | canal de ingreso no vacío | incorporado |
+| 6 | nombre de archivo no vacío | incorporado |
+| 7 | `content_type` validado y obligatorio | definido |
+| 8 | política de `IF NOT EXISTS` | retirada para `0012`; drift debe fallar |
+| 9 | lease coherente con estado de outbox | incorporado |
+| 10 | publicación coherente con `publicado_en` | incorporada |
+| 11 | fallo permanente ligado a máximo de intentos | incorporado |
+| 12 | compensación y reconciliación | transición documentada |
+| 13 | reclamación concurrente | `FOR UPDATE SKIP LOCKED` documentado |
+
+# 20. Dictamen GO-1B corregido
 
 ```text
 Prevalidaciones SQL:                APROBADAS
@@ -956,7 +1033,7 @@ Código funcional:                  NO AUTORIZADO
 Builds / pruebas / push:           NO AUTORIZADOS
 ```
 
-## 20. Próximo paso autorizado
+## 21. Próximo paso autorizado
 
 - revisión formal del Documento 12 corregido;
 - validación del runner oficial únicamente si el Maestro lo autoriza expresamente;
