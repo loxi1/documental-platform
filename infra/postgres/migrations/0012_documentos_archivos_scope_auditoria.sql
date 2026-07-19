@@ -100,69 +100,6 @@ BEGIN
     END IF;
   END LOOP;
 
-  IF NOT EXISTS (
-    SELECT 1
-    FROM pg_constraint
-    WHERE conrelid = 'documentos.documentos_archivos'::regclass
-      AND conname = 'documentos_archivos_cliente_destino_id_fkey'
-      AND lower(regexp_replace(pg_get_constraintdef(oid), '\s+', ' ', 'g'))
-          LIKE '%foreign key (cliente_destino_id) references core.clientes_destino(id) on delete restrict%'
-  ) OR NOT EXISTS (
-    SELECT 1
-    FROM pg_constraint
-    WHERE conrelid = 'documentos.documentos_archivos'::regclass
-      AND conname = 'documentos_archivos_expediente_id_fkey'
-      AND lower(regexp_replace(pg_get_constraintdef(oid), '\s+', ' ', 'g'))
-          LIKE '%foreign key (expediente_id) references documentos.expedientes(id) on delete restrict%'
-  ) OR NOT EXISTS (
-    SELECT 1
-    FROM pg_constraint
-    WHERE conrelid = 'documentos.documentos_archivos'::regclass
-      AND conname = 'documentos_archivos_carga_operacion_id_fkey'
-      AND lower(regexp_replace(pg_get_constraintdef(oid), '\s+', ' ', 'g'))
-          LIKE '%foreign key (carga_operacion_id) references documentos.carga_operaciones(id) on delete set null%'
-  ) OR NOT EXISTS (
-    SELECT 1
-    FROM pg_constraint
-    WHERE conrelid = 'documentos.documentos_archivos'::regclass
-      AND conname = 'documentos_archivos_creado_por_fkey'
-      AND lower(regexp_replace(pg_get_constraintdef(oid), '\s+', ' ', 'g'))
-          LIKE '%foreign key (creado_por) references auth.usuarios(id) on delete set null%'
-  ) OR NOT EXISTS (
-    SELECT 1
-    FROM pg_constraint
-    WHERE conrelid = 'documentos.documentos_archivos'::regclass
-      AND conname = 'documentos_archivos_actualizado_por_fkey'
-      AND lower(regexp_replace(pg_get_constraintdef(oid), '\s+', ' ', 'g'))
-          LIKE '%foreign key (actualizado_por) references auth.usuarios(id) on delete set null%'
-  ) OR NOT EXISTS (
-    SELECT 1
-    FROM pg_constraint
-    WHERE conrelid = 'documentos.documentos_archivos'::regclass
-      AND conname = 'documentos_archivos_anulado_por_fkey'
-      AND lower(regexp_replace(pg_get_constraintdef(oid), '\s+', ' ', 'g'))
-          LIKE '%foreign key (anulado_por) references auth.usuarios(id) on delete set null%'
-  ) THEN
-    RAISE EXCEPTION
-      '0012: postvalidación fallida; definición de FK o acción ON DELETE incompatible';
-  END IF;
-
-  IF NOT EXISTS (
-    SELECT 1
-    FROM pg_constraint
-    WHERE conrelid = 'documentos.documentos_archivos'::regclass
-      AND conname = 'documentos_archivos_anulacion_coherente_ck'
-      AND lower(regexp_replace(pg_get_constraintdef(oid), '\s+', ' ', 'g')) LIKE '%anulado_en is null%'
-      AND lower(regexp_replace(pg_get_constraintdef(oid), '\s+', ' ', 'g')) LIKE '%anulado_por is null%'
-      AND lower(regexp_replace(pg_get_constraintdef(oid), '\s+', ' ', 'g')) LIKE '%motivo_anulacion is null%'
-      AND lower(regexp_replace(pg_get_constraintdef(oid), '\s+', ' ', 'g')) LIKE '%anulado_en is not null%'
-      AND lower(regexp_replace(pg_get_constraintdef(oid), '\s+', ' ', 'g')) LIKE '%anulado_por is not null%'
-      AND lower(regexp_replace(pg_get_constraintdef(oid), '\s+', ' ', 'g')) LIKE '%length(trim(both from motivo_anulacion)) > 0%'
-  ) THEN
-    RAISE EXCEPTION
-      '0012: postvalidación fallida; check de anulación incompatible';
-  END IF;
-
   FOREACH indice IN ARRAY ARRAY[
     'documentos.idx_documentos_archivos_scope_hash',
     'documentos.idx_documentos_archivos_carga_operacion',
@@ -414,6 +351,69 @@ BEGIN
         restriccion;
     END IF;
   END LOOP;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conrelid = 'documentos.documentos_archivos'::regclass
+      AND conname = 'documentos_archivos_cliente_destino_id_fkey'
+      AND lower(regexp_replace(pg_get_constraintdef(oid), '\s+', ' ', 'g'))
+          LIKE '%foreign key (cliente_destino_id) references core.clientes_destino(id) on delete restrict%'
+  ) OR NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conrelid = 'documentos.documentos_archivos'::regclass
+      AND conname = 'documentos_archivos_expediente_id_fkey'
+      AND lower(regexp_replace(pg_get_constraintdef(oid), '\s+', ' ', 'g'))
+          LIKE '%foreign key (expediente_id) references documentos.expedientes(id) on delete restrict%'
+  ) OR NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conrelid = 'documentos.documentos_archivos'::regclass
+      AND conname = 'documentos_archivos_carga_operacion_id_fkey'
+      AND lower(regexp_replace(pg_get_constraintdef(oid), '\s+', ' ', 'g'))
+          LIKE '%foreign key (carga_operacion_id) references documentos.carga_operaciones(id) on delete set null%'
+  ) OR NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conrelid = 'documentos.documentos_archivos'::regclass
+      AND conname = 'documentos_archivos_creado_por_fkey'
+      AND lower(regexp_replace(pg_get_constraintdef(oid), '\s+', ' ', 'g'))
+          LIKE '%foreign key (creado_por) references auth.usuarios(id) on delete set null%'
+  ) OR NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conrelid = 'documentos.documentos_archivos'::regclass
+      AND conname = 'documentos_archivos_actualizado_por_fkey'
+      AND lower(regexp_replace(pg_get_constraintdef(oid), '\s+', ' ', 'g'))
+          LIKE '%foreign key (actualizado_por) references auth.usuarios(id) on delete set null%'
+  ) OR NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conrelid = 'documentos.documentos_archivos'::regclass
+      AND conname = 'documentos_archivos_anulado_por_fkey'
+      AND lower(regexp_replace(pg_get_constraintdef(oid), '\s+', ' ', 'g'))
+          LIKE '%foreign key (anulado_por) references auth.usuarios(id) on delete set null%'
+  ) THEN
+    RAISE EXCEPTION
+      '0012: postvalidación fallida; definición de FK o acción ON DELETE incompatible';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conrelid = 'documentos.documentos_archivos'::regclass
+      AND conname = 'documentos_archivos_anulacion_coherente_ck'
+      AND lower(regexp_replace(pg_get_constraintdef(oid), '\s+', ' ', 'g')) LIKE '%anulado_en is null%'
+      AND lower(regexp_replace(pg_get_constraintdef(oid), '\s+', ' ', 'g')) LIKE '%anulado_por is null%'
+      AND lower(regexp_replace(pg_get_constraintdef(oid), '\s+', ' ', 'g')) LIKE '%motivo_anulacion is null%'
+      AND lower(regexp_replace(pg_get_constraintdef(oid), '\s+', ' ', 'g')) LIKE '%anulado_en is not null%'
+      AND lower(regexp_replace(pg_get_constraintdef(oid), '\s+', ' ', 'g')) LIKE '%anulado_por is not null%'
+      AND lower(regexp_replace(pg_get_constraintdef(oid), '\s+', ' ', 'g')) LIKE '%length(trim(both from motivo_anulacion)) > 0%'
+  ) THEN
+    RAISE EXCEPTION
+      '0012: postvalidación fallida; check de anulación incompatible';
+  END IF;
 
   FOREACH indice IN ARRAY ARRAY[
     'documentos.idx_documentos_archivos_scope_hash',
