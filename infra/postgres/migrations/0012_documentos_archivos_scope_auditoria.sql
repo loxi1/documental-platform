@@ -100,6 +100,69 @@ BEGIN
     END IF;
   END LOOP;
 
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conrelid = 'documentos.documentos_archivos'::regclass
+      AND conname = 'documentos_archivos_cliente_destino_id_fkey'
+      AND lower(regexp_replace(pg_get_constraintdef(oid), '\s+', ' ', 'g'))
+          LIKE '%foreign key (cliente_destino_id) references core.clientes_destino(id) on delete restrict%'
+  ) OR NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conrelid = 'documentos.documentos_archivos'::regclass
+      AND conname = 'documentos_archivos_expediente_id_fkey'
+      AND lower(regexp_replace(pg_get_constraintdef(oid), '\s+', ' ', 'g'))
+          LIKE '%foreign key (expediente_id) references documentos.expedientes(id) on delete restrict%'
+  ) OR NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conrelid = 'documentos.documentos_archivos'::regclass
+      AND conname = 'documentos_archivos_carga_operacion_id_fkey'
+      AND lower(regexp_replace(pg_get_constraintdef(oid), '\s+', ' ', 'g'))
+          LIKE '%foreign key (carga_operacion_id) references documentos.carga_operaciones(id) on delete set null%'
+  ) OR NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conrelid = 'documentos.documentos_archivos'::regclass
+      AND conname = 'documentos_archivos_creado_por_fkey'
+      AND lower(regexp_replace(pg_get_constraintdef(oid), '\s+', ' ', 'g'))
+          LIKE '%foreign key (creado_por) references auth.usuarios(id) on delete set null%'
+  ) OR NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conrelid = 'documentos.documentos_archivos'::regclass
+      AND conname = 'documentos_archivos_actualizado_por_fkey'
+      AND lower(regexp_replace(pg_get_constraintdef(oid), '\s+', ' ', 'g'))
+          LIKE '%foreign key (actualizado_por) references auth.usuarios(id) on delete set null%'
+  ) OR NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conrelid = 'documentos.documentos_archivos'::regclass
+      AND conname = 'documentos_archivos_anulado_por_fkey'
+      AND lower(regexp_replace(pg_get_constraintdef(oid), '\s+', ' ', 'g'))
+          LIKE '%foreign key (anulado_por) references auth.usuarios(id) on delete set null%'
+  ) THEN
+    RAISE EXCEPTION
+      '0012: postvalidación fallida; definición de FK o acción ON DELETE incompatible';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conrelid = 'documentos.documentos_archivos'::regclass
+      AND conname = 'documentos_archivos_anulacion_coherente_ck'
+      AND lower(regexp_replace(pg_get_constraintdef(oid), '\s+', ' ', 'g')) LIKE '%anulado_en is null%'
+      AND lower(regexp_replace(pg_get_constraintdef(oid), '\s+', ' ', 'g')) LIKE '%anulado_por is null%'
+      AND lower(regexp_replace(pg_get_constraintdef(oid), '\s+', ' ', 'g')) LIKE '%motivo_anulacion is null%'
+      AND lower(regexp_replace(pg_get_constraintdef(oid), '\s+', ' ', 'g')) LIKE '%anulado_en is not null%'
+      AND lower(regexp_replace(pg_get_constraintdef(oid), '\s+', ' ', 'g')) LIKE '%anulado_por is not null%'
+      AND lower(regexp_replace(pg_get_constraintdef(oid), '\s+', ' ', 'g')) LIKE '%length(trim(both from motivo_anulacion)) > 0%'
+  ) THEN
+    RAISE EXCEPTION
+      '0012: postvalidación fallida; check de anulación incompatible';
+  END IF;
+
   FOREACH indice IN ARRAY ARRAY[
     'documentos.idx_documentos_archivos_scope_hash',
     'documentos.idx_documentos_archivos_carga_operacion',
@@ -307,6 +370,29 @@ BEGIN
       '0012: postvalidación fallida; carga_operacion_id no es BIGINT';
   END IF;
 
+  IF EXISTS (
+    SELECT 1
+    FROM (VALUES
+      ('creado_por', 'integer', 'int4'),
+      ('actualizado_por', 'integer', 'int4'),
+      ('actualizado_en', 'timestamp with time zone', 'timestamptz'),
+      ('anulado_por', 'integer', 'int4'),
+      ('anulado_en', 'timestamp with time zone', 'timestamptz'),
+      ('motivo_anulacion', 'text', 'text')
+    ) AS esperado(column_name, data_type, udt_name)
+    LEFT JOIN information_schema.columns c
+      ON c.table_schema = 'documentos'
+     AND c.table_name = 'documentos_archivos'
+     AND c.column_name = esperado.column_name
+    WHERE c.column_name IS NULL
+       OR c.data_type <> esperado.data_type
+       OR c.udt_name <> esperado.udt_name
+       OR c.is_nullable <> 'YES'
+  ) THEN
+    RAISE EXCEPTION
+      '0012: postvalidación fallida; tipos o nulabilidad de auditoría incompatibles';
+  END IF;
+
   FOREACH restriccion IN ARRAY ARRAY[
     'documentos_archivos_cliente_destino_id_fkey',
     'documentos_archivos_expediente_id_fkey',
@@ -342,6 +428,35 @@ BEGIN
     END IF;
   END LOOP;
 
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_indexes
+    WHERE schemaname = 'documentos'
+      AND tablename = 'documentos_archivos'
+      AND indexname = 'idx_documentos_archivos_scope_hash'
+      AND lower(regexp_replace(indexdef, '\s+', ' ', 'g')) LIKE '%create index%on documentos.documentos_archivos using btree (workspace_id, empresa_codigo, hash_sha256)%'
+      AND lower(regexp_replace(indexdef, '\s+', ' ', 'g')) LIKE '%where ((workspace_id is not null) and (empresa_codigo is not null) and (hash_sha256 is not null))%'
+  ) OR NOT EXISTS (
+    SELECT 1
+    FROM pg_indexes
+    WHERE schemaname = 'documentos'
+      AND tablename = 'documentos_archivos'
+      AND indexname = 'idx_documentos_archivos_carga_operacion'
+      AND lower(regexp_replace(indexdef, '\s+', ' ', 'g')) LIKE '%(carga_operacion_id)%'
+      AND lower(regexp_replace(indexdef, '\s+', ' ', 'g')) LIKE '%where (carga_operacion_id is not null)%'
+  ) OR NOT EXISTS (
+    SELECT 1
+    FROM pg_indexes
+    WHERE schemaname = 'documentos'
+      AND tablename = 'documentos_archivos'
+      AND indexname = 'idx_documentos_archivos_expediente'
+      AND lower(regexp_replace(indexdef, '\s+', ' ', 'g')) LIKE '%(expediente_id)%'
+      AND lower(regexp_replace(indexdef, '\s+', ' ', 'g')) LIKE '%where (expediente_id is not null)%'
+  ) THEN
+    RAISE EXCEPTION
+      '0012: postvalidación fallida; definición o predicado de índice incompatible';
+  END IF;
+
   IF NOT has_table_privilege(
     'platform_app',
     'documentos.documentos_archivos',
@@ -357,6 +472,43 @@ BEGIN
   ) THEN
     RAISE EXCEPTION
       '0012: postvalidación fallida; grants de tabla incompletos';
+  END IF;
+
+  IF NOT has_schema_privilege(
+    'platform_app',
+    'documentos',
+    'USAGE'
+  ) OR has_schema_privilege(
+    'platform_app',
+    'documentos',
+    'CREATE'
+  ) THEN
+    RAISE EXCEPTION
+      '0012: postvalidación fallida; privilegios de schema incompatibles';
+  END IF;
+
+  IF has_table_privilege(
+    'platform_app',
+    'documentos.documentos_archivos',
+    'DELETE'
+  ) OR has_table_privilege(
+    'platform_app',
+    'documentos.documentos_archivos',
+    'TRUNCATE'
+  ) THEN
+    RAISE EXCEPTION
+      '0012: postvalidación fallida; privilegios destructivos no permitidos';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM information_schema.role_table_grants
+    WHERE grantee = 'PUBLIC'
+      AND table_schema = 'documentos'
+      AND table_name = 'documentos_archivos'
+  ) THEN
+    RAISE EXCEPTION
+      '0012: postvalidación fallida; grants a PUBLIC no permitidos';
   END IF;
 
   IF NOT has_sequence_privilege(

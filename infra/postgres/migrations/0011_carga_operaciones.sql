@@ -176,9 +176,34 @@ CREATE TABLE documentos.carga_operaciones (
 
   CONSTRAINT ck_carga_operaciones_fechas_estado
     CHECK (
-      (estado <> 'almacenada' OR almacenada_en IS NOT NULL)
-      AND (estado <> 'completada' OR completada_en IS NOT NULL)
+      -- Orden temporal general.
+      (almacenada_en IS NULL OR almacenada_en >= iniciada_en)
+      AND (
+        completada_en IS NULL
+        OR (
+          almacenada_en IS NOT NULL
+          AND completada_en >= almacenada_en
+        )
+      )
+      AND (fallida_en IS NULL OR fallida_en >= iniciada_en)
+      AND actualizado_en >= iniciada_en
+
+      -- Invariantes por estado.
+      AND (estado <> 'almacenada' OR almacenada_en IS NOT NULL)
+      AND (
+        estado <> 'completada'
+        OR (
+          almacenada_en IS NOT NULL
+          AND completada_en IS NOT NULL
+        )
+      )
       AND (estado <> 'fallida' OR fallida_en IS NOT NULL)
+      AND (
+        estado <> 'requiere_reconciliacion'
+        OR almacenada_en IS NOT NULL
+      )
+
+      -- Una operación no puede terminar simultáneamente con éxito y fallo.
       AND NOT (
         completada_en IS NOT NULL
         AND fallida_en IS NOT NULL
@@ -310,6 +335,43 @@ BEGIN
   ) THEN
     RAISE EXCEPTION
       '0011: postvalidación fallida; grants de tabla incompletos';
+  END IF;
+
+  IF NOT has_schema_privilege(
+    'platform_app',
+    'documentos',
+    'USAGE'
+  ) OR has_schema_privilege(
+    'platform_app',
+    'documentos',
+    'CREATE'
+  ) THEN
+    RAISE EXCEPTION
+      '0011: postvalidación fallida; privilegios de schema incompatibles';
+  END IF;
+
+  IF has_table_privilege(
+    'platform_app',
+    'documentos.carga_operaciones',
+    'DELETE'
+  ) OR has_table_privilege(
+    'platform_app',
+    'documentos.carga_operaciones',
+    'TRUNCATE'
+  ) THEN
+    RAISE EXCEPTION
+      '0011: postvalidación fallida; privilegios destructivos no permitidos';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM information_schema.role_table_grants
+    WHERE grantee = 'PUBLIC'
+      AND table_schema = 'documentos'
+      AND table_name = 'carga_operaciones'
+  ) THEN
+    RAISE EXCEPTION
+      '0011: postvalidación fallida; grants a PUBLIC no permitidos';
   END IF;
 
   IF NOT has_sequence_privilege(

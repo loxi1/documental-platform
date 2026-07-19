@@ -150,6 +150,21 @@ CREATE TABLE documentos.documento_eventos_outbox (
       AND event_key !~ '[[:cntrl:]]'
     ),
 
+  CONSTRAINT ck_documento_eventos_outbox_identificadores
+    CHECK (
+      length(trim(tipo_evento)) > 0
+      AND length(trim(aggregate_type)) > 0
+      AND length(trim(aggregate_id)) > 0
+      AND length(trim(idempotency_key)) > 0
+      AND idempotency_key !~ '[[:cntrl:]]'
+    ),
+
+  CONSTRAINT ck_documento_eventos_outbox_locked_by
+    CHECK (
+      locked_by IS NULL
+      OR length(trim(locked_by)) > 0
+    ),
+
   CONSTRAINT ck_documento_eventos_outbox_lease_estado
     CHECK (
       (
@@ -175,9 +190,15 @@ CREATE TABLE documentos.documento_eventos_outbox (
   CONSTRAINT ck_documento_eventos_outbox_fallo_permanente
     CHECK (
       estado <> 'fallido_permanente'
-      OR intentos >= max_intentos
+      OR (
+        intentos >= max_intentos
+        AND ultimo_error IS NOT NULL
+        AND length(trim(ultimo_error)) > 0
+      )
     ),
 
+  -- proximo_intento_en permanece NOT NULL para trazabilidad, pero solo gobierna
+  -- la selección operativa cuando el evento está en estado pendiente.
   CONSTRAINT ck_documento_eventos_outbox_pendiente
     CHECK (
       estado <> 'pendiente'
@@ -257,6 +278,8 @@ BEGIN
     'ck_documento_eventos_outbox_workspace',
     'ck_documento_eventos_outbox_empresa',
     'ck_documento_eventos_outbox_event_key',
+    'ck_documento_eventos_outbox_identificadores',
+    'ck_documento_eventos_outbox_locked_by',
     'ck_documento_eventos_outbox_lease_estado',
     'ck_documento_eventos_outbox_publicacion',
     'ck_documento_eventos_outbox_fallo_permanente',
@@ -275,6 +298,34 @@ BEGIN
     END IF;
   END LOOP;
 
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conrelid = 'documentos.documento_eventos_outbox'::regclass
+      AND conname = 'ck_documento_eventos_outbox_identificadores'
+      AND lower(regexp_replace(pg_get_constraintdef(oid), '\s+', ' ', 'g')) LIKE '%length(trim(both from tipo_evento)) > 0%'
+      AND lower(regexp_replace(pg_get_constraintdef(oid), '\s+', ' ', 'g')) LIKE '%length(trim(both from aggregate_type)) > 0%'
+      AND lower(regexp_replace(pg_get_constraintdef(oid), '\s+', ' ', 'g')) LIKE '%length(trim(both from aggregate_id)) > 0%'
+      AND lower(regexp_replace(pg_get_constraintdef(oid), '\s+', ' ', 'g')) LIKE '%length(trim(both from idempotency_key)) > 0%'
+  ) OR NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conrelid = 'documentos.documento_eventos_outbox'::regclass
+      AND conname = 'ck_documento_eventos_outbox_locked_by'
+      AND lower(regexp_replace(pg_get_constraintdef(oid), '\s+', ' ', 'g')) LIKE '%locked_by is null%'
+      AND lower(regexp_replace(pg_get_constraintdef(oid), '\s+', ' ', 'g')) LIKE '%length(trim(both from locked_by)) > 0%'
+  ) OR NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conrelid = 'documentos.documento_eventos_outbox'::regclass
+      AND conname = 'ck_documento_eventos_outbox_fallo_permanente'
+      AND lower(regexp_replace(pg_get_constraintdef(oid), '\s+', ' ', 'g')) LIKE '%ultimo_error is not null%'
+      AND lower(regexp_replace(pg_get_constraintdef(oid), '\s+', ' ', 'g')) LIKE '%length(trim(both from ultimo_error)) > 0%'
+  ) THEN
+    RAISE EXCEPTION
+      '0013: postvalidación fallida; checks de contenido o fallo permanente incompatibles';
+  END IF;
+
   IF NOT has_table_privilege(
     'platform_app',
     'documentos.documento_eventos_outbox',
@@ -290,6 +341,43 @@ BEGIN
   ) THEN
     RAISE EXCEPTION
       '0013: postvalidación fallida; grants de tabla incompletos';
+  END IF;
+
+  IF NOT has_schema_privilege(
+    'platform_app',
+    'documentos',
+    'USAGE'
+  ) OR has_schema_privilege(
+    'platform_app',
+    'documentos',
+    'CREATE'
+  ) THEN
+    RAISE EXCEPTION
+      '0013: postvalidación fallida; privilegios de schema incompatibles';
+  END IF;
+
+  IF has_table_privilege(
+    'platform_app',
+    'documentos.documento_eventos_outbox',
+    'DELETE'
+  ) OR has_table_privilege(
+    'platform_app',
+    'documentos.documento_eventos_outbox',
+    'TRUNCATE'
+  ) THEN
+    RAISE EXCEPTION
+      '0013: postvalidación fallida; privilegios destructivos no permitidos';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM information_schema.role_table_grants
+    WHERE grantee = 'PUBLIC'
+      AND table_schema = 'documentos'
+      AND table_name = 'documento_eventos_outbox'
+  ) THEN
+    RAISE EXCEPTION
+      '0013: postvalidación fallida; grants a PUBLIC no permitidos';
   END IF;
 
   IF NOT has_sequence_privilege(
