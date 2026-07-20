@@ -166,6 +166,33 @@ export class CargaSeguraRepository {
     return this.first(rows);
   }
 
+  async marcarAlmacenada(input: {
+    operacionId: number;
+    storageProvider: string;
+    storageBucket: string;
+    storageKey: string;
+  }): Promise<CargaSeguraOperacionRow | null> {
+    const rows = await sql`
+      UPDATE documentos.carga_operaciones
+      SET
+        estado = 'almacenada',
+        requiere_reconciliacion = false,
+        storage_provider = ${input.storageProvider}::text,
+        storage_bucket = ${input.storageBucket}::text,
+        storage_key = ${input.storageKey}::text,
+        almacenada_en = now(),
+        actualizado_en = now(),
+        error_codigo = NULL,
+        error_detalle = NULL
+      WHERE id = ${input.operacionId}::bigint
+        AND estado = 'iniciada'
+      RETURNING
+        ${this.selection()}
+    `;
+
+    return this.first(rows);
+  }
+
   async contarReferenciasVigentesStorage(input: {
     provider: string;
     bucket: string;

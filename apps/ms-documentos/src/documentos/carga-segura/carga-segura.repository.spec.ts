@@ -209,4 +209,39 @@ describe('CargaSeguraRepository', () => {
     expect(result).toBeNull();
     expect(executedQueryCount).toBe(1);
   });
+  it('marca una operación iniciada como almacenada', async () => {
+    const row = operation({
+      estado: 'almacenada',
+      storageProvider: 'r2',
+      storageBucket: 'documentos',
+      storageKey: 'documentos/carga-segura/2026/07/1__orden.pdf',
+      almacenadaEn: new Date(),
+    });
+
+    queueQueryResults([row]);
+
+    const result = await new CargaSeguraRepository().marcarAlmacenada({
+      operacionId: 1,
+      storageProvider: 'r2',
+      storageBucket: 'documentos',
+      storageKey: 'documentos/carga-segura/2026/07/1__orden.pdf',
+    });
+
+    expect(result).toBe(row);
+    expect(executedQueryCount).toBe(1);
+  });
+
+  it('devuelve null si la transición a almacenada no aplica', async () => {
+    queueQueryResults([]);
+
+    const result = await new CargaSeguraRepository().marcarAlmacenada({
+      operacionId: 1,
+      storageProvider: 'r2',
+      storageBucket: 'documentos',
+      storageKey: 'key',
+    });
+
+    expect(result).toBeNull();
+    expect(executedQueryCount).toBe(1);
+  });
 });

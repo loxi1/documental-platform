@@ -214,3 +214,17 @@ export type CargaSeguraCompensationResult =
       operacionId: number;
       reason: string;
     };
+
+export interface CargaSeguraPersistenciaInput {
+  operacion: CargaSeguraOperacionRow;
+  command: CargaSeguraCommand;
+  fecha?: Date;
+}
+
+export interface CargaSeguraPersistenciaResult {
+  operacionId: number;
+  documentoId: number;
+  archivoId: number;
+  expedienteId: number | null;
+  outboxEventKey: string;
+}
