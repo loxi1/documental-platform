@@ -1,5 +1,6 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 
+import { CARGA_SEGURA_STORAGE } from './carga-segura.constants';
 import { CargaSeguraRepository } from './carga-segura.repository';
 import type {
   CargaSeguraCompensationInput,
@@ -11,6 +12,7 @@ import type { CargaSeguraStorage } from './carga-segura.storage';
 export class CargaSeguraCompensation {
   constructor(
     private readonly repository: CargaSeguraRepository,
+    @Inject(CARGA_SEGURA_STORAGE)
     private readonly storage: CargaSeguraStorage,
   ) {}
 

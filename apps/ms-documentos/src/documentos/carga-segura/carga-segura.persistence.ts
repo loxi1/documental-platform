@@ -307,8 +307,7 @@ export class CargaSeguraPersistence {
         `;
       }
 
-      const eventKey =
-        `carga-segura:${input.operacion.id}:` + 'documento-creado:v1';
+      const eventKey = `carga-segura:${input.operacion.id}:archivo.subido:v1`;
 
       await tx`
         INSERT INTO documentos.documento_eventos_outbox (
@@ -343,7 +342,7 @@ export class CargaSeguraPersistence {
           ${documentoId}::integer,
           ${archivoId}::integer,
           ${input.command.actorId}::integer,
-          'documento.carga-segura.creada',
+          'archivo.subido',
           'documento',
           ${String(documentoId)}::text,
           ${input.command.requestId ?? null}::text,

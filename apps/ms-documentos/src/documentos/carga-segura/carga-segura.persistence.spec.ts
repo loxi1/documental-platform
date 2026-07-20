@@ -176,7 +176,7 @@ describe('CargaSeguraPersistence', () => {
       documentoId: 100,
       archivoId: 200,
       expedienteId: 17,
-      outboxEventKey: 'carga-segura:50:documento-creado:v1',
+      outboxEventKey: 'carga-segura:50:archivo.subido:v1',
     });
 
     expect(beginMock).toHaveBeenCalledTimes(1);
