@@ -234,6 +234,9 @@ export class CargaSeguraRepository {
 
   async marcarRequiereReconciliacion(input: {
     operacionId: number;
+    storageProvider: string;
+    storageBucket: string;
+    storageKey: string;
     errorCodigo: string;
     errorDetalle: string;
   }): Promise<boolean> {
@@ -242,11 +245,15 @@ export class CargaSeguraRepository {
       SET
         estado = 'requiere_reconciliacion',
         requiere_reconciliacion = true,
+        storage_provider = ${input.storageProvider}::text,
+        storage_bucket = ${input.storageBucket}::text,
+        storage_key = ${input.storageKey}::text,
+        almacenada_en = COALESCE(almacenada_en, now()),
         error_codigo = ${input.errorCodigo}::text,
         error_detalle = ${input.errorDetalle}::text,
         actualizado_en = now()
       WHERE id = ${input.operacionId}::bigint
-        AND estado = 'almacenada'
+        AND estado IN ('iniciada', 'almacenada')
       RETURNING id
     `;
 

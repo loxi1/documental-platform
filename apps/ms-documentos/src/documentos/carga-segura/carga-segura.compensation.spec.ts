@@ -48,6 +48,7 @@ function operation(
 function createInput(overrides: Record<string, unknown> = {}) {
   return {
     operacion: operation(),
+    storageObject: { provider: 'r2', bucket: 'bucket', key: 'key' },
     objetoCreadoPorOperacion: true,
     objetoPreexistente: false,
     esReplay: false,
@@ -140,5 +141,25 @@ describe('CargaSeguraCompensation', () => {
     ).compensate(createInput());
 
     expect(result.kind).toBe('RECONCILIATION_REQUIRED');
+  });
+
+  it('falla de forma tipada cuando no se persiste la reconciliación', async () => {
+    const repository = {
+      contarReferenciasVigentesStorage: jest.fn().mockResolvedValue(0),
+      marcarFallida: jest.fn(),
+      marcarRequiereReconciliacion: jest.fn().mockResolvedValue(false),
+    } as any;
+
+    const storage = {
+      deleteObject: jest.fn().mockRejectedValue(new Error('R2 down')),
+    } as any;
+
+    await expect(
+      new CargaSeguraCompensation(repository, storage).compensate(
+        createInput(),
+      ),
+    ).rejects.toMatchObject({
+      code: 'CARGA_SEGURA_RECONCILIATION_PERSIST_FAILED',
+    });
   });
 });

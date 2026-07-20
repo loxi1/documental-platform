@@ -71,8 +71,8 @@ describe('R2CargaSeguraStorage', () => {
     expect(result).toBe(false);
   });
 
-  it('detecta preexistencia antes del put', async () => {
-    sendMock.mockResolvedValueOnce({}).mockResolvedValueOnce({});
+  it('crea con un único PutObject condicional', async () => {
+    sendMock.mockResolvedValueOnce({});
 
     const result = await new R2CargaSeguraStorage(config).putObject({
       provider: 'r2',
@@ -83,8 +83,67 @@ describe('R2CargaSeguraStorage', () => {
       hashSha256: 'a'.repeat(64),
     });
 
-    expect(result.preexisting).toBe(true);
-    expect(sendMock).toHaveBeenCalledTimes(2);
+    expect(result).toEqual({
+      kind: 'CREATED',
+      provider: 'r2',
+      bucket: 'bucket',
+      key: 'key',
+      preexisting: false,
+    });
+    expect(sendMock).toHaveBeenCalledTimes(1);
+    expect(sendMock.mock.calls[0]?.[0]).toMatchObject({
+      type: 'put',
+      input: {
+        Bucket: 'bucket',
+        Key: 'key',
+        IfNoneMatch: '*',
+      },
+    });
+  });
+
+  it('clasifica 412 como objeto preexistente sin repetir el put', async () => {
+    sendMock.mockRejectedValueOnce({
+      name: 'PreconditionFailed',
+      $metadata: { httpStatusCode: 412 },
+    });
+
+    const result = await new R2CargaSeguraStorage(config).putObject({
+      provider: 'r2',
+      bucket: 'bucket',
+      key: 'key',
+      body: Buffer.from('pdf'),
+      contentType: 'application/pdf',
+      hashSha256: 'a'.repeat(64),
+    });
+
+    expect(result).toEqual({
+      kind: 'PREEXISTING',
+      provider: 'r2',
+      bucket: 'bucket',
+      key: 'key',
+      preexisting: true,
+    });
+    expect(sendMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('no clasifica otros errores de storage como preexistencia', async () => {
+    sendMock.mockRejectedValueOnce({
+      name: 'ServiceUnavailable',
+      $metadata: { httpStatusCode: 503 },
+    });
+
+    await expect(
+      new R2CargaSeguraStorage(config).putObject({
+        provider: 'r2',
+        bucket: 'bucket',
+        key: 'key',
+        body: Buffer.from('pdf'),
+        contentType: 'application/pdf',
+        hashSha256: 'a'.repeat(64),
+      }),
+    ).rejects.toMatchObject({
+      code: 'CARGA_SEGURA_STORAGE_FAILED',
+    });
   });
 
   it('elimina el objeto indicado', async () => {

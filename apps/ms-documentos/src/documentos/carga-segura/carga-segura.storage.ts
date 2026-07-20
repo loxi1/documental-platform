@@ -91,8 +91,6 @@ export class R2CargaSeguraStorage implements CargaSeguraStorage {
   async putObject(
     input: CargaSeguraStoragePutInput,
   ): Promise<CargaSeguraStoragePutResult> {
-    const preexisting = await this.exists(input);
-
     try {
       await this.getClient().send(
         new PutObjectCommand({
@@ -103,17 +101,29 @@ export class R2CargaSeguraStorage implements CargaSeguraStorage {
           Metadata: {
             sha256: input.hashSha256,
           },
+          IfNoneMatch: '*',
         }),
       );
     } catch (error) {
+      if (isPreconditionFailed(error)) {
+        return {
+          kind: 'PREEXISTING',
+          provider: 'r2',
+          bucket: input.bucket,
+          key: input.key,
+          preexisting: true,
+        };
+      }
+
       throw this.storageError('No se pudo almacenar el objeto R2', error);
     }
 
     return {
+      kind: 'CREATED',
       provider: 'r2',
       bucket: input.bucket,
       key: input.key,
-      preexisting,
+      preexisting: false,
     };
   }
 
@@ -248,5 +258,27 @@ function isObjectNotFound(error: unknown): boolean {
     candidate.name === 'NoSuchKey' ||
     candidate.Code === 'NotFound' ||
     candidate.Code === 'NoSuchKey'
+  );
+}
+
+function isPreconditionFailed(error: unknown): boolean {
+  if (!error || typeof error !== 'object') {
+    return false;
+  }
+
+  const candidate = error as {
+    name?: string;
+    Code?: string;
+    code?: string;
+    $metadata?: {
+      httpStatusCode?: number;
+    };
+  };
+
+  return (
+    candidate.$metadata?.httpStatusCode === 412 ||
+    candidate.name === 'PreconditionFailed' ||
+    candidate.Code === 'PreconditionFailed' ||
+    candidate.code === 'PreconditionFailed'
   );
 }

@@ -112,41 +112,55 @@ export class CargaSeguraService {
       throw error;
     }
 
-    const almacenada = await this.repository.marcarAlmacenada({
-      operacionId: operacion.id,
-      storageProvider: stored.provider,
-      storageBucket: stored.bucket,
-      storageKey: stored.key,
-    });
+    if (stored.kind === 'PREEXISTING') {
+      await this.markPostStorageReconciliation(
+        operacion.id,
+        stored,
+        'OBJECT_PREEXISTING',
+      );
+
+      return {
+        kind: 'RECONCILIATION_REQUIRED',
+        operacionId: operacion.id,
+        errorCode: 'ARCHIVO_REQUIERE_RECONCILIACION',
+      };
+    }
+
+    let almacenada: CargaSeguraOperacionRow | null;
+
+    try {
+      almacenada = await this.repository.marcarAlmacenada({
+        operacionId: operacion.id,
+        storageProvider: stored.provider,
+        storageBucket: stored.bucket,
+        storageKey: stored.key,
+      });
+    } catch {
+      await this.markPostStorageReconciliation(
+        operacion.id,
+        stored,
+        'MARCAR_ALMACENADA_ERROR',
+      );
+
+      return {
+        kind: 'RECONCILIATION_REQUIRED',
+        operacionId: operacion.id,
+        errorCode: 'ARCHIVO_REQUIERE_RECONCILIACION',
+      };
+    }
 
     if (!almacenada) {
-      const actual =
-        (await this.repository.buscarPorId(operacion.id)) ?? operacion;
-
-      const compensation = await this.compensation.compensate({
-        operacion: actual,
-        objetoCreadoPorOperacion: stored.preexisting === false,
-        objetoPreexistente: stored.preexisting,
-        esReplay: false,
-        errorCodigo: 'CARGA_SEGURA_PERSISTENCE_FAILED',
-        errorDetalle: 'No se pudo marcar la operación como almacenada',
-      });
-
-      if (compensation.kind === 'RECONCILIATION_REQUIRED') {
-        return {
-          kind: 'RECONCILIATION_REQUIRED',
-          operacionId: operacion.id,
-          errorCode: 'ARCHIVO_REQUIERE_RECONCILIACION',
-        };
-      }
-
-      throw new CargaSeguraError(
-        'CARGA_SEGURA_PERSISTENCE_FAILED',
-        'No se pudo marcar la operación como almacenada',
-        {
-          operacionId: operacion.id,
-        },
+      await this.markPostStorageReconciliation(
+        operacion.id,
+        stored,
+        'MARCAR_ALMACENADA_NO_APLICADA',
       );
+
+      return {
+        kind: 'RECONCILIATION_REQUIRED',
+        operacionId: operacion.id,
+        errorCode: 'ARCHIVO_REQUIERE_RECONCILIACION',
+      };
     }
 
     try {
@@ -168,7 +182,8 @@ export class CargaSeguraService {
 
       const compensation = await this.compensation.compensate({
         operacion: actual,
-        objetoCreadoPorOperacion: stored.preexisting === false,
+        storageObject: stored,
+        objetoCreadoPorOperacion: stored.kind === 'CREATED',
         objetoPreexistente: stored.preexisting,
         esReplay: false,
         errorCodigo: 'CARGA_SEGURA_PERSISTENCE_FAILED',
@@ -190,6 +205,32 @@ export class CargaSeguraService {
           operacionId: operacion.id,
           cause: this.errorMessage(error),
         },
+      );
+    }
+  }
+
+  private async markPostStorageReconciliation(
+    operacionId: number,
+    storageObject: Pick<
+      Awaited<ReturnType<CargaSeguraStorage['putObject']>>,
+      'provider' | 'bucket' | 'key'
+    >,
+    reason: string,
+  ): Promise<void> {
+    const updated = await this.repository.marcarRequiereReconciliacion({
+      operacionId,
+      storageProvider: storageObject.provider,
+      storageBucket: storageObject.bucket,
+      storageKey: storageObject.key,
+      errorCodigo: 'ARCHIVO_REQUIERE_RECONCILIACION',
+      errorDetalle: `postStorageReason=${reason}`,
+    });
+
+    if (!updated) {
+      throw new CargaSeguraError(
+        'CARGA_SEGURA_RECONCILIATION_PERSIST_FAILED',
+        'No se pudo registrar la referencia storage para reconciliación',
+        { operacionId },
       );
     }
   }

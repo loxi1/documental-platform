@@ -20,6 +20,7 @@ const repository = {
   marcarAlmacenada: jest.fn(),
   marcarFallida: jest.fn(),
   buscarPorId: jest.fn(),
+  marcarRequiereReconciliacion: jest.fn(),
 } as unknown as jest.Mocked<CargaSeguraRepository>;
 
 const storage = {
@@ -156,6 +157,7 @@ describe('CargaSeguraService', () => {
     });
 
     storage.putObject.mockResolvedValue({
+      kind: 'CREATED',
       provider: 'r2',
       bucket: 'documentos',
       key: 'documentos/carga-segura/2026/07/50__orden.pdf',
@@ -268,6 +270,7 @@ describe('CargaSeguraService', () => {
     });
 
     storage.putObject.mockResolvedValue({
+      kind: 'CREATED',
       provider: 'r2',
       bucket: 'documentos',
       key: 'storage-key',
@@ -310,5 +313,129 @@ describe('CargaSeguraService', () => {
     });
 
     expect(repository.reservar).not.toHaveBeenCalled();
+  });
+
+  it('no persiste ni elimina cuando el put condicional detecta objeto preexistente', async () => {
+    repository.reservar.mockResolvedValue({
+      kind: 'RESERVED',
+      operacion: operation(),
+    });
+
+    storage.putObject.mockResolvedValue({
+      kind: 'PREEXISTING',
+      provider: 'r2',
+      bucket: 'documentos',
+      key: 'storage-key',
+      preexisting: true,
+    });
+
+    repository.marcarRequiereReconciliacion.mockResolvedValue(true);
+
+    await expect(createService().ejecutar(command())).resolves.toEqual({
+      kind: 'RECONCILIATION_REQUIRED',
+      operacionId: 50,
+      errorCode: 'ARCHIVO_REQUIERE_RECONCILIACION',
+    });
+
+    expect(repository.marcarAlmacenada).not.toHaveBeenCalled();
+    expect(persistence.persistir).not.toHaveBeenCalled();
+    expect(compensation.compensate).not.toHaveBeenCalled();
+    expect(repository.marcarRequiereReconciliacion).toHaveBeenCalledWith({
+      operacionId: 50,
+      storageProvider: 'r2',
+      storageBucket: 'documentos',
+      storageKey: 'storage-key',
+      errorCodigo: 'ARCHIVO_REQUIERE_RECONCILIACION',
+      errorDetalle: 'postStorageReason=OBJECT_PREEXISTING',
+    });
+  });
+
+  it('persiste reconciliación con referencia storage si marcarAlmacenada retorna null', async () => {
+    repository.reservar.mockResolvedValue({
+      kind: 'RESERVED',
+      operacion: operation(),
+    });
+
+    storage.putObject.mockResolvedValue({
+      kind: 'CREATED',
+      provider: 'r2',
+      bucket: 'documentos',
+      key: 'storage-key',
+      preexisting: false,
+    });
+
+    repository.marcarAlmacenada.mockResolvedValue(null);
+    repository.marcarRequiereReconciliacion.mockResolvedValue(true);
+
+    await expect(createService().ejecutar(command())).resolves.toEqual({
+      kind: 'RECONCILIATION_REQUIRED',
+      operacionId: 50,
+      errorCode: 'ARCHIVO_REQUIERE_RECONCILIACION',
+    });
+
+    expect(repository.marcarRequiereReconciliacion).toHaveBeenCalledWith({
+      operacionId: 50,
+      storageProvider: 'r2',
+      storageBucket: 'documentos',
+      storageKey: 'storage-key',
+      errorCodigo: 'ARCHIVO_REQUIERE_RECONCILIACION',
+      errorDetalle: 'postStorageReason=MARCAR_ALMACENADA_NO_APLICADA',
+    });
+    expect(compensation.compensate).not.toHaveBeenCalled();
+  });
+
+  it('falla de forma tipada si no puede persistir la reconciliación post-storage', async () => {
+    repository.reservar.mockResolvedValue({
+      kind: 'RESERVED',
+      operacion: operation(),
+    });
+
+    storage.putObject.mockResolvedValue({
+      kind: 'CREATED',
+      provider: 'r2',
+      bucket: 'documentos',
+      key: 'storage-key',
+      preexisting: false,
+    });
+
+    repository.marcarAlmacenada.mockResolvedValue(null);
+    repository.marcarRequiereReconciliacion.mockResolvedValue(false);
+
+    await expect(createService().ejecutar(command())).rejects.toMatchObject({
+      code: 'CARGA_SEGURA_RECONCILIATION_PERSIST_FAILED',
+    });
+  });
+
+  it('intenta persistir reconciliación si marcarAlmacenada lanza error', async () => {
+    repository.reservar.mockResolvedValue({
+      kind: 'RESERVED',
+      operacion: operation(),
+    });
+
+    storage.putObject.mockResolvedValue({
+      kind: 'CREATED',
+      provider: 'r2',
+      bucket: 'documentos',
+      key: 'storage-key',
+      preexisting: false,
+    });
+
+    repository.marcarAlmacenada.mockRejectedValue(new Error('db down'));
+    repository.marcarRequiereReconciliacion.mockResolvedValue(true);
+
+    await expect(createService().ejecutar(command())).resolves.toEqual({
+      kind: 'RECONCILIATION_REQUIRED',
+      operacionId: 50,
+      errorCode: 'ARCHIVO_REQUIERE_RECONCILIACION',
+    });
+
+    expect(repository.marcarRequiereReconciliacion).toHaveBeenCalledWith({
+      operacionId: 50,
+      storageProvider: 'r2',
+      storageBucket: 'documentos',
+      storageKey: 'storage-key',
+      errorCodigo: 'ARCHIVO_REQUIERE_RECONCILIACION',
+      errorDetalle: 'postStorageReason=MARCAR_ALMACENADA_ERROR',
+    });
   });
 });

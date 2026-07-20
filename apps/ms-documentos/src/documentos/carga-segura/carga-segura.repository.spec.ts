@@ -274,4 +274,38 @@ describe('CargaSeguraRepository', () => {
     expect(result).toBeNull();
     expect(executedQueryCount).toBe(1);
   });
+
+  it('marca reconciliación desde iniciada y persiste la referencia storage', async () => {
+    queueQueryResults([{ id: 1 }]);
+
+    const result =
+      await new CargaSeguraRepository().marcarRequiereReconciliacion({
+        operacionId: 1,
+        storageProvider: 'r2',
+        storageBucket: 'documentos',
+        storageKey: 'documentos/carga-segura/2026/07/1__orden.pdf',
+        errorCodigo: 'ARCHIVO_REQUIERE_RECONCILIACION',
+        errorDetalle: 'postStorageReason=MARCAR_ALMACENADA_NO_APLICADA',
+      });
+
+    expect(result).toBe(true);
+    expect(executedQueryCount).toBe(1);
+  });
+
+  it('devuelve false cuando la transición de reconciliación no aplica', async () => {
+    queueQueryResults([]);
+
+    const result =
+      await new CargaSeguraRepository().marcarRequiereReconciliacion({
+        operacionId: 1,
+        storageProvider: 'r2',
+        storageBucket: 'documentos',
+        storageKey: 'key',
+        errorCodigo: 'ARCHIVO_REQUIERE_RECONCILIACION',
+        errorDetalle: 'fallo',
+      });
+
+    expect(result).toBe(false);
+    expect(executedQueryCount).toBe(1);
+  });
 });

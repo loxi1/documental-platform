@@ -1,6 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 
 import { CARGA_SEGURA_STORAGE } from './carga-segura.constants';
+import { CargaSeguraError } from './carga-segura.errors';
 import { CargaSeguraRepository } from './carga-segura.repository';
 import type {
   CargaSeguraCompensationInput,
@@ -34,8 +35,8 @@ export class CargaSeguraCompensation {
     try {
       await this.storage.deleteObject({
         provider: 'r2',
-        bucket: input.operacion.storageBucket!,
-        key: input.operacion.storageKey!,
+        bucket: input.storageObject.bucket,
+        key: input.storageObject.key,
       });
 
       const updated = await this.repository.marcarFallida({
@@ -76,14 +77,10 @@ export class CargaSeguraCompensation {
       return 'OPERATION_COMPLETED';
     }
 
-    if (!input.operacion.storageBucket || !input.operacion.storageKey) {
-      return 'STORAGE_REFERENCE_INCOMPLETE';
-    }
-
     const references = await this.repository.contarReferenciasVigentesStorage({
-      provider: 'r2',
-      bucket: input.operacion.storageBucket,
-      key: input.operacion.storageKey,
+      provider: input.storageObject.provider,
+      bucket: input.storageObject.bucket,
+      key: input.storageObject.key,
     });
 
     if (references > 0) {
@@ -110,12 +107,23 @@ export class CargaSeguraCompensation {
     input: CargaSeguraCompensationInput,
     reason: string,
   ): Promise<void> {
-    await this.repository.marcarRequiereReconciliacion({
+    const updated = await this.repository.marcarRequiereReconciliacion({
       operacionId: input.operacion.id,
+      storageProvider: input.storageObject.provider,
+      storageBucket: input.storageObject.bucket,
+      storageKey: input.storageObject.key,
       errorCodigo: 'ARCHIVO_REQUIERE_RECONCILIACION',
       errorDetalle: [input.errorDetalle, `compensationReason=${reason}`].join(
         '; ',
       ),
     });
+
+    if (!updated) {
+      throw new CargaSeguraError(
+        'CARGA_SEGURA_RECONCILIATION_PERSIST_FAILED',
+        'No se pudo registrar la reconciliación de la carga segura',
+        { operacionId: input.operacion.id },
+      );
+    }
   }
 }

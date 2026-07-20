@@ -184,9 +184,15 @@ export interface CargaSeguraStoragePutInput extends CargaSeguraStorageObject {
 
 export interface CargaSeguraStorageDeleteInput extends CargaSeguraStorageObject {}
 
-export interface CargaSeguraStoragePutResult extends CargaSeguraStorageObject {
-  preexisting: boolean;
-}
+export type CargaSeguraStoragePutResult =
+  | (CargaSeguraStorageObject & {
+      kind: 'CREATED';
+      preexisting: false;
+    })
+  | (CargaSeguraStorageObject & {
+      kind: 'PREEXISTING';
+      preexisting: true;
+    });
 
 export interface CargaSeguraStorageKeyInput {
   operacionId: number;
@@ -197,6 +203,7 @@ export interface CargaSeguraStorageKeyInput {
 
 export interface CargaSeguraCompensationInput {
   operacion: CargaSeguraOperacionRow;
+  storageObject: CargaSeguraStorageObject;
   objetoCreadoPorOperacion: boolean;
   objetoPreexistente: boolean;
   esReplay: boolean;
