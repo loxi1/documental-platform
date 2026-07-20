@@ -7,7 +7,11 @@
   "types": "dist/index.d.ts",
   "scripts": {
     "check": "tsc --noEmit",
-    "build": "tsc"
+    "build": "tsc",
+    "db:migrate:verify": "pnpm build && node dist/migrations/cli.js verify",
+    "test:migrations": "pnpm build && node --test dist/migrations/__tests__/*.test.js",
+    "db:migrate:status": "pnpm build && node dist/migrations/cli.js status",
+    "db:migrate": "pnpm build && node dist/migrations/cli.js migrate"
   },
   "dependencies": {
     "dotenv": "^17.2.3",
