@@ -169,3 +169,48 @@ export type ReservaCargaSeguraResult =
       kind: 'DUPLICATE';
       operacion: CargaSeguraOperacionRow;
     };
+
+export interface CargaSeguraStorageObject {
+  provider: 'r2';
+  bucket: string;
+  key: string;
+}
+
+export interface CargaSeguraStoragePutInput extends CargaSeguraStorageObject {
+  body: Buffer;
+  contentType: string;
+  hashSha256: string;
+}
+
+export interface CargaSeguraStorageDeleteInput extends CargaSeguraStorageObject {}
+
+export interface CargaSeguraStoragePutResult extends CargaSeguraStorageObject {
+  preexisting: boolean;
+}
+
+export interface CargaSeguraStorageKeyInput {
+  operacionId: number;
+  empresaCodigo: string;
+  nombreArchivo: string;
+  fecha?: Date;
+}
+
+export interface CargaSeguraCompensationInput {
+  operacion: CargaSeguraOperacionRow;
+  objetoCreadoPorOperacion: boolean;
+  objetoPreexistente: boolean;
+  esReplay: boolean;
+  errorCodigo: string;
+  errorDetalle: string;
+}
+
+export type CargaSeguraCompensationResult =
+  | {
+      kind: 'COMPENSATED';
+      operacionId: number;
+    }
+  | {
+      kind: 'RECONCILIATION_REQUIRED';
+      operacionId: number;
+      reason: string;
+    };

@@ -166,6 +166,66 @@ export class CargaSeguraRepository {
     return this.first(rows);
   }
 
+  async contarReferenciasVigentesStorage(input: {
+    provider: string;
+    bucket: string;
+    key: string;
+  }): Promise<number> {
+    const rows = await sql`
+      SELECT COUNT(*)::integer AS total
+      FROM documentos.documentos_archivos
+      WHERE storage_provider = ${input.provider}::text
+        AND storage_bucket = ${input.bucket}::text
+        AND storage_key = ${input.key}::text
+        AND anulado_en IS NULL
+    `;
+
+    return Number(rows[0]?.total ?? 0);
+  }
+
+  async marcarFallida(input: {
+    operacionId: number;
+    errorCodigo: string;
+    errorDetalle: string;
+  }): Promise<boolean> {
+    const rows = await sql`
+      UPDATE documentos.carga_operaciones
+      SET
+        estado = 'fallida',
+        requiere_reconciliacion = false,
+        error_codigo = ${input.errorCodigo}::text,
+        error_detalle = ${input.errorDetalle}::text,
+        fallida_en = now(),
+        actualizado_en = now()
+      WHERE id = ${input.operacionId}::bigint
+        AND estado IN ('iniciada', 'almacenada')
+      RETURNING id
+    `;
+
+    return Boolean(rows[0]?.id);
+  }
+
+  async marcarRequiereReconciliacion(input: {
+    operacionId: number;
+    errorCodigo: string;
+    errorDetalle: string;
+  }): Promise<boolean> {
+    const rows = await sql`
+      UPDATE documentos.carga_operaciones
+      SET
+        estado = 'requiere_reconciliacion',
+        requiere_reconciliacion = true,
+        error_codigo = ${input.errorCodigo}::text,
+        error_detalle = ${input.errorDetalle}::text,
+        actualizado_en = now()
+      WHERE id = ${input.operacionId}::bigint
+        AND estado = 'almacenada'
+      RETURNING id
+    `;
+
+    return Boolean(rows[0]?.id);
+  }
+
   private selection() {
     return sql`
       id,
