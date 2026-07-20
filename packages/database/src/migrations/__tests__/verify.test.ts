@@ -399,3 +399,198 @@ test('no inicia transacción cuando el checksum verificado difiere', async () =>
     });
   }
 });
+test('acepta SQL ASCII válido con round-trip exacto', async () => {
+  const directory = await mkdtemp(
+    path.join(os.tmpdir(), 'migration-verify-ascii-'),
+  );
+
+  try {
+    const filename = '0011_prueba.sql';
+    const contents = 'SELECT 1;\n';
+
+    await writeFile(
+      path.join(directory, filename),
+      Buffer.from(contents, 'utf8'),
+    );
+
+    await writeManifest(
+      directory,
+      filename,
+      contents,
+    );
+
+    const verification =
+      await verifyMigrationFiles(directory);
+
+    const entry = verification.entries[0];
+
+    assert.ok(entry);
+    assert.equal(entry.sqlText, contents);
+    assert.equal(
+      Buffer.from(entry.sqlText, 'utf8')
+        .equals(Buffer.from(contents, 'utf8')),
+      true,
+    );
+  } finally {
+    await rm(directory, {
+      recursive: true,
+      force: true,
+    });
+  }
+});
+
+test('acepta SQL UTF-8 válido con caracteres no ASCII', async () => {
+  const directory = await mkdtemp(
+    path.join(os.tmpdir(), 'migration-verify-unicode-'),
+  );
+
+  try {
+    const filename = '0011_prueba.sql';
+    const contents =
+      "SELECT 'área contable — Perú';\n";
+
+    await writeFile(
+      path.join(directory, filename),
+      Buffer.from(contents, 'utf8'),
+    );
+
+    await writeManifest(
+      directory,
+      filename,
+      contents,
+    );
+
+    const verification =
+      await verifyMigrationFiles(directory);
+
+    const entry = verification.entries[0];
+
+    assert.ok(entry);
+    assert.equal(entry.sqlText, contents);
+    assert.equal(
+      Buffer.from(entry.sqlText, 'utf8')
+        .equals(Buffer.from(contents, 'utf8')),
+      true,
+    );
+  } finally {
+    await rm(directory, {
+      recursive: true,
+      force: true,
+    });
+  }
+});
+
+test('rechaza una secuencia UTF-8 inválida', async () => {
+  const directory = await mkdtemp(
+    path.join(os.tmpdir(), 'migration-verify-invalid-utf8-'),
+  );
+
+  try {
+    const filename = '0011_prueba.sql';
+    const contents = Buffer.from([
+      0x53,
+      0x45,
+      0x4c,
+      0x45,
+      0x43,
+      0x54,
+      0x20,
+      0xc3,
+      0x28,
+      0x3b,
+      0x0a,
+    ]);
+
+    await writeFile(
+      path.join(directory, filename),
+      contents,
+    );
+
+    await writeFile(
+      path.join(directory, 'manifest.sha256'),
+      `${createHash('sha256').update(contents).digest('hex')}  ${filename}\n`,
+      'utf8',
+    );
+
+    await assert.rejects(
+      verifyMigrationFiles(directory),
+      /UTF-8 inválido/,
+    );
+  } finally {
+    await rm(directory, {
+      recursive: true,
+      force: true,
+    });
+  }
+});
+
+test('rechaza BOM UTF-8', async () => {
+  const directory = await mkdtemp(
+    path.join(os.tmpdir(), 'migration-verify-bom-'),
+  );
+
+  try {
+    const filename = '0011_prueba.sql';
+    const contents = Buffer.concat([
+      Buffer.from([0xef, 0xbb, 0xbf]),
+      Buffer.from('SELECT 1;\n', 'utf8'),
+    ]);
+
+    await writeFile(
+      path.join(directory, filename),
+      contents,
+    );
+
+    await writeFile(
+      path.join(directory, 'manifest.sha256'),
+      `${createHash('sha256').update(contents).digest('hex')}  ${filename}\n`,
+      'utf8',
+    );
+
+    await assert.rejects(
+      verifyMigrationFiles(directory),
+      /BOM UTF-8/,
+    );
+  } finally {
+    await rm(directory, {
+      recursive: true,
+      force: true,
+    });
+  }
+});
+
+test('rechaza byte NUL', async () => {
+  const directory = await mkdtemp(
+    path.join(os.tmpdir(), 'migration-verify-nul-'),
+  );
+
+  try {
+    const filename = '0011_prueba.sql';
+    const contents = Buffer.concat([
+      Buffer.from('SELECT ', 'utf8'),
+      Buffer.from([0x00]),
+      Buffer.from('1;\n', 'utf8'),
+    ]);
+
+    await writeFile(
+      path.join(directory, filename),
+      contents,
+    );
+
+    await writeFile(
+      path.join(directory, 'manifest.sha256'),
+      `${createHash('sha256').update(contents).digest('hex')}  ${filename}\n`,
+      'utf8',
+    );
+
+    await assert.rejects(
+      verifyMigrationFiles(directory),
+      /bytes NUL/,
+    );
+  } finally {
+    await rm(directory, {
+      recursive: true,
+      force: true,
+    });
+  }
+});

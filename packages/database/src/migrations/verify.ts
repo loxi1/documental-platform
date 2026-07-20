@@ -1,10 +1,11 @@
+import { constants } from 'node:fs';
 import {
-  lstat,
-  readFile,
+  open,
   readdir,
   realpath,
 } from 'node:fs/promises';
 import path from 'node:path';
+import { TextDecoder } from 'node:util';
 
 import { calculateBytesSha256 } from './checksum.js';
 import {
@@ -19,6 +20,20 @@ import type {
 
 const SQL_FILENAME_PATTERN =
   /^(\d{4})_[a-z0-9]+(?:_[a-z0-9]+)*\.sql$/;
+
+const UTF8_BOM = Buffer.from([
+  0xef,
+  0xbb,
+  0xbf,
+]);
+
+const STRICT_UTF8_DECODER = new TextDecoder(
+  'utf-8',
+  {
+    fatal: true,
+    ignoreBOM: false,
+  },
+);
 
 export function isPathInsideDirectory(
   parentDirectory: string,
@@ -37,35 +52,122 @@ export function isPathInsideDirectory(
   );
 }
 
+function decodeMigrationSql(
+  entry: ManifestEntry,
+  sqlBytes: Buffer,
+): string {
+  if (
+    sqlBytes.length >= UTF8_BOM.length &&
+    sqlBytes.subarray(0, UTF8_BOM.length)
+      .equals(UTF8_BOM)
+  ) {
+    throw new Error(
+      `La migración ${entry.filename} no puede contener BOM UTF-8`,
+    );
+  }
+
+  if (sqlBytes.includes(0x00)) {
+    throw new Error(
+      `La migración ${entry.filename} no puede contener bytes NUL`,
+    );
+  }
+
+  let sqlText: string;
+
+  try {
+    sqlText = STRICT_UTF8_DECODER.decode(sqlBytes);
+  } catch (error) {
+    throw new Error(
+      `La migración ${entry.filename} contiene UTF-8 inválido`,
+      { cause: error },
+    );
+  }
+
+  const roundTripBytes =
+    Buffer.from(sqlText, 'utf8');
+
+  if (!roundTripBytes.equals(sqlBytes)) {
+    throw new Error(
+      `La migración ${entry.filename} no supera el round-trip UTF-8`,
+    );
+  }
+
+  if (sqlText.trim().length === 0) {
+    throw new Error(
+      `La migración ${entry.filename} está vacía`,
+    );
+  }
+
+  return sqlText;
+}
+
+async function readMigrationBytesSecurely(
+  entry: ManifestEntry,
+): Promise<Buffer> {
+  if (process.platform !== 'linux') {
+    throw new Error(
+      'El runner de migraciones requiere Linux para usar O_NOFOLLOW',
+    );
+  }
+
+  let handle;
+
+  try {
+    handle = await open(
+      entry.absolutePath,
+      constants.O_RDONLY |
+        constants.O_NOFOLLOW,
+    );
+  } catch (error) {
+    const code =
+      error instanceof Error &&
+      'code' in error
+        ? String(error.code)
+        : '';
+
+    if (code === 'ELOOP') {
+      throw new Error(
+        `La migración no puede ser un enlace simbólico: ${entry.filename}`,
+        { cause: error },
+      );
+    }
+
+    throw new Error(
+      `No se pudo abrir de forma segura la migración: ${entry.filename}`,
+      { cause: error },
+    );
+  }
+
+  try {
+    const fileStats = await handle.stat();
+
+    if (!fileStats.isFile()) {
+      throw new Error(
+        `La migración debe ser un archivo regular: ${entry.filename}`,
+      );
+    }
+
+    return await handle.readFile();
+  } finally {
+    await handle.close();
+  }
+}
+
 async function readAndVerifyMigration(
   entry: ManifestEntry,
   realMigrationsDirectory: string,
 ): Promise<VerifiedMigration> {
-  let fileStats;
+  let resolvedPath: string;
 
   try {
-    fileStats = await lstat(entry.absolutePath);
+    resolvedPath =
+      await realpath(entry.absolutePath);
   } catch (error) {
     throw new Error(
       `El manifest declara un archivo inexistente: ${entry.filename}`,
       { cause: error },
     );
   }
-
-  if (fileStats.isSymbolicLink()) {
-    throw new Error(
-      `La migración no puede ser un enlace simbólico: ${entry.filename}`,
-    );
-  }
-
-  if (!fileStats.isFile()) {
-    throw new Error(
-      `La migración debe ser un archivo regular: ${entry.filename}`,
-    );
-  }
-
-  const resolvedPath =
-    await realpath(entry.absolutePath);
 
   if (
     !isPathInsideDirectory(
@@ -79,10 +181,11 @@ async function readAndVerifyMigration(
   }
 
   /*
-   * Esta es la única lectura del archivo administrado.
-   * El SHA-256 y el SQL ejecutable se derivan del mismo Buffer.
+   * O_NOFOLLOW impide seguir un symlink en el componente final.
+   * fstat y readFile operan sobre el mismo descriptor abierto.
    */
-  const sqlBytes = await readFile(resolvedPath);
+  const sqlBytes =
+    await readMigrationBytesSecurely(entry);
 
   const calculatedChecksum =
     calculateBytesSha256(sqlBytes);
@@ -97,13 +200,8 @@ async function readAndVerifyMigration(
     );
   }
 
-  const sqlText = sqlBytes.toString('utf8');
-
-  if (sqlText.trim().length === 0) {
-    throw new Error(
-      `La migración ${entry.filename} está vacía`,
-    );
-  }
+  const sqlText =
+    decodeMigrationSql(entry, sqlBytes);
 
   return {
     ...entry,
