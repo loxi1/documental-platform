@@ -38,6 +38,20 @@ Quedan fuera: OCR, confirmación OCR, asociación V2, Grupo Factura, revisión c
 2. `02-informe-tecnico-sprint-2-1C-abierto.md`
 3. `03-guia-regularizacion-local.md`
 4. `04-propuesta-contrato-carga-documental-segura-pendiente.md`
+5. `05-matriz-maestra-evidencia-sprint-2-1C.md`
+6. `06-evidencia-duplicado-secuencial.md`
+7. `07-propuesta-contractual-carga-documental-segura.md`
+8. `08-diseno-tecnico-implementacion-carga-documental-segura.md`
+9. `09-diseno-detallado-persistencia-y-plan-implementacion.md`
+10. `10-paquete-go-0-baseline-implementacion.md`
+11. `11-paquete-go-1-persistencia.md`
+12. `12-evidencia-prevalidacion-go-1-y-ddl-final.md`
+13. `13-correcciones-invariantes-go-1C.md`
+14. `14-correccion-go-1D-ubicacion-postvalidaciones-0012.md`
+15. `15-evidencia-runner-migraciones-go-1e.md`
+
+La evidencia GO-1E documenta una implementación y validación local aislada.
+No autoriza aplicación en producción, RDS, integración, merge o push.
 
 El roadmap oficial permanece en:
 
