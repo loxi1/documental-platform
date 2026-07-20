@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, ParseIntPipe, Query, Post, Patch, Put, UploadedFiles, UseInterceptors } from '@nestjs/common';
+import { Body, Controller, Get, Headers, Param, ParseIntPipe, Query, Post, Patch, Put, UploadedFiles, UseInterceptors } from '@nestjs/common';
 import { ApiOperation, ApiQuery, ApiTags, ApiParam, ApiConsumes } from '@nestjs/swagger';
 import { FileFieldsInterceptor } from '@nestjs/platform-express';
 import { DocumentosService } from './documentos.service'; import { DocumentosPreviewService } from './documentos-preview.service';
@@ -156,8 +156,17 @@ export class DocumentosController {
       metadata?: Record<string, any>;
       observacion?: string;
     },
+    @Headers('x-user-id') userId?: string,
+    @Headers('x-request-id') requestId?: string,
+    @Headers('x-correlation-id') correlationId?: string,
   ) {
-    return this.service.confirmarOcrResultadoConExpediente(id, body);
+    const usuarioId = Number(userId ?? NaN);
+
+    return this.service.confirmarOcrResultadoConExpediente(id, body, {
+      usuarioId: Number.isFinite(usuarioId) && usuarioId > 0 ? usuarioId : null,
+      requestId: requestId?.trim() || null,
+      correlationId: correlationId?.trim() || requestId?.trim() || null,
+    });
   }
 
 

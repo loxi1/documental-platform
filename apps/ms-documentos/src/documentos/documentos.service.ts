@@ -267,7 +267,11 @@ export class DocumentosService {
       metadata?: Record<string, any>;
       observacion?: string;
     },
-    usuarioId?: number,
+    audit?: {
+      usuarioId?: number | null;
+      requestId?: string | null;
+      correlationId?: string | null;
+    },
   ) {
     if (!input?.expedienteId) {
       throw new BadRequestException('El expediente es obligatorio para confirmar el OCR');
@@ -277,12 +281,60 @@ export class DocumentosService {
       const confirmado = await this.repo.confirmarOcrResultadoConExpediente(
         id,
         input,
-        usuarioId,
+        audit?.usuarioId ?? undefined,
       );
 
       if (!confirmado) {
         throw new NotFoundException(`Resultado OCR ${id} no encontrado`);
       }
+
+      const documentoId = Number(confirmado.documento?.id ?? NaN);
+      const archivoId = Number(confirmado.ocrResultado?.archivo_id ?? NaN);
+      const expedienteId = Number(confirmado.expediente?.id ?? NaN);
+      const ocrResultadoId = Number(confirmado.ocrResultado?.id ?? id);
+      const usuarioId = audit?.usuarioId ?? null;
+      const requestId = audit?.requestId ?? null;
+      const correlationId = audit?.correlationId ?? requestId;
+
+      await this.documentoEventos.registrarEvento({
+        documentoId: Number.isFinite(documentoId) ? documentoId : null,
+        archivoId: Number.isFinite(archivoId) ? archivoId : null,
+        expedienteId: Number.isFinite(expedienteId) ? expedienteId : null,
+        tipoEvento: 'ocr.confirmado',
+        entidadTipo: 'ocr_resultado',
+        entidadId: Number.isFinite(ocrResultadoId) ? ocrResultadoId : id,
+        descripcion: 'Resultado OCR confirmado con expediente.',
+        metadata: {
+          tipoPropuesto: confirmado.tipoDocumental ?? null,
+          claveDocumental: confirmado.claveDocumental ?? null,
+          tipoRelacion: confirmado.tipoRelacion ?? null,
+          esPrincipal: confirmado.vinculo?.es_principal ?? false,
+        },
+        usuarioId,
+        origen: 'api',
+        requestId,
+        correlationId,
+      });
+
+      await this.documentoEventos.registrarEvento({
+        documentoId: Number.isFinite(documentoId) ? documentoId : null,
+        archivoId: Number.isFinite(archivoId) ? archivoId : null,
+        expedienteId: Number.isFinite(expedienteId) ? expedienteId : null,
+        tipoEvento: 'expediente.vinculado',
+        entidadTipo: 'expediente',
+        entidadId: Number.isFinite(expedienteId) ? expedienteId : null,
+        descripcion: 'Documento OCR vinculado a expediente.',
+        metadata: {
+          ocrResultadoId: Number.isFinite(ocrResultadoId) ? ocrResultadoId : id,
+          tipoRelacion: confirmado.tipoRelacion ?? null,
+          esPrincipal: confirmado.vinculo?.es_principal ?? false,
+          orden: confirmado.vinculo?.orden ?? null,
+        },
+        usuarioId,
+        origen: 'api',
+        requestId,
+        correlationId,
+      });
 
       return confirmado;
     } catch (error: any) {
