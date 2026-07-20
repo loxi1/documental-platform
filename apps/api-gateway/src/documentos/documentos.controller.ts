@@ -393,11 +393,11 @@ export class DocumentosGatewayController {
         params: params.query,
         data: params.body,
         headers: {
+          ...(params.headers ?? {}),
           ...this.buildForwardHeaders(
             params.authorization,
             params.requestId,
           ),
-          ...(params.headers ?? {}),
         },
       });
 

@@ -7,6 +7,52 @@ import { of } from 'rxjs';
 import { DocumentosGatewayController } from './documentos.controller';
 
 describe('DocumentosGatewayController - auditoría OCR', () => {
+
+  it('preserva authorization y x-request-id canónicos frente a headers adicionales', async () => {
+    const config = {
+      get: jest.fn().mockReturnValue('http://ms-documentos:3002/api/v1'),
+    } as any;
+
+    const nats = {
+      send: jest.fn(),
+    } as any;
+
+    const controller = new DocumentosGatewayController(config, nats);
+    const internal = controller as any;
+
+    const axiosRequest = jest
+      .spyOn(require('axios').default, 'request')
+      .mockResolvedValue({ data: { ok: true } });
+
+    jest
+      .spyOn(internal, 'validateAuthorization')
+      .mockResolvedValue({ sub: 1 });
+
+    await internal.proxy({
+      method: 'POST',
+      path: '/documentos/prueba',
+      authorization: 'Bearer canonico',
+      requestId: 'request-canonico',
+      headers: {
+        authorization: 'Bearer manipulado',
+        'x-request-id': 'request-manipulado',
+        'x-user-id': '1',
+      },
+    });
+
+    expect(axiosRequest).toHaveBeenCalledWith(
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          authorization: 'Bearer canonico',
+          'x-request-id': 'request-canonico',
+          'x-user-id': '1',
+        }),
+      }),
+    );
+
+    axiosRequest.mockRestore();
+  });
+
   it('propaga identidad y correlación al confirmar OCR con expediente', async () => {
     const contexto = {
       sub: 1,
