@@ -7,7 +7,7 @@ Control: GO-2A
 Sprint: 2.1C
 Rama: feat/documental-v2-carga-segura-backend-2-1C
 Baseline: 143eab88be79a7275c7102c5fb5b7ceda2e720d4
-HEAD validado: 77938d03c8ff0eb5182045c4f71f815506fd90f2
+HEAD validado: a5fa3e0c7daa48811c8a61a916da74693235d0af
 Estado: IMPLEMENTACIÓN LOCAL E INTEGRACIÓN DESECHABLE COMPLETADAS
 ```
 
@@ -103,6 +103,9 @@ docs(go-2a): record secure upload implementation evidence
 
 77938d03c8ff0eb5182045c4f71f815506fd90f2
 fix(documentos): normalize secure upload bigint fields
+
+a5fa3e0c7daa48811c8a61a916da74693235d0af
+docs(go-2a): record disposable integration evidence
 ```
 
 Todos los objetos commit fueron validados mediante `git cat-file`.
