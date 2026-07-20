@@ -7,8 +7,8 @@ Control: GO-2A
 Sprint: 2.1C
 Rama: feat/documental-v2-carga-segura-backend-2-1C
 Baseline: 143eab88be79a7275c7102c5fb5b7ceda2e720d4
-HEAD validado: ba87809aa8452bf4f5b8bee86d7aa9fb661b3141
-Estado: IMPLEMENTACIÓN LOCAL COMPLETADA — INTEGRACIÓN DESECHABLE PENDIENTE
+HEAD validado: 77938d03c8ff0eb5182045c4f71f815506fd90f2
+Estado: IMPLEMENTACIÓN LOCAL E INTEGRACIÓN DESECHABLE COMPLETADAS
 ```
 
 ## Alcance implementado
@@ -97,6 +97,12 @@ feat(documentos): add secure upload orchestration service
 
 ba87809aa8452bf4f5b8bee86d7aa9fb661b3141
 test(ms-documentos): isolate app controller ESM dependencies
+
+5b24de4c49e386a9ac452c29afecf850f79c58fd
+docs(go-2a): record secure upload implementation evidence
+
+77938d03c8ff0eb5182045c4f71f815506fd90f2
+fix(documentos): normalize secure upload bigint fields
 ```
 
 Todos los objetos commit fueron validados mediante `git cat-file`.
@@ -129,7 +135,7 @@ Resultado final:
 
 ```text
 Test Suites: 28 passed, 28 total
-Tests:       108 passed, 108 total
+Tests:       109 passed, 109 total
 Snapshots:   0 total
 
 TEST_COMPLETO_FINAL_GO2A_EXIT=0
@@ -153,6 +159,7 @@ Cobertura funcional comprobada mediante pruebas unitarias:
 - outbox;
 - operación completada;
 - rollback simulado mediante mocks;
+- normalización runtime de columnas PostgreSQL `bigint`;
 - servicio orquestador completo;
 - regresión general de `ms-documentos`.
 
@@ -168,94 +175,211 @@ AppController: 3/3 PASS
 Estado:
 
 ```text
-PENDIENTE
+APROBADO
 ```
 
-Todavía debe registrarse una ejecución real contra PostgreSQL 16 desechable que
-incluya:
+Se creó un laboratorio local y aislado con PostgreSQL 16:
 
-- creación de contenedor o base temporal;
-- aplicación controlada de las migraciones 0011–0013;
-- validación de constraints e índices;
-- reserva concurrente real;
-- transacción documental real;
-- rollback real;
-- outbox real;
-- eliminación completa del entorno;
-- confirmación de ausencia de conexión a RDS o producción.
+```text
+Contenedor: dp_postgres_go2a8
+Base: documental_go2a8
+Puerto local: 127.0.0.1:55432
+Network: dp_go2a8_net
+Volume: dp_postgres_go2a8_data
+```
 
-Las pruebas actuales de repository y persistence usan dobles de prueba. No
-constituyen todavía evidencia de integración PostgreSQL real.
+El laboratorio usó únicamente datos sintéticos identificados como GO2A8. No se
+realizaron conexiones ni cambios sobre RDS o producción.
+
+Se aplicaron controladamente las migraciones:
+
+```text
+0011_carga_operaciones.sql
+0012_documentos_archivos_scope_auditoria.sql
+0013_documento_eventos_outbox.sql
+```
+
+Resultados comprobados:
+
+- primera ejecución: migraciones 0011–0013 aplicadas;
+- segunda ejecución: ninguna migración reaplicada;
+- checksums coincidentes con los archivos oficiales;
+- constraints e índices presentes;
+- privilegios destructivos de `platform_app`: cero;
+- migraciones y manifest del repositorio sin modificaciones;
+- PostgreSQL reportado como saludable durante las pruebas.
+
+Checksums validados:
+
+```text
+0011 cd24b2e11002542420d9a1cf2eb40587991f7efb26ae2d797a653fe42ad9a159
+0012 df880f1fa87f6e1b83f2bb20cd4f4a594d5461904e24b4a5dd0a9b714e535766
+0013 09ba6b26d2528c075de5ef3d983f21652bbe425735f368c1a4368e8c516efc8c
+```
+
+El laboratorio continúa preservado temporalmente para trazabilidad y auditoría.
+Su eliminación todavía no se declara.
 
 ## Concurrencia
 
-Validado unitariamente:
+Validación real contra PostgreSQL 16: APROBADA.
 
-- clasificación de reserva idempotente;
-- replay;
-- conflicto de idempotencia;
+### Misma clave de idempotencia
+
+Se ejecutaron ocho solicitudes concurrentes con la misma clave y el mismo
+fingerprint.
+
+Resultado:
+
+```text
+RESERVED: 1
+REPLAYED: 7
+Operaciones persistidas: 1
+```
+
+La operación ganadora fue única y las demás solicitudes fueron clasificadas
+como replay.
+
+### Mismo hash con claves diferentes
+
+Se ejecutaron ocho solicitudes concurrentes con diferentes claves de
+idempotencia y el mismo hash SHA-256.
+
+Resultado:
+
+```text
+RESERVED: 1
+DUPLICATE: 7
+Operaciones persistidas: 1
+```
+
+La deduplicación por hash produjo una única operación ganadora.
+
+### Validaciones secuenciales
+
+También se comprobaron:
+
+- reserva inicial;
+- replay exacto;
+- conflicto por misma clave y fingerprint distinto;
 - duplicado por hash;
-- bloqueo lógico de segundo principal.
+- nueva reserva con hash diferente.
 
-Pendiente de validación real en PostgreSQL desechable:
-
-- dos solicitudes simultáneas con la misma idempotency key;
-- dos solicitudes simultáneas con el mismo hash;
-- única operación ganadora;
-- comportamiento de advisory lock;
-- restricciones reales de la base de datos.
+Los saltos de secuencia observados son compatibles con
+`INSERT ... ON CONFLICT DO NOTHING`; no representan filas duplicadas ni pérdida
+de atomicidad.
 
 ## Atomicidad
 
-Validado mediante pruebas unitarias del componente de persistencia:
+Validación PostgreSQL real: APROBADA.
 
-- inserción de documento;
-- inserción de archivo;
-- relación opcional;
-- creación de outbox;
-- transición de operación a completada;
-- rechazo de operación no almacenada;
-- rechazo de diferencias entre operación y comando;
-- bloqueo de segundo principal.
+La operación sintética 22 completó en una sola transacción:
 
-Pendiente:
+- documento;
+- archivo documental;
+- relación principal con expediente;
+- evento outbox;
+- actualización de operación a `completada`.
+
+Resultado inicial:
 
 ```text
-Rollback transaccional comprobado contra PostgreSQL 16 real desechable.
+documento_id: 1
+archivo_id: 1
+event_key: carga-segura:22:archivo.subido:v1
 ```
+
+Se validó además:
+
+- transición `iniciada` → `almacenada` → `completada`;
+- coherencia entre operación y comando;
+- bloqueo mediante `FOR UPDATE`;
+- advisory lock por expediente;
+- rollback real;
+- rechazo de un segundo documento principal.
+
+La operación 23 intentó crear un segundo principal y fue rechazada con:
+
+```text
+CARGA_SEGURA_PERSISTENCE_FAILED
+El expediente ya tiene un documento principal
+```
+
+Después del rechazo permanecieron exactamente un documento, un archivo, una
+relación y un evento outbox. No se creó ninguna fila parcial.
 
 ## Compensación
 
-Validado unitariamente:
+Validación integrada con storage desechable y PostgreSQL: APROBADA.
 
-- eliminación segura de objeto creado por la operación;
-- protección de objeto preexistente;
-- bloqueo de eliminación cuando existen referencias;
-- fallo de eliminación;
-- estado de reconciliación;
-- fallo de persistencia después del almacenamiento.
+Casos ejecutados:
 
-Pendiente:
+1. Operación 24:
+   - `putObject` exitoso;
+   - persistencia exitosa;
+   - operación `completada`;
+   - objeto físico conservado;
+   - documento, archivo, relación y outbox creados.
+
+2. Operación 25:
+   - `putObject` exitoso;
+   - persistencia forzada a fallar;
+   - `deleteObject` exitoso;
+   - operación `fallida`;
+   - objeto físico eliminado;
+   - sin documento, archivo ni outbox.
+
+3. Operación 26:
+   - `putObject` exitoso;
+   - persistencia forzada a fallar;
+   - `deleteObject` fallido;
+   - operación `requiere_reconciliacion`;
+   - código `ARCHIVO_REQUIERE_RECONCILIACION`;
+   - objeto físico preservado;
+   - sin documento, archivo ni outbox.
+
+Storage desechable:
 
 ```text
-Validación integrada con storage local o simulado y PostgreSQL desechable.
+/tmp/go2a8-disposable-storage
 ```
+
+Objetos preservados:
+
+```text
+24__go2a8-storage-success.pdf
+26__go2a8-compensate-delete-fail.pdf
+```
+
+El primer objeto tiene referencia documental activa. El segundo se conserva
+para reconciliación.
 
 ## Outbox
 
-Contrato final:
+Contrato validado:
 
 ```text
 tipoEvento: archivo.subido
 eventKey: carga-segura:{cargaOperacionId}:archivo.subido:v1
 aggregateType: documento
 aggregateId: documentoId convertido a texto
+estado inicial: pendiente
 ```
 
-La creación del evento forma parte de la misma transacción lógica de
+La creación del evento se comprobó dentro de la misma transacción de
 persistencia documental.
 
-Pendiente comprobar su inserción real mediante PostgreSQL desechable.
+Resultados del laboratorio:
+
+```text
+operación 22 → outbox 1
+operación 24 → outbox 2
+operación 25 → sin outbox
+operación 26 → sin outbox
+```
+
+Las operaciones compensadas o pendientes de reconciliación no generaron eventos
+parciales.
 
 ## Integridad de migraciones
 
@@ -326,29 +450,44 @@ Comportamiento implementado:
 ## Limpieza
 
 ```text
-DIFF_CHECK_FINAL_GO2A_EXIT=0
-WORKTREE_LIMPIO_POST_TEST_GO2A_EXIT=0
+DIFF_CHECK_POST_DISPOSABLE_STORAGE_GO2A8_EXIT=0
+WORKTREE_LIMPIO_PRE_EVIDENCE_UPDATE_EXIT=0
 ```
 
-El worktree quedó limpio después de ejecutar pruebas y build.
+El repositorio quedó limpio después de build, pruebas e integración.
+
+El laboratorio PostgreSQL y el storage desechable continúan preservados
+temporalmente para trazabilidad y auditoría. No debe interpretarse como falta de
+aislamiento: ambos recursos son locales y no tienen conexión con RDS ni
+producción.
 
 ## Estado de cierre
 
 ```text
 Implementación local GO-2A: COMPLETADA
 Pruebas unitarias: APROBADAS
-Regresión ms-documentos: APROBADA
+Regresión ms-documentos: APROBADA — 28 suites / 109 tests
 Build ms-documentos: APROBADO
 Integridad de migraciones: APROBADA
 Control de alcance: APROBADO
-PostgreSQL 16 desechable: PENDIENTE
-Concurrencia PostgreSQL real: PENDIENTE
-Storage integrado desechable: PENDIENTE
+PostgreSQL 16 desechable: APROBADO
+Concurrencia PostgreSQL real: APROBADA
+Persistencia y outbox atómicos: APROBADOS
+Rollback PostgreSQL real: APROBADO
+Bloqueo de segundo principal: APROBADO
+Normalización bigint runtime: APROBADA
+Storage integrado desechable: APROBADO
+Compensación: APROBADA
+Reconciliación: APROBADA
 
-GO-2A: PENDIENTE DE VALIDACIÓN DE INTEGRACIÓN DESECHABLE
+GO-2A: VALIDACIÓN LOCAL E INTEGRACIÓN DESECHABLE COMPLETADAS
 
 Push: NO EJECUTADO
 PR: NO CREADO
 Merge: NO EJECUTADO
 RDS / producción / main: INTACTOS
 ```
+
+El cierre corresponde únicamente a GO-2A local. La publicación y los controles
+posteriores GO-2B, GO-2C, GO-2D y GO-2E permanecen sujetos a autorización
+independiente.
