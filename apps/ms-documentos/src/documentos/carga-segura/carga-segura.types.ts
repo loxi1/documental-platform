@@ -98,3 +98,74 @@ export type CargaSeguraResult =
   | CargaSeguraDuplicateResult
   | CargaSeguraIdempotencyConflictResult
   | CargaSeguraReconciliationRequiredResult;
+
+export interface ReservarCargaSeguraInput {
+  workspaceId: number;
+  empresaCodigo: string;
+  clienteDestinoId: number | null;
+  expedienteId: number | null;
+  actorId: number;
+  idempotencyKey: string;
+  payloadFingerprint: string;
+  requestId: string | null;
+  correlationId: string | null;
+  canalIngreso: string;
+  nombreArchivo: string;
+  contentType: string;
+  tamanoBytes: number;
+  hashSha256: string;
+  metadata?: CargaSeguraMetadata;
+}
+
+export interface CargaSeguraOperacionRow {
+  id: number;
+  workspaceId: number;
+  empresaCodigo: string;
+  clienteDestinoId: number | null;
+  expedienteId: number | null;
+  actorId: number;
+  idempotencyKey: string;
+  payloadFingerprint: string;
+  fingerprintVersion: string;
+  requestId: string | null;
+  correlationId: string | null;
+  canalIngreso: string;
+  estado: CargaSeguraEstado;
+  requiereReconciliacion: boolean;
+  nombreArchivo: string;
+  contentType: string;
+  tamanoBytes: number;
+  hashSha256: string;
+  storageProvider: string | null;
+  storageBucket: string | null;
+  storageKey: string | null;
+  documentoId: number | null;
+  archivoId: number | null;
+  errorCodigo: string | null;
+  errorDetalle: string | null;
+  metadata: CargaSeguraMetadata;
+  iniciadaEn: Date;
+  almacenadaEn: Date | null;
+  completadaEn: Date | null;
+  fallidaEn: Date | null;
+  expiraEn: Date;
+  actualizadoEn: Date;
+}
+
+export type ReservaCargaSeguraResult =
+  | {
+      kind: 'RESERVED';
+      operacion: CargaSeguraOperacionRow;
+    }
+  | {
+      kind: 'REPLAYED';
+      operacion: CargaSeguraOperacionRow;
+    }
+  | {
+      kind: 'IDEMPOTENCY_CONFLICT';
+      operacion: CargaSeguraOperacionRow;
+    }
+  | {
+      kind: 'DUPLICATE';
+      operacion: CargaSeguraOperacionRow;
+    };
