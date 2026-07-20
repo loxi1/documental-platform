@@ -197,7 +197,7 @@ describe('CargaSeguraRepository', () => {
 
     const result = await new CargaSeguraRepository().buscarPorId(25);
 
-    expect(result).toBe(row);
+    expect(result).toStrictEqual(row);
     expect(executedQueryCount).toBe(1);
   });
 
@@ -209,6 +209,36 @@ describe('CargaSeguraRepository', () => {
     expect(result).toBeNull();
     expect(executedQueryCount).toBe(1);
   });
+  it('normaliza los bigint entregados como texto por PostgreSQL', async () => {
+    const row = operation({
+      id: '25' as unknown as number,
+      expedienteId: '17' as unknown as number,
+      tamanoBytes: '1024' as unknown as number,
+      documentoId: '100' as unknown as number,
+      archivoId: '200' as unknown as number,
+    });
+
+    queryResults.push([row]);
+
+    const result = await new CargaSeguraRepository().buscarPorId(25);
+
+    expect(result).not.toBeNull();
+    expect(result).toMatchObject({
+      id: 25,
+      expedienteId: 17,
+      tamanoBytes: 1024,
+      documentoId: 100,
+      archivoId: 200,
+    });
+
+    expect(typeof result?.id).toBe('number');
+    expect(typeof result?.expedienteId).toBe('number');
+    expect(typeof result?.tamanoBytes).toBe('number');
+    expect(typeof result?.documentoId).toBe('number');
+    expect(typeof result?.archivoId).toBe('number');
+    expect(executedQueryCount).toBe(1);
+  });
+
   it('marca una operación iniciada como almacenada', async () => {
     const row = operation({
       estado: 'almacenada',
@@ -227,7 +257,7 @@ describe('CargaSeguraRepository', () => {
       storageKey: 'documentos/carga-segura/2026/07/1__orden.pdf',
     });
 
-    expect(result).toBe(row);
+    expect(result).toStrictEqual(row);
     expect(executedQueryCount).toBe(1);
   });
 

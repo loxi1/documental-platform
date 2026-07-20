@@ -291,6 +291,37 @@ export class CargaSeguraRepository {
   }
 
   private first(rows: unknown[]): CargaSeguraOperacionRow | null {
-    return (rows[0] as CargaSeguraOperacionRow | undefined) ?? null;
+    const row = rows[0] as Record<string, unknown> | undefined;
+
+    if (!row) {
+      return null;
+    }
+
+    return {
+      ...(row as unknown as CargaSeguraOperacionRow),
+      id: this.requiredSafeInteger(row.id, 'id'),
+      expedienteId: this.nullableSafeInteger(row.expedienteId, 'expedienteId'),
+      tamanoBytes: this.requiredSafeInteger(row.tamanoBytes, 'tamanoBytes'),
+      documentoId: this.nullableSafeInteger(row.documentoId, 'documentoId'),
+      archivoId: this.nullableSafeInteger(row.archivoId, 'archivoId'),
+    };
+  }
+
+  private requiredSafeInteger(value: unknown, field: string): number {
+    const normalized = Number(value);
+
+    if (!Number.isSafeInteger(normalized)) {
+      throw new Error(`Valor numérico inválido para carga segura: ${field}`);
+    }
+
+    return normalized;
+  }
+
+  private nullableSafeInteger(value: unknown, field: string): number | null {
+    if (value === null || value === undefined) {
+      return null;
+    }
+
+    return this.requiredSafeInteger(value, field);
   }
 }
