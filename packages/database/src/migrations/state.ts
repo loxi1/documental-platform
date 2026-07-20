@@ -1,6 +1,6 @@
 import type { MigrationSql } from './database.js';
 import type {
-  ManifestEntry,
+  VerifiedMigration,
   MigrationState,
   SchemaMigrationRow,
 } from './types.js';
@@ -14,7 +14,7 @@ interface SchemaMigrationDatabaseRow {
 }
 
 export function classifyMigrationState(
-  entry: ManifestEntry,
+  entry: VerifiedMigration,
   databaseRow: SchemaMigrationRow | undefined,
 ): MigrationState {
   if (!databaseRow) {
@@ -77,7 +77,7 @@ export async function readSchemaMigrations(
 }
 
 export function classifyAllMigrationStates(
-  entries: ManifestEntry[],
+  entries: VerifiedMigration[],
   databaseRows: Map<string, SchemaMigrationRow>,
 ): MigrationState[] {
   return entries.map((entry) =>

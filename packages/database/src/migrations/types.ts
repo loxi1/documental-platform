@@ -6,10 +6,14 @@ export interface ManifestEntry {
   absolutePath: string;
 }
 
+export interface VerifiedMigration extends ManifestEntry {
+  sqlText: string;
+}
+
 export interface ManifestValidationResult {
   manifestPath: string;
   migrationsDirectory: string;
-  entries: ManifestEntry[];
+  entries: VerifiedMigration[];
   ignoredLegacyFiles: string[];
 }
 
@@ -28,7 +32,7 @@ export type MigrationStateKind =
   | 'invalid_null_checksum';
 
 export interface MigrationState {
-  entry: ManifestEntry;
+  entry: VerifiedMigration;
   kind: MigrationStateKind;
   databaseChecksum: string | null;
 }

@@ -5,13 +5,13 @@ import {
   readSchemaMigrations,
 } from './state.js';
 import type {
-  ManifestEntry,
+  VerifiedMigration,
   MigrationState,
 } from './types.js';
 
 export async function getMigrationStatus(
   sql: MigrationSql,
-  entries: ManifestEntry[],
+  entries: VerifiedMigration[],
 ): Promise<MigrationState[]> {
   const databaseRows =
     await readSchemaMigrations(sql);

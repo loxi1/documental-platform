@@ -7,10 +7,18 @@ export function isValidSha256(value: string): boolean {
   return SHA256_HEX_PATTERN.test(value);
 }
 
-export async function calculateFileSha256(filePath: string): Promise<string> {
-  const contents = await readFile(filePath);
-
+export function calculateBytesSha256(
+  contents: Uint8Array,
+): string {
   return createHash('sha256')
     .update(contents)
     .digest('hex');
+}
+
+export async function calculateFileSha256(
+  filePath: string,
+): Promise<string> {
+  const contents = await readFile(filePath);
+
+  return calculateBytesSha256(contents);
 }

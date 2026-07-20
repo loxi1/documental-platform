@@ -15,13 +15,13 @@ import {
   readSchemaMigrations,
 } from './state.js';
 import type {
-  ManifestEntry,
+  VerifiedMigration,
   MigrationState,
 } from './types.js';
 
 export interface MigrationExecutionPlan {
-  pending: ManifestEntry[];
-  applied: ManifestEntry[];
+  pending: VerifiedMigration[];
+  applied: VerifiedMigration[];
 }
 
 export interface MigrationRunResult {
@@ -46,7 +46,7 @@ export function buildMigrationExecutionPlan(
 
 async function executePendingMigrations(
   reservedSql: MigrationReservedSql,
-  entries: ManifestEntry[],
+  entries: VerifiedMigration[],
 ): Promise<string[]> {
   const applied: string[] = [];
 
@@ -64,7 +64,7 @@ async function executePendingMigrations(
 
 export async function runMigrations(
   sql: MigrationSql,
-  entries: ManifestEntry[],
+  entries: VerifiedMigration[],
 ): Promise<MigrationRunResult> {
   const reservedSql = await sql.reserve();
 

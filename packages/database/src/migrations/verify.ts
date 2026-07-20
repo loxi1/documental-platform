@@ -1,7 +1,12 @@
-import { access, readdir } from 'node:fs/promises';
+import {
+  lstat,
+  readFile,
+  readdir,
+  realpath,
+} from 'node:fs/promises';
 import path from 'node:path';
 
-import { calculateFileSha256 } from './checksum.js';
+import { calculateBytesSha256 } from './checksum.js';
 import {
   MANAGED_VERSION_MIN,
   readMigrationManifest,
@@ -9,29 +14,78 @@ import {
 import type {
   ManifestEntry,
   ManifestValidationResult,
+  VerifiedMigration,
 } from './types.js';
 
 const SQL_FILENAME_PATTERN =
   /^(\d{4})_[a-z0-9]+(?:_[a-z0-9]+)*\.sql$/;
 
-async function assertFileExists(
+export function isPathInsideDirectory(
+  parentDirectory: string,
+  candidatePath: string,
+): boolean {
+  const relativePath = path.relative(
+    parentDirectory,
+    candidatePath,
+  );
+
+  return (
+    relativePath.length > 0 &&
+    relativePath !== '..' &&
+    !relativePath.startsWith(`..${path.sep}`) &&
+    !path.isAbsolute(relativePath)
+  );
+}
+
+async function readAndVerifyMigration(
   entry: ManifestEntry,
-): Promise<void> {
+  realMigrationsDirectory: string,
+): Promise<VerifiedMigration> {
+  let fileStats;
+
   try {
-    await access(entry.absolutePath);
+    fileStats = await lstat(entry.absolutePath);
   } catch (error) {
     throw new Error(
       `El manifest declara un archivo inexistente: ${entry.filename}`,
       { cause: error },
     );
   }
-}
 
-async function verifyChecksum(
-  entry: ManifestEntry,
-): Promise<void> {
+  if (fileStats.isSymbolicLink()) {
+    throw new Error(
+      `La migración no puede ser un enlace simbólico: ${entry.filename}`,
+    );
+  }
+
+  if (!fileStats.isFile()) {
+    throw new Error(
+      `La migración debe ser un archivo regular: ${entry.filename}`,
+    );
+  }
+
+  const resolvedPath =
+    await realpath(entry.absolutePath);
+
+  if (
+    !isPathInsideDirectory(
+      realMigrationsDirectory,
+      resolvedPath,
+    )
+  ) {
+    throw new Error(
+      `La ruta real de la migración está fuera del directorio autorizado: ${entry.filename}`,
+    );
+  }
+
+  /*
+   * Esta es la única lectura del archivo administrado.
+   * El SHA-256 y el SQL ejecutable se derivan del mismo Buffer.
+   */
+  const sqlBytes = await readFile(resolvedPath);
+
   const calculatedChecksum =
-    await calculateFileSha256(entry.absolutePath);
+    calculateBytesSha256(sqlBytes);
 
   if (calculatedChecksum !== entry.checksum) {
     throw new Error(
@@ -42,6 +96,20 @@ async function verifyChecksum(
       ].join('; '),
     );
   }
+
+  const sqlText = sqlBytes.toString('utf8');
+
+  if (sqlText.trim().length === 0) {
+    throw new Error(
+      `La migración ${entry.filename} está vacía`,
+    );
+  }
+
+  return {
+    ...entry,
+    absolutePath: resolvedPath,
+    sqlText,
+  };
 }
 
 function extractNumericVersion(
@@ -59,29 +127,37 @@ function extractNumericVersion(
 export async function verifyMigrationFiles(
   migrationsDirectory: string,
 ): Promise<ManifestValidationResult> {
+  const realMigrationsDirectory =
+    await realpath(migrationsDirectory);
+
   const manifestPath = path.join(
-    migrationsDirectory,
+    realMigrationsDirectory,
     'manifest.sha256',
   );
 
-  const entries = await readMigrationManifest(
-    manifestPath,
-    migrationsDirectory,
-  );
+  const manifestEntries =
+    await readMigrationManifest(
+      manifestPath,
+      realMigrationsDirectory,
+    );
 
   const directoryEntries = await readdir(
-    migrationsDirectory,
+    realMigrationsDirectory,
     { withFileTypes: true },
   );
 
   const sqlFiles = directoryEntries
-    .filter((entry) => entry.isFile())
+    .filter(
+      (entry) =>
+        entry.isFile() ||
+        entry.isSymbolicLink(),
+    )
     .map((entry) => entry.name)
     .filter((filename) => filename.endsWith('.sql'))
     .sort();
 
   const declaredFiles = new Set(
-    entries.map((entry) => entry.filename),
+    manifestEntries.map((entry) => entry.filename),
   );
 
   const managedFiles: string[] = [];
@@ -113,14 +189,21 @@ export async function verifyMigrationFiles(
     }
   }
 
-  for (const entry of entries) {
-    await assertFileExists(entry);
-    await verifyChecksum(entry);
+  const entries: VerifiedMigration[] = [];
+
+  for (const entry of manifestEntries) {
+    entries.push(
+      await readAndVerifyMigration(
+        entry,
+        realMigrationsDirectory,
+      ),
+    );
   }
 
   return {
     manifestPath,
-    migrationsDirectory,
+    migrationsDirectory:
+      realMigrationsDirectory,
     entries,
     ignoredLegacyFiles,
   };

@@ -5,17 +5,18 @@ import {
   buildMigrationExecutionPlan,
 } from '../migrate.js';
 import type {
-  ManifestEntry,
   MigrationState,
+  VerifiedMigration,
 } from '../types.js';
 
-function entry(version: string): ManifestEntry {
+function entry(version: string): VerifiedMigration {
   return {
     version,
     filename: `${version}_prueba.sql`,
     checksum: version.padEnd(64, 'a'),
     description: `prueba ${version}`,
-    absolutePath: `/tmp/${version}_prueba.sql`,
+    absolutePath: `/verificado/${version}_prueba.sql`,
+    sqlText: `SELECT '${version}';`,
   };
 }
 

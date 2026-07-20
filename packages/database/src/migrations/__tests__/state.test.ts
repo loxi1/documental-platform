@@ -6,16 +6,17 @@ import {
   classifyMigrationState,
 } from '../state.js';
 import type {
-  ManifestEntry,
   SchemaMigrationRow,
+  VerifiedMigration,
 } from '../types.js';
 
-const entry: ManifestEntry = {
+const entry: VerifiedMigration = {
   version: '0011',
   filename: '0011_prueba.sql',
   checksum: 'a'.repeat(64),
   description: 'prueba',
-  absolutePath: '/tmp/0011_prueba.sql',
+  absolutePath: '/verificado/0011_prueba.sql',
+  sqlText: 'SELECT 1;',
 };
 
 function databaseRow(
