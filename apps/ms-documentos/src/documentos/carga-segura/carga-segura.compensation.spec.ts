@@ -3,7 +3,10 @@ jest.mock('@documental/database', () => ({
 }));
 
 import { CargaSeguraCompensation } from './carga-segura.compensation';
-import type { CargaSeguraOperacionRow } from './carga-segura.types';
+import type {
+  CargaSeguraCompensationInput,
+  CargaSeguraOperacionRow,
+} from './carga-segura.types';
 
 function operation(
   overrides: Partial<CargaSeguraOperacionRow> = {},
@@ -45,7 +48,9 @@ function operation(
   };
 }
 
-function createInput(overrides: Record<string, unknown> = {}) {
+function createInput(
+  overrides: Partial<CargaSeguraCompensationInput> = {},
+): CargaSeguraCompensationInput {
   return {
     operacion: operation(),
     storageObject: { provider: 'r2', bucket: 'bucket', key: 'key' },
