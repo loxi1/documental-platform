@@ -54,7 +54,10 @@ export function mapBackendCodeToUxState(code?: string): CargaSeguraUxState {
       return "feature_disabled";
     case "CARGA_SEGURA_STORAGE_FAILED":
     case "CARGA_SEGURA_PERSISTENCE_FAILED":
+    case "CARGA_SEGURA_RECONCILIATION_PERSIST_FAILED":
       return "dependency_unavailable";
+    case "INTERNAL_SERVER_ERROR":
+      return "unknown_error";
     default:
       return "unknown_error";
   }

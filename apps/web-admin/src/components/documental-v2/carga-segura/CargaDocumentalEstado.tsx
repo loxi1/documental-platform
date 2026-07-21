@@ -18,7 +18,7 @@ const LABELS: Record<CargaSeguraUxState, string> = {
   validation_error: "Validación",
   feature_disabled: "No disponible",
   dependency_unavailable: "Dependencia",
-  unknown_error: "Error no reconocido",
+  unknown_error: "Error inesperado",
 };
 
 export function CargaDocumentalEstado({ state }: { state: CargaSeguraUxState }) {

@@ -129,8 +129,8 @@ export const cargaSeguraEnvelopeFixtures = {
     timestamp: "2026-07-21T10:09:00.000Z",
     path: "/documental-v2/carga-segura/mock",
     error: {
-      code: "CARGA_SEGURA_PERSISTENCE_FAILED",
-      message: "No se pudo registrar la operación.",
+      code: "INTERNAL_SERVER_ERROR",
+      message: "Ocurrió un error no identificado. Conserve la referencia para solicitar soporte.",
       details: {
         unexpected: true,
       },

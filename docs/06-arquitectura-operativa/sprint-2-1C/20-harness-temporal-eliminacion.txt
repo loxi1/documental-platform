@@ -1,0 +1,52 @@
+GO-UX-2-1C-FINAL — Eliminación controlada del harness temporal
+
+Harness temporal usado:
+
+apps/web-admin/src/app/go-ux-evidence/carga-segura/page.tsx
+
+Propósito:
+Renderizar el componente desacoplado de carga documental segura para obtener evidencia visual y de accesibilidad.
+
+Naturaleza:
+- no productivo
+- no enlazado al sidebar
+- no integrado a navegación productiva
+- sin Auth real
+- sin Gateway
+- sin ms-documentos
+- sin R2
+- sin fetch
+- sin Axios
+- solo fixtures y mock client
+
+Evidencias obtenidas:
+- 01-idle.png
+- 02-file-selected.png
+- 03-validation-error.png
+- 04-payload-too-large.png
+- 05-unsupported-media.png
+- 06-uploading.png
+- 07-created.png
+- 08-replayed.png
+- 09-duplicate.png
+- 10-idempotency-conflict.png
+- 11-operation-in-progress.png
+- 12-reconciliation-required.png
+- 13-dependency-unavailable.png
+- 14-feature-disabled.png
+- 15-unknown-error.png
+- 15-unknown-error-hallazgo.png
+- 16-request-id-copy.png
+- 17-keyboard-focus.png
+
+Eliminación:
+El harness se elimina manualmente después de la captura de evidencias.
+No se usa git clean.
+No se usa git reset --hard.
+No se usa git restore indiscriminado.
+No se usa checkout destructivo.
+
+Resultado esperado:
+El HEAD final no debe contener:
+
+apps/web-admin/src/app/go-ux-evidence/

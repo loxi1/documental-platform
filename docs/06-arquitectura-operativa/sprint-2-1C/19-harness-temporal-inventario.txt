@@ -1,0 +1,80 @@
+GO-UX-2-1C-FINAL — Inventario de harness temporal
+
+Dictamen:
+B. AUTORIZAR HARNESS TEMPORAL
+
+Propósito:
+Obtener evidencia visual y de accesibilidad del paquete UX desacoplado de carga documental segura.
+
+Ubicación temporal prevista:
+apps/web-admin/src/app/__go-ux-evidence/carga-segura/page.tsx
+
+Naturaleza:
+Ruta App Router temporal, no productiva, no enlazada, no incluida en sidebar.
+
+Restricciones:
+- sin fetch
+- sin Axios
+- sin Gateway
+- sin ms-documentos
+- sin R2
+- sin Auth real
+- sin navegación productiva
+- sin sidebar
+- solo fixtures y mock client
+- no debe formar parte del HEAD final
+
+Archivo temporal previsto:
+apps/web-admin/src/app/__go-ux-evidence/carga-segura/page.tsx
+
+Estados a evidenciar:
+- idle
+- file_selected
+- validation_error
+- payload_too_large
+- unsupported_media
+- uploading
+- created
+- replayed
+- duplicate
+- idempotency_conflict
+- operation_in_progress
+- reconciliation_required
+- dependency_unavailable
+- feature_disabled
+- unknown_error
+- requestId visible cuando corresponda
+- foco y navegación por teclado
+
+Estado Git previo:
+
+=== git branch --show-current ===
+feat/documental-v2-ux-carga-segura-2-1C
+
+=== git rev-parse HEAD ===
+c2c378c3cf0fd26eaedf3f066a2957d80cacfc1a
+
+=== git status --short ===
+?? docs/06-arquitectura-operativa/sprint-2-1C/19-harness-temporal-inventario.txt
+
+=== git diff --check ===
+
+Ajuste de ruta temporal:
+La ruta inicialmente prevista apps/web-admin/src/app/__go-ux-evidence/carga-segura/page.tsx no fue enrutable por Next.js App Router al usar prefijo "__".
+Se movió manualmente a:
+
+apps/web-admin/src/app/go-ux-evidence/carga-segura/page.tsx
+
+La ruta mantiene la misma naturaleza:
+- temporal;
+- no productiva;
+- no enlazada;
+- sin sidebar;
+- sin Auth real;
+- sin Gateway;
+- sin fetch;
+- sin Axios;
+- solo fixtures y mock client.
+
+URL local de evidencia:
+http://localhost:3005/go-ux-evidence/carga-segura
