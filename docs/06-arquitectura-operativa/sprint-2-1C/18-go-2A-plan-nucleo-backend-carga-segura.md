@@ -75,11 +75,29 @@ type CargaSeguraCommand = {
 
 ```ts
 type CargaSeguraResult =
-  | { kind: 'CREATED'; operacionId: number; documentoId: number; archivoId: number; hashSha256: string }
-  | { kind: 'REPLAYED'; operacionId: number; documentoId: number; archivoId: number; hashSha256: string }
-  | { kind: 'DUPLICATE'; operacionId: number; documentoId: number; archivoId: number; hashSha256: string }
-  | { kind: 'IDEMPOTENCY_CONFLICT'; operacionId: number }
-  | { kind: 'RECONCILIATION_REQUIRED'; operacionId: number; errorCode: string };
+  | {
+      kind: "CREATED";
+      operacionId: number;
+      documentoId: number;
+      archivoId: number;
+      hashSha256: string;
+    }
+  | {
+      kind: "REPLAYED";
+      operacionId: number;
+      documentoId: number;
+      archivoId: number;
+      hashSha256: string;
+    }
+  | {
+      kind: "DUPLICATE";
+      operacionId: number;
+      documentoId: number;
+      archivoId: number;
+      hashSha256: string;
+    }
+  | { kind: "IDEMPOTENCY_CONFLICT"; operacionId: number }
+  | { kind: "RECONCILIATION_REQUIRED"; operacionId: number; errorCode: string };
 ```
 
 ## Hash físico
