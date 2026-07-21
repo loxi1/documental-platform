@@ -6,6 +6,7 @@ import { CargaSeguraCompensation } from './carga-segura/carga-segura.compensatio
 import { CargaSeguraPersistence } from './carga-segura/carga-segura.persistence';
 import { CargaSeguraRepository } from './carga-segura/carga-segura.repository';
 import { CargaSeguraService } from './carga-segura/carga-segura.service';
+import { CargaSeguraController } from './carga-segura/http/carga-segura.controller';
 import { R2CargaSeguraStorage } from './carga-segura/carga-segura.storage';
 import { DocumentosController } from './documentos.controller';
 import { DocumentosPreviewService } from './documentos-preview.service';
@@ -15,7 +16,7 @@ import { DocumentosUploadService } from './documentos-upload.service';
 
 @Module({
   imports: [DocumentoEventosModule],
-  controllers: [DocumentosController],
+  controllers: [DocumentosController, CargaSeguraController],
   providers: [
     DocumentosService,
     DocumentosRepository,
