@@ -19,7 +19,10 @@ import { ConfigService } from '@nestjs/config';
 import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
 import axios, { Method } from 'axios';
 import FormData from 'form-data';
-import { AnyFilesInterceptor, FileFieldsInterceptor } from '@nestjs/platform-express';
+import {
+  AnyFilesInterceptor,
+  FileFieldsInterceptor,
+} from '@nestjs/platform-express';
 import { firstValueFrom } from 'rxjs';
 import { ClientProxy } from '@nestjs/microservices';
 import { Inject } from '@nestjs/common';
@@ -782,7 +785,7 @@ export class DocumentosGatewayController {
     @Body() body: Record<string, unknown>,
     @Res({ passthrough: true }) response: Response,
   ) {
-    const contexto = await this.validateAuthorization(authorization);
+    const contexto: unknown = await this.validateAuthorization(authorization);
     const validatedBody = validateSecureUploadBody(body ?? {});
     const idempotencyKey = validateIdempotencyKey(idempotencyKeyHeader);
 
