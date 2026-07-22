@@ -7,7 +7,20 @@ import {
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { randomUUID } from 'node:crypto';
-import { ApiErrorCode, REQUEST_ID_HEADER } from '@documental/shared';
+
+const REQUEST_ID_HEADER = 'x-request-id';
+
+const ERROR_CODES = {
+  BAD_REQUEST: 'BAD_REQUEST',
+  UNAUTHORIZED: 'UNAUTHORIZED',
+  FORBIDDEN: 'FORBIDDEN',
+  NOT_FOUND: 'NOT_FOUND',
+  CONFLICT: 'CONFLICT',
+  VALIDATION_ERROR: 'VALIDATION_ERROR',
+  INTERNAL_SERVER_ERROR: 'INTERNAL_SERVER_ERROR',
+  PAYLOAD_TOO_LARGE: 'PAYLOAD_TOO_LARGE',
+  UNSUPPORTED_MEDIA_TYPE: 'UNSUPPORTED_MEDIA_TYPE',
+} as const;
 
 @Catch()
 export class HttpExceptionFilter implements ExceptionFilter {
@@ -25,12 +38,10 @@ export class HttpExceptionFilter implements ExceptionFilter {
         : HttpStatus.INTERNAL_SERVER_ERROR;
 
     const exceptionResponse =
-      exception instanceof HttpException
-        ? exception.getResponse()
-        : null;
+      exception instanceof HttpException ? exception.getResponse() : null;
 
     let message = 'Error interno del servidor';
-    let code: ApiErrorCode = this.codeFromStatus(status);
+    let code: string = this.codeFromStatus(status);
     let details: unknown = null;
 
     if (typeof exceptionResponse === 'string') {
@@ -46,12 +57,21 @@ export class HttpExceptionFilter implements ExceptionFilter {
 
       if (body.message === 'Validation failed') {
         message = 'Error de validación';
-        code = ApiErrorCode.VALIDATION_ERROR;
+        code = ERROR_CODES.VALIDATION_ERROR;
         details = body.errors ?? null;
       } else {
-        message = String(body.message);
-        code = this.codeFromStatus(status);
-        details = body;
+        message =
+          typeof body.message === 'string'
+            ? body.message
+            : String(body.message);
+
+        if (typeof body.code === 'string' && body.code.trim()) {
+          code = body.code;
+          details = body.details ?? null;
+        } else {
+          code = this.codeFromStatus(status);
+          details = body;
+        }
       }
     }
 
@@ -68,20 +88,26 @@ export class HttpExceptionFilter implements ExceptionFilter {
     });
   }
 
-  private codeFromStatus(status: number): ApiErrorCode {
+  private codeFromStatus(status: number): string {
     switch (status) {
       case 400:
-        return ApiErrorCode.BAD_REQUEST;
+        return ERROR_CODES.BAD_REQUEST;
       case 401:
-        return ApiErrorCode.UNAUTHORIZED;
+        return ERROR_CODES.UNAUTHORIZED;
       case 403:
-        return ApiErrorCode.FORBIDDEN;
+        return ERROR_CODES.FORBIDDEN;
       case 404:
-        return ApiErrorCode.NOT_FOUND;
+        return ERROR_CODES.NOT_FOUND;
       case 409:
-        return ApiErrorCode.CONFLICT;
+        return ERROR_CODES.CONFLICT;
+      case 413:
+        return ERROR_CODES.PAYLOAD_TOO_LARGE;
+      case 415:
+        return ERROR_CODES.UNSUPPORTED_MEDIA_TYPE;
+      case 422:
+        return ERROR_CODES.VALIDATION_ERROR;
       default:
-        return ApiErrorCode.INTERNAL_SERVER_ERROR;
+        return ERROR_CODES.INTERNAL_SERVER_ERROR;
     }
   }
 }
