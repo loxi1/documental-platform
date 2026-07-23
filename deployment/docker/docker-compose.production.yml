@@ -33,6 +33,7 @@ services:
       dockerfile: deployment/docker/Dockerfile.nest
       args:
         APP_PATH: apps/api-gateway
+        APP_PACKAGE: "@documental/api-gateway"
     container_name: dp_api_gateway
     restart: unless-stopped
     env_file:
@@ -89,6 +90,7 @@ services:
       dockerfile: deployment/docker/Dockerfile.nest
       args:
         APP_PATH: apps/ms-auth
+        APP_PACKAGE: "@documental/ms-auth"
     container_name: dp_ms_auth
     restart: unless-stopped
     env_file:
@@ -110,6 +112,7 @@ services:
       dockerfile: deployment/docker/Dockerfile.nest
       args:
         APP_PATH: apps/ms-documentos
+        APP_PACKAGE: "@documental/ms-documentos"
     container_name: dp_ms_documentos
     restart: unless-stopped
     env_file:
