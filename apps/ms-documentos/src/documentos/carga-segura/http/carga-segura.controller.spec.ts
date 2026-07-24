@@ -60,7 +60,7 @@ describe('CargaSeguraController', () => {
         tipoRelacion: 'adjunto_factura',
         esPrincipal: 'false',
         canalIngreso: 'COMPRAS_UPLOAD_PRINCIPAL',
-        metadata: '{"origen":"unit-test"}',
+        metadata: '{"comentarioUsuario":"unit-test"}',
       },
       request,
       response.response,
@@ -107,84 +107,11 @@ describe('CargaSeguraController', () => {
       contentType: 'application/pdf',
       tamanoBytes: pdf.length,
       metadata: {
-        origen: 'unit-test',
+        comentarioUsuario: 'unit-test',
       },
     });
 
     expect(command.archivo).toEqual(pdf);
-  });
-
-  it('acepta file como alias', async () => {
-    ejecutar.mockResolvedValue({
-      kind: 'REPLAYED',
-      operacionId: 101,
-      documentoId: 201,
-      archivoId: 301,
-      hashSha256: 'hash-replayed',
-    });
-
-    const png = Buffer.from([
-      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00,
-    ]);
-
-    const response = createResponse();
-
-    const result = await controller.cargar(
-      {
-        file: [
-          {
-            fieldname: 'file',
-            originalname: 'imagen.png',
-            encoding: '7bit',
-            mimetype: 'image/png',
-            size: png.length,
-            buffer: png,
-          },
-        ],
-      },
-      {
-        tipoDocumental: 'OTRO',
-        esPrincipal: 'true',
-        canalIngreso: 'WEB_ADMIN',
-      },
-      createRequest(),
-      response.response,
-    );
-
-    expect(result.kind).toBe('REPLAYED');
-    expect(response.status).toHaveBeenCalledWith(200);
-    expect(ejecutar).toHaveBeenCalledTimes(1);
-  });
-
-  it('rechaza archivo y file simultáneamente', async () => {
-    const pdf = Buffer.from('%PDF-1.7\ncontenido');
-    const uploaded = {
-      fieldname: 'archivo',
-      originalname: 'documento.pdf',
-      encoding: '7bit',
-      mimetype: 'application/pdf',
-      size: pdf.length,
-      buffer: pdf,
-    };
-
-    await expect(
-      controller.cargar(
-        {
-          archivo: [uploaded],
-          file: [
-            {
-              ...uploaded,
-              fieldname: 'file',
-            },
-          ],
-        },
-        {},
-        createRequest(),
-        createResponse().response,
-      ),
-    ).rejects.toBeInstanceOf(CargaSeguraHttpValidationError);
-
-    expect(ejecutar).not.toHaveBeenCalled();
   });
 
   it('rechaza ausencia de archivo', async () => {

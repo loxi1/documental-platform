@@ -187,7 +187,7 @@ describe('carga-segura.mapper', () => {
       expect(error.getResponse()).toEqual({
         code: 'INTERNAL_SERVER_ERROR',
         message:
-          'No se pudo confirmar el resultado de la carga documental segura',
+          'No se pudo completar la carga del documento.',
         details: null,
       });
     });
@@ -201,7 +201,7 @@ describe('carga-segura.mapper', () => {
       expect(error.getResponse()).toEqual({
         code: 'INTERNAL_SERVER_ERROR',
         message:
-          'No se pudo confirmar el resultado de la carga documental segura',
+          'No se pudo completar la carga del documento.',
         details: null,
       });
     });

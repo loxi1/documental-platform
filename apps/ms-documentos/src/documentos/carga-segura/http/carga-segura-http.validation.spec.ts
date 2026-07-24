@@ -198,9 +198,13 @@ describe('carga-segura HTTP validation', () => {
   });
 
   describe('metadata', () => {
-    it('acepta objeto JSON', () => {
-      expect(parseCargaSeguraMetadata('{"origen":"laboratorio"}')).toEqual({
-        origen: 'laboratorio',
+    it('acepta objeto JSON con metadata complementaria', () => {
+      expect(
+        parseCargaSeguraMetadata(
+          '{"comentarioUsuario":"laboratorio"}',
+        ),
+      ).toEqual({
+        comentarioUsuario: 'laboratorio',
       });
     });
 
@@ -210,10 +214,69 @@ describe('carga-segura HTTP validation', () => {
       );
     });
 
-    it('rechaza clave reservada', () => {
-      expect(() => parseCargaSeguraMetadata('{"workspaceId":10}')).toThrow(
-        CargaSeguraHttpValidationError,
-      );
+    it.each([
+      'workspaceId',
+      'empresaCodigo',
+      'clienteDestinoId',
+      'expedienteId',
+      'actorId',
+      'usuarioId',
+      'idempotencyKey',
+      'requestId',
+      'correlationId',
+      'cargaOperacionId',
+      'canalIngreso',
+      'tipoDocumental',
+      'tipoRelacion',
+      'esPrincipal',
+      'nombreArchivo',
+      'contentType',
+      'tamanoBytes',
+      'hashSha256',
+      'storageProvider',
+      'storageBucket',
+      'storageKey',
+      'origen',
+    ])('rechaza la clave canónica reservada %s', (key) => {
+      expect(() =>
+        parseCargaSeguraMetadata(
+          JSON.stringify({
+            [key]: 'valor-controlado',
+          }),
+        ),
+      ).toThrow(CargaSeguraHttpValidationError);
+    });
+
+    it('rechaza una clave reservada dentro de un objeto anidado', () => {
+      expect(() =>
+        parseCargaSeguraMetadata(
+          JSON.stringify({
+            datosAdicionales: {
+              storageKey: 'no-permitido',
+            },
+          }),
+        ),
+      ).toThrow(CargaSeguraHttpValidationError);
+    });
+
+    it('rechaza prototype y constructor como claves reservadas', () => {
+      for (const key of ['prototype', 'constructor']) {
+        expect(() =>
+          parseCargaSeguraMetadata(
+            JSON.stringify({
+              [key]: 'no-permitido',
+            }),
+          ),
+        ).toThrow(CargaSeguraHttpValidationError);
+      }
+    });
+
+    it('rechaza __proto__ cuando proviene de JSON', () => {
+      expect(() =>
+        parseCargaSeguraMetadata(
+          '{"__proto__":{"contaminado":true}}',
+        ),
+      ).toThrow(CargaSeguraHttpValidationError);
     });
 
     it('rechaza profundidad excesiva', () => {

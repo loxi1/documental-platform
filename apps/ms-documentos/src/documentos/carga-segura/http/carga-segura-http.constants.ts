@@ -26,16 +26,28 @@ export const CARGA_SEGURA_HTTP_RESERVED_METADATA_KEYS = new Set([
   'workspaceId',
   'empresaCodigo',
   'clienteDestinoId',
+  'expedienteId',
   'actorId',
   'usuarioId',
-  'storageKey',
-  'storageBucket',
-  'storageProvider',
-  'hashSha256',
   'idempotencyKey',
+  'requestId',
+  'correlationId',
+  'cargaOperacionId',
+  'canalIngreso',
+  'tipoDocumental',
+  'tipoRelacion',
+  'esPrincipal',
+  'nombreArchivo',
+  'contentType',
+  'tamanoBytes',
+  'hashSha256',
+  'storageProvider',
+  'storageBucket',
+  'storageKey',
+  'origen',
 ]);
 
-export const CARGA_SEGURA_HTTP_FILE_FIELDS = ['archivo', 'file'] as const;
+export const CARGA_SEGURA_HTTP_FILE_FIELDS = ['archivo'] as const;
 
 export type CargaSeguraHttpFileField =
   (typeof CARGA_SEGURA_HTTP_FILE_FIELDS)[number];

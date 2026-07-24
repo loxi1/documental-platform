@@ -1000,3 +1000,69 @@ Se solicita al Maestro Intermedio:
 10. emitir aprobación final o nuevas observaciones.
 
 No se solicita autorización de implementación.
+
+---
+
+## Adenda contractual — alineamiento final previo a activación
+
+### Campo multipart canónico
+
+El único campo multipart aceptado para el binario de Carga Segura es:
+
+```text
+archivo
+```
+
+`file` no forma parte del contrato y debe rechazarse.
+
+Esta regla no modifica los endpoints legacy de Carga Guiada.
+
+### Metadata complementaria
+
+`metadata` no puede duplicar, sustituir ni sombrear atributos canónicos.
+
+Claves reservadas:
+
+```text
+__proto__
+prototype
+constructor
+workspaceId
+empresaCodigo
+clienteDestinoId
+expedienteId
+actorId
+usuarioId
+idempotencyKey
+requestId
+correlationId
+cargaOperacionId
+canalIngreso
+tipoDocumental
+tipoRelacion
+esPrincipal
+nombreArchivo
+contentType
+tamanoBytes
+hashSha256
+storageProvider
+storageBucket
+storageKey
+origen
+```
+
+La restricción se aplica recursivamente a objetos anidados.
+
+No se bloquean claves futuras que todavía no formen parte del contrato canónico.
+
+### Mensaje fallback
+
+```text
+No se pudo completar la carga del documento.
+```
+
+### Activación
+
+La activación del feature flag solo puede evaluarse después de incorporar y validar este bloque.
+
+Esta adenda no autoriza migraciones, despliegue, push, merge ni rebase.

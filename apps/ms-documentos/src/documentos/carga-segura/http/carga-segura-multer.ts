@@ -11,10 +11,6 @@ export const CARGA_SEGURA_MULTER_FIELDS = [
     name: 'archivo',
     maxCount: 1,
   },
-  {
-    name: 'file',
-    maxCount: 1,
-  },
 ] as const;
 
 export const CARGA_SEGURA_MULTER_OPTIONS: MulterOptions = {

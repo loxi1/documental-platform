@@ -43,7 +43,7 @@ interface CargaSeguraUploadedFile {
 }
 
 type CargaSeguraUploadedFiles = Partial<
-  Record<'archivo' | 'file', CargaSeguraUploadedFile[]>
+  Record<'archivo', CargaSeguraUploadedFile[]>
 >;
 
 type CargaSeguraMultipartBody = Record<string, unknown>;
@@ -150,27 +150,20 @@ function resolveSingleFile(
   files: CargaSeguraUploadedFiles | undefined,
 ): CargaSeguraUploadedFile {
   const archivo = files?.archivo?.[0];
-  const alias = files?.file?.[0];
 
-  if (archivo && alias) {
-    throw validationError('No se puede enviar archivo y file simultáneamente');
-  }
-
-  const resolved = archivo ?? alias;
-
-  if (!resolved) {
+  if (!archivo) {
     throw validationError('La solicitud debe contener exactamente un archivo');
   }
 
   if (
-    !Buffer.isBuffer(resolved.buffer) ||
-    resolved.size <= 0 ||
-    resolved.size !== resolved.buffer.length
+    !Buffer.isBuffer(archivo.buffer) ||
+    archivo.size <= 0 ||
+    archivo.size !== archivo.buffer.length
   ) {
     throw validationError('El archivo multipart es inválido');
   }
 
-  return resolved;
+  return archivo;
 }
 
 function assertAllowedBodyFields(body: CargaSeguraMultipartBody): void {
