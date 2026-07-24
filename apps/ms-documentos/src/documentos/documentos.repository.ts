@@ -1529,19 +1529,21 @@ export class DocumentosRepository {
     const ocrUpdatedRows = await sql`
       UPDATE documentos.ocr_resultados
       SET
+        expediente_id = ${Number(params.expedienteId)}::bigint,
+        vinculado_en = now(),
         metadata = COALESCE(metadata, '{}'::jsonb)
           || jsonb_build_object(
             'vinculoExpediente',
             jsonb_build_object(
-              'expedienteId', ${params.expedienteId},
-              'documentoId', ${ocr.documento_id},
-              'tipoRelacion', ${params.tipoRelacion},
-              'esPrincipal', ${params.esPrincipal ?? false},
-              'orden', ${params.orden ?? 0},
+              'expedienteId', ${Number(params.expedienteId)}::bigint,
+              'documentoId', ${Number(ocr.documento_id)}::bigint,
+              'tipoRelacion', ${String(params.tipoRelacion)}::text,
+              'esPrincipal', ${Boolean(params.esPrincipal ?? false)}::boolean,
+              'orden', ${Number(params.orden ?? 0)}::int,
               'vinculadoEn', now()
             )
           )
-      WHERE id = ${params.ocrResultadoId}
+      WHERE id = ${Number(params.ocrResultadoId)}::bigint
       RETURNING *
     `;
 
