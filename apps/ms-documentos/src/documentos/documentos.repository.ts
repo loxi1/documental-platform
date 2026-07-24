@@ -573,21 +573,40 @@ export class DocumentosRepository {
       const codigoExpedienteDetectado = String(
         input.metadata?.codigoExpediente ?? metadataActual.codigoExpediente ?? '',
       ).trim();
+      const esPrincipal = input.esPrincipal === true;
+      const advertenciasConfirmacion: Array<Record<string, any>> = [];
 
       if (
         codigoExpedienteDetectado &&
         codigoExpedienteSeleccionado &&
         codigoExpedienteDetectado !== codigoExpedienteSeleccionado
       ) {
-        this.throwDomainError(
-          'CODIGO_EXPEDIENTE_NO_COINCIDE',
-          'El código detectado en el documento no coincide con el expediente seleccionado.',
-          {
-            expedienteId: Number(expediente.id),
-            codigoExpedienteSeleccionado,
-            codigoExpedienteDetectado,
-          },
-        );
+        if (esPrincipal) {
+          this.throwDomainError(
+            'CODIGO_EXPEDIENTE_NO_COINCIDE',
+            'El código detectado en el documento no coincide con el expediente seleccionado.',
+            {
+              expedienteId: Number(expediente.id),
+              codigoExpedienteSeleccionado,
+              codigoExpedienteDetectado,
+            },
+          );
+        }
+
+        advertenciasConfirmacion.push({
+          codigo: 'CODIGO_EXPEDIENTE_NO_COINCIDE',
+          mensaje:
+            'El código detectado por OCR no coincide con el expediente seleccionado. La asociación utilizó el expediente confirmado por el usuario.',
+          codigoExpedienteSeleccionado,
+          codigoExpedienteDetectado,
+        });
+      } else if (!esPrincipal && !codigoExpedienteDetectado) {
+        advertenciasConfirmacion.push({
+          codigo: 'CODIGO_EXPEDIENTE_NO_DETECTADO',
+          mensaje:
+            'El OCR no detectó un código de expediente. La asociación utilizó el expediente confirmado por el usuario.',
+          codigoExpedienteSeleccionado,
+        });
       }
 
       const tipoDocumental = this.normalizarTipoDocumentalConfirmacion(
@@ -620,6 +639,9 @@ export class DocumentosRepository {
         clienteAbreviatura,
         rucComprador: String(expediente.ruc_comprador ?? '').trim(),
         codigoExpediente: String(expediente.codigo_expediente ?? '').trim(),
+        ...(advertenciasConfirmacion.length
+          ? { advertenciasConfirmacion }
+          : {}),
       });
 
       const metadataSourceOverrides: Record<string, string> = {};
@@ -652,7 +674,6 @@ export class DocumentosRepository {
         tipoDocumental,
         input.tipoRelacion,
       );
-      const esPrincipal = input.esPrincipal === true;
       const orden = esPrincipal ? 1 : Number(input.orden ?? 0);
 
       const vinculoDocumentoRows = await tx`
