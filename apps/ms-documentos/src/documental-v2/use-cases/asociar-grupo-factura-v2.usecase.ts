@@ -225,6 +225,32 @@ export class AsociarGrupoFacturaV2UseCase {
       );
     }
 
+    if (factura.estado === 'anulado') {
+      throw new ConflictException(
+        crearError(
+          'Una Factura anulada no puede fundar un Grupo de Factura.',
+          'FACTURA_ANULADA',
+          {
+            facturaDocumentoId,
+            estado: factura.estado,
+          },
+        ),
+      );
+    }
+
+    if (factura.estado !== 'confirmado') {
+      throw new ConflictException(
+        crearError(
+          'La Factura debe estar confirmada antes de crear un Grupo de Factura.',
+          'FACTURA_NO_CONFIRMADA',
+          {
+            facturaDocumentoId,
+            estado: factura.estado,
+          },
+        ),
+      );
+    }
+
     if (factura.clienteAbreviatura !== contenedor.empresaCodigo) {
       throw new ForbiddenException(
         crearError(
