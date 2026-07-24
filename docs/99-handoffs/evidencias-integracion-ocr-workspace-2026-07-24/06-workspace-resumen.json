@@ -1,0 +1,487 @@
+{
+  "success": true,
+  "requestId": "fe19e410-d59c-401f-ac10-4d3689b48e77",
+  "timestamp": "2026-07-24T22:54:15.373Z",
+  "data": {
+    "origen": {
+      "modeloEntrada": "V1",
+      "expedienteId": 17,
+      "modo": "lectura",
+      "adaptador": "V1V2CompatibilityAdapter",
+      "casoUso": "WorkspaceDocumentalV2UseCase"
+    },
+    "compatibilidad": {
+      "origen": {
+        "modelo": "V1",
+        "expedienteId": "17",
+        "modo": "lectura"
+      },
+      "contenedorOperativo": {
+        "empresaCodigo": "BBTI",
+        "clienteDestinoId": 2,
+        "tipoContexto": "expediente_v1",
+        "codigo": "050201",
+        "nombre": "ALMACEN Y LOGISTICA",
+        "descripcion": "ALMACEN Y LOGISTICA",
+        "centroCostoCodigo": null,
+        "ordenProduccionCodigo": null,
+        "proyectoCodigo": null,
+        "estado": "abierto",
+        "metadata": {
+          "fechaCreacion": "2026-07-16",
+          "compatibilidad": {
+            "origen": "V1",
+            "expedienteId": "17",
+            "modo": "lectura"
+          }
+        },
+        "origen": {
+          "modelo": "V1",
+          "expedienteId": "17",
+          "modo": "lectura"
+        },
+        "clienteDestinoNombre": null,
+        "tipoContextoLabel": "Expediente V1",
+        "periodoRevision": null,
+        "fechaCreacion": "2026-07-16"
+      },
+      "documentosOperativosPrincipales": [
+        {
+          "documentoId": 3,
+          "tipoPrincipal": "OC",
+          "esPrincipalActivo": true,
+          "estado": "confirmado",
+          "metadata": {
+            "ocr": {
+              "ok": true,
+              "qr": null,
+              "audit": [
+                {
+                  "fecha": "2026-07-24T22:51:43.787Z",
+                  "accion": "CONFIRMADO_CON_EXPEDIENTE",
+                  "cambios": {
+                    "metadata": {
+                      "moneda": "DOLARES AMERICANOS",
+                      "numero": "007950",
+                      "proveedor": "CORPORACION ACEROS AREQUIPA S.A.",
+                      "cotizacion": "AA510317037-1",
+                      "montoTotal": 4181.92,
+                      "fechaEmision": "2026-04-23",
+                      "rucComprador": "20565747356",
+                      "rucProveedor": "20370146994",
+                      "tipoDocumental": "OC",
+                      "claveDocumental": "BBTI|OC|007950",
+                      "codigoExpediente": "050201",
+                      "clienteAbreviatura": "BBTI"
+                    },
+                    "expedienteId": 17,
+                    "tipoRelacion": "principal_oc",
+                    "tipoPropuesto": "OC"
+                  },
+                  "usuarioId": 1,
+                  "observacion": "Confirmación OCR de OC 007950"
+                }
+              ],
+              "texto": {
+                "length": 4049,
+                "preview": "SEÑOR(ES) : CORPORACION ACEROS AREQUIPA S.A.\n23/04/2026\nFECHA :\nOrden de Compra Nº:007950\nBBTI S.A.C.\nCAL.6 MZA. D LOTE. 13 URB. INDUSTRIAL GRIMAN (ALT. DE LIMA CARGO \nCITY) PROV. CONST. DEL CALLAO - PROV. CONST. DEL CALLAO - CALLAO\n20565747356\nR.U.C.  :\nTELEFONO :\nATENCIÓN :\n20370146994\nCAR. PANAMERICANA SUR NRO. 241 ---- PANAMERICANA SUR ICA - PISCO - PARACAS\nCONDICION DE PAGO : FACTURA NEGOCIABLE 60 DÍAS\nCALLE 6 MZ D LOTE 13 URB. GRIMANEZA CALLAO CALLAO\nLUGAR DE ENTREGA :\nDIRECCIÓN :\nMONEDA :"
+              },
+              "estado": "confirmado",
+              "archivo": {
+                "filename": "00e97d33-9c70-474d-acc8-7cbc08f8f3f2__OC_007950.pdf",
+                "extension": ".pdf",
+                "storageKey": "documentos/2026/07/BBTI/00e97d33-9c70-474d-acc8-7cbc08f8f3f2__OC_007950.pdf",
+                "resolvedPath": "storage/tmp/00e97d33-9c70-474d-acc8-7cbc08f8f3f2__OC_007950.pdf",
+                "storageProvider": "r2"
+              },
+              "mensaje": "Archivo leído, clasificado y extraído correctamente",
+              "metadata": {
+                "moneda": "DOLARES AMERICANOS",
+                "numero": "007950",
+                "proveedor": "CORPORACION ACEROS AREQUIPA S.A.",
+                "cotizacion": "AA510317037-1",
+                "montoTotal": 4181.92,
+                "fechaEmision": "2026-04-23",
+                "rucComprador": "20565747356",
+                "rucProveedor": "20370146994",
+                "tipoDocumental": "OC",
+                "claveDocumental": "BBTI|OC|007950",
+                "codigoExpediente": "050201",
+                "clienteAbreviatura": "BBTI"
+              },
+              "archivoId": 3,
+              "duplicado": null,
+              "confidence": 1,
+              "documentoId": 3,
+              "contextoCarga": {
+                "areaOrigen": "COMPRAS",
+                "canalIngreso": "COMPRAS_NUEVO_UPLOAD_PRINCIPAL",
+                "expedienteId": 16,
+                "tipoEsperado": "OC",
+                "documentoBaseId": null,
+                "codigoExpediente": null,
+                "tipoRelacionSugerida": "principal_oc"
+              },
+              "tipoPropuesto": "OC",
+              "metadataSource": {
+                "moneda": "MANUAL",
+                "numero": "MANUAL",
+                "proveedor": "MANUAL",
+                "cotizacion": "MANUAL",
+                "montoTotal": "MANUAL",
+                "fechaEmision": "MANUAL",
+                "rucComprador": "MANUAL",
+                "rucProveedor": "MANUAL",
+                "tipoDocumental": "MANUAL",
+                "claveDocumental": "MANUAL",
+                "codigoExpediente": "MANUAL",
+                "clienteAbreviatura": "MANUAL"
+              },
+              "tipoDocumental": "OC",
+              "camposFaltantes": [],
+              "claveDocumental": "BBTI|OC|007950",
+              "camposDetectados": [
+                "numero",
+                "fechaEmision",
+                "montoTotal",
+                "proveedor",
+                "rucProveedor",
+                "rucComprador",
+                "moneda",
+                "cotizacion",
+                "codigoExpediente"
+              ],
+              "vinculoExpediente": {
+                "orden": 1,
+                "documentoId": 3,
+                "esPrincipal": true,
+                "vinculadoEn": "2026-07-24T22:32:09.4046+00:00",
+                "expedienteId": 17,
+                "tipoRelacion": "principal_oc"
+              },
+              "clienteAbreviatura": "BBTI",
+              "contextoValidacion": {
+                "origen": "COMPRAS_EDITAR_MODAL",
+                "expedienteId": 17,
+                "confirmadoDesde": "compras_editar",
+                "codigoExpediente": "050201",
+                "tipoRelacionSugerida": "principal_oc"
+              }
+            },
+            "origen": "WEB_ADMIN_CARGA_GUIADA",
+            "filename": "OC_007950.pdf",
+            "hashSha256": "40168afc7951facf10a578d9c040b6e8d14872f98d53192d4511f0c509e635e2",
+            "contentType": "application/pdf",
+            "canalIngreso": "COMPRAS_NUEVO_UPLOAD_PRINCIPAL",
+            "expedienteId": 16,
+            "rucComprador": "20565747356",
+            "tipoRelacion": "principal_oc",
+            "storageProvider": "r2",
+            "codigoExpediente": "050201",
+            "tipoRelacionSugerida": "principal_oc",
+            "compatibilidad": {
+              "origen": "V1",
+              "expedienteId": "17",
+              "documentoId": 3,
+              "tipoDocumental": "OC",
+              "tipoRelacion": "principal_oc",
+              "esPrincipal": true,
+              "orden": 1,
+              "archivoId": 3,
+              "nombreArchivo": "OC_007950.pdf",
+              "storageProvider": "r2",
+              "storageBucket": "data-prod",
+              "storageKey": "documentos/2026/07/BBTI/00e97d33-9c70-474d-acc8-7cbc08f8f3f2__OC_007950.pdf",
+              "documentoV1": {
+                "documentoId": 3,
+                "tipoDocumental": "OC",
+                "tipoRelacion": "principal_oc",
+                "esPrincipal": true,
+                "orden": 1,
+                "rucEmisor": "20370146994",
+                "razonSocialEmisor": "CORPORACION ACEROS AREQUIPA S.A.",
+                "serie": null,
+                "numero": "007950",
+                "claveDocumental": "BBTI|OC|007950",
+                "estado": "confirmado",
+                "fechaEmision": "2026-04-23",
+                "moneda": "DOLARES AMERICANOS",
+                "montoTotal": "4181.92",
+                "archivoId": 3,
+                "nombreArchivo": "OC_007950.pdf",
+                "storageProvider": "r2",
+                "storageBucket": "data-prod",
+                "storageKey": "documentos/2026/07/BBTI/00e97d33-9c70-474d-acc8-7cbc08f8f3f2__OC_007950.pdf",
+                "archivoEstado": "subido",
+                "areaOrigen": "COMPRAS"
+              }
+            }
+          },
+          "origen": {
+            "modelo": "V1",
+            "expedienteId": "17",
+            "modo": "lectura",
+            "tipoRelacionV1": "principal_oc",
+            "esPrincipalV1": true
+          },
+          "numeroDocumento": "007950",
+          "titulo": "OC 007950",
+          "proveedorNombre": "CORPORACION ACEROS AREQUIPA S.A.",
+          "proveedorRuc": "20370146994",
+          "fechaEmision": "2026-04-23",
+          "montoTotal": 4181.92,
+          "moneda": "USD",
+          "nombreArchivo": "OC_007950.pdf",
+          "tipoDocumentalLabel": "Orden de compra"
+        }
+      ],
+      "gruposFactura": [],
+      "adjuntosNoClasificados": [],
+      "advertencias": [
+        "EXPEDIENTE_V1_SIN_FACTURA"
+      ]
+    },
+    "contenedorOperativo": {
+      "estadoPersistencia": "no_persistido",
+      "vista": {
+        "empresaCodigo": "BBTI",
+        "clienteDestinoId": 2,
+        "tipoContexto": "expediente_v1",
+        "codigo": "050201",
+        "nombre": "ALMACEN Y LOGISTICA",
+        "descripcion": "ALMACEN Y LOGISTICA",
+        "centroCostoCodigo": null,
+        "ordenProduccionCodigo": null,
+        "proyectoCodigo": null,
+        "estado": "abierto",
+        "metadata": {
+          "fechaCreacion": "2026-07-16",
+          "compatibilidad": {
+            "origen": "V1",
+            "expedienteId": "17",
+            "modo": "lectura"
+          }
+        },
+        "origen": {
+          "modelo": "V1",
+          "expedienteId": "17",
+          "modo": "lectura"
+        },
+        "clienteDestinoNombre": null,
+        "tipoContextoLabel": "Expediente V1",
+        "periodoRevision": null,
+        "fechaCreacion": "2026-07-16"
+      },
+      "persistido": null
+    },
+    "documentosOperativosPrincipales": [
+      {
+        "estadoPersistencia": "no_persistido",
+        "vista": {
+          "documentoId": 3,
+          "tipoPrincipal": "OC",
+          "esPrincipalActivo": true,
+          "estado": "confirmado",
+          "metadata": {
+            "ocr": {
+              "ok": true,
+              "qr": null,
+              "audit": [
+                {
+                  "fecha": "2026-07-24T22:51:43.787Z",
+                  "accion": "CONFIRMADO_CON_EXPEDIENTE",
+                  "cambios": {
+                    "metadata": {
+                      "moneda": "DOLARES AMERICANOS",
+                      "numero": "007950",
+                      "proveedor": "CORPORACION ACEROS AREQUIPA S.A.",
+                      "cotizacion": "AA510317037-1",
+                      "montoTotal": 4181.92,
+                      "fechaEmision": "2026-04-23",
+                      "rucComprador": "20565747356",
+                      "rucProveedor": "20370146994",
+                      "tipoDocumental": "OC",
+                      "claveDocumental": "BBTI|OC|007950",
+                      "codigoExpediente": "050201",
+                      "clienteAbreviatura": "BBTI"
+                    },
+                    "expedienteId": 17,
+                    "tipoRelacion": "principal_oc",
+                    "tipoPropuesto": "OC"
+                  },
+                  "usuarioId": 1,
+                  "observacion": "Confirmación OCR de OC 007950"
+                }
+              ],
+              "texto": {
+                "length": 4049,
+                "preview": "SEÑOR(ES) : CORPORACION ACEROS AREQUIPA S.A.\n23/04/2026\nFECHA :\nOrden de Compra Nº:007950\nBBTI S.A.C.\nCAL.6 MZA. D LOTE. 13 URB. INDUSTRIAL GRIMAN (ALT. DE LIMA CARGO \nCITY) PROV. CONST. DEL CALLAO - PROV. CONST. DEL CALLAO - CALLAO\n20565747356\nR.U.C.  :\nTELEFONO :\nATENCIÓN :\n20370146994\nCAR. PANAMERICANA SUR NRO. 241 ---- PANAMERICANA SUR ICA - PISCO - PARACAS\nCONDICION DE PAGO : FACTURA NEGOCIABLE 60 DÍAS\nCALLE 6 MZ D LOTE 13 URB. GRIMANEZA CALLAO CALLAO\nLUGAR DE ENTREGA :\nDIRECCIÓN :\nMONEDA :"
+              },
+              "estado": "confirmado",
+              "archivo": {
+                "filename": "00e97d33-9c70-474d-acc8-7cbc08f8f3f2__OC_007950.pdf",
+                "extension": ".pdf",
+                "storageKey": "documentos/2026/07/BBTI/00e97d33-9c70-474d-acc8-7cbc08f8f3f2__OC_007950.pdf",
+                "resolvedPath": "storage/tmp/00e97d33-9c70-474d-acc8-7cbc08f8f3f2__OC_007950.pdf",
+                "storageProvider": "r2"
+              },
+              "mensaje": "Archivo leído, clasificado y extraído correctamente",
+              "metadata": {
+                "moneda": "DOLARES AMERICANOS",
+                "numero": "007950",
+                "proveedor": "CORPORACION ACEROS AREQUIPA S.A.",
+                "cotizacion": "AA510317037-1",
+                "montoTotal": 4181.92,
+                "fechaEmision": "2026-04-23",
+                "rucComprador": "20565747356",
+                "rucProveedor": "20370146994",
+                "tipoDocumental": "OC",
+                "claveDocumental": "BBTI|OC|007950",
+                "codigoExpediente": "050201",
+                "clienteAbreviatura": "BBTI"
+              },
+              "archivoId": 3,
+              "duplicado": null,
+              "confidence": 1,
+              "documentoId": 3,
+              "contextoCarga": {
+                "areaOrigen": "COMPRAS",
+                "canalIngreso": "COMPRAS_NUEVO_UPLOAD_PRINCIPAL",
+                "expedienteId": 16,
+                "tipoEsperado": "OC",
+                "documentoBaseId": null,
+                "codigoExpediente": null,
+                "tipoRelacionSugerida": "principal_oc"
+              },
+              "tipoPropuesto": "OC",
+              "metadataSource": {
+                "moneda": "MANUAL",
+                "numero": "MANUAL",
+                "proveedor": "MANUAL",
+                "cotizacion": "MANUAL",
+                "montoTotal": "MANUAL",
+                "fechaEmision": "MANUAL",
+                "rucComprador": "MANUAL",
+                "rucProveedor": "MANUAL",
+                "tipoDocumental": "MANUAL",
+                "claveDocumental": "MANUAL",
+                "codigoExpediente": "MANUAL",
+                "clienteAbreviatura": "MANUAL"
+              },
+              "tipoDocumental": "OC",
+              "camposFaltantes": [],
+              "claveDocumental": "BBTI|OC|007950",
+              "camposDetectados": [
+                "numero",
+                "fechaEmision",
+                "montoTotal",
+                "proveedor",
+                "rucProveedor",
+                "rucComprador",
+                "moneda",
+                "cotizacion",
+                "codigoExpediente"
+              ],
+              "vinculoExpediente": {
+                "orden": 1,
+                "documentoId": 3,
+                "esPrincipal": true,
+                "vinculadoEn": "2026-07-24T22:32:09.4046+00:00",
+                "expedienteId": 17,
+                "tipoRelacion": "principal_oc"
+              },
+              "clienteAbreviatura": "BBTI",
+              "contextoValidacion": {
+                "origen": "COMPRAS_EDITAR_MODAL",
+                "expedienteId": 17,
+                "confirmadoDesde": "compras_editar",
+                "codigoExpediente": "050201",
+                "tipoRelacionSugerida": "principal_oc"
+              }
+            },
+            "origen": "WEB_ADMIN_CARGA_GUIADA",
+            "filename": "OC_007950.pdf",
+            "hashSha256": "40168afc7951facf10a578d9c040b6e8d14872f98d53192d4511f0c509e635e2",
+            "contentType": "application/pdf",
+            "canalIngreso": "COMPRAS_NUEVO_UPLOAD_PRINCIPAL",
+            "expedienteId": 16,
+            "rucComprador": "20565747356",
+            "tipoRelacion": "principal_oc",
+            "storageProvider": "r2",
+            "codigoExpediente": "050201",
+            "tipoRelacionSugerida": "principal_oc",
+            "compatibilidad": {
+              "origen": "V1",
+              "expedienteId": "17",
+              "documentoId": 3,
+              "tipoDocumental": "OC",
+              "tipoRelacion": "principal_oc",
+              "esPrincipal": true,
+              "orden": 1,
+              "archivoId": 3,
+              "nombreArchivo": "OC_007950.pdf",
+              "storageProvider": "r2",
+              "storageBucket": "data-prod",
+              "storageKey": "documentos/2026/07/BBTI/00e97d33-9c70-474d-acc8-7cbc08f8f3f2__OC_007950.pdf",
+              "documentoV1": {
+                "documentoId": 3,
+                "tipoDocumental": "OC",
+                "tipoRelacion": "principal_oc",
+                "esPrincipal": true,
+                "orden": 1,
+                "rucEmisor": "20370146994",
+                "razonSocialEmisor": "CORPORACION ACEROS AREQUIPA S.A.",
+                "serie": null,
+                "numero": "007950",
+                "claveDocumental": "BBTI|OC|007950",
+                "estado": "confirmado",
+                "fechaEmision": "2026-04-23",
+                "moneda": "DOLARES AMERICANOS",
+                "montoTotal": "4181.92",
+                "archivoId": 3,
+                "nombreArchivo": "OC_007950.pdf",
+                "storageProvider": "r2",
+                "storageBucket": "data-prod",
+                "storageKey": "documentos/2026/07/BBTI/00e97d33-9c70-474d-acc8-7cbc08f8f3f2__OC_007950.pdf",
+                "archivoEstado": "subido",
+                "areaOrigen": "COMPRAS"
+              }
+            }
+          },
+          "origen": {
+            "modelo": "V1",
+            "expedienteId": "17",
+            "modo": "lectura",
+            "tipoRelacionV1": "principal_oc",
+            "esPrincipalV1": true
+          },
+          "numeroDocumento": "007950",
+          "titulo": "OC 007950",
+          "proveedorNombre": "CORPORACION ACEROS AREQUIPA S.A.",
+          "proveedorRuc": "20370146994",
+          "fechaEmision": "2026-04-23",
+          "montoTotal": 4181.92,
+          "moneda": "USD",
+          "nombreArchivo": "OC_007950.pdf",
+          "tipoDocumentalLabel": "Orden de compra"
+        },
+        "persistido": null
+      }
+    ],
+    "gruposFactura": [],
+    "adjuntosNoClasificados": [],
+    "advertencias": [
+      "EXPEDIENTE_V1_SIN_FACTURA"
+    ],
+    "resumen": {
+      "documentosOperativosPrincipales": 1,
+      "documentosOperativosPrincipalesPersistidos": 0,
+      "gruposFactura": 0,
+      "gruposFacturaPersistidos": 0,
+      "documentosGrupoFactura": 0,
+      "documentosGrupoFacturaPersistidos": 0,
+      "adjuntosNoClasificados": 0,
+      "advertencias": 1
+    }
+  }
+}

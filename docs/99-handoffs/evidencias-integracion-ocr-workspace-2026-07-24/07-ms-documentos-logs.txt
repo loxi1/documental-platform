@@ -1,0 +1,7 @@
+{"level":30,"time":"2026-07-24T22:51:43.771Z","service":"Documental Platform","requestId":"6c63d386-4b15-4f5d-ac85-d57a809e7c7d","method":"GET","path":"/api/v1/documentos/ocr-resultados/3","statusCode":200,"durationMs":1}
+{"level":30,"time":"2026-07-24T22:51:43.775Z","service":"Documental Platform","requestId":"6c63d386-4b15-4f5d-ac85-d57a809e7c7d","method":"GET","path":"/api/v1/expedientes/17","statusCode":200,"durationMs":2}
+{"level":30,"time":"2026-07-24T22:51:43.797Z","service":"Documental Platform","requestId":"6c63d386-4b15-4f5d-ac85-d57a809e7c7d","method":"POST","path":"/api/v1/documentos/ocr-resultados/3/confirmar-con-expediente","statusCode":201,"durationMs":18}
+{"level":30,"time":"2026-07-24T22:54:08.930Z","service":"Documental Platform","requestId":"c26a9e83-a35b-4c0d-aa0c-13d790ac8d2b","method":"GET","path":"/api/v1/documentos/ocr-resultados?cliente=BBTI","statusCode":200,"durationMs":3}
+{"level":30,"time":"2026-07-24T22:54:15.372Z","service":"Documental Platform","requestId":"fe19e410-d59c-401f-ac10-4d3689b48e77","method":"GET","path":"/api/v1/documental-v2/workspace/expedientes-v1/17","statusCode":200,"durationMs":7}
+{"level":30,"time":"2026-07-24T23:02:22.787Z","service":"Documental Platform","requestId":"eab82346-1d27-4f25-927c-8fd316a5372f","method":"GET","path":"/api/v1/health","statusCode":200,"durationMs":10}
+{"level":30,"time":"2026-07-24T23:02:22.795Z","service":"Documental Platform","requestId":"df7a1ed7-0817-481f-b2f9-46d0a89da0b6","method":"GET","path":"/api/v1/ready","statusCode":200,"durationMs":17}

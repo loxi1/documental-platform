@@ -1,0 +1,45 @@
+=== TESTS MS-DOCUMENTOS ===
+$ jest --runInBand
+PASS src/documentos/documentos.service.spec.ts
+PASS src/documentos/documentos.controller.spec.ts
+PASS src/app.controller.spec.ts
+PASS src/documentos/carga-segura/carga-segura.service.spec.ts
+PASS src/documentos/carga-segura/http/carga-segura.controller.spec.ts
+PASS src/documental-v2/documental-v2.controller.spec.ts
+PASS src/documentos/carga-segura/http/carga-segura-http.validation.spec.ts
+PASS src/documental-v2/grupo-factura-documento.service.spec.ts
+PASS src/documentos/carga-segura/carga-segura.repository.spec.ts
+PASS src/documentos/carga-segura/http/carga-segura-http.mapper.spec.ts
+PASS src/documentos/carga-segura/carga-segura.storage.spec.ts
+PASS src/documental-v2/use-cases/workspace-documental-v2.usecase.spec.ts
+PASS src/documentos/carga-segura/carga-segura.persistence.spec.ts
+PASS src/documental-v2/use-cases/asociar-grupo-factura-v2.usecase.spec.ts
+PASS src/documental-v2/grupo-factura.repository.spec.ts
+PASS src/documental-v2/contenedor-operativo.repository.spec.ts
+PASS src/documentos/carga-segura/carga-segura.compensation.spec.ts
+PASS src/documental-v2/use-cases/materializar-contexto-operativo-v2.usecase.spec.ts
+PASS src/documental-v2/adapters/v1-documental-readonly.repository.spec.ts
+PASS src/documental-v2/documento-operativo-principal.repository.spec.ts
+PASS src/documental-v2/use-cases/consultar-trazabilidad-v2.usecase.spec.ts
+PASS src/documental-v2/adapters/v1-v2-compatibility.adapter.spec.ts
+PASS src/documental-v2/trazabilidad-v2.projection.mapper.spec.ts
+PASS src/documental-v2/documento-operativo-principal.service.spec.ts
+PASS src/documental-v2/contenedor-operativo.service.spec.ts
+PASS src/documental-v2/grupo-factura.service.spec.ts
+PASS src/documental-v2/mappers/workspace-documental-v2-view.mapper.spec.ts
+PASS src/documental-v2/mappers/documento-visual.mapper.spec.ts
+PASS src/documental-v2/auditoria-operativa-v2.repository.spec.ts
+PASS src/documental-v2/trazabilidad-v2.repository.spec.ts
+PASS src/documental-v2/grupo-factura-documento.repository.spec.ts
+PASS src/documentos/carga-segura/carga-segura.fingerprint.spec.ts
+
+Test Suites: 32 passed, 32 total
+Tests:       182 passed, 182 total
+Snapshots:   0 total
+Time:        3.082 s
+Ran all test suites.
+
+=== BUILD MS-DOCUMENTOS ===
+$ nest build
+
+=== DIFF CHECK ===

@@ -1,0 +1,4 @@
+HEALTH HTTP 200
+{"success":true,"requestId":"eab82346-1d27-4f25-927c-8fd316a5372f","timestamp":"2026-07-24T23:02:22.787Z","data":{"service":"ms-documentos","status":"ok","checks":{"postgres":"up","nats":"up"}}}
+READY HTTP 200
+{"success":true,"requestId":"df7a1ed7-0817-481f-b2f9-46d0a89da0b6","timestamp":"2026-07-24T23:02:22.795Z","data":{"service":"ms-documentos","status":"ok","checks":{"postgres":"up","nats":"up"}}}

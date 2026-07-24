@@ -1,0 +1,15 @@
+{
+  "success": false,
+  "requestId": "1e3fee25-9b92-42e2-8087-3f5fd6d5cc06",
+  "timestamp": "2026-07-24T23:02:45.053Z",
+  "path": "/api/v1/documental-v2/workspace/expedientes-v1/17",
+  "error": {
+    "code": "UNAUTHORIZED",
+    "message": "Token requerido",
+    "details": {
+      "message": "Token requerido",
+      "error": "Unauthorized",
+      "statusCode": 401
+    }
+  }
+}
