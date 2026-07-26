@@ -24,6 +24,7 @@ import { TrazabilidadV2Repository } from './trazabilidad-v2.repository';
 import { TrazabilidadV2ProjectionMapper } from './trazabilidad-v2.projection.mapper';
 import { ConsultarTrazabilidadV2UseCase } from './use-cases/consultar-trazabilidad-v2.usecase';
 import { MaterializarContextoOperativoV2UseCase } from './use-cases/materializar-contexto-operativo-v2.usecase';
+import { AnularContenedorOperativoV2UseCase } from './use-cases/anular-contenedor-operativo-v2.usecase';
 
 @Module({
   controllers: [DocumentalV2Controller],
@@ -50,7 +51,7 @@ import { MaterializarContextoOperativoV2UseCase } from './use-cases/materializar
     TrazabilidadV2ProjectionMapper,
     ConsultarTrazabilidadV2UseCase,
     MaterializarContextoOperativoV2UseCase,
-    MaterializarContextoOperativoV2UseCase,
+    AnularContenedorOperativoV2UseCase,
   ],
   exports: [
     ContenedorOperativoRepository,

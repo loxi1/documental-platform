@@ -69,6 +69,15 @@ export class DocumentalV2GatewayController {
       ...(clienteDestinoId
         ? { 'x-cliente-destino-id': String(clienteDestinoId) }
         : {}),
+      ...(payload?.sessionContextId
+        ? { 'x-session-context-id': String(payload.sessionContextId) }
+        : {}),
+      ...(payload?.sistema
+        ? { 'x-sistema-codigo': String(payload.sistema) }
+        : {}),
+      ...(payload?.perfil
+        ? { 'x-perfil-codigo': String(payload.perfil) }
+        : {}),
     };
   }
 
@@ -115,6 +124,16 @@ export class DocumentalV2GatewayController {
     if (!actions.includes('documentos.vincular_expediente')) {
       throw new ForbiddenException(
         'No tienes permiso para materializar Contexto Operativo',
+      );
+    }
+  }
+
+  private assertPuedeAnularContenedorOperativo(payload: any) {
+    const actions = this.getWorkspaceActions(payload);
+
+    if (!actions.includes('documental_v2.contenedores.anular')) {
+      throw new ForbiddenException(
+        'No tienes permiso para anular Contenedores Operativos V2',
       );
     }
   }
@@ -349,6 +368,42 @@ export class DocumentalV2GatewayController {
       const response = await axios.post(
         `${this.getBaseUrl()}/documental-v2/workspace/expedientes-v1/${expedienteId}/materializar-contenedor`,
         {},
+        {
+          headers: this.buildDocumentosForwardHeaders(
+            authorization,
+            requestId,
+            contexto,
+          ),
+        },
+      );
+
+      return this.unwrap(response);
+    } catch (error: any) {
+      this.throwUpstreamHttpException(error);
+    }
+  }
+
+
+  @ApiOperation({
+    summary: 'Anular lógicamente un Contenedor Operativo V2',
+  })
+  @ApiParam({ name: 'id', example: 4 })
+  @Post('contenedores-operativos/:id/anular')
+  async anularContenedorOperativo(
+    @Headers('authorization') authorization: string | undefined,
+    @Headers(REQUEST_ID_HEADER) requestId: string | undefined,
+    @Param('id') id: string,
+    @Body() body: any,
+  ) {
+    const contexto = await this.validateAuthorization(authorization);
+    this.assertPuedeAnularContenedorOperativo(contexto);
+
+    const motivo = String(body?.motivo ?? '').trim();
+
+    try {
+      const response = await axios.post(
+        `${this.getBaseUrl()}/documental-v2/contenedores/${id}/anular`,
+        { motivo },
         {
           headers: this.buildDocumentosForwardHeaders(
             authorization,

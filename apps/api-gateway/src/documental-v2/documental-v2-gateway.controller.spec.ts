@@ -624,4 +624,159 @@ describe('DocumentalV2GatewayController', () => {
     ).rejects.toMatchObject({ status: 404 });
   });
 
+
+  it('permite anular un Contenedor Operativo con permiso específico', async () => {
+    const contexto = {
+      sub: 1,
+      email: 'admin@documental.local',
+      workspaceId: 1,
+      empresa: 'BBTI',
+      clienteDestinoId: 2,
+      sessionContextId: 'bc8faa7a-ff31-4fd9-9014-86c92db3c3fa',
+      sistema: 'DOCUMENTAL',
+      perfil: 'admin',
+      permisos: {
+        actions: ['documental_v2.contenedores.anular'],
+      },
+    };
+
+    const { controller } = buildController(contexto);
+
+    (axios.post as jest.Mock).mockResolvedValue({
+      data: {
+        contenedorOperativo: {
+          id: 4,
+          estado: 'anulado',
+          motivoAnulacion: 'Motivo controlado',
+        },
+        idempotente: false,
+        workspaceDebeRefrescar: true,
+      },
+    });
+
+    const result = await controller.anularContenedorOperativo(
+      'Bearer token-controlado',
+      'b2ea3424-91c9-45d3-b12c-1f0fac78e6c6',
+      '4',
+      {
+        motivo: 'Motivo controlado',
+        usuarioId: 999,
+        empresaCodigo: 'OTRA',
+      },
+    );
+
+    expect(axios.post).toHaveBeenCalledWith(
+      expect.stringContaining(
+        '/documental-v2/contenedores/4/anular',
+      ),
+      {
+        motivo: 'Motivo controlado',
+      },
+      {
+        headers: expect.objectContaining({
+          authorization: 'Bearer token-controlado',
+          'x-user-id': '1',
+          'x-user-email': 'admin@documental.local',
+          'x-workspace-id': '1',
+          'x-empresa-codigo': 'BBTI',
+          'x-cliente-destino-id': '2',
+          'x-session-context-id':
+            'bc8faa7a-ff31-4fd9-9014-86c92db3c3fa',
+          'x-sistema-codigo': 'DOCUMENTAL',
+          'x-perfil-codigo': 'admin',
+          'x-request-id':
+            'b2ea3424-91c9-45d3-b12c-1f0fac78e6c6',
+        }),
+      },
+    );
+
+    expect(result).toEqual({
+      contenedorOperativo: {
+        id: 4,
+        estado: 'anulado',
+        motivoAnulacion: 'Motivo controlado',
+      },
+      idempotente: false,
+      workspaceDebeRefrescar: true,
+    });
+  });
+
+  it('rechaza la anulación sin el permiso específico aunque el perfil sea admin', async () => {
+    const { controller } = buildController({
+      sub: 1,
+      email: 'admin@documental.local',
+      workspaceId: 1,
+      empresa: 'BBTI',
+      clienteDestinoId: 2,
+      sessionContextId: 'bc8faa7a-ff31-4fd9-9014-86c92db3c3fa',
+      sistema: 'DOCUMENTAL',
+      perfil: 'admin',
+      permisos: {
+        actions: ['documentos.vincular_expediente'],
+      },
+    });
+
+    await expect(
+      controller.anularContenedorOperativo(
+        'Bearer token-sin-permiso',
+        'request-sin-permiso',
+        '4',
+        {
+          motivo: 'Motivo controlado',
+        },
+      ),
+    ).rejects.toThrow(
+      'No tienes permiso para anular Contenedores Operativos V2',
+    );
+
+    expect(axios.post).not.toHaveBeenCalled();
+  });
+
+  it('propaga la respuesta idempotente del servicio documental', async () => {
+    const { controller } = buildController({
+      sub: 1,
+      email: 'admin@documental.local',
+      workspaceId: 1,
+      empresa: 'BBTI',
+      clienteDestinoId: 2,
+      sessionContextId: 'bc8faa7a-ff31-4fd9-9014-86c92db3c3fa',
+      sistema: 'DOCUMENTAL',
+      perfil: 'admin',
+      permisos: {
+        actions: ['documental_v2.contenedores.anular'],
+      },
+    });
+
+    (axios.post as jest.Mock).mockResolvedValue({
+      data: {
+        contenedorOperativo: {
+          id: 4,
+          estado: 'anulado',
+          motivoAnulacion: 'Motivo original',
+        },
+        idempotente: true,
+        workspaceDebeRefrescar: false,
+      },
+    });
+
+    await expect(
+      controller.anularContenedorOperativo(
+        'Bearer token-controlado',
+        'request-idempotente',
+        '4',
+        {
+          motivo: 'Motivo distinto',
+        },
+      ),
+    ).resolves.toEqual({
+      contenedorOperativo: {
+        id: 4,
+        estado: 'anulado',
+        motivoAnulacion: 'Motivo original',
+      },
+      idempotente: true,
+      workspaceDebeRefrescar: false,
+    });
+  });
+
 });

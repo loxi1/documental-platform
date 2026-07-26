@@ -47,6 +47,10 @@ describe('DocumentalV2Controller', () => {
     execute: jest.fn(),
   };
 
+  const anularContenedorOperativoV2UseCase = {
+    execute: jest.fn(),
+  };
+
   const asociarDocumentoPrincipalV2UseCase = {
     execute: jest.fn(),
   };
@@ -80,6 +84,7 @@ describe('DocumentalV2Controller', () => {
       grupoFacturaDocumentos as any,
       workspaceDocumentalV2 as any,
       materializarContextoOperativoV2UseCase as any,
+      anularContenedorOperativoV2UseCase as any,
       asociarDocumentoPrincipalV2UseCase as any,
       asociarGrupoFacturaV2UseCase as any,
       asociarDocumentoGrupoFacturaV2UseCase as any,
@@ -418,4 +423,54 @@ describe('DocumentalV2Controller', () => {
 
     expect(workspaceDocumentalV2.construirDesdeExpedienteV1).toHaveBeenCalledWith(41);
   });
+
+  it('propaga contexto autenticado al anular un Contenedor Operativo V2', async () => {
+    const esperado = {
+      contenedorOperativo: {
+        id: 4,
+        estado: 'anulado',
+        motivoAnulacion: 'Motivo controlado',
+      },
+      idempotente: false,
+      workspaceDebeRefrescar: true,
+    };
+
+    anularContenedorOperativoV2UseCase.execute.mockResolvedValue(esperado);
+
+    await expect(
+      controller.anularContenedor(
+        4,
+        { motivo: 'Motivo controlado' },
+        '1',
+        'admin@documental.local',
+        '1',
+        'BBTI',
+        '2',
+        'bc8faa7a-ff31-4fd9-9014-86c92db3c3fa',
+        'DOCUMENTAL',
+        'admin',
+        'b2ea3424-91c9-45d3-b12c-1f0fac78e6c6',
+        'b2ea3424-91c9-45d3-b12c-1f0fac78e6c6',
+      ),
+    ).resolves.toBe(esperado);
+
+    expect(anularContenedorOperativoV2UseCase.execute).toHaveBeenCalledWith({
+      contenedorOperativoId: 4,
+      motivo: 'Motivo controlado',
+      usuario: {
+        id: 1,
+        email: 'admin@documental.local',
+        workspaceId: 1,
+        empresaCodigo: 'BBTI',
+        clienteDestinoId: 2,
+        sessionContextId: 'bc8faa7a-ff31-4fd9-9014-86c92db3c3fa',
+        sistemaCodigo: 'DOCUMENTAL',
+        perfilCodigo: 'admin',
+        requestId: 'b2ea3424-91c9-45d3-b12c-1f0fac78e6c6',
+        correlationId: 'b2ea3424-91c9-45d3-b12c-1f0fac78e6c6',
+        origen: 'api-gateway',
+      },
+    });
+  });
+
 });

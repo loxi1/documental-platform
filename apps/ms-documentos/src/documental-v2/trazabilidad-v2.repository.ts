@@ -2,6 +2,8 @@ import { Injectable } from '@nestjs/common';
 import { sql } from '@documental/database';
 
 export type TrazabilidadAuditoriaAccionV2 =
+  | 'MATERIALIZAR_CONTEXTO_OPERATIVO'
+  | 'ANULAR_CONTENEDOR_OPERATIVO'
   | 'ASOCIAR_DOCUMENTO_PRINCIPAL'
   | 'GRUPO_FACTURA_CREADO'
   | 'DOCUMENTO_GRUPO_FACTURA_ASOCIADO';
@@ -51,11 +53,30 @@ export class TrazabilidadV2Repository {
           FROM core.auditoria_eventos
           WHERE modulo = 'documental-v2'
             AND accion IN (
+              'MATERIALIZAR_CONTEXTO_OPERATIVO',
+              'ANULAR_CONTENEDOR_OPERATIVO',
               'ASOCIAR_DOCUMENTO_PRINCIPAL',
               'GRUPO_FACTURA_CREADO',
               'DOCUMENTO_GRUPO_FACTURA_ASOCIADO'
             )
-            AND despues ->> 'contenedorOperativoId' = ${contenedorOperativoId}
+            AND (
+              (
+                entidad = 'contenedor_operativo'
+                AND entidad_id = ${contenedorOperativoId}
+                AND accion IN (
+                  'MATERIALIZAR_CONTEXTO_OPERATIVO',
+                  'ANULAR_CONTENEDOR_OPERATIVO'
+                )
+              )
+              OR (
+                despues ->> 'contenedorOperativoId' = ${contenedorOperativoId}
+                AND accion IN (
+                  'ASOCIAR_DOCUMENTO_PRINCIPAL',
+                  'GRUPO_FACTURA_CREADO',
+                  'DOCUMENTO_GRUPO_FACTURA_ASOCIADO'
+                )
+              )
+            )
             AND empresa_codigo = ${input.empresaCodigo}
           ORDER BY creado_en DESC, id DESC
         `
@@ -76,11 +97,30 @@ export class TrazabilidadV2Repository {
           FROM core.auditoria_eventos
           WHERE modulo = 'documental-v2'
             AND accion IN (
+              'MATERIALIZAR_CONTEXTO_OPERATIVO',
+              'ANULAR_CONTENEDOR_OPERATIVO',
               'ASOCIAR_DOCUMENTO_PRINCIPAL',
               'GRUPO_FACTURA_CREADO',
               'DOCUMENTO_GRUPO_FACTURA_ASOCIADO'
             )
-            AND despues ->> 'contenedorOperativoId' = ${contenedorOperativoId}
+            AND (
+              (
+                entidad = 'contenedor_operativo'
+                AND entidad_id = ${contenedorOperativoId}
+                AND accion IN (
+                  'MATERIALIZAR_CONTEXTO_OPERATIVO',
+                  'ANULAR_CONTENEDOR_OPERATIVO'
+                )
+              )
+              OR (
+                despues ->> 'contenedorOperativoId' = ${contenedorOperativoId}
+                AND accion IN (
+                  'ASOCIAR_DOCUMENTO_PRINCIPAL',
+                  'GRUPO_FACTURA_CREADO',
+                  'DOCUMENTO_GRUPO_FACTURA_ASOCIADO'
+                )
+              )
+            )
           ORDER BY creado_en DESC, id DESC
         `;
 
