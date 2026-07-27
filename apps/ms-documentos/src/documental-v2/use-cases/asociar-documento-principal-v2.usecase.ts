@@ -121,7 +121,7 @@ export class AsociarDocumentoPrincipalV2UseCase {
       );
     }
 
-    const existente = await this.principales.buscarPorDocumentoId(input.documentoId);
+    const existente = await this.principales.buscarActivoPorDocumentoId(input.documentoId);
 
     if (existente) {
       if (
@@ -152,26 +152,64 @@ export class AsociarDocumentoPrincipalV2UseCase {
       );
     }
 
-    const creado = await this.principales.crear({
-      contenedorOperativoId: input.contenedorOperativoId,
-      documentoId: input.documentoId,
-      tipoPrincipal,
-      esPrincipalActivo: true,
-      estado: 'activo',
-      metadata: {
-        origen: 'OPERACION_DOCUMENTAL_V2',
-        sprint: '2.0A',
-        accion: 'ASOCIAR_DOCUMENTO_PRINCIPAL',
-        usuario: input.usuario ?? null,
-        contexto: {
-          contenedorOperativoId: input.contenedorOperativoId,
-          empresaCodigo: contenedor.empresaCodigo,
-          tipoContexto: contenedor.tipoContexto,
-          codigo: contenedor.codigo,
+    const principalesHistoricosIds =
+      await this.principales.listarHistoricosPorDocumentoId(input.documentoId);
+
+    let creado: DocumentoOperativoPrincipalRow;
+    try {
+      creado = await this.principales.crear({
+        contenedorOperativoId: input.contenedorOperativoId,
+        documentoId: input.documentoId,
+        tipoPrincipal,
+        esPrincipalActivo: true,
+        estado: 'activo',
+        metadata: {
+          origen: 'OPERACION_DOCUMENTAL_V2',
+          sprint: '2.0A',
+          accion: 'ASOCIAR_DOCUMENTO_PRINCIPAL',
+          resultadoOperacion:
+            principalesHistoricosIds.length > 0 ? 'RECREADO' : 'CREADO',
+          principalesHistoricosIds,
+          usuario: input.usuario ?? null,
+          contexto: {
+            contenedorOperativoId: input.contenedorOperativoId,
+            empresaCodigo: contenedor.empresaCodigo,
+            tipoContexto: contenedor.tipoContexto,
+            codigo: contenedor.codigo,
+          },
         },
-      },
-      creadoPor: input.usuario?.id ?? null,
-    });
+        creadoPor: input.usuario?.id ?? null,
+      });
+    } catch (error: any) {
+      if (error?.code !== '23505') throw error;
+
+      const recuperado = await this.principales.buscarActivoPorDocumentoId(
+        input.documentoId,
+      );
+
+      if (
+        recuperado &&
+        Number(recuperado.contenedorOperativoId) ===
+          Number(input.contenedorOperativoId) &&
+        recuperado.tipoPrincipal === tipoPrincipal
+      ) {
+        return {
+          documentoOperativoPrincipal: this.enriquecerVista(
+            recuperado,
+            documento,
+          ),
+          idempotente: true,
+          workspaceDebeRefrescar: false,
+        };
+      }
+
+      throw new ConflictException(
+        crearError(
+          'Documento ya es principal en otro contexto',
+          'DOCUMENTO_YA_ES_PRINCIPAL_EN_OTRO_CONTEXTO',
+        ),
+      );
+    }
 
     await this.auditoria.registrarCreacion({
       accion: 'ASOCIAR_DOCUMENTO_PRINCIPAL',
@@ -185,6 +223,8 @@ export class AsociarDocumentoPrincipalV2UseCase {
         documentoOperativoPrincipalId: creado.id,
         documentoId: input.documentoId,
         tipoPrincipal,
+        principalesHistoricosIds,
+        recreacion: principalesHistoricosIds.length > 0,
         empresaCodigo: contenedor.empresaCodigo,
         tipoContexto: contenedor.tipoContexto,
         codigo: contenedor.codigo,

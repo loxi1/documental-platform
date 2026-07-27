@@ -16,6 +16,8 @@ describe('AsociarGrupoFacturaV2UseCase', () => {
 
   const gruposFactura = {
     buscarPorFacturaDocumentoId: jest.fn(),
+    buscarVigentePorFacturaDocumentoId: jest.fn(),
+    listarHistoricosPorFacturaDocumentoId: jest.fn().mockResolvedValue([]),
     crear: jest.fn(),
     actualizar: jest.fn(),
   };
@@ -72,7 +74,7 @@ describe('AsociarGrupoFacturaV2UseCase', () => {
 
     principales.buscarPorId.mockResolvedValue(principalActivo);
     contenedores.buscarPorId.mockResolvedValue(contenedorActivo);
-    gruposFactura.buscarPorFacturaDocumentoId.mockResolvedValue(null);
+    gruposFactura.buscarVigentePorFacturaDocumentoId.mockResolvedValue(null);
     gruposFactura.crear.mockResolvedValue({
       id: 20,
       documentoOperativoPrincipalId: 3,

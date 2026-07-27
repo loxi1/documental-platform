@@ -51,6 +51,7 @@ describe('ContenedorOperativoRepository', () => {
       id: 10,
       empresaCodigo: 'BBTI',
       clienteDestinoId: 2,
+      expedienteV1Id: 16,
       tipoContexto: 'expediente_v1',
       codigo: '0501',
       estado: 'activo',
@@ -62,6 +63,7 @@ describe('ContenedorOperativoRepository', () => {
     const result = await repository.crearSiNoExistePorClave({
       empresaCodigo: 'BBTI',
       clienteDestinoId: 2,
+      expedienteV1Id: 16,
       tipoContexto: 'expediente_v1',
       codigo: '0501',
       nombre: 'COSTOS DE PRODUCCION',
@@ -84,6 +86,7 @@ describe('ContenedorOperativoRepository', () => {
     const result = await repository.crearSiNoExistePorClave({
       empresaCodigo: 'BBTI',
       clienteDestinoId: 2,
+      expedienteV1Id: 16,
       tipoContexto: 'expediente_v1',
       codigo: '0501',
       metadata: {},
@@ -93,4 +96,42 @@ describe('ContenedorOperativoRepository', () => {
     expect(sqlMock).toHaveBeenCalledTimes(1);
     expect(result).toBeNull();
   });
+
+  it('busca un contenedor expediente_v1 activo por identidad semántica', async () => {
+    const row = {
+      id: 10,
+      empresaCodigo: 'BBTI',
+      clienteDestinoId: 2,
+      expedienteV1Id: 16,
+      tipoContexto: 'expediente_v1',
+      codigo: '0501',
+      estado: 'activo',
+      metadata: {},
+    };
+    sqlMock.mockResolvedValueOnce([row]);
+
+    const repository = new ContenedorOperativoRepository();
+    const result = await repository.buscarExpedienteV1Activo({
+      empresaCodigo: 'BBTI',
+      clienteDestinoId: 2,
+      expedienteV1Id: 16,
+    });
+
+    expect(sqlMock).toHaveBeenCalledTimes(1);
+    expect(result).toBe(row);
+  });
+
+  it('lista ids históricos anulados de la misma identidad expediente_v1', async () => {
+    sqlMock.mockResolvedValueOnce([{ id: 4 }, { id: 8 }]);
+
+    const repository = new ContenedorOperativoRepository();
+    const result = await repository.listarHistoricosExpedienteV1({
+      empresaCodigo: 'BBTI',
+      clienteDestinoId: 2,
+      expedienteV1Id: 16,
+    });
+
+    expect(result).toEqual([4, 8]);
+  });
+
 });

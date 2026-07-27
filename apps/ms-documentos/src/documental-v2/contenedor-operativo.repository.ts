@@ -15,6 +15,7 @@ export class ContenedorOperativoRepository {
       INSERT INTO documentos.contenedores_operativos (
         empresa_codigo,
         cliente_destino_id,
+        expediente_v1_id,
         tipo_contexto,
         codigo,
         nombre,
@@ -29,6 +30,7 @@ export class ContenedorOperativoRepository {
       VALUES (
         ${input.empresaCodigo}::text,
         ${input.clienteDestinoId ?? null}::bigint,
+        ${input.expedienteV1Id ?? null}::bigint,
         ${input.tipoContexto}::text,
         ${input.codigo}::text,
         ${input.nombre ?? null}::text,
@@ -44,6 +46,7 @@ export class ContenedorOperativoRepository {
         id,
         empresa_codigo AS "empresaCodigo",
         cliente_destino_id AS "clienteDestinoId",
+        expediente_v1_id AS "expedienteV1Id",
         tipo_contexto AS "tipoContexto",
         codigo,
         nombre,
@@ -70,6 +73,7 @@ export class ContenedorOperativoRepository {
       INSERT INTO documentos.contenedores_operativos (
         empresa_codigo,
         cliente_destino_id,
+        expediente_v1_id,
         tipo_contexto,
         codigo,
         nombre,
@@ -84,6 +88,7 @@ export class ContenedorOperativoRepository {
       VALUES (
         ${input.empresaCodigo}::text,
         ${input.clienteDestinoId ?? null}::bigint,
+        ${input.expedienteV1Id ?? null}::bigint,
         ${input.tipoContexto}::text,
         ${input.codigo}::text,
         ${input.nombre ?? null}::text,
@@ -95,12 +100,12 @@ export class ContenedorOperativoRepository {
         ${JSON.stringify(input.metadata ?? {})}::jsonb,
         ${input.creadoPor ?? null}::bigint
       )
-      ON CONFLICT ON CONSTRAINT uq_contenedor_operativo_empresa_tipo_codigo
-      DO NOTHING
+      ON CONFLICT DO NOTHING
       RETURNING
         id,
         empresa_codigo AS "empresaCodigo",
         cliente_destino_id AS "clienteDestinoId",
+        expediente_v1_id AS "expedienteV1Id",
         tipo_contexto AS "tipoContexto",
         codigo,
         nombre,
@@ -128,6 +133,7 @@ export class ContenedorOperativoRepository {
         id,
         empresa_codigo AS "empresaCodigo",
         cliente_destino_id AS "clienteDestinoId",
+        expediente_v1_id AS "expedienteV1Id",
         tipo_contexto AS "tipoContexto",
         codigo,
         nombre,
@@ -162,6 +168,7 @@ export class ContenedorOperativoRepository {
         id,
         empresa_codigo AS "empresaCodigo",
         cliente_destino_id AS "clienteDestinoId",
+        expediente_v1_id AS "expedienteV1Id",
         tipo_contexto AS "tipoContexto",
         codigo,
         nombre,
@@ -188,6 +195,65 @@ export class ContenedorOperativoRepository {
     return (rows[0] as unknown as ContenedorOperativoRow | undefined) ?? null;
   }
 
+  async buscarExpedienteV1Activo(params: {
+    empresaCodigo: string;
+    clienteDestinoId: number;
+    expedienteV1Id: number;
+  }): Promise<ContenedorOperativoRow | null> {
+    const rows = await sql`
+      SELECT
+        id,
+        empresa_codigo AS "empresaCodigo",
+        cliente_destino_id AS "clienteDestinoId",
+        expediente_v1_id AS "expedienteV1Id",
+        tipo_contexto AS "tipoContexto",
+        codigo,
+        nombre,
+        descripcion,
+        centro_costo_codigo AS "centroCostoCodigo",
+        orden_produccion_codigo AS "ordenProduccionCodigo",
+        proyecto_codigo AS "proyectoCodigo",
+        estado,
+        metadata,
+        creado_por AS "creadoPor",
+        creado_en AS "creadoEn",
+        actualizado_por AS "actualizadoPor",
+        actualizado_en AS "actualizadoEn",
+        anulado_por AS "anuladoPor",
+        anulado_en AS "anuladoEn",
+        motivo_anulacion AS "motivoAnulacion"
+      FROM documentos.contenedores_operativos
+      WHERE empresa_codigo = ${params.empresaCodigo}::text
+        AND cliente_destino_id = ${params.clienteDestinoId}::bigint
+        AND tipo_contexto = 'expediente_v1'
+        AND expediente_v1_id = ${params.expedienteV1Id}::bigint
+        AND estado = 'activo'
+      ORDER BY id DESC
+      LIMIT 1
+    `;
+
+    return (rows[0] as unknown as ContenedorOperativoRow | undefined) ?? null;
+  }
+
+  async listarHistoricosExpedienteV1(params: {
+    empresaCodigo: string;
+    clienteDestinoId: number;
+    expedienteV1Id: number;
+  }): Promise<number[]> {
+    const rows = await sql`
+      SELECT id
+      FROM documentos.contenedores_operativos
+      WHERE empresa_codigo = ${params.empresaCodigo}::text
+        AND cliente_destino_id = ${params.clienteDestinoId}::bigint
+        AND tipo_contexto = 'expediente_v1'
+        AND expediente_v1_id = ${params.expedienteV1Id}::bigint
+        AND estado = 'anulado'
+      ORDER BY creado_en ASC, id ASC
+    `;
+
+    return rows.map((row: any) => Number(row.id));
+  }
+
   async listar(filtro: BuscarContenedoresOperativosFiltro = {}): Promise<{
     items: ContenedorOperativoRow[];
     total: number;
@@ -204,6 +270,7 @@ export class ContenedorOperativoRepository {
         id,
         empresa_codigo AS "empresaCodigo",
         cliente_destino_id AS "clienteDestinoId",
+        expediente_v1_id AS "expedienteV1Id",
         tipo_contexto AS "tipoContexto",
         codigo,
         nombre,
@@ -283,6 +350,7 @@ export class ContenedorOperativoRepository {
         id,
         empresa_codigo AS "empresaCodigo",
         cliente_destino_id AS "clienteDestinoId",
+        expediente_v1_id AS "expedienteV1Id",
         tipo_contexto AS "tipoContexto",
         codigo,
         nombre,
@@ -319,6 +387,7 @@ export class ContenedorOperativoRepository {
         id,
         empresa_codigo AS "empresaCodigo",
         cliente_destino_id AS "clienteDestinoId",
+        expediente_v1_id AS "expedienteV1Id",
         tipo_contexto AS "tipoContexto",
         codigo,
         nombre,

@@ -260,7 +260,7 @@ export class AsociarGrupoFacturaV2UseCase {
       );
     }
 
-    const existente = await this.gruposFactura.buscarPorFacturaDocumentoId(facturaDocumentoId);
+    const existente = await this.gruposFactura.buscarVigentePorFacturaDocumentoId(facturaDocumentoId);
     if (existente) {
       if (
         existente.estado !== 'anulado' &&
@@ -282,20 +282,59 @@ export class AsociarGrupoFacturaV2UseCase {
       );
     }
 
+    const gruposHistoricosIds =
+      await this.gruposFactura.listarHistoricosPorFacturaDocumentoId(
+        facturaDocumentoId,
+      );
+
     const metadataCreacion = this.buildMetadataCreacion({
       principal,
       contenedor,
       factura,
       usuario: input.usuario,
+      gruposHistoricosIds,
     });
 
-    const creadoInicial = await this.gruposFactura.crear({
-      documentoOperativoPrincipalId,
-      facturaDocumentoId,
-      estado: ESTADO_GRUPO_FACTURA_INICIAL,
-      metadata: metadataCreacion,
-      creadoPor: input.usuario?.id ?? null,
-    });
+    let creadoInicial: GrupoFacturaRow;
+    try {
+      creadoInicial = await this.gruposFactura.crear({
+        documentoOperativoPrincipalId,
+        facturaDocumentoId,
+        estado: ESTADO_GRUPO_FACTURA_INICIAL,
+        metadata: metadataCreacion,
+        creadoPor: input.usuario?.id ?? null,
+      });
+    } catch (error: any) {
+      if (error?.code !== '23505') throw error;
+
+      const recuperado =
+        await this.gruposFactura.buscarVigentePorFacturaDocumentoId(
+          facturaDocumentoId,
+        );
+
+      if (
+        recuperado &&
+        Number(recuperado.documentoOperativoPrincipalId) ===
+          documentoOperativoPrincipalId
+      ) {
+        return {
+          grupoFactura: this.enriquecerVista(recuperado, principal, factura),
+          idempotente: true,
+          workspaceDebeRefrescar: false,
+        };
+      }
+
+      throw new ConflictException(
+        crearError(
+          'La factura ya pertenece a otro Grupo de Factura vigente',
+          'FACTURA_YA_TIENE_GRUPO_ACTIVO',
+          {
+            facturaDocumentoId,
+            grupoFacturaId: recuperado?.id ?? null,
+          },
+        ),
+      );
+    }
 
     const metadataFinal = this.completarMetadataEntidad(metadataCreacion, Number(creadoInicial.id));
     const creado =
@@ -317,6 +356,8 @@ export class AsociarGrupoFacturaV2UseCase {
         documentoOperativoPrincipalId,
         grupoFacturaId: creado.id,
         facturaDocumentoId,
+        gruposHistoricosIds,
+        recreacion: gruposHistoricosIds.length > 0,
         documentoOperativoPrincipalDocumentoId: principal.documentoId,
         empresaCodigo: contenedor.empresaCodigo,
         estado: creado.estado,
@@ -383,6 +424,7 @@ export class AsociarGrupoFacturaV2UseCase {
     contenedor: ContenedorOperativoRow;
     factura: DocumentoExistenteV2;
     usuario?: ContextoAutenticadoV2;
+    gruposHistoricosIds: number[];
   }): JsonObject {
     return {
       tipoOperacion: 'GRUPO_FACTURA_CREADO',
@@ -392,6 +434,9 @@ export class AsociarGrupoFacturaV2UseCase {
       entidad: 'grupo_factura',
       origen: 'OPERACION_DOCUMENTAL_V2',
       sprint: '2.0B',
+      resultadoOperacion:
+        input.gruposHistoricosIds.length > 0 ? 'RECREADO' : 'CREADO',
+      gruposHistoricosIds: input.gruposHistoricosIds,
       usuario: input.usuario ?? null,
       contexto: {
         contenedorOperativoId: input.contenedor.id,

@@ -23,6 +23,7 @@ describe('MaterializarContextoOperativoV2UseCase', () => {
     id: 10,
     empresaCodigo: 'BBTI',
     clienteDestinoId: 2,
+    expedienteV1Id: 16,
     tipoContexto: 'expediente_v1',
     codigo: '0501',
     nombre: 'COSTOS DE PRODUCCION',
@@ -58,7 +59,8 @@ describe('MaterializarContextoOperativoV2UseCase', () => {
     };
 
     const contenedores = {
-      buscarPorClave: jest.fn(),
+      buscarExpedienteV1Activo: jest.fn(),
+      listarHistoricosExpedienteV1: jest.fn().mockResolvedValue([]),
       crearSiNoExistePorClave: jest.fn(),
     };
 
@@ -82,20 +84,21 @@ describe('MaterializarContextoOperativoV2UseCase', () => {
       expediente: expedienteBase,
       documentos: [],
     });
-    contenedores.buscarPorClave.mockResolvedValueOnce(null);
+    contenedores.buscarExpedienteV1Activo.mockResolvedValueOnce(null);
     contenedores.crearSiNoExistePorClave.mockResolvedValueOnce(contenedorBase);
 
     const result = await useCase.execute({ expedienteId: 16, usuario });
 
-    expect(contenedores.buscarPorClave).toHaveBeenCalledWith({
+    expect(contenedores.buscarExpedienteV1Activo).toHaveBeenCalledWith({
       empresaCodigo: 'BBTI',
-      tipoContexto: 'expediente_v1',
-      codigo: '0501',
+      clienteDestinoId: 2,
+      expedienteV1Id: 16,
     });
     expect(contenedores.crearSiNoExistePorClave).toHaveBeenCalledWith(
       expect.objectContaining({
         empresaCodigo: 'BBTI',
         clienteDestinoId: 2,
+        expedienteV1Id: 16,
         tipoContexto: 'expediente_v1',
         codigo: '0501',
         estado: 'activo',
@@ -124,7 +127,7 @@ describe('MaterializarContextoOperativoV2UseCase', () => {
       expediente: expedienteBase,
       documentos: [],
     });
-    contenedores.buscarPorClave.mockResolvedValueOnce(contenedorBase);
+    contenedores.buscarExpedienteV1Activo.mockResolvedValueOnce(contenedorBase);
 
     const result = await useCase.execute({ expedienteId: 16, usuario });
 
@@ -141,12 +144,12 @@ describe('MaterializarContextoOperativoV2UseCase', () => {
       expediente: expedienteBase,
       documentos: [],
     });
-    contenedores.buscarPorClave.mockResolvedValueOnce(null).mockResolvedValueOnce(contenedorBase);
+    contenedores.buscarExpedienteV1Activo.mockResolvedValueOnce(null).mockResolvedValueOnce(contenedorBase);
     contenedores.crearSiNoExistePorClave.mockResolvedValueOnce(null);
 
     const result = await useCase.execute({ expedienteId: 16, usuario });
 
-    expect(contenedores.buscarPorClave).toHaveBeenCalledTimes(2);
+    expect(contenedores.buscarExpedienteV1Activo).toHaveBeenCalledTimes(2);
     expect(auditoria.registrarCreacion).not.toHaveBeenCalled();
     expect(result.idempotente).toBe(true);
     expect(result.workspaceDebeRefrescar).toBe(true);
@@ -174,18 +177,30 @@ describe('MaterializarContextoOperativoV2UseCase', () => {
       ForbiddenException,
     );
   });
-
-  it('rechaza si el contenedor existente no está activo', async () => {
-    const { useCase, expedientesV1, contenedores } = buildUseCase();
+  it('audita recreación cuando existen contenedores históricos anulados', async () => {
+    const { useCase, expedientesV1, contenedores, auditoria } = buildUseCase();
 
     expedientesV1.obtenerExpedienteConDocumentos.mockResolvedValue({
       expediente: expedienteBase,
       documentos: [],
     });
-    contenedores.buscarPorClave.mockResolvedValueOnce({ ...contenedorBase, estado: 'anulado' });
+    contenedores.buscarExpedienteV1Activo.mockResolvedValueOnce(null);
+    contenedores.crearSiNoExistePorClave.mockResolvedValueOnce(contenedorBase);
+    contenedores.listarHistoricosExpedienteV1.mockResolvedValueOnce([4, 8]);
 
-    await expect(useCase.execute({ expedienteId: 16, usuario })).rejects.toBeInstanceOf(
-      ConflictException,
+    await useCase.execute({ expedienteId: 16, usuario });
+
+    expect(auditoria.registrarCreacion).toHaveBeenCalledWith(
+      expect.objectContaining({
+        despues: expect.objectContaining({
+          expedienteId: 16,
+          expedienteV1Id: 16,
+          contenedorOperativoId: 10,
+          contenedoresHistoricosIds: [4, 8],
+          recreacion: true,
+        }),
+      }),
     );
   });
+
 });

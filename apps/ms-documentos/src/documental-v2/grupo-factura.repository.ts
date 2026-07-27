@@ -89,6 +89,47 @@ export class GrupoFacturaRepository {
     return (rows[0] as unknown as GrupoFacturaRow | undefined) ?? null;
   }
 
+  async buscarVigentePorFacturaDocumentoId(
+    facturaDocumentoId: number,
+  ): Promise<GrupoFacturaRow | null> {
+    const rows = await sql`
+      SELECT
+        id,
+        documento_operativo_principal_id AS "documentoOperativoPrincipalId",
+        factura_documento_id AS "facturaDocumentoId",
+        estado,
+        metadata,
+        creado_por AS "creadoPor",
+        creado_en AS "creadoEn",
+        actualizado_por AS "actualizadoPor",
+        actualizado_en AS "actualizadoEn",
+        anulado_por AS "anuladoPor",
+        anulado_en AS "anuladoEn",
+        motivo_anulacion AS "motivoAnulacion"
+      FROM documentos.grupos_factura
+      WHERE factura_documento_id = ${facturaDocumentoId}::bigint
+        AND estado <> 'anulado'
+      ORDER BY creado_en DESC, id DESC
+      LIMIT 1
+    `;
+
+    return (rows[0] as unknown as GrupoFacturaRow | undefined) ?? null;
+  }
+
+  async listarHistoricosPorFacturaDocumentoId(
+    facturaDocumentoId: number,
+  ): Promise<number[]> {
+    const rows = await sql`
+      SELECT id
+      FROM documentos.grupos_factura
+      WHERE factura_documento_id = ${facturaDocumentoId}::bigint
+        AND estado = 'anulado'
+      ORDER BY creado_en ASC, id ASC
+    `;
+
+    return rows.map((row: any) => Number(row.id));
+  }
+
   async listarPorDocumentoOperativoPrincipal(documentoOperativoPrincipalId: number): Promise<GrupoFacturaRow[]> {
     const rows = await sql`
       SELECT

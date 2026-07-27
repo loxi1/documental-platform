@@ -45,4 +45,32 @@ describe('DocumentoOperativoPrincipalRepository', () => {
     expect(sqlMock).toHaveBeenCalledTimes(1);
     expect(result).toEqual([]);
   });
+
+  it('busca únicamente la relación principal activa por documento', async () => {
+    const row = {
+      id: 21,
+      contenedorOperativoId: 10,
+      documentoId: 3,
+      tipoPrincipal: 'OC',
+      esPrincipalActivo: true,
+      estado: 'activo',
+      metadata: {},
+    };
+    sqlMock.mockResolvedValueOnce([row]);
+
+    const repository = new DocumentoOperativoPrincipalRepository();
+    const result = await repository.buscarActivoPorDocumentoId(3);
+
+    expect(sqlMock).toHaveBeenCalledTimes(1);
+    expect(result).toBe(row);
+  });
+
+  it('lista ids históricos anulados del principal por documento', async () => {
+    sqlMock.mockResolvedValueOnce([{ id: 7 }, { id: 12 }]);
+
+    const repository = new DocumentoOperativoPrincipalRepository();
+    const result = await repository.listarHistoricosPorDocumentoId(3);
+
+    expect(result).toEqual([7, 12]);
+  });
 });

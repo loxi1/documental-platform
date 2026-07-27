@@ -97,6 +97,18 @@ export class GrupoFacturaDocumentoRepository {
 
 
 
+  async listarHistoricosPorDocumentoId(documentoId: number): Promise<number[]> {
+    const rows = await sql`
+      SELECT id
+      FROM documentos.grupo_factura_documentos
+      WHERE documento_id = ${documentoId}::bigint
+        AND estado = 'anulado'
+      ORDER BY creado_en ASC, id ASC
+    `;
+
+    return rows.map((row: any) => Number(row.id));
+  }
+
   async buscarActivoPorGrupoDocumentoRelacion(params: {
     grupoFacturaId: number;
     documentoId: number;

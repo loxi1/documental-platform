@@ -99,6 +99,47 @@ export class DocumentoOperativoPrincipalRepository {
     return (rows[0] as unknown as DocumentoOperativoPrincipalRow | undefined) ?? null;
   }
 
+  async buscarActivoPorDocumentoId(
+    documentoId: number,
+  ): Promise<DocumentoOperativoPrincipalRow | null> {
+    const rows = await sql`
+      SELECT
+        id,
+        contenedor_operativo_id AS "contenedorOperativoId",
+        documento_id AS "documentoId",
+        tipo_principal AS "tipoPrincipal",
+        es_principal_activo AS "esPrincipalActivo",
+        estado,
+        metadata,
+        creado_por AS "creadoPor",
+        creado_en AS "creadoEn",
+        actualizado_por AS "actualizadoPor",
+        actualizado_en AS "actualizadoEn",
+        anulado_por AS "anuladoPor",
+        anulado_en AS "anuladoEn",
+        motivo_anulacion AS "motivoAnulacion"
+      FROM documentos.documentos_operativos_principales
+      WHERE documento_id = ${documentoId}::bigint
+        AND estado = 'activo'
+      ORDER BY creado_en DESC, id DESC
+      LIMIT 1
+    `;
+
+    return (rows[0] as unknown as DocumentoOperativoPrincipalRow | undefined) ?? null;
+  }
+
+  async listarHistoricosPorDocumentoId(documentoId: number): Promise<number[]> {
+    const rows = await sql`
+      SELECT id
+      FROM documentos.documentos_operativos_principales
+      WHERE documento_id = ${documentoId}::bigint
+        AND estado = 'anulado'
+      ORDER BY creado_en ASC, id ASC
+    `;
+
+    return rows.map((row: any) => Number(row.id));
+  }
+
   async listarPorContenedor(contenedorOperativoId: number): Promise<DocumentoOperativoPrincipalRow[]> {
     const rows = await sql`
       SELECT

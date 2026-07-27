@@ -175,13 +175,15 @@ export class MaterializarContextoOperativoV2UseCase {
       );
     }
 
-    const clave = {
+    const identidadExpedienteV1 = {
       empresaCodigo: empresaExpediente,
-      tipoContexto: TIPO_CONTEXTO_EXPEDIENTE_V1,
-      codigo: codigoExpediente,
+      clienteDestinoId: clienteDestinoIdExpediente,
+      expedienteV1Id: expedienteId,
     };
 
-    const existente = await this.contenedores.buscarPorClave(clave);
+    const existente = await this.contenedores.buscarExpedienteV1Activo(
+      identidadExpedienteV1,
+    );
 
     if (existente) {
       return this.responderExistente(expedienteId, existente, clienteDestinoIdExpediente);
@@ -190,6 +192,7 @@ export class MaterializarContextoOperativoV2UseCase {
     const creado = await this.contenedores.crearSiNoExistePorClave({
       empresaCodigo: empresaExpediente,
       clienteDestinoId: clienteDestinoIdExpediente,
+      expedienteV1Id: expedienteId,
       tipoContexto: TIPO_CONTEXTO_EXPEDIENTE_V1,
       codigo: codigoExpediente,
       nombre: expediente.descripcion ?? null,
@@ -206,20 +209,27 @@ export class MaterializarContextoOperativoV2UseCase {
     });
 
     if (!creado) {
-      const recuperado = await this.contenedores.buscarPorClave(clave);
+      const recuperado = await this.contenedores.buscarExpedienteV1Activo(
+        identidadExpedienteV1,
+      );
 
       if (!recuperado) {
         throw new ConflictException(
           crearError(
             'No se pudo recuperar el contexto operativo después del conflicto concurrente',
             'CONTEXTO_OPERATIVO_CONFLICTO_NO_RECUPERADO',
-            { expedienteId, clave },
+            { expedienteId, identidadExpedienteV1 },
           ),
         );
       }
 
       return this.responderExistente(expedienteId, recuperado, clienteDestinoIdExpediente);
     }
+
+    const contenedoresHistoricosIds =
+      await this.contenedores.listarHistoricosExpedienteV1(
+        identidadExpedienteV1,
+      );
 
     await this.auditoria.registrarCreacion({
       accion: 'MATERIALIZAR_CONTEXTO_OPERATIVO',
@@ -230,7 +240,10 @@ export class MaterializarContextoOperativoV2UseCase {
       usuario: input.usuario,
       despues: {
         expedienteId,
+        expedienteV1Id: creado.expedienteV1Id,
         contenedorOperativoId: creado.id,
+        contenedoresHistoricosIds,
+        recreacion: contenedoresHistoricosIds.length > 0,
         empresaCodigo: creado.empresaCodigo,
         clienteDestinoId: creado.clienteDestinoId,
         tipoContexto: creado.tipoContexto,
