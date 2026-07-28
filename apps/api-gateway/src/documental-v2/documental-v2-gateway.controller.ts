@@ -548,6 +548,102 @@ export class DocumentalV2GatewayController {
   }
 
   @ApiOperation({
+    summary: 'Anular Documento Operativo Principal V2',
+  })
+  @ApiParam({ name: 'id', example: 1 })
+  @Post('documentos-operativos-principales/:id/anular')
+  async anularDocumentoOperativoPrincipal(
+    @Param('id') id: string,
+    @Body() body: any = {},
+    @Headers('authorization') authorization?: string,
+    @Headers(REQUEST_ID_HEADER) requestId?: string,
+  ) {
+    const contexto = await this.validateAuthorization(authorization);
+
+    try {
+      const response = await axios.post(
+        `${this.getBaseUrl()}/documental-v2/documentos-operativos-principales/${Number(id)}/anular`,
+        body,
+        {
+          headers: this.buildDocumentosForwardHeaders(
+            authorization,
+            requestId,
+            contexto,
+          ),
+        },
+      );
+
+      return this.unwrap(response);
+    } catch (error: any) {
+      this.throwUpstreamHttpException(error);
+    }
+  }
+
+  @ApiOperation({
+    summary: 'Anular Grupo de Factura V2',
+  })
+  @ApiParam({ name: 'id', example: 1 })
+  @Post('grupos-factura/:id/anular')
+  async anularGrupoFactura(
+    @Param('id') id: string,
+    @Body() body: any = {},
+    @Headers('authorization') authorization?: string,
+    @Headers(REQUEST_ID_HEADER) requestId?: string,
+  ) {
+    const contexto = await this.validateAuthorization(authorization);
+
+    try {
+      const response = await axios.post(
+        `${this.getBaseUrl()}/documental-v2/grupos-factura/${Number(id)}/anular`,
+        body,
+        {
+          headers: this.buildDocumentosForwardHeaders(
+            authorization,
+            requestId,
+            contexto,
+          ),
+        },
+      );
+
+      return this.unwrap(response);
+    } catch (error: any) {
+      this.throwUpstreamHttpException(error);
+    }
+  }
+
+  @ApiOperation({
+    summary: 'Anular vínculo de documento con Grupo de Factura V2',
+  })
+  @ApiParam({ name: 'id', example: 1 })
+  @Post('grupo-factura-documentos/:id/anular')
+  async anularGrupoFacturaDocumento(
+    @Param('id') id: string,
+    @Body() body: any = {},
+    @Headers('authorization') authorization?: string,
+    @Headers(REQUEST_ID_HEADER) requestId?: string,
+  ) {
+    const contexto = await this.validateAuthorization(authorization);
+
+    try {
+      const response = await axios.post(
+        `${this.getBaseUrl()}/documental-v2/grupo-factura-documentos/${Number(id)}/anular`,
+        body,
+        {
+          headers: this.buildDocumentosForwardHeaders(
+            authorization,
+            requestId,
+            contexto,
+          ),
+        },
+      );
+
+      return this.unwrap(response);
+    } catch (error: any) {
+      this.throwUpstreamHttpException(error);
+    }
+  }
+
+  @ApiOperation({
     summary:
       'Obtener Workspace Documental V2 interno desde Expediente V1 vía API Gateway',
   })

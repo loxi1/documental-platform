@@ -779,4 +779,151 @@ describe('DocumentalV2GatewayController', () => {
     });
   });
 
+
+  it('expone anulación de Documento Operativo Principal por proxy controlado', async () => {
+    const { controller, nats } = buildController({
+      sub: 1,
+      email: 'admin@documental.local',
+      workspaceId: 1,
+    });
+
+    const body = {
+      usuarioId: 1,
+      motivo: 'Corrección de documento principal',
+    };
+
+    const respuesta = {
+      id: 21,
+      documentoId: 3727,
+      estado: 'anulado',
+      esPrincipalActivo: false,
+    };
+
+    (axios.post as jest.Mock).mockResolvedValueOnce({
+      data: respuesta,
+    });
+
+    const result = await controller.anularDocumentoOperativoPrincipal(
+      '21',
+      body,
+      'Bearer token-valido',
+      'req-anular-principal-1',
+    );
+
+    expect(nats.send).toHaveBeenCalledWith('auth.validate-token', {
+      token: 'token-valido',
+    });
+
+    expect(axios.post).toHaveBeenCalledWith(
+      'http://ms-documentos:3002/api/v1/documental-v2/documentos-operativos-principales/21/anular',
+      body,
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          authorization: 'Bearer token-valido',
+          'x-request-id': 'req-anular-principal-1',
+          'x-correlation-id': 'req-anular-principal-1',
+        }),
+      }),
+    );
+
+    expect(result).toEqual(respuesta);
+  });
+
+  it('expone anulación de Grupo de Factura por proxy controlado', async () => {
+    const { controller, nats } = buildController({
+      sub: 1,
+      email: 'admin@documental.local',
+      workspaceId: 1,
+    });
+
+    const body = {
+      usuarioId: 1,
+      motivo: 'Factura asociada incorrectamente',
+    };
+
+    const respuesta = {
+      id: 31,
+      facturaDocumentoId: 910001,
+      estado: 'anulado',
+    };
+
+    (axios.post as jest.Mock).mockResolvedValueOnce({
+      data: respuesta,
+    });
+
+    const result = await controller.anularGrupoFactura(
+      '31',
+      body,
+      'Bearer token-valido',
+      'req-anular-grupo-1',
+    );
+
+    expect(nats.send).toHaveBeenCalledWith('auth.validate-token', {
+      token: 'token-valido',
+    });
+
+    expect(axios.post).toHaveBeenCalledWith(
+      'http://ms-documentos:3002/api/v1/documental-v2/grupos-factura/31/anular',
+      body,
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          authorization: 'Bearer token-valido',
+          'x-request-id': 'req-anular-grupo-1',
+          'x-correlation-id': 'req-anular-grupo-1',
+        }),
+      }),
+    );
+
+    expect(result).toEqual(respuesta);
+  });
+
+  it('expone anulación de documento asociado por proxy controlado', async () => {
+    const { controller, nats } = buildController({
+      sub: 1,
+      email: 'admin@documental.local',
+      workspaceId: 1,
+    });
+
+    const body = {
+      usuarioId: 1,
+      motivo: 'Adjunto vinculado al grupo equivocado',
+    };
+
+    const respuesta = {
+      id: 41,
+      grupoFacturaId: 31,
+      documentoId: 910007,
+      estado: 'anulado',
+    };
+
+    (axios.post as jest.Mock).mockResolvedValueOnce({
+      data: respuesta,
+    });
+
+    const result = await controller.anularGrupoFacturaDocumento(
+      '41',
+      body,
+      'Bearer token-valido',
+      'req-anular-documento-1',
+    );
+
+    expect(nats.send).toHaveBeenCalledWith('auth.validate-token', {
+      token: 'token-valido',
+    });
+
+    expect(axios.post).toHaveBeenCalledWith(
+      'http://ms-documentos:3002/api/v1/documental-v2/grupo-factura-documentos/41/anular',
+      body,
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          authorization: 'Bearer token-valido',
+          'x-request-id': 'req-anular-documento-1',
+          'x-correlation-id': 'req-anular-documento-1',
+        }),
+      }),
+    );
+
+    expect(result).toEqual(respuesta);
+  });
+
 });
