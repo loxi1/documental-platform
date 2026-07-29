@@ -1,11 +1,7 @@
 import { Layers3 } from "lucide-react";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import type {
-  AsociarDocumentoGrupoFacturaV2Result,
-  AsociarDocumentoPrincipalV2Result,
-  WorkspaceDocumentalV2 as WorkspaceDocumentalV2Type,
-} from "@/types/documental-v2-workspace";
+import type { WorkspaceDocumentalV2 as WorkspaceDocumentalV2Type } from "@/types/documental-v2-workspace";
 import { AdjuntosList } from "./AdjuntosList";
 import { ContextoOperativoCard } from "./ContextoOperativoCard";
 import { DocumentoOperativoPrincipalCard } from "./DocumentoOperativoPrincipalCard";
@@ -43,7 +39,7 @@ export function WorkspaceDocumentalV2({
   onRefresh,
 }: {
   workspace: WorkspaceDocumentalV2Type;
-  onRefresh?: (result: AsociarDocumentoPrincipalV2Result | AsociarDocumentoGrupoFacturaV2Result) => Promise<unknown> | unknown;
+  onRefresh?: () => Promise<unknown> | unknown;
 }) {
   const contexto = getContexto(workspace);
   const principal = getDocumentoPrincipal(workspace);

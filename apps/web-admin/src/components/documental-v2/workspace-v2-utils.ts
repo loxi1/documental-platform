@@ -135,7 +135,7 @@ export function getDocumentoPrincipal(workspace: WorkspaceDocumentalV2) {
     workspace.documento_principal ??
     null;
 
-  if (direct) return entityVista<WorkspaceV2Documento>(direct);
+  if (direct) return direct as WorkspaceV2Documento;
 
   const documentos = firstArray<WorkspaceV2Documento>(
     (workspace as AnyRecord).documentosOperativosPrincipales,
@@ -145,7 +145,7 @@ export function getDocumentoPrincipal(workspace: WorkspaceDocumentalV2) {
   );
 
   const principal = documentos.find((documento) => isPrincipal(documento)) ?? documentos[0] ?? null;
-  return principal ? entityVista<WorkspaceV2Documento>(principal) : null;
+  return principal ?? null;
 }
 
 export function getGruposFactura(workspace: WorkspaceDocumentalV2) {
@@ -323,6 +323,57 @@ export function getContextoOperativoId(
       record.contenedorOperativoId ??
       record.contenedor_operativo_id ??
       record.id,
+  );
+}
+
+
+export function getDocumentoOperativoPrincipalPersistidoId(
+  documento?: WorkspaceV2Documento | null,
+): string | number | null {
+  const record = asRecord(documento);
+  const persistido = asRecord(record.persistido);
+
+  return stringOrNumberOrNull(
+    persistido.id ??
+      persistido.documentoOperativoPrincipalId ??
+      persistido.documento_operativo_principal_id ??
+      record.documentoOperativoPrincipalId ??
+      record.documento_operativo_principal_id,
+  );
+}
+
+export function getGrupoFacturaPersistidoId(
+  grupo?: WorkspaceV2GrupoFactura | null,
+): string | number | null {
+  const record = asRecord(grupo);
+  const persistido = asRecord(record.persistido);
+
+  return stringOrNumberOrNull(
+    persistido.id ??
+      persistido.grupoFacturaId ??
+      persistido.grupo_factura_id ??
+      record.grupoFacturaId ??
+      record.grupo_factura_id,
+  );
+}
+
+export function getGrupoFacturaDocumentoPersistidoId(
+  documento?: WorkspaceV2Documento | null,
+  options: { permitirIdGenerico?: boolean } = {},
+): string | number | null {
+  const record = asRecord(documento);
+  const persistido = asRecord(record.persistido);
+
+  return stringOrNumberOrNull(
+    persistido.grupoFacturaDocumentoId ??
+      persistido.grupo_factura_documento_id ??
+      persistido.documentoGrupoFacturaId ??
+      persistido.documento_grupo_factura_id ??
+      record.grupoFacturaDocumentoId ??
+      record.grupo_factura_documento_id ??
+      record.documentoGrupoFacturaId ??
+      record.documento_grupo_factura_id ??
+      (options.permitirIdGenerico ? persistido.id : null),
   );
 }
 

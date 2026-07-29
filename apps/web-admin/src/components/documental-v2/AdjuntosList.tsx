@@ -1,7 +1,9 @@
 import { FileText } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
+import { anularGrupoFacturaDocumentoV2 } from "@/services/documental-v2-workspace";
 import type { WorkspaceV2Documento } from "@/types/documental-v2-workspace";
+import { RevertirEntidadDialog } from "./RevertirEntidadDialog";
 import {
   documentoLabel,
   getDocumentoArchivo,
@@ -9,16 +11,23 @@ import {
   getDocumentoTipo,
   getEstado,
   getFechaDocumento,
+  getGrupoFacturaDocumentoPersistidoId,
   getMontoDocumento,
 } from "./workspace-v2-utils";
+
+type AdjuntosListProps = {
+  documentos: WorkspaceV2Documento[];
+  emptyLabel?: string;
+  onWorkspaceRefresh?: () => Promise<unknown> | unknown;
+  permitirReversionGrupo?: boolean;
+};
 
 export function AdjuntosList({
   documentos,
   emptyLabel = "Sin adjuntos informados por el Workspace V2.",
-}: {
-  documentos: WorkspaceV2Documento[];
-  emptyLabel?: string;
-}) {
+  onWorkspaceRefresh,
+  permitirReversionGrupo = false,
+}: AdjuntosListProps) {
   if (!documentos.length) {
     return (
       <div className="rounded-lg border border-dashed bg-muted/20 p-3 text-sm text-muted-foreground">
@@ -29,29 +38,51 @@ export function AdjuntosList({
 
   return (
     <div className="space-y-2">
-      {documentos.map((documento, index) => (
-        <div
-          key={`${getDocumentoId(documento) ?? "adjunto"}-${index}`}
-          className="flex flex-col gap-2 rounded-lg border bg-background p-3 sm:flex-row sm:items-center sm:justify-between"
-        >
-          <div className="flex min-w-0 items-start gap-3">
-            <div className="mt-0.5 rounded-md bg-muted p-2 text-muted-foreground">
-              <FileText className="h-4 w-4" />
-            </div>
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
-                <p className="font-medium text-foreground">{documentoLabel(documento)}</p>
-                <Badge variant="outline">{getDocumentoTipo(documento)}</Badge>
+      {documentos.map((documento, index) => {
+        const documentoGrupoFacturaId = permitirReversionGrupo
+          ? getGrupoFacturaDocumentoPersistidoId(documento, { permitirIdGenerico: true })
+          : null;
+        const label = documentoLabel(documento);
+
+        return (
+          <div
+            key={`${getDocumentoId(documento) ?? "adjunto"}-${index}`}
+            className="flex flex-col gap-2 rounded-lg border bg-background p-3 sm:flex-row sm:items-center sm:justify-between"
+          >
+            <div className="flex min-w-0 items-start gap-3">
+              <div className="mt-0.5 rounded-md bg-muted p-2 text-muted-foreground">
+                <FileText className="h-4 w-4" />
               </div>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Fecha: {getFechaDocumento(documento)} · Monto: {getMontoDocumento(documento)}
-              </p>
-              <p className="mt-1 truncate text-xs text-muted-foreground">Archivo: {getDocumentoArchivo(documento)}</p>
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="font-medium text-foreground">{label}</p>
+                  <Badge variant="outline">{getDocumentoTipo(documento)}</Badge>
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Fecha: {getFechaDocumento(documento)} · Monto: {getMontoDocumento(documento)}
+                </p>
+                <p className="mt-1 truncate text-xs text-muted-foreground">Archivo: {getDocumentoArchivo(documento)}</p>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+              <Badge variant="secondary">{getEstado(documento)}</Badge>
+              {documentoGrupoFacturaId ? (
+                <RevertirEntidadDialog
+                  title="Anular documento asociado"
+                  description="Esta acción desactiva la relación del documento con el Grupo de Factura. No elimina el documento ni sus archivos."
+                  entityLabel={label}
+                  triggerLabel="Quitar"
+                  confirmLabel="Quitar documento"
+                  onConfirm={async (motivo) => {
+                    await anularGrupoFacturaDocumentoV2(documentoGrupoFacturaId, { motivo });
+                    await onWorkspaceRefresh?.();
+                  }}
+                />
+              ) : null}
             </div>
           </div>
-          <Badge variant="secondary">{getEstado(documento)}</Badge>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }

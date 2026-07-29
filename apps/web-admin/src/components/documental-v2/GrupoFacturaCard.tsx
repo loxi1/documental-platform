@@ -2,28 +2,21 @@ import { ReceiptText } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import type { AsociarDocumentoGrupoFacturaV2Result, WorkspaceV2GrupoFactura } from "@/types/documental-v2-workspace";
+import { anularGrupoFacturaV2 } from "@/services/documental-v2-workspace";
+import type { WorkspaceV2GrupoFactura } from "@/types/documental-v2-workspace";
 import { AdjuntosList } from "./AdjuntosList";
 import { AsociarDocumentoGrupoFacturaPanel } from "./AsociarDocumentoGrupoFacturaPanel";
+import { RevertirEntidadDialog } from "./RevertirEntidadDialog";
 import {
-  asRecord,
   getAdjuntosGrupo,
   getEstado,
   getGrupoFacturaLabel,
+  getGrupoFacturaPersistidoId,
   getGrupoFecha,
   getGrupoImporte,
   getGrupoProveedor,
   getGrupoRucProveedor,
 } from "./workspace-v2-utils";
-
-function getGrupoFacturaPersistidoId(grupo: WorkspaceV2GrupoFactura) {
-  const persistido = asRecord(grupo.persistido);
-  const id = persistido.id ?? persistido.grupoFacturaId ?? persistido.grupo_factura_id;
-
-  if (typeof id === "string" || typeof id === "number") return id;
-
-  return null;
-}
 
 export function GrupoFacturaCard({
   grupo,
@@ -32,11 +25,11 @@ export function GrupoFacturaCard({
 }: {
   grupo: WorkspaceV2GrupoFactura;
   index: number;
-  onWorkspaceRefresh?: (result: AsociarDocumentoGrupoFacturaV2Result) => Promise<unknown> | unknown;
+  onWorkspaceRefresh?: () => Promise<unknown> | unknown;
 }) {
   const adjuntos = getAdjuntosGrupo(grupo);
   const grupoFacturaId = getGrupoFacturaPersistidoId(grupo);
-  const puedeOperar = Boolean(grupoFacturaId);
+  const label = getGrupoFacturaLabel(grupo);
 
   return (
     <Card>
@@ -48,13 +41,26 @@ export function GrupoFacturaCard({
             </div>
             <div>
               <CardTitle>Grupo de Factura {index + 1}</CardTitle>
-              <p className="text-sm text-muted-foreground">{getGrupoFacturaLabel(grupo)}</p>
+              <p className="text-sm text-muted-foreground">{label}</p>
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <Badge variant="secondary">{getEstado(grupo)}</Badge>
-            {puedeOperar ? (
-              <AsociarDocumentoGrupoFacturaPanel grupoFacturaId={grupoFacturaId} onAssociated={onWorkspaceRefresh} />
+            {grupoFacturaId ? (
+              <>
+                <AsociarDocumentoGrupoFacturaPanel grupoFacturaId={grupoFacturaId} onAssociated={onWorkspaceRefresh} />
+                <RevertirEntidadDialog
+                  title="Anular Grupo de Factura"
+                  description="Esta acción desactiva el Grupo de Factura. No elimina documentos ni archivos."
+                  entityLabel={label}
+                  triggerLabel="Anular grupo"
+                  confirmLabel="Anular grupo"
+                  onConfirm={async (motivo) => {
+                    await anularGrupoFacturaV2(grupoFacturaId, { motivo });
+                    await onWorkspaceRefresh?.();
+                  }}
+                />
+              </>
             ) : null}
           </div>
         </div>
@@ -63,7 +69,7 @@ export function GrupoFacturaCard({
         <div className="grid gap-4 rounded-lg bg-muted/20 p-4 sm:grid-cols-2 lg:grid-cols-5">
           <div>
             <p className="text-xs font-medium uppercase text-muted-foreground">Factura</p>
-            <p className="mt-1 font-medium">{getGrupoFacturaLabel(grupo)}</p>
+            <p className="mt-1 font-medium">{label}</p>
           </div>
           <div className="lg:col-span-2">
             <p className="text-xs font-medium uppercase text-muted-foreground">Proveedor</p>
@@ -85,7 +91,12 @@ export function GrupoFacturaCard({
             <h3 className="text-sm font-semibold">Documentos del grupo</h3>
             <span className="text-xs text-muted-foreground">Guías, notas de ingreso, transferencias y detracciones</span>
           </div>
-          <AdjuntosList documentos={adjuntos} emptyLabel="Sin documentos asociados todavía." />
+          <AdjuntosList
+            documentos={adjuntos}
+            emptyLabel="Sin documentos asociados todavía."
+            onWorkspaceRefresh={onWorkspaceRefresh}
+            permitirReversionGrupo
+          />
         </div>
       </CardContent>
     </Card>

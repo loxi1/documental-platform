@@ -1,5 +1,7 @@
 import { api } from "@/services/api";
 import type {
+  AnularEntidadV2Request,
+  AnularEntidadV2Result,
   ApiEnvelope,
   AsociarDocumentoGrupoFacturaV2Request,
   AsociarDocumentoGrupoFacturaV2Result,
@@ -101,6 +103,54 @@ export async function asociarDocumentoGrupoFacturaV2(payload: AsociarDocumentoGr
       estado: "activo",
     },
     idempotente: false,
+    workspaceDebeRefrescar: true,
+  });
+}
+
+export async function anularDocumentoOperativoPrincipalV2(
+  id: string | number,
+  payload: AnularEntidadV2Request,
+) {
+  const { data } = await api.post<ApiEnvelope<AnularEntidadV2Result> | AnularEntidadV2Result>(
+    `/documental-v2/documentos-operativos-principales/${id}/anular`,
+    payload,
+  );
+
+  return unwrapData<AnularEntidadV2Result>(data, {
+    id,
+    estado: "anulado",
+    workspaceDebeRefrescar: true,
+  });
+}
+
+export async function anularGrupoFacturaV2(
+  id: string | number,
+  payload: AnularEntidadV2Request,
+) {
+  const { data } = await api.post<ApiEnvelope<AnularEntidadV2Result> | AnularEntidadV2Result>(
+    `/documental-v2/grupos-factura/${id}/anular`,
+    payload,
+  );
+
+  return unwrapData<AnularEntidadV2Result>(data, {
+    id,
+    estado: "anulado",
+    workspaceDebeRefrescar: true,
+  });
+}
+
+export async function anularGrupoFacturaDocumentoV2(
+  id: string | number,
+  payload: AnularEntidadV2Request,
+) {
+  const { data } = await api.post<ApiEnvelope<AnularEntidadV2Result> | AnularEntidadV2Result>(
+    `/documental-v2/grupo-factura-documentos/${id}/anular`,
+    payload,
+  );
+
+  return unwrapData<AnularEntidadV2Result>(data, {
+    id,
+    estado: "anulado",
     workspaceDebeRefrescar: true,
   });
 }

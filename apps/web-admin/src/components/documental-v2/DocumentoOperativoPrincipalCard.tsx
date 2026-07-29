@@ -2,13 +2,16 @@ import { FileCheck2, Info } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import type { AsociarDocumentoPrincipalV2Result, WorkspaceV2ContextoOperativo, WorkspaceV2Documento } from "@/types/documental-v2-workspace";
+import { anularDocumentoOperativoPrincipalV2 } from "@/services/documental-v2-workspace";
+import type { WorkspaceV2ContextoOperativo, WorkspaceV2Documento } from "@/types/documental-v2-workspace";
 import { AsociarDocumentoPrincipalPanel } from "./AsociarDocumentoPrincipalPanel";
+import { RevertirEntidadDialog } from "./RevertirEntidadDialog";
 import {
   documentoLabel,
   getContextoEmpresaCodigo,
   getContextoOperativoId,
   getDocumentoArchivo,
+  getDocumentoOperativoPrincipalPersistidoId,
   getDocumentoTipo,
   getEstado,
   getFechaDocumento,
@@ -26,7 +29,7 @@ export function DocumentoOperativoPrincipalCard({
 }: {
   documento?: WorkspaceV2Documento | null;
   contexto?: WorkspaceV2ContextoOperativo | null;
-  onWorkspaceRefresh?: (result: AsociarDocumentoPrincipalV2Result) => Promise<unknown> | unknown;
+  onWorkspaceRefresh?: () => Promise<unknown> | unknown;
 }) {
   if (!documento) {
     const contenedorOperativoId = getContextoOperativoId(contexto);
@@ -61,6 +64,9 @@ export function DocumentoOperativoPrincipalCard({
     );
   }
 
+  const documentoOperativoPrincipalId = getDocumentoOperativoPrincipalPersistidoId(documento);
+  const label = documentoLabel(documento);
+
   return (
     <Card>
       <CardHeader className="border-b">
@@ -71,14 +77,27 @@ export function DocumentoOperativoPrincipalCard({
             </div>
             <div>
               <CardTitle>Documento Operativo Principal</CardTitle>
-              <p className="text-sm text-muted-foreground">{documentoLabel(documento)}</p>
+              <p className="text-sm text-muted-foreground">{label}</p>
             </div>
           </div>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Badge variant={isPrincipal(documento) ? "default" : "outline"}>
               {isPrincipal(documento) ? "Principal activo" : "No marcado como principal"}
             </Badge>
             <Badge variant="secondary">{getEstado(documento)}</Badge>
+            {documentoOperativoPrincipalId ? (
+              <RevertirEntidadDialog
+                title="Anular documento principal"
+                description="Esta acción desactiva la relación del Documento Operativo Principal. No elimina el documento ni sus archivos."
+                entityLabel={label}
+                triggerLabel="Anular"
+                confirmLabel="Anular principal"
+                onConfirm={async (motivo) => {
+                  await anularDocumentoOperativoPrincipalV2(documentoOperativoPrincipalId, { motivo });
+                  await onWorkspaceRefresh?.();
+                }}
+              />
+            ) : null}
           </div>
         </div>
       </CardHeader>
