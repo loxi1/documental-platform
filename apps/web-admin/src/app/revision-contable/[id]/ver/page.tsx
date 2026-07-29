@@ -21,7 +21,6 @@ export default async function RevisionContableVerPage({
   return (
     <RevisionContableDetalle
       expedienteId={resolvedParams.id}
-      empresa={firstParam(resolvedSearchParams.empresa)}
       anio={firstParam(resolvedSearchParams.anio)}
       mes={firstParam(resolvedSearchParams.mes)}
     />

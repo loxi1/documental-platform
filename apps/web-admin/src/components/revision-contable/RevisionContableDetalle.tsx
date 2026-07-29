@@ -28,6 +28,7 @@ import {
   EmptyTitle,
 } from "@/components/ui/empty";
 import { DocumentoPreviewModal } from "@/components/revision-contable/DocumentoPreviewModal";
+import { getContexto } from "@/lib/auth-storage";
 import {
   useExpediente,
   useExpedienteAlertas,
@@ -38,7 +39,6 @@ import type { Expediente, ExpedienteDocumento } from "@/types/expediente";
 
 type Props = {
   expedienteId: string | number;
-  empresa?: string | null;
   anio?: string | null;
   mes?: string | null;
 };
@@ -217,10 +217,9 @@ function alertaFecha(value: unknown) {
   return formatDate(value);
 }
 
-function buildBackHref(empresa?: string | null, anio?: string | null, mes?: string | null) {
+function buildBackHref(anio?: string | null, mes?: string | null) {
   const params = new URLSearchParams();
 
-  if (empresa) params.set("empresa", empresa);
   if (anio) params.set("anio", anio);
   if (mes) params.set("mes", mes);
 
@@ -301,7 +300,7 @@ function ExpedienteResumenCard({
       <CardHeader className="border-b">
         <CardTitle className="flex items-center gap-2">
           <FileText className="h-5 w-5" />
-          Detalles del expediente
+          Detalles del contexto operativo
         </CardTitle>
       </CardHeader>
       <CardContent className="grid gap-4 p-4 sm:grid-cols-2">
@@ -310,7 +309,7 @@ function ExpedienteResumenCard({
           <div className="font-semibold">{getExpedienteEmpresa(expediente, empresa)}</div>
         </div>
         <div>
-          <div className="text-xs font-medium uppercase text-muted-foreground">Expediente</div>
+          <div className="text-xs font-medium uppercase text-muted-foreground">Contexto operativo / Centro de costo</div>
           <div className="font-semibold">{getExpedienteCodigo(expediente)}</div>
         </div>
         <div>
@@ -352,7 +351,7 @@ function AlertasExpediente({
       <CardHeader className="border-b">
         <CardTitle className="flex items-center gap-2">
           <AlertTriangle className="h-5 w-5" />
-          Alertas del expediente
+          Alertas del contexto operativo
         </CardTitle>
       </CardHeader>
       <CardContent className="p-4">
@@ -386,7 +385,7 @@ function AlertasExpediente({
               </EmptyMedia>
               <EmptyTitle>No hay alertas registradas</EmptyTitle>
               <EmptyDescription>
-                No hay alertas registradas para este expediente.
+                No hay alertas registradas para este contexto operativo.
               </EmptyDescription>
             </EmptyHeader>
           </Empty>
@@ -396,9 +395,11 @@ function AlertasExpediente({
   );
 }
 
-export function RevisionContableDetalle({ expedienteId, empresa, anio, mes }: Props) {
+export function RevisionContableDetalle({ expedienteId, anio, mes }: Props) {
   const [documentoSeleccionado, setDocumentoSeleccionado] =
     useState<ExpedienteDocumento | null>(null);
+  const contexto = getContexto();
+  const workspaceEmpresa = asText(contexto?.empresa, "-");
 
   const expedienteQuery = useExpediente(expedienteId);
   const documentosQuery = useExpedienteDocumentos(expedienteId);
@@ -430,11 +431,11 @@ export function RevisionContableDetalle({ expedienteId, empresa, anio, mes }: Pr
     [documentos],
   );
   const facturaAncla = useMemo(() => getFacturaAncla(documentos), [documentos]);
-  const backHref = buildBackHref(empresa, anio, mes);
+  const backHref = buildBackHref(anio, mes);
   const periodo = anio && mes ? `${anio}-${String(mes).padStart(2, "0")}` : "-";
 
   if (expedienteQuery.isLoading || (documentosQuery.isLoading && !expediente)) {
-    return <div className="p-6 text-sm text-muted-foreground">Cargando revisión contable...</div>;
+    return <div className="p-6 text-sm text-muted-foreground">Cargando revisión documental...</div>;
   }
 
   if (expedienteQuery.error || !expediente) {
@@ -443,12 +444,12 @@ export function RevisionContableDetalle({ expedienteId, empresa, anio, mes }: Pr
         <Button asChild variant="outline">
           <Link href={backHref}>
             <ArrowLeft className="mr-1 h-4 w-4" />
-            Volver a Revisión Contable
+            Volver a Revisión Documental
           </Link>
         </Button>
         <Card>
           <CardContent className="p-6 text-sm text-red-600">
-            No se pudo cargar el expediente para revisión contable.
+            No se pudo cargar el contexto operativo para revisión documental.
           </CardContent>
         </Card>
       </main>
@@ -462,10 +463,10 @@ export function RevisionContableDetalle({ expedienteId, empresa, anio, mes }: Pr
           <Button asChild className="mb-3" size="sm" variant="ghost">
             <Link href={backHref}>
               <ArrowLeft className="mr-1 h-4 w-4" />
-              Volver a bandeja contable
+              Volver a bandeja documental
             </Link>
           </Button>
-          <h1 className="text-2xl font-bold">Revisión contable del expediente</h1>
+          <h1 className="text-2xl font-bold">Revisión documental del contexto operativo</h1>
           <p className="text-sm text-muted-foreground">
             Vista de solo lectura para verificar evidencia documental.
           </p>
@@ -505,7 +506,7 @@ export function RevisionContableDetalle({ expedienteId, empresa, anio, mes }: Pr
 
         <ExpedienteResumenCard
           expediente={expediente}
-          empresa={empresa}
+          empresa={workspaceEmpresa}
           periodo={periodo}
           facturaAncla={facturaAncla}
         />
@@ -538,7 +539,7 @@ export function RevisionContableDetalle({ expedienteId, empresa, anio, mes }: Pr
                 </EmptyMedia>
                 <EmptyTitle>Sin documentos adjuntos</EmptyTitle>
                 <EmptyDescription>
-                  No se encontraron documentos adjuntos para este expediente.
+                  No se encontraron documentos adjuntos para este contexto operativo.
                 </EmptyDescription>
               </EmptyHeader>
             </Empty>

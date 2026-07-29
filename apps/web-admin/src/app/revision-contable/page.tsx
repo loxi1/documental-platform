@@ -35,15 +35,6 @@ import { useRevisionContable } from "@/hooks/useRevisionContable";
 import { getContexto } from "@/lib/auth-storage";
 import type { RevisionContableItem } from "@/types/revision-contable";
 
-const EMPRESAS = [
-  { value: "BBTI", label: "BBTI - BBTI S.A.C." },
-  { value: "BBTEC", label: "BBTEC - BB TECNOLOGÍA INDUSTRIAL S.A.C." },
-  { value: "CIMA", label: "CIMA - CIMA ENERGY" },
-  { value: "TARMA", label: "TARMA - TARMA" },
-  { value: "HUANCA", label: "HUANCA - HUANCA" },
-  { value: "KIMBIRI", label: "KIMBIRI - KIMBIRI" },
-];
-
 const MESES = [
   { value: "1", label: "Enero" },
   { value: "2", label: "Febrero" },
@@ -93,7 +84,7 @@ function normalizeEmpresa(value: string | null | undefined) {
 }
 
 function empresaLabel(value: string) {
-  return EMPRESAS.find((item) => item.value === value)?.label ?? value;
+  return value || "Workspace sin empresa activa";
 }
 
 function pick<T>(...values: T[]) {
@@ -377,12 +368,12 @@ function buildSearchText(item: RevisionContableItem) {
 
 export default function RevisionContablePage() {
   const contexto = getContexto();
-  const workspaceEmpresa = normalizeEmpresa(contexto?.empresa) || "BBTI";
+  const workspaceEmpresa = normalizeEmpresa(contexto?.empresa);
   const yearOptions = useMemo(() => buildYearOptions(), []);
   const today = new Date();
   const initialYear = String(Math.max(today.getFullYear(), 2026));
 
-  const [empresa, setEmpresa] = useState(() => workspaceEmpresa);
+  const empresa = workspaceEmpresa;
   const [anio, setAnio] = useState(() => getBrowserQueryParam("anio") ?? initialYear);
   const [mes, setMes] = useState(
     () => getBrowserQueryParam("mes") ?? String(today.getMonth() + 1),
@@ -394,16 +385,8 @@ export default function RevisionContablePage() {
   const [observandoId, setObservandoId] = useState<number | string | null>(null);
 
   useEffect(() => {
-    const empresaUrl = getBrowserQueryParam("empresa");
     const anioUrl = getBrowserQueryParam("anio");
     const mesUrl = getBrowserQueryParam("mes");
-
-    setEmpresa(workspaceEmpresa);
-    if (empresaUrl && normalizeEmpresa(empresaUrl) !== workspaceEmpresa) {
-      const url = new URL(window.location.href);
-      url.searchParams.set("empresa", workspaceEmpresa);
-      window.history.replaceState(null, "", url.toString());
-    }
 
     if (anioUrl) setAnio(anioUrl);
     if (mesUrl) setMes(mesUrl);
@@ -420,7 +403,7 @@ export default function RevisionContablePage() {
 
   const params = useMemo(
     () => ({
-      empresa: normalizeEmpresa(empresa),
+      empresa,
       anio,
       mes,
     }),
@@ -448,7 +431,7 @@ export default function RevisionContablePage() {
 
   useEffect(() => {
     setPage(1);
-  }, [empresa, anio, mes, busqueda, filtroAlertas, pageSize]);
+  }, [anio, mes, busqueda, filtroAlertas, pageSize]);
 
   const totalFacturas = items.length;
   const totalAlertas = items.reduce(
@@ -503,9 +486,9 @@ export default function RevisionContablePage() {
     <main className="space-y-3">
       <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Revisión contable</h1>
+          <h1 className="text-2xl font-bold">Revisión documental</h1>
           <p className="text-sm text-muted-foreground">
-            Bandeja operativa para validar documentos del periodo.
+            Bandeja operativa para revisar evidencia documental del periodo.
           </p>
         </div>
 
@@ -526,7 +509,7 @@ export default function RevisionContablePage() {
           <div className="grid items-center gap-2 lg:grid-cols-[minmax(330px,1.35fr)_minmax(170px,0.55fr)_minmax(220px,0.75fr)_132px]">
             <div className="grid grid-cols-[74px_minmax(0,1fr)] items-center gap-2">
               <span className="text-xs font-medium text-muted-foreground">
-                Empresa
+                Empresa del workspace
               </span>
               <div
                 className="flex h-9 items-center rounded-lg border border-dashed border-input bg-muted/40 px-3 text-sm font-medium text-foreground"
@@ -604,8 +587,8 @@ export default function RevisionContablePage() {
       {error ? (
         <Card>
           <CardContent className="py-4 text-sm text-red-600">
-            No se pudo cargar la bandeja contable. Verifica backend, empresa,
-            año y mes.
+            No se pudo cargar la bandeja documental. Verifica backend,
+            workspace activo, año y mes.
           </CardContent>
         </Card>
       ) : null}
@@ -651,7 +634,7 @@ export default function RevisionContablePage() {
           <div className="flex items-center justify-between border-b px-4 py-3">
             <div className="flex items-center gap-2 font-semibold">
               <FileText className="h-5 w-5" />
-              Expedientes del periodo contable
+              Contextos operativos del periodo
             </div>
             <div className="text-xs text-muted-foreground">
               Mostrando {pageItems.length ? start + 1 : 0}-
@@ -673,7 +656,7 @@ export default function RevisionContablePage() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b bg-muted/40 text-left">
-                    <th className="min-w-48 px-4 py-2.5">Expediente</th>
+                    <th className="min-w-48 px-4 py-2.5">Contexto operativo</th>
                     <th className="min-w-56 px-4 py-2.5">Factura</th>
                     <th className="min-w-56 px-4 py-2.5">Proveedor</th>
                     <th className="px-4 py-2.5">Fecha</th>
@@ -708,7 +691,7 @@ export default function RevisionContablePage() {
                       >
                         <td className="px-4 py-3">
                           <div className="font-medium">
-                            Expediente {codigoExpediente(item)}
+                            Centro de costo {codigoExpediente(item)}
                           </div>
                           <div
                             className="max-w-56 truncate text-xs text-muted-foreground"
@@ -760,7 +743,7 @@ export default function RevisionContablePage() {
                               {alertas} activa{alertas === 1 ? "" : "s"}
                             </Badge>
                           ) : (
-                            <Badge variant="outline">Sin alertas</Badge>
+                            <Badge variant="outline">Sin alertas registradas</Badge>
                           )}
                         </td>
                         <td className="space-x-2 px-4 py-3 text-right">
@@ -799,10 +782,10 @@ export default function RevisionContablePage() {
                     <EmptyMedia variant="icon">
                       <FileText className="h-5 w-5" />
                     </EmptyMedia>
-                    <EmptyTitle>Sin expedientes para este periodo</EmptyTitle>
+                    <EmptyTitle>Sin contextos operativos para este periodo</EmptyTitle>
                     <EmptyDescription>
                       No se encontraron facturas confirmadas por fecha de emisión
-                      para la empresa, año y mes seleccionados.
+                      para el workspace activo, año y mes seleccionados.
                     </EmptyDescription>
                   </EmptyHeader>
                 </Empty>
