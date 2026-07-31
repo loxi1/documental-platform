@@ -1485,7 +1485,7 @@ export function CompraExpedienteEditor({ id }: { id: string | number }) {
                 const documentosItem = documentosPorRelacion.get(item.tipoRelacionSugerida);
                 const principalActivo = principalActualRelacion === item.tipoRelacionSugerida;
                 const tieneCandidatosNoActivos = Boolean(documentosItem?.length && !principalActivo);
-                const bloquearCargaPrincipal = Boolean(principalActual);
+                const bloquearCargaPrincipal = principalActivo;
 
                 return (
                 <div
@@ -1522,7 +1522,7 @@ export function CompraExpedienteEditor({ id }: { id: string | number }) {
 
                   {bloquearCargaPrincipal ? (
                     <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-300">
-                      Este expediente ya tiene un documento principal activo. No se reemplazará automáticamente.
+                      Esta relación ya tiene un documento principal activo. No se reemplazará automáticamente.
                     </div>
                   ) : null}
 
