@@ -411,8 +411,7 @@ export default function RevisionContablePage() {
     () => getBrowserQueryParam("mes") ?? String(today.getMonth() + 1),
   );
   const [busqueda, setBusqueda] = useState("");
-  const [filtroAlertas, setFiltroAlertas] = useState("todos");
-  const [pageSize, setPageSize] = useState("50");
+    const [pageSize, setPageSize] = useState("50");
   const [page, setPage] = useState(1);
 
   useEffect(() => {
@@ -454,18 +453,14 @@ export default function RevisionContablePage() {
 
     return items.filter((item) => {
       const matchesText = !q || buildSearchText(item).includes(q);
-      const matchesAlertas =
-        filtroAlertas === "todos" ||
-        (filtroAlertas === "con_alertas" && alertasActivas(item) > 0) ||
-        (filtroAlertas === "sin_alertas" && alertasActivas(item) === 0);
 
-      return matchesText && matchesAlertas;
+      return matchesText;
     });
-  }, [busqueda, filtroAlertas, items]);
+  }, [busqueda, items]);
 
   useEffect(() => {
     setPage(1);
-  }, [anio, mes, busqueda, filtroAlertas, pageSize]);
+  }, [anio, mes, busqueda, pageSize]);
 
   const totalFacturas = items.length;
   const totalAlertas = items.reduce(
@@ -580,12 +575,6 @@ export default function RevisionContablePage() {
             <span>{totalFacturas} factura{totalFacturas === 1 ? "" : "s"} del periodo</span>
             <span>·</span>
             <span>{formatMoney(totalMonto)}</span>
-            <span>·</span>
-            <span>{totalAlertas} alertas activas</span>
-            <span>·</span>
-            <span>Día cierre: {diaCierre}</span>
-            <span>·</span>
-            <span>Fecha límite: {fechaLimite}</span>
           </div>
         </CardContent>
       </Card>
@@ -601,23 +590,12 @@ export default function RevisionContablePage() {
 
       <Card>
         <CardContent className="p-3">
-          <div className="grid gap-2 lg:grid-cols-[1fr_180px_150px]">
+          <div className="grid gap-2 lg:grid-cols-[1fr_150px]">
             <Input
               value={busqueda}
               onChange={(event) => setBusqueda(event.target.value)}
               placeholder="Buscar factura, proveedor, RUC, OC/OS o contexto operativo..."
             />
-
-            <Select value={filtroAlertas} onValueChange={setFiltroAlertas}>
-              <SelectTrigger className="h-10 w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="todos">Todas</SelectItem>
-                <SelectItem value="con_alertas">Con alertas</SelectItem>
-                <SelectItem value="sin_alertas">Sin alertas</SelectItem>
-              </SelectContent>
-            </Select>
 
             <Select value={pageSize} onValueChange={setPageSize}>
               <SelectTrigger className="h-10 w-full">
@@ -673,7 +651,6 @@ export default function RevisionContablePage() {
                     <th className="px-4 py-2.5">Monto</th>
                     <th className="min-w-56 px-4 py-2.5">Documento principal</th>
                     <th className="min-w-[430px] px-4 py-2.5">Estado documental</th>
-                    <th className="px-4 py-2.5">Alertas</th>
                     <th className="px-4 py-2.5 text-right">Acción solo lectura</th>
                   </tr>
                 </thead>
@@ -681,7 +658,6 @@ export default function RevisionContablePage() {
                   {pageItems.map((item) => {
                     const expId = expedienteId(item);
                     const docId = documentoId(item);
-                    const alertas = alertasActivas(item);
 
                     const detalleRevisionHref =
                     (typeof expId === "string" || typeof expId === "number") &&
@@ -749,15 +725,6 @@ export default function RevisionContablePage() {
                         </td>
                         <td className="px-4 py-3">
                           <EstadoDocumentalHorizontal item={item} />
-                        </td>
-                        <td className="px-4 py-3">
-                          {alertas > 0 ? (
-                            <Badge variant="destructive">
-                              {alertas} activa{alertas === 1 ? "" : "s"}
-                            </Badge>
-                          ) : (
-                            <Badge variant="outline">Sin alertas registradas</Badge>
-                          )}
                         </td>
                         <td className="px-4 py-3 text-right">
                           {detalleRevisionHref ? (

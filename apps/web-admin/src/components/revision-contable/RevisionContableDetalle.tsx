@@ -361,53 +361,7 @@ function AlertasExpediente({
   alertas: DocumentoAlerta[];
   isLoading: boolean;
 }) {
-  return (
-    <Card>
-      <CardHeader className="border-b">
-        <CardTitle className="flex items-center gap-2">
-          <AlertTriangle className="h-5 w-5" />
-          Alertas del contexto operativo
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="p-4">
-        {isLoading ? (
-          <div className="text-sm text-muted-foreground">Cargando alertas...</div>
-        ) : alertas.length ? (
-          <div className="space-y-3">
-            {alertas.map((alerta) => (
-              <div key={String(alerta.id)} className="rounded-xl border p-3">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="font-medium">{alertaTipo(alerta)}</div>
-                  <Badge variant={alertaEstado(alerta) === "resuelta" ? "outline" : "destructive"}>
-                    {alertaEstado(alerta)}
-                  </Badge>
-                </div>
-                <div className="mt-1 text-sm text-muted-foreground">
-                  {asText(alerta.mensaje, "Sin mensaje")}
-                </div>
-                <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                  <span>Creada: {alertaFecha(alerta.creadoEn ?? alerta.creado_en)}</span>
-                  <span>Resuelta: {alertaFecha(alerta.resueltoEn ?? alerta.resuelto_en)}</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <Empty className="py-6">
-            <EmptyHeader>
-              <EmptyMedia variant="icon">
-                <CheckCircle2 className="h-5 w-5" />
-              </EmptyMedia>
-              <EmptyTitle>No hay alertas registradas</EmptyTitle>
-              <EmptyDescription>
-                No hay alertas registradas para este contexto operativo.
-              </EmptyDescription>
-            </EmptyHeader>
-          </Empty>
-        )}
-      </CardContent>
-    </Card>
-  );
+  return null;
 }
 
 export function RevisionContableDetalle({ expedienteId, anio, mes }: Props) {
@@ -447,7 +401,21 @@ export function RevisionContableDetalle({ expedienteId, anio, mes }: Props) {
   );
   const facturaAncla = useMemo(() => getFacturaAncla(documentos), [documentos]);
   const backHref = buildBackHref(anio, mes);
-  const periodo = anio && mes ? `${anio}-${String(mes).padStart(2, "0")}` : "-";
+  const periodo = useMemo(() => {
+    const fechaFactura = facturaAncla
+      ? pickDocumento(facturaAncla, ["fechaEmision", "fecha_emision"])
+      : null;
+
+    const fechaTexto = fechaFactura ? String(fechaFactura).trim() : "";
+    const fechaSolo = fechaTexto.match(/^(\d{4})-(\d{2})-(\d{2})/);
+
+    if (fechaSolo) {
+      const [, year, month] = fechaSolo;
+      return `${year}-${month}`;
+    }
+
+    return anio && mes ? `${anio}-${String(mes).padStart(2, "0")}` : "-";
+  }, [anio, mes, facturaAncla]);
 
   if (expedienteQuery.isLoading || (documentosQuery.isLoading && !expediente)) {
     return <div className="p-6 text-sm text-muted-foreground">Cargando revisión documental...</div>;
