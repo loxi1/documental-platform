@@ -221,15 +221,15 @@ function getPrevalidacionExistente(resultado: CargaGuiadaPrevalidacionResponse):
     toIdValue(documentoExistente?.id) ??
     toIdValue(resultado.documentoId);
 
-  const archivoId = 
-  toIdValue(duplicado?.archivoId) ?? 
-  toIdValue(documentoExistente?.archivoId) ?? 
+  const archivoId =
+  toIdValue(duplicado?.archivoId) ??
+  toIdValue(documentoExistente?.archivoId) ??
   toIdValue(documentoExistente?.archivo_id);
 
-  const expedienteId = 
-  toIdValue(duplicado?.expedienteId) ?? 
-  toIdValue(documentoExistente?.expedienteId) ?? 
-  toIdValue(documentoExistente?.expediente_id) ?? 
+  const expedienteId =
+  toIdValue(duplicado?.expedienteId) ??
+  toIdValue(documentoExistente?.expedienteId) ??
+  toIdValue(documentoExistente?.expediente_id) ??
   toIdValue(resultado.expedienteId);
 
   if (!documentoId && !archivoId && !expedienteId) return null;
@@ -681,6 +681,15 @@ export function NuevoExpedienteWizard() {
 
     if (!expedienteSeleccionado?.id) {
       throw new Error("Selecciona un expediente antes de confirmar el documento principal.");
+    }
+
+    const tipoFormulario = normalizeTipoDocumentalParaBackend(String(form.tipoDocumental || ""));
+    const tipoEsperado = normalizeTipoDocumentalParaBackend(selectedOption.tipo);
+
+    if (tipoFormulario && tipoFormulario !== tipoEsperado) {
+      throw new Error(
+        `El OCR propone ${tipoFormulario}, pero el usuario eligió ${tipoEsperado}. Corrige el tipo documental antes de confirmar.`,
+      );
     }
 
     const metadata = buildMetadataDesdeFormulario(form, {

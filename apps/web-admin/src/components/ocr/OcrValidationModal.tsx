@@ -377,7 +377,7 @@ function buildInitialForm(resultado: unknown, expedienteContexto?: OcrValidation
         metadata.documento_relacionado,
       "",
     ),
-    observacion: texto(raw.observacion ?? metadata.observacion, ""),
+    observacion: texto(raw.observacion, ""),
   };
 }
 

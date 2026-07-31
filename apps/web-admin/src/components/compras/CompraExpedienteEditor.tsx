@@ -1314,6 +1314,15 @@ export function CompraExpedienteEditor({ id }: { id: string | number }) {
       throw new Error("El expediente es obligatorio antes de confirmar.");
     }
 
+    const tipoFormulario = normalizeTipoDocumentalParaBackend(String(form.tipoDocumental || ""));
+    const tipoEsperado = normalizeTipoDocumentalParaBackend(String(accionActual?.tipoEsperado || ""));
+
+    if (tipoFormulario && tipoEsperado && tipoFormulario !== tipoEsperado) {
+      throw new Error(
+        `El OCR propone ${tipoFormulario}, pero el usuario eligió ${tipoEsperado}. Corrige el tipo documental antes de confirmar.`,
+      );
+    }
+
     const tipoRelacionBase = getTipoRelacionResultado(resultadoActual, accionActual);
     const tipoRelacionFinal = getTipoRelacionPorTipoDocumental(
       normalizeTipoDocumentalParaBackend(String(form.tipoDocumental || accionActual?.tipoEsperado || "")),
