@@ -265,8 +265,8 @@ function ActionsCell({ expediente }: { expediente: Expediente }) {
           <Eye className="h-4 w-4" />
         </Link>
       </Button>
-      <Button asChild size="icon" variant="outline" title="Adjuntar documento">
-        <Link href={`/finanzas/${expediente.id}/editar?accion=adjuntar`} aria-label="Adjuntar documento">
+      <Button asChild size="icon" variant="outline" title="Adjuntar pago">
+        <Link href={`/finanzas/${expediente.id}/editar?accion=adjuntar`} aria-label="Adjuntar pago">
           <FilePlus2 className="h-4 w-4" />
         </Link>
       </Button>
@@ -480,7 +480,7 @@ export function FinanzasBandeja() {
         <div>
           <h1 className="text-2xl font-bold">Finanzas</h1>
           <p className="text-sm text-muted-foreground">
-            Expedientes con documento principal listos para adjuntar pagos.
+            Facturas y grupos documentales listos para consultar o adjuntar sustentos de pago.
           </p>
         </div>
       </div>
@@ -569,9 +569,9 @@ export function FinanzasBandeja() {
                   <thead>
                     <tr className="border-b text-left text-muted-foreground">
                       <th className="py-2">Expediente</th>
-                      <th>Documento principal</th>
-                      <th>Pagos</th>
-                      <th>Estado finanzas</th>
+                      <th>OC / documento principal</th>
+                      <th>Pago documental</th>
+                      <th>Estado documental de pago</th>
                       <th className="text-right">Acciones</th>
                     </tr>
                   </thead>

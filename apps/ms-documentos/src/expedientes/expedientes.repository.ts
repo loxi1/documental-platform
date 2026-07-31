@@ -898,10 +898,14 @@ export class ExpedientesRepository {
   }) {
     /**
      * Regla contable oficial:
-     * - La FACTURA confirmada es el documento ancla del cierre contable.
-     * - El periodo contable se determina por documentos.documentos.fecha_emision
-     *   de la FACTURA, no por periodo_anio/periodo_mes de carga ni por fecha
-     *   de OC/OS/guía/pago/creación del expediente.
+     * - La FACTURA confirmada es la unidad de salida.
+     * - El periodo se determina exclusivamente por la fecha_emision de la FACTURA.
+     * - La relación documental V2 se resuelve sin inferencias:
+     *   FACTURA -> GRUPO FACTURA -> PRINCIPAL V2 -> DOCUMENTO PRINCIPAL.
+     * - Los sustentos se obtienen únicamente desde grupo_factura_documentos
+     *   del grupo persistido de esa factura.
+     * - Una factura histórica sin Grupo V2 permanece visible y devuelve
+     *   grupo/principal nulos y documentos relacionados vacíos.
      */
     const inicioPeriodo = `${filters.anio}-${String(filters.mes).padStart(2, '0')}-01`;
     const siguienteMes = filters.mes === 12 ? 1 : filters.mes + 1;
@@ -942,6 +946,7 @@ export class ExpedientesRepository {
         e.descripcion,
         e.estado AS expediente_estado,
         e.estado AS expedienteestado,
+
         fp.factura_id AS documento_id,
         fp.factura_id AS documentoid,
         fp.factura_id,
@@ -971,23 +976,71 @@ export class ExpedientesRepository {
         fp.alerta_contable AS alertacontable,
         fp.observacion_contable,
         fp.observacion_contable AS observacioncontable,
+
         COUNT(a.id)::int AS alertas_activas,
         COUNT(a.id)::int AS alertasactivas,
+
+        v2.grupo_factura_id,
+        v2.grupo_factura_id AS grupofacturaid,
+        v2.documento_operativo_principal_id,
+        v2.documento_operativo_principal_id AS documentooperativoprincipalid,
+        v2.documento_principal_id,
+        v2.documento_principal_id AS documentoprincipalid,
+        v2.documento_principal_tipo,
+        v2.documento_principal_tipo AS documentoprincipaltipo,
+        v2.documento_principal_numero,
+        v2.documento_principal_numero AS documentoprincipalnumero,
+
         principal.documento_principal,
         principal.documento_principal AS documentoprincipal,
+
         COALESCE(docs.documentos, '[]'::jsonb) AS documentos,
+        COALESCE(docs.documentos, '[]'::jsonb) AS documentos_relacionados,
+        COALESCE(docs.documentos, '[]'::jsonb) AS documentosrelacionados,
         COALESCE(docs.documentos, '[]'::jsonb) AS documentos_adjuntos,
         COALESCE(docs.documentos, '[]'::jsonb) AS documentosadjuntos
+
       FROM facturas_periodo fp
       JOIN documentos.expedientes e
         ON e.id = fp.expediente_id
+
       LEFT JOIN documentos.documento_alertas a
         ON a.documento_id = fp.factura_id
        AND a.estado = 'activa'
+
+      /*
+       * Resuelve la cadena V2 real. El vínculo con el expediente se valida
+       * mediante el contenedor operativo materializado por la migración 0014.
+       * Si no existe una cadena V2 completa y activa, la factura no se oculta:
+       * los campos de grupo/principal permanecen en null.
+       */
+      LEFT JOIN LATERAL (
+        SELECT
+          gf.id AS grupo_factura_id,
+          dop.id AS documento_operativo_principal_id,
+          dp.id AS documento_principal_id,
+          dp.tipo_documental AS documento_principal_tipo,
+          dp.numero AS documento_principal_numero
+        FROM documentos.grupos_factura gf
+        JOIN documentos.documentos_operativos_principales dop
+          ON dop.id = gf.documento_operativo_principal_id
+         AND dop.estado = 'activo'
+        JOIN documentos.contenedores_operativos co
+          ON co.id = dop.contenedor_operativo_id
+         AND co.estado = 'activo'
+         AND co.tipo_contexto = 'expediente_v1'
+         AND co.expediente_v1_id = e.id
+        JOIN documentos.documentos dp
+          ON dp.id = dop.documento_id
+        WHERE gf.factura_documento_id = fp.factura_id
+          AND gf.estado <> 'anulado'
+        LIMIT 1
+      ) v2 ON true
+
       LEFT JOIN LATERAL (
         SELECT jsonb_build_object(
+          'documentoOperativoPrincipalId', v2.documento_operativo_principal_id,
           'documentoId', d2.id,
-          'tipoRelacion', ed2.tipo_relacion,
           'tipoDocumental', d2.tipo_documental,
           'serie', d2.serie,
           'numero', d2.numero,
@@ -1001,9 +1054,7 @@ export class ExpedientesRepository {
           'archivoEstado', da2.estado,
           'storageProvider', da2.storage_provider
         ) AS documento_principal
-        FROM documentos.expediente_documentos ed2
-        JOIN documentos.documentos d2
-          ON d2.id = ed2.documento_id
+        FROM documentos.documentos d2
         LEFT JOIN LATERAL (
           SELECT da.*
           FROM documentos.documentos_archivos da
@@ -1011,16 +1062,16 @@ export class ExpedientesRepository {
           ORDER BY da.es_version_actual DESC NULLS LAST, da.version DESC NULLS LAST, da.id DESC
           LIMIT 1
         ) da2 ON true
-        WHERE ed2.expediente_id = e.id
-          AND ed2.es_principal = true
-        ORDER BY ed2.orden ASC, d2.id ASC
-        LIMIT 1
+        WHERE d2.id = v2.documento_principal_id
       ) principal ON true
+
       LEFT JOIN LATERAL (
         SELECT jsonb_agg(
           jsonb_build_object(
+            'grupoFacturaDocumentoId', gfd.id,
+            'grupoFacturaId', gfd.grupo_factura_id,
             'documentoId', d2.id,
-            'tipoRelacion', ed2.tipo_relacion,
+            'tipoRelacion', gfd.tipo_relacion,
             'tipoDocumental', d2.tipo_documental,
             'serie', d2.serie,
             'numero', d2.numero,
@@ -1034,11 +1085,11 @@ export class ExpedientesRepository {
             'archivoEstado', da2.estado,
             'storageProvider', da2.storage_provider
           )
-          ORDER BY ed2.es_principal DESC, ed2.orden ASC, d2.id ASC
+          ORDER BY gfd.creado_en ASC, gfd.id ASC
         ) AS documentos
-        FROM documentos.expediente_documentos ed2
+        FROM documentos.grupo_factura_documentos gfd
         JOIN documentos.documentos d2
-          ON d2.id = ed2.documento_id
+          ON d2.id = gfd.documento_id
         LEFT JOIN LATERAL (
           SELECT da.*
           FROM documentos.documentos_archivos da
@@ -1046,9 +1097,12 @@ export class ExpedientesRepository {
           ORDER BY da.es_version_actual DESC NULLS LAST, da.version DESC NULLS LAST, da.id DESC
           LIMIT 1
         ) da2 ON true
-        WHERE ed2.expediente_id = e.id
+        WHERE gfd.grupo_factura_id = v2.grupo_factura_id
+          AND gfd.estado = 'activo'
       ) docs ON true
+
       WHERE e.empresa_codigo = ${filters.empresa}
+
       GROUP BY
         e.id,
         fp.factura_id,
@@ -1063,8 +1117,14 @@ export class ExpedientesRepository {
         fp.documento_estado,
         fp.alerta_contable,
         fp.observacion_contable,
+        v2.grupo_factura_id,
+        v2.documento_operativo_principal_id,
+        v2.documento_principal_id,
+        v2.documento_principal_tipo,
+        v2.documento_principal_numero,
         principal.documento_principal,
         docs.documentos
+
       ORDER BY fp.fecha_emision ASC, e.codigo_expediente ASC, e.id ASC
     `;
   }

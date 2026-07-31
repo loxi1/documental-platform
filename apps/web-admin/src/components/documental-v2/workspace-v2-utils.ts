@@ -22,6 +22,8 @@ const WORKSPACE_WARNING_LABELS: Record<string, string> = {
   EXPEDIENTE_V1_SIN_DOCUMENTO_PRINCIPAL: "Falta asociar un documento operativo principal.",
   EXPEDIENTE_V1_CON_MULTIPLES_FACTURAS_REQUIERE_ASIGNACION_EXPLICITA:
     "Existen varias facturas pendientes de asignación explícita.",
+  EXPEDIENTE_V1_CON_MULTIPLES_DOCUMENTOS_PRINCIPALES:
+    "Este contexto proviene de V1 y contiene varios documentos principales. Use la asociación persistida V2 como referencia operativa.",
 };
 
 function humanizeWorkspaceWarning(value: unknown) {
@@ -43,7 +45,17 @@ export function entityVista<T = AnyRecord>(value: unknown): T {
 
 export function entityPersistencia(value: unknown) {
   const record = asRecord(value);
-  return typeof record.estadoPersistencia === "string" ? record.estadoPersistencia : null;
+  const vista = asRecord(record.vista);
+
+  return typeof record.estadoPersistencia === "string"
+    ? record.estadoPersistencia
+    : typeof vista.estadoPersistencia === "string"
+      ? vista.estadoPersistencia
+      : null;
+}
+
+export function isEntityPersistida(value: unknown) {
+  return entityPersistencia(value) === "persistido";
 }
 
 export function firstArray<T>(...values: unknown[]) {
@@ -128,6 +140,9 @@ export function getContexto(workspace: WorkspaceDocumentalV2): WorkspaceV2Contex
 }
 
 export function getDocumentoPrincipal(workspace: WorkspaceDocumentalV2) {
+  const record = workspace as AnyRecord;
+  const compatibilidad = asRecord(record.compatibilidad);
+
   const direct =
     workspace.documentoOperativoPrincipal ??
     workspace.documento_operativo_principal ??
@@ -135,17 +150,44 @@ export function getDocumentoPrincipal(workspace: WorkspaceDocumentalV2) {
     workspace.documento_principal ??
     null;
 
-  if (direct) return direct as WorkspaceV2Documento;
+  const documentosV2 = firstArray<WorkspaceV2Documento>(
+    record.documentosOperativosPrincipales,
+    record.documentos_operativos_principales,
+  );
+  const documentosCompatibilidad = firstArray<WorkspaceV2Documento>(
+    compatibilidad.documentosOperativosPrincipales,
+    compatibilidad.documentos_operativos_principales,
+  );
+  const documentos = [...documentosV2, ...documentosCompatibilidad, ...(direct ? [direct as WorkspaceV2Documento] : [])];
 
-  const documentos = firstArray<WorkspaceV2Documento>(
-    (workspace as AnyRecord).documentosOperativosPrincipales,
-    (workspace as AnyRecord).documentos_operativos_principales,
-    asRecord((workspace as AnyRecord).compatibilidad).documentosOperativosPrincipales,
-    asRecord((workspace as AnyRecord).compatibilidad).documentos_operativos_principales,
+  const gruposV2 = firstArray<WorkspaceV2GrupoFactura>(
+    workspace.gruposFactura,
+    workspace.grupos_factura,
+    workspace.gruposDeFactura,
+    workspace.grupos_de_factura,
+  );
+  const gruposCompatibilidad = firstArray<WorkspaceV2GrupoFactura>(
+    compatibilidad.gruposFactura,
+    compatibilidad.grupos_factura,
+  );
+  const grupos = [...gruposV2, ...gruposCompatibilidad];
+
+  const grupoPersistido = grupos.find((grupo) => isEntityPersistida(grupo) || Boolean(getGrupoFacturaPersistidoId(grupo)));
+  const principalDocumentoId = getGrupoDocumentoPrincipalDocumentoId(grupoPersistido);
+
+  if (principalDocumentoId !== null) {
+    const principalPorGrupo = documentos.find((documento) => String(getDocumentoId(documento)) === String(principalDocumentoId));
+    if (principalPorGrupo) return principalPorGrupo;
+  }
+
+  const principalPersistido = documentos.find(
+    (documento) => isEntityPersistida(documento) || Boolean(getDocumentoOperativoPrincipalPersistidoId(documento)),
   );
 
-  const principal = documentos.find((documento) => isPrincipal(documento)) ?? documentos[0] ?? null;
-  return principal ?? null;
+  if (principalPersistido) return principalPersistido;
+
+  const principal = documentosV2.find((documento) => isPrincipal(documento)) ?? documentosCompatibilidad.find((documento) => isPrincipal(documento)) ?? direct ?? documentosV2[0] ?? documentosCompatibilidad[0] ?? null;
+  return principal as WorkspaceV2Documento | null;
 }
 
 export function getGruposFactura(workspace: WorkspaceDocumentalV2) {
@@ -346,6 +388,7 @@ export function getGrupoFacturaPersistidoId(
   grupo?: WorkspaceV2GrupoFactura | null,
 ): string | number | null {
   const record = asRecord(grupo);
+  const vista = entityVista<AnyRecord>(grupo);
   const persistido = asRecord(record.persistido);
 
   return stringOrNumberOrNull(
@@ -353,7 +396,34 @@ export function getGrupoFacturaPersistidoId(
       persistido.grupoFacturaId ??
       persistido.grupo_factura_id ??
       record.grupoFacturaId ??
-      record.grupo_factura_id,
+      record.grupo_factura_id ??
+      vista.grupoFacturaId ??
+      vista.grupo_factura_id ??
+      vista.id,
+  );
+}
+
+export function getGrupoDocumentoPrincipalDocumentoId(grupo?: WorkspaceV2GrupoFactura | null) {
+  const record = asRecord(grupo);
+  const vista = entityVista<AnyRecord>(grupo);
+
+  return stringOrNumberOrNull(
+    vista.documentoOperativoPrincipalDocumentoId ??
+      vista.documento_operativo_principal_documento_id ??
+      record.documentoOperativoPrincipalDocumentoId ??
+      record.documento_operativo_principal_documento_id,
+  );
+}
+
+export function getGrupoFacturaDocumentoId(grupo?: WorkspaceV2GrupoFactura | null) {
+  const record = asRecord(grupo);
+  const vista = entityVista<AnyRecord>(grupo);
+
+  return stringOrNumberOrNull(
+    vista.facturaDocumentoId ??
+      vista.factura_documento_id ??
+      record.facturaDocumentoId ??
+      record.factura_documento_id,
   );
 }
 

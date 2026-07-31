@@ -581,22 +581,10 @@ export class DocumentosRepository {
         codigoExpedienteSeleccionado &&
         codigoExpedienteDetectado !== codigoExpedienteSeleccionado
       ) {
-        if (esPrincipal) {
-          this.throwDomainError(
-            'CODIGO_EXPEDIENTE_NO_COINCIDE',
-            'El código detectado en el documento no coincide con el expediente seleccionado.',
-            {
-              expedienteId: Number(expediente.id),
-              codigoExpedienteSeleccionado,
-              codigoExpedienteDetectado,
-            },
-          );
-        }
-
         advertenciasConfirmacion.push({
           codigo: 'CODIGO_EXPEDIENTE_NO_COINCIDE',
           mensaje:
-            'El código detectado por OCR no coincide con el expediente seleccionado. La asociación utilizó el expediente confirmado por el usuario.',
+            'El código detectado por OCR no coincide con el contexto seleccionado. La asociación utilizó el contexto confirmado por el usuario.',
           codigoExpedienteSeleccionado,
           codigoExpedienteDetectado,
         });
@@ -705,48 +693,6 @@ export class DocumentosRepository {
           },
         );
       }
-
-      if (esPrincipal) {
-        const principalActualRows = await tx`
-          SELECT
-            ed.documento_id,
-            ed.tipo_relacion,
-            d.tipo_documental,
-            d.serie,
-            d.numero,
-            d.clave_documental
-          FROM documentos.expediente_documentos ed
-          JOIN documentos.documentos d
-            ON d.id = ed.documento_id
-          WHERE ed.expediente_id = ${Number(expediente.id)}::bigint
-            AND ed.es_principal = true
-            AND ed.documento_id <> ${Number(ocr.documento_id)}::bigint
-          ORDER BY ed.orden ASC, ed.creado_en ASC
-          LIMIT 1
-        `;
-
-        if (principalActualRows[0]) {
-          const principalActual = principalActualRows[0];
-          this.throwDomainError(
-            'EXPEDIENTE_YA_TIENE_DOCUMENTO_PRINCIPAL',
-            'El expediente ya tiene un documento principal activo.',
-            {
-              expedienteId: Number(expediente.id),
-              documentoPrincipalActualId: Number(principalActual.documento_id),
-              tipoRelacionActual: principalActual.tipo_relacion ?? null,
-              tipoDocumentalActual: principalActual.tipo_documental ?? null,
-              serieActual: principalActual.serie ?? null,
-              numeroActual: principalActual.numero ?? null,
-              claveDocumentalActual: principalActual.clave_documental ?? null,
-              documentoNuevoId: Number(ocr.documento_id),
-              tipoRelacionNuevo: tipoRelacion,
-              tipoDocumentalNuevo: tipoDocumental,
-              requiereReemplazoExplicito: true,
-            },
-          );
-        }
-      }
-
       const duplicadoRows = await tx`
         SELECT
           d.id AS documento_id,
@@ -1174,148 +1120,332 @@ export class DocumentosRepository {
     id: number,
     input: {
       tipoDocumental?: string;
+      ocrResultadoId?: number;
       metadata?: Record<string, any>;
       observacion?: string;
+      motivo?: string;
+      origen?: string;
     },
     usuarioId?: number,
   ) {
-    const currentRows = await sql`
-      SELECT *
-      FROM documentos.documentos
-      WHERE id = ${id}::integer
-      LIMIT 1
-    `;
+    return sql.begin(async (tx) => {
+      const currentRows = await tx`
+        SELECT *
+        FROM documentos.documentos
+        WHERE id = ${id}::integer
+        LIMIT 1
+        FOR UPDATE
+      `;
 
-    const current = currentRows[0];
-    if (!current) return null;
+      const current = currentRows[0];
+      if (!current) return null;
 
-    const metadataInput = this.limpiarCamposLegacyOcr({ ...(input.metadata ?? {}) });
-    const metadataActual = current.metadata ?? {};
-    const ocrActual = metadataActual.ocr ?? {};
-    const ocrMetadataActual = ocrActual.metadata ?? {};
+      if (String(current.estado ?? '').toLowerCase() === 'anulado') {
+        this.throwDomainError(
+          'ESTADO_DOCUMENTAL_NO_PERMITE_CORRECCION',
+          `El documento ${id} está anulado y no admite corrección`,
+          { documentoId: id, estado: current.estado },
+        );
+      }
 
-    const tipoDocumental = String(
-      input.tipoDocumental ??
-        metadataInput.tipoDocumental ??
-        current.tipo_documental ??
-        '',
-    ).trim().toUpperCase();
+      const esCorreccionPostConfirmacion =
+        String(current.estado ?? '').toLowerCase() === 'confirmado';
 
-    const clienteAbreviatura = String(
-      metadataInput.clienteAbreviatura ?? current.cliente_abreviatura ?? 'BBTI',
-    ).trim().toUpperCase();
+      const motivo = String(input.motivo ?? input.observacion ?? '').trim();
+      const origen = String(
+        input.origen ?? 'CORRECCION_MANUAL_POST_CONFIRMACION',
+      ).trim();
 
-    const metadataNueva = {
-      ...ocrMetadataActual,
-      ...metadataInput,
-      tipoDocumental,
-      clienteAbreviatura,
-    };
+      if (esCorreccionPostConfirmacion && !motivo) {
+        this.throwDomainError(
+          'MOTIVO_CORRECCION_REQUERIDO',
+          'Debe indicar el motivo de la corrección del documento confirmado',
+          { documentoId: id },
+        );
+      }
 
-    const claveDocumental =
-      this.buildClaveDocumental(clienteAbreviatura, tipoDocumental, metadataNueva) ??
-      metadataInput.claveDocumental ??
-      current.clave_documental;
+      let ocrObjetivo: any = null;
+      if (esCorreccionPostConfirmacion) {
+        const ocrResultadoId = Number(input.ocrResultadoId ?? NaN);
+        if (!Number.isFinite(ocrResultadoId) || ocrResultadoId <= 0) {
+          this.throwDomainError(
+            'OCR_RESULTADO_REQUERIDO',
+            'Debe indicar el ocrResultadoId que originó el documento confirmado',
+            { documentoId: id },
+          );
+        }
 
-    metadataNueva.claveDocumental = claveDocumental;
+        const ocrRows = await tx`
+          SELECT *
+          FROM documentos.ocr_resultados
+          WHERE id = ${ocrResultadoId}::integer
+            AND documento_id = ${id}::integer
+          LIMIT 1
+          FOR UPDATE
+        `;
 
-    const numero =
-      metadataNueva.numero ??
-      metadataNueva.numeroOperacion ??
-      metadataNueva.numeroConstancia ??
-      current.numero ??
-      null;
+        ocrObjetivo = ocrRows[0];
+        if (!ocrObjetivo) {
+          this.throwDomainError(
+            'OCR_RESULTADO_NO_PERTENECE_DOCUMENTO',
+            `El resultado OCR ${ocrResultadoId} no pertenece al documento ${id}`,
+            { documentoId: id, ocrResultadoId },
+          );
+        }
+      }
 
-    const fechaEmision =
-      metadataNueva.fechaEmision ??
-      metadataNueva.fechaPago ??
-      current.fecha_emision ??
-      null;
+      const metadataInput = this.limpiarCamposLegacyOcr({
+        ...(input.metadata ?? {}),
+      });
+      const metadataActual = current.metadata ?? {};
+      const ocrActual = metadataActual.ocr ?? {};
+      const ocrMetadataActual = ocrActual.metadata ?? {};
 
-    const razonSocialEmisor =
-      metadataNueva.proveedor ??
-      metadataNueva.proveedorNombre ??
-      metadataNueva.razonSocial ??
-      metadataNueva.beneficiario ??
-      current.razon_social_emisor ??
-      null;
+      const tipoDocumental = String(
+        input.tipoDocumental ??
+          metadataInput.tipoDocumental ??
+          current.tipo_documental ??
+          '',
+      ).trim().toUpperCase();
 
-    const rucEmisor =
-      metadataNueva.rucEmisor ??
-      metadataNueva.rucProveedor ??
-      metadataNueva.ruc ??
-      current.ruc_emisor ??
-      null;
+      const clienteAbreviatura = String(
+        metadataInput.clienteAbreviatura ??
+          current.cliente_abreviatura ??
+          'BBTI',
+      ).trim().toUpperCase();
 
-    const montoTotal = metadataNueva.montoTotal ?? current.monto_total ?? null;
-    const moneda = metadataNueva.moneda ?? current.moneda ?? null;
+      const metadataNueva = {
+        ...ocrMetadataActual,
+        ...metadataInput,
+        tipoDocumental,
+        clienteAbreviatura,
+      };
 
-    const auditItem = {
-      accion: 'EDITADO_DOCUMENTO_MANUAL',
-      fecha: new Date().toISOString(),
-      usuarioId: usuarioId ?? null,
-      observacion: input.observacion ?? null,
-      cambios: input,
-    };
+      const claveDocumental =
+        this.buildClaveDocumental(
+          clienteAbreviatura,
+          tipoDocumental,
+          metadataNueva,
+        ) ??
+        metadataInput.claveDocumental ??
+        current.clave_documental;
 
-    const metadataFinal = {
-      ...metadataActual,
-      ocr: {
-        ...ocrActual,
-        estado: 'confirmado',
+      metadataNueva.claveDocumental = claveDocumental;
+
+      if (claveDocumental) {
+        const duplicados = await tx`
+          SELECT id, estado
+          FROM documentos.documentos
+          WHERE clave_documental = ${claveDocumental}::text
+            AND id <> ${id}::integer
+            AND COALESCE(estado, '') <> 'anulado'
+          LIMIT 1
+        `;
+
+        if (duplicados[0]) {
+          this.throwDomainError(
+            'DOCUMENTO_DUPLICADO',
+            `Ya existe un documento activo con la clave documental ${claveDocumental}`,
+            {
+              documentoId: id,
+              documentoDuplicadoId: Number(duplicados[0].id),
+              claveDocumental,
+              suggestedAction: 'REVISAR_DUPLICADO_O_AGREGAR_VERSION',
+            },
+          );
+        }
+      }
+
+      const numero =
+        metadataNueva.numero ??
+        metadataNueva.numeroOperacion ??
+        metadataNueva.numeroConstancia ??
+        current.numero ??
+        null;
+
+      const fechaEmision =
+        metadataNueva.fechaEmision ??
+        metadataNueva.fechaPago ??
+        current.fecha_emision ??
+        null;
+
+      const razonSocialEmisor =
+        metadataNueva.proveedor ??
+        metadataNueva.proveedorNombre ??
+        metadataNueva.razonSocial ??
+        metadataNueva.razonSocialEmisor ??
+        metadataNueva.beneficiario ??
+        current.razon_social_emisor ??
+        null;
+
+      const rucEmisor =
+        metadataNueva.rucEmisor ??
+        metadataNueva.rucProveedor ??
+        metadataNueva.ruc ??
+        current.ruc_emisor ??
+        null;
+
+      const montoTotal = metadataNueva.montoTotal ?? current.monto_total ?? null;
+      const moneda = metadataNueva.moneda ?? current.moneda ?? null;
+
+      const before = {
+        tipoDocumental: current.tipo_documental ?? null,
+        rucEmisor: current.ruc_emisor ?? null,
+        razonSocialEmisor: current.razon_social_emisor ?? null,
+        serie: current.serie ?? null,
+        numero: current.numero ?? null,
+        fechaEmision: current.fecha_emision ?? null,
+        moneda: current.moneda ?? null,
+        montoTotal: current.monto_total ?? null,
+        claveDocumental: current.clave_documental ?? null,
+      };
+
+      const after = {
+        tipoDocumental,
+        rucEmisor,
+        razonSocialEmisor,
+        serie: metadataNueva.serie ?? null,
+        numero,
+        fechaEmision,
+        moneda,
+        montoTotal,
+        claveDocumental,
+      };
+
+      const auditItem = {
+        accion: esCorreccionPostConfirmacion
+          ? 'DOCUMENTO_CONFIRMADO_CORREGIDO'
+          : 'EDITADO_DOCUMENTO_MANUAL',
+        origen,
+        fecha: new Date().toISOString(),
+        usuarioId: usuarioId ?? null,
+        motivo: motivo || null,
+        observacion: input.observacion ?? null,
+        documentoId: id,
+        ocrResultadoId: ocrObjetivo ? Number(ocrObjetivo.id) : null,
+        claveAnterior: current.clave_documental ?? null,
+        claveNueva: claveDocumental ?? null,
+        before,
+        after,
+      };
+
+      const metadataFinal = {
+        ...metadataActual,
+        ocr: {
+          ...ocrActual,
+          estado: 'confirmado',
+          tipoDocumental,
+          claveDocumental,
+          metadata: metadataNueva,
+          metadataSource: {
+            ...(ocrActual.metadataSource ?? {}),
+            ...Object.fromEntries(
+              Object.keys(metadataInput).map((key) => [key, 'MANUAL']),
+            ),
+          },
+          audit: [...(ocrActual.audit ?? []), auditItem],
+        },
+        correccionDocumento: auditItem,
+        edicionManual: auditItem,
         tipoDocumental,
         claveDocumental,
-        metadata: metadataNueva,
-        metadataSource: {
-          ...(ocrActual.metadataSource ?? {}),
-          ...Object.fromEntries(Object.keys(metadataInput).map((key) => [key, 'MANUAL'])),
-        },
-        audit: [...(ocrActual.audit ?? []), auditItem],
-      },
-      edicionManual: auditItem,
-      tipoDocumental,
-      claveDocumental,
-    };
+      };
 
-    const rows = await sql`
-      UPDATE documentos.documentos
-      SET
-        cliente_abreviatura = ${clienteAbreviatura}::text,
-        tipo_documental = ${tipoDocumental}::text,
-        razon_social_emisor = NULLIF(${razonSocialEmisor ?? ""}::text, ''),
-        serie = NULLIF(${metadataNueva.serie ?? ""}::text, ''),
-        numero = NULLIF(${numero ?? ""}::text, ''),
-        clave_documental = ${claveDocumental}::text,
-        estado = COALESCE(estado, 'confirmado'),
-        moneda = NULLIF(${moneda ?? ""}::text, ''),
-        ruc_emisor = NULLIF(${rucEmisor ?? ""}::text, ''),
-        fecha_emision = NULLIF(${fechaEmision ?? ""}::text, '')::date,
-        monto_total = NULLIF(${montoTotal ?? ""}::text, '')::numeric,
-        metadata = ${JSON.stringify(metadataFinal)}::jsonb,
-        actualizado_en = now()
-      WHERE id = ${id}::integer
-      RETURNING *
-    `;
+      const rows = await tx`
+        UPDATE documentos.documentos
+        SET
+          cliente_abreviatura = ${clienteAbreviatura}::text,
+          tipo_documental = ${tipoDocumental}::text,
+          razon_social_emisor = NULLIF(${razonSocialEmisor ?? ""}::text, ''),
+          serie = NULLIF(${metadataNueva.serie ?? ""}::text, ''),
+          numero = NULLIF(${numero ?? ""}::text, ''),
+          clave_documental = ${claveDocumental}::text,
+          estado = COALESCE(estado, 'confirmado'),
+          moneda = NULLIF(${moneda ?? ""}::text, ''),
+          ruc_emisor = NULLIF(${rucEmisor ?? ""}::text, ''),
+          fecha_emision = NULLIF(${fechaEmision ?? ""}::text, '')::date,
+          monto_total = NULLIF(${montoTotal ?? ""}::text, '')::numeric,
+          metadata = ${JSON.stringify(metadataFinal)}::jsonb,
+          actualizado_en = now()
+        WHERE id = ${id}::integer
+        RETURNING *
+      `;
 
-    await sql`
-      UPDATE documentos.ocr_resultados
-      SET
-        tipo_propuesto = ${tipoDocumental}::text,
-        clave_documental = ${claveDocumental}::text,
-        metadata = COALESCE(metadata, '{}'::jsonb)
-          || jsonb_build_object(
-            'estado', 'confirmado'::text,
-            'tipoDocumental', ${tipoDocumental}::text,
-            'tipoPropuesto', ${tipoDocumental}::text,
-            'claveDocumental', ${claveDocumental}::text,
-            'metadata', ${JSON.stringify(metadataNueva)}::jsonb,
-            'edicionManual', ${JSON.stringify(auditItem)}::jsonb
+      if (tipoDocumental === 'FACTURA') {
+        await tx`
+          INSERT INTO documentos.documentos_factura (
+            documento_id,
+            ruc_emisor,
+            serie,
+            numero,
+            fecha_emision,
+            total
           )
-      WHERE documento_id = ${id}::integer
-        AND estado IN ('confirmado', 'editado', 'pendiente_validacion', 'confirmado_como_version')
-    `;
+          VALUES (
+            ${id}::integer,
+            NULLIF(${rucEmisor ?? ""}::text, ''),
+            NULLIF(${metadataNueva.serie ?? ""}::text, ''),
+            NULLIF(${numero ?? ""}::text, ''),
+            NULLIF(${fechaEmision ?? ""}::text, '')::date,
+            NULLIF(${montoTotal ?? ""}::text, '')::numeric
+          )
+          ON CONFLICT (documento_id)
+          DO UPDATE SET
+            ruc_emisor = EXCLUDED.ruc_emisor,
+            serie = EXCLUDED.serie,
+            numero = EXCLUDED.numero,
+            fecha_emision = EXCLUDED.fecha_emision,
+            total = EXCLUDED.total
+        `;
+      }
 
-    return rows[0] ?? null;
+      if (ocrObjetivo) {
+        await tx`
+          UPDATE documentos.ocr_resultados
+          SET
+            tipo_propuesto = ${tipoDocumental}::text,
+            clave_documental = ${claveDocumental}::text,
+            metadata = COALESCE(metadata, '{}'::jsonb)
+              || jsonb_build_object(
+                'estado', 'confirmado'::text,
+                'tipoDocumental', ${tipoDocumental}::text,
+                'tipoPropuesto', ${tipoDocumental}::text,
+                'claveDocumental', ${claveDocumental}::text,
+                'metadata', ${JSON.stringify(metadataNueva)}::jsonb,
+                'correccionDocumento', ${JSON.stringify(auditItem)}::jsonb
+              ),
+            validado_por = COALESCE(${usuarioId ?? null}::integer, validado_por),
+            validado_en = now()
+          WHERE id = ${Number(ocrObjetivo.id)}::integer
+            AND documento_id = ${id}::integer
+        `;
+      } else {
+        await tx`
+          UPDATE documentos.ocr_resultados
+          SET
+            tipo_propuesto = ${tipoDocumental}::text,
+            clave_documental = ${claveDocumental}::text,
+            metadata = COALESCE(metadata, '{}'::jsonb)
+              || jsonb_build_object(
+                'estado', 'confirmado'::text,
+                'tipoDocumental', ${tipoDocumental}::text,
+                'tipoPropuesto', ${tipoDocumental}::text,
+                'claveDocumental', ${claveDocumental}::text,
+                'metadata', ${JSON.stringify(metadataNueva)}::jsonb,
+                'edicionManual', ${JSON.stringify(auditItem)}::jsonb
+              )
+          WHERE documento_id = ${id}::integer
+            AND estado IN (
+              'confirmado',
+              'editado',
+              'pendiente_validacion',
+              'confirmado_como_version'
+            )
+        `;
+      }
+
+      return rows[0] ?? null;
+    });
   }
 
   async createDocumentoRelacion(params: {

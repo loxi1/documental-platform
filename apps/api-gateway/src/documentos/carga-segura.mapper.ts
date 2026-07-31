@@ -63,8 +63,10 @@ export function mapSecureUploadSuccess(payload: unknown): {
 
   if (kind === 'CREATED') {
     const documentoId = readPositiveId(source, 'documentoId');
+    const archivoId = readPositiveId(source, 'archivoId');
+    const cargaOperacionId = readPositiveId(source, 'operacionId');
 
-    if (!documentoId) {
+    if (!documentoId || !archivoId || !cargaOperacionId) {
       throw new Error('Respuesta CREATED inválida');
     }
 
@@ -73,14 +75,18 @@ export function mapSecureUploadSuccess(payload: unknown): {
       data: {
         kind: 'CREATED',
         documentoId,
+        archivoId,
+        cargaOperacionId,
       },
     };
   }
 
   if (kind === 'REPLAYED') {
     const documentoId = readPositiveId(source, 'documentoId');
+    const archivoId = readPositiveId(source, 'archivoId');
+    const cargaOperacionId = readPositiveId(source, 'operacionId');
 
-    if (!documentoId) {
+    if (!documentoId || !archivoId || !cargaOperacionId) {
       throw new Error('Respuesta REPLAYED inválida');
     }
 
@@ -89,6 +95,8 @@ export function mapSecureUploadSuccess(payload: unknown): {
       data: {
         kind: 'REPLAYED',
         documentoId,
+        archivoId,
+        cargaOperacionId,
       },
     };
   }

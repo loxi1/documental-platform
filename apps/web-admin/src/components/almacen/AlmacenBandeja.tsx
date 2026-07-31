@@ -260,13 +260,13 @@ function ExpedienteCell({ expediente }: { expediente: Expediente }) {
 function ActionsCell({ expediente }: { expediente: Expediente }) {
   return (
     <div className="flex justify-end gap-1">
-      <Button asChild size="icon" variant="outline" title="Ver expediente">
-        <Link href={`/almacen/${expediente.id}/ver`} aria-label="Ver expediente">
+      <Button asChild size="icon" variant="outline" title="Ver contexto de almacén">
+        <Link href={`/almacen/${expediente.id}/ver`} aria-label="Ver contexto de almacén">
           <Eye className="h-4 w-4" />
         </Link>
       </Button>
-      <Button asChild size="icon" variant="outline" title="Adjuntar documento">
-        <Link href={`/almacen/${expediente.id}/editar?accion=adjuntar`} aria-label="Adjuntar documento">
+      <Button asChild size="icon" variant="outline" title="Adjuntar Guía/NI">
+        <Link href={`/almacen/${expediente.id}/editar?accion=adjuntar`} aria-label="Adjuntar Guía/NI">
           <FilePlus2 className="h-4 w-4" />
         </Link>
       </Button>
@@ -480,7 +480,7 @@ export function AlmacenBandeja() {
         <div>
           <h1 className="text-2xl font-bold">Almacén</h1>
           <p className="text-sm text-muted-foreground">
-            Expedientes con documento principal listos para adjuntar evidencia física.
+            Bandeja operativa de recepción. Almacén consulta OC/OS y factura, y adjunta Guía o Nota de ingreso solo cuando exista Grupo de Factura V2 persistido.
           </p>
         </div>
       </div>
@@ -547,6 +547,9 @@ export function AlmacenBandeja() {
       <Card>
         <CardHeader>
           <CardTitle>Bandeja de almacén</CardTitle>
+          <p className="text-sm text-muted-foreground">
+            Las acciones de recepción se habilitan en el detalle cuando Workspace V2 expone grupoFacturaId real.
+          </p>
         </CardHeader>
 
         <CardContent className="space-y-4">

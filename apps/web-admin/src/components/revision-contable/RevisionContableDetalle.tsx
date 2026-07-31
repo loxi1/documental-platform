@@ -28,6 +28,8 @@ import {
   EmptyTitle,
 } from "@/components/ui/empty";
 import { DocumentoPreviewModal } from "@/components/revision-contable/DocumentoPreviewModal";
+import { ContabilidadDocumentoPrincipalOperativoCard } from "@/components/revision-contable/ContabilidadDocumentoPrincipalOperativoCard";
+import { ContabilidadGrupoFacturaSoloLecturaPanel } from "@/components/revision-contable/ContabilidadGrupoFacturaSoloLecturaPanel";
 import { getContexto } from "@/lib/auth-storage";
 import {
   useExpediente,
@@ -42,6 +44,31 @@ type Props = {
   anio?: string | null;
   mes?: string | null;
 };
+
+
+function formatDateOnlyLocal(value: unknown) {
+  if (!value) return "-";
+
+  const text = String(value).trim();
+  const dateOnly = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
+
+  if (dateOnly) {
+    const [, year, month, day] = dateOnly;
+    return `${day}/${month}/${year}`;
+  }
+
+  const date = new Date(text);
+
+  if (Number.isNaN(date.getTime())) {
+    return text.slice(0, 10);
+  }
+
+  return new Intl.DateTimeFormat("es-PE", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date);
+}
 
 function asRecord<T extends object>(value: T | null | undefined) {
   return value as unknown as Record<string, unknown> | null | undefined;
@@ -73,19 +100,7 @@ function asText(value: unknown, fallback = "-") {
 }
 
 function formatDate(value: unknown) {
-  if (!value) return "-";
-
-  const date = new Date(String(value));
-
-  if (Number.isNaN(date.getTime())) {
-    return String(value).slice(0, 10);
-  }
-
-  return new Intl.DateTimeFormat("es-PE", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(date);
+  return formatDateOnlyLocal(value);
 }
 
 function formatMoney(moneda: unknown, monto: unknown) {
@@ -249,7 +264,7 @@ function DocumentoCard({
       <div className="min-w-0 space-y-2">
         <div className="flex flex-wrap items-center gap-2">
           <Badge variant={principal ? "secondary" : "outline"}>
-            {principal ? "Principal" : "Adjunto"}
+            {principal ? "Principal legacy" : "Adjunto legacy"}
           </Badge>
           <Badge variant="outline">{documentoEstado(documento)}</Badge>
         </div>
@@ -478,11 +493,20 @@ export function RevisionContableDetalle({ expedienteId, anio, mes }: Props) {
       </div>
 
       <section className="grid gap-4 lg:grid-cols-2">
+        <ContabilidadDocumentoPrincipalOperativoCard id={expedienteId} />
+        <ContabilidadGrupoFacturaSoloLecturaPanel id={expedienteId} />
+      </section>
+
+      <div className="rounded-xl border border-dashed bg-muted/20 p-3 text-sm text-muted-foreground">
+        Vista legacy de revisión. Uso auxiliar / diagnóstico. No reemplaza el Principal V2 vigente ni el grupo documental persistido.
+      </div>
+
+      <section className="grid gap-4 lg:grid-cols-2">
         <Card className="h-full">
           <CardHeader className="border-b">
             <CardTitle className="flex items-center gap-2">
               <ReceiptText className="h-5 w-5" />
-              Documento principal
+              Documento principal legacy / diagnóstico
             </CardTitle>
           </CardHeader>
           <CardContent className="p-4">
@@ -516,7 +540,7 @@ export function RevisionContableDetalle({ expedienteId, anio, mes }: Props) {
         <CardHeader className="border-b">
           <CardTitle className="flex items-center gap-2">
             <CalendarDays className="h-5 w-5" />
-            Documentos adjuntos
+            Documentos legacy del expediente
           </CardTitle>
         </CardHeader>
         <CardContent className="p-4">

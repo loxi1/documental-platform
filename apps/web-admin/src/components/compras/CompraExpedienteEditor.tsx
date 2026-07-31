@@ -20,7 +20,11 @@ import {
   type DocumentoCargaOption,
 } from "../../constants/documentos";
 import { useExpediente } from "@/hooks/useExpedientes";
-import { prevalidarDocumentoGuiado, subirDocumentoGuiado } from "@/services/carga-guiada";
+import { prevalidarDocumentoGuiado } from "@/services/carga-guiada";
+import {
+  crearCargaSeguraIdempotencyKey,
+  subirDocumentoCargaSegura,
+} from "@/services/carga-segura";
 import { api } from "@/services/api";
 import {
   agregarArchivoComoVersion,
@@ -984,7 +988,9 @@ export function CompraExpedienteEditor({ id }: { id: string | number }) {
       }
 
       setProcessingStep("uploading");
-      const uploadResponse = await subirDocumentoGuiado(uploadPayload, file);
+      const uploadResponse = await subirDocumentoCargaSegura(uploadPayload, file, {
+        idempotencyKey: crearCargaSeguraIdempotencyKey("editar", id),
+      });
       const archivoId = getArchivoId(uploadResponse as Record<string, unknown>);
 
       if (!archivoId) {

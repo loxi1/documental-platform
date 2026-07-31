@@ -27,7 +27,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { prevalidarDocumentoGuiado, subirDocumentoGuiado } from "@/services/carga-guiada";
+import { prevalidarDocumentoGuiado } from "@/services/carga-guiada";
+import {
+  crearCargaSeguraIdempotencyKey,
+  subirDocumentoCargaSegura,
+} from "@/services/carga-segura";
 import { agregarArchivoComoVersion } from "@/services/documentos";
 import {
   buscarExpedientes,
@@ -594,7 +598,9 @@ export function NuevoExpedienteWizard() {
       }
 
       setProcessingStep("uploading");
-      const uploadResponse = await subirDocumentoGuiado(uploadPayload, file);
+      const uploadResponse = await subirDocumentoCargaSegura(uploadPayload, file, {
+        idempotencyKey: crearCargaSeguraIdempotencyKey("nuevo", expedienteSeleccionado.id),
+      });
       const archivoId = getArchivoId(uploadResponse as Record<string, unknown>);
 
       if (!archivoId) {

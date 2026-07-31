@@ -157,7 +157,6 @@ describe('CargaSeguraPersistence', () => {
           cliente_destino_id: 2,
         },
       ],
-      [],
       [{ id: 100 }],
       [{ id: 200 }],
       [],
@@ -180,7 +179,7 @@ describe('CargaSeguraPersistence', () => {
     });
 
     expect(beginMock).toHaveBeenCalledTimes(1);
-    expect(executedQueries).toBe(9);
+    expect(executedQueries).toBe(8);
   });
 
   it('persiste sin relación cuando no existe expediente', async () => {
@@ -213,7 +212,7 @@ describe('CargaSeguraPersistence', () => {
     expect(executedQueries).toBe(5);
   });
 
-  it('bloquea un segundo principal en el expediente', async () => {
+  it('permite otro documento principal en el mismo expediente', async () => {
     queue(
       [storedOperationRow()],
       [],
@@ -224,20 +223,26 @@ describe('CargaSeguraPersistence', () => {
           cliente_destino_id: 2,
         },
       ],
-      [{ documento_id: 99 }],
+      [{ id: 100 }],
+      [{ id: 200 }],
+      [],
+      [],
+      [{ id: 50 }],
     );
 
-    await expect(
-      new CargaSeguraPersistence().persistir({
-        operacion: operation(),
-        command: command(),
-      }),
-    ).rejects.toMatchObject({
-      name: 'CargaSeguraError',
-      code: 'CARGA_SEGURA_PERSISTENCE_FAILED',
+    const result = await new CargaSeguraPersistence().persistir({
+      operacion: operation(),
+      command: command(),
     });
 
-    expect(executedQueries).toBe(4);
+    expect(result).toMatchObject({
+      operacionId: 50,
+      documentoId: 100,
+      archivoId: 200,
+      expedienteId: 17,
+    });
+
+    expect(executedQueries).toBe(8);
   });
 
   it('rechaza una operación que no está almacenada', async () => {

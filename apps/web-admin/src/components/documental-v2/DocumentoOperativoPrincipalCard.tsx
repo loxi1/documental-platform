@@ -11,6 +11,7 @@ import {
   getContextoEmpresaCodigo,
   getContextoOperativoId,
   getDocumentoArchivo,
+  getDocumentoId,
   getDocumentoOperativoPrincipalPersistidoId,
   getDocumentoTipo,
   getEstado,
@@ -65,6 +66,7 @@ export function DocumentoOperativoPrincipalCard({
   }
 
   const documentoOperativoPrincipalId = getDocumentoOperativoPrincipalPersistidoId(documento);
+  const documentoId = getDocumentoId(documento);
   const label = documentoLabel(documento);
 
   return (
@@ -85,6 +87,8 @@ export function DocumentoOperativoPrincipalCard({
               {isPrincipal(documento) ? "Principal activo" : "No marcado como principal"}
             </Badge>
             <Badge variant="secondary">{getEstado(documento)}</Badge>
+            {documentoOperativoPrincipalId ? <Badge variant="outline">Principal V2 {String(documentoOperativoPrincipalId)}</Badge> : null}
+            {documentoId ? <Badge variant="outline">Documento {String(documentoId)}</Badge> : null}
             {documentoOperativoPrincipalId ? (
               <RevertirEntidadDialog
                 title="Anular documento principal"

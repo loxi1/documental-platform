@@ -13,7 +13,7 @@ describe('carga-segura.contract', () => {
       multipartTotalBytes: 16_777_216,
       timeoutMs: 55_000,
       maxFields: 6,
-      maxParts: 7,
+      maxParts: 8,
       maxIdempotencyKeyLength: 128,
     });
   });

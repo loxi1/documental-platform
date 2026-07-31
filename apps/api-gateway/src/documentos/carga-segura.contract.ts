@@ -8,7 +8,7 @@ export const SECURE_UPLOAD = {
   timeoutMs: 55_000,
 
   maxFields: 6,
-  maxParts: 7,
+  maxParts: 8,
   maxFieldSizeBytes: 64 * 1024,
   maxIdempotencyKeyLength: 128,
 
@@ -51,10 +51,14 @@ export type SecureUploadExternalData =
   | {
       kind: 'CREATED';
       documentoId: number;
+      archivoId: number;
+      cargaOperacionId: number;
     }
   | {
       kind: 'REPLAYED';
       documentoId: number;
+      archivoId: number;
+      cargaOperacionId: number;
     }
   | {
       kind: 'RECONCILIATION_REQUIRED';

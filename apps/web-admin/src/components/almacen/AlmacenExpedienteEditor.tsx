@@ -10,6 +10,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import { AlmacenDocumentoPrincipalOperativoCard } from "@/components/almacen/AlmacenDocumentoPrincipalOperativoCard";
+import { AlmacenGrupoFacturaOperativoPanel } from "@/components/almacen/AlmacenGrupoFacturaOperativoPanel";
 import { OcrProcessingDialog, type OcrProcessingStep } from "@/components/ocr/OcrProcessingDialog";
 import { OcrValidationModal, type OcrValidationFormState } from "@/components/ocr/OcrValidationModal";
 import {
@@ -935,26 +937,15 @@ export function AlmacenExpedienteEditor({ id }: { id: string | number }) {
         ) : null}
 
         <section className="grid gap-4 lg:grid-cols-3">
-          <Card className="lg:col-span-2">
-            <CardHeader className="pb-2">
-              <CardTitle>Documento principal</CardTitle>
-              <Badge variant={principal ? "secondary" : "outline"}>{principal ? "✓ Principal activo" : "Sin principal"}</Badge>
-            </CardHeader>
-            <CardContent>
-              {principal ? (
-                <div className="rounded-xl border bg-primary/5 p-4">
-                  <div className="flex items-start gap-3">
-                    <FileText className="mt-0.5 h-5 w-5 text-primary" />
-                    <DocumentoResumen doc={principal} />
-                  </div>
-                </div>
-              ) : (
-                <div className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
-                  Este expediente no tiene documento principal activo. Almacén no puede adjuntar documentos.
-                </div>
-              )}
-            </CardContent>
-          </Card>
+          <div className="lg:col-span-2">
+            <AlmacenDocumentoPrincipalOperativoCard
+              expedienteId={id}
+              fallbackTitle={principal ? getDocumentoSummary(principal).title : null}
+              fallbackDescription={principal ? getDocumentoSummary(principal).providerLine : null}
+              fallbackActive={Boolean(principal)}
+              emptyMessage="Este contexto no tiene documento principal activo. Almacén no puede adjuntar documentos."
+            />
+          </div>
 
           <Card>
             <CardContent className="grid gap-3 p-4">
@@ -976,12 +967,21 @@ export function AlmacenExpedienteEditor({ id }: { id: string | number }) {
           </Card>
         </section>
 
-        <Card>
+        <AlmacenGrupoFacturaOperativoPanel expedienteId={id} modo="editar" />
+
+        <Card className="border-dashed bg-muted/20">
           <CardHeader className="pb-2">
-            <CardTitle>Adjuntar desde Almacén</CardTitle>
+            <CardTitle>Carga guiada legacy de Almacén</CardTitle>
+            <p className="text-sm text-muted-foreground">
+              Uso operativo auxiliar / diagnóstico. La asociación documental definitiva se realiza desde el grupo documental persistido superior mediante “Agregar Guía/NI”. No reemplaza el flujo V2.
+            </p>
           </CardHeader>
-          <CardContent className="grid gap-3 md:grid-cols-3">
-            {DOCUMENTO_ALMACEN_ADJUNTO_OPTIONS.map((item) => {
+          <CardContent className="space-y-3">
+            <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-800 dark:text-amber-200">
+              Flujo legacy auxiliar. Para recepción documental vigente usa el grupo persistido de arriba y la acción “Agregar Guía/NI”.
+            </div>
+            <div className="grid gap-3 md:grid-cols-3">
+              {DOCUMENTO_ALMACEN_ADJUNTO_OPTIONS.map((item) => {
               const documentosItem = documentosPorRelacion.get(item.tipoRelacionSugerida);
               return (
                 <div key={item.tipoRelacionSugerida} className="rounded-xl border p-4">
@@ -1000,7 +1000,7 @@ export function AlmacenExpedienteEditor({ id }: { id: string | number }) {
                     onQuitar={(doc) => {
                       const resumen = getAlmacenResumen(doc);
                       setMensajeValidacion(
-                        `Quitar pendiente de backend: se retirará ${resumen.label} ${resumen.numero} del expediente, conservando el archivo y auditoría.`,
+                        `Quitar legacy pendiente de backend: se retirará ${resumen.label} ${resumen.numero} del expediente, conservando el archivo y auditoría.`,
                       );
                     }}
                     puedeModificar
@@ -1018,12 +1018,13 @@ export function AlmacenExpedienteEditor({ id }: { id: string | number }) {
                     {procesando && accionActual?.tipoRelacionSugerida === item.tipoRelacionSugerida
                       ? "Subiendo/procesando..."
                       : documentosItem?.length
-                        ? "Adjuntar otro"
-                        : "Adjuntar"}
+                        ? "Adjuntar otro legacy"
+                        : "Adjuntar legacy"}
                   </Button>
                 </div>
               );
-            })}
+              })}
+            </div>
           </CardContent>
         </Card>
       </main>

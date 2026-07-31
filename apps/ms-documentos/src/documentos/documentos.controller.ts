@@ -265,11 +265,21 @@ export class DocumentosController {
     @Param('id', ParseIntPipe) id: number,
     @Body() body: {
       tipoDocumental?: string;
+      ocrResultadoId?: number;
       metadata?: Record<string, any>;
       observacion?: string;
+      motivo?: string;
+      origen?: string;
     },
+    @Headers('x-user-id') userId?: string,
   ) {
-    return this.service.actualizarDocumentoManual(id, body);
+    const usuarioId = Number(userId ?? NaN);
+
+    return this.service.actualizarDocumentoManual(
+      id,
+      body,
+      Number.isFinite(usuarioId) && usuarioId > 0 ? usuarioId : undefined,
+    );
   }
 
   @Post('ocr-resultados/:id/rechazar')

@@ -32,12 +32,19 @@ import type {
 } from "@/types/documental-v2-workspace";
 import { formatDate, textValue } from "./workspace-v2-utils";
 
-const TIPOS_DOCUMENTOS_GRUPO = [
-  { value: "TODOS", label: "Todos" },
+const TIPOS_DOCUMENTOS_ALMACEN = [
   { value: "GUIA_REMISION", label: "Guía de remisión" },
   { value: "NOTA_INGRESO", label: "Nota de ingreso" },
+] as const;
+
+const TIPOS_DOCUMENTOS_FINANZAS = [
   { value: "TRANSFERENCIA", label: "Transferencia" },
   { value: "DETRACCION", label: "Detracción" },
+] as const;
+
+const TIPOS_DOCUMENTOS_GRUPO = [
+  ...TIPOS_DOCUMENTOS_ALMACEN,
+  ...TIPOS_DOCUMENTOS_FINANZAS,
 ] as const;
 
 const ERROR_MESSAGES: Record<string, string> = {
@@ -153,20 +160,29 @@ export function AsociarDocumentoGrupoFacturaPanel({
   grupoFacturaId,
   disabled,
   onAssociated,
+  modo = "almacen",
 }: {
   grupoFacturaId?: string | number | null;
   disabled?: boolean;
   onAssociated?: (result: AsociarDocumentoGrupoFacturaV2Result) => Promise<unknown> | unknown;
+  modo?: "almacen" | "finanzas" | "grupo";
 }) {
   const [open, setOpen] = useState(false);
   const [texto, setTexto] = useState("");
-  const [tipoDocumental, setTipoDocumental] = useState("TODOS");
+  const tiposDisponibles =
+    modo === "almacen"
+      ? TIPOS_DOCUMENTOS_ALMACEN
+      : modo === "finanzas"
+        ? TIPOS_DOCUMENTOS_FINANZAS
+        : TIPOS_DOCUMENTOS_GRUPO;
+  const [tipoDocumental, setTipoDocumental] = useState<string>(tiposDisponibles[0]?.value ?? "GUIA_REMISION");
   const [selected, setSelected] = useState<DocumentoGrupoFacturaCandidatoV2 | null>(null);
+  const [evidenciaFuncionalConfirmada, setEvidenciaFuncionalConfirmada] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
   const normalizedTexto = texto.trim();
-  const tipoDocumentalParam = tipoDocumental === "TODOS" ? undefined : tipoDocumental;
-  const canQuery = open && Boolean(grupoFacturaId) && (normalizedTexto.length >= 2 || Boolean(tipoDocumentalParam));
+  const tipoDocumentalParam = tipoDocumental;
+  const canQuery = open && Boolean(grupoFacturaId) && Boolean(tipoDocumentalParam);
 
   const candidatosQuery = useQuery({
     queryKey: ["documental-v2-candidatos-grupo", grupoFacturaId, tipoDocumentalParam, normalizedTexto],
@@ -189,6 +205,10 @@ export function AsociarDocumentoGrupoFacturaPanel({
         throw new Error("Falta seleccionar un documento candidato.");
       }
 
+      if (!evidenciaFuncionalConfirmada) {
+        throw new Error("Confirma la evidencia funcional antes de asociar el documento al grupo.");
+      }
+
       return asociarDocumentoGrupoFacturaV2({
         grupoFacturaId,
         documentoId: selected.documentoId,
@@ -204,6 +224,7 @@ export function AsociarDocumentoGrupoFacturaPanel({
 
       if (result.workspaceDebeRefrescar) {
         await onAssociated?.(result);
+        setEvidenciaFuncionalConfirmada(false);
         setOpen(false);
       }
     },
@@ -217,7 +238,7 @@ export function AsociarDocumentoGrupoFacturaPanel({
     <>
       <Button size="sm" disabled={disabled || Boolean(disabledReason)} onClick={() => setOpen(true)}>
         <Plus className="h-4 w-4" />
-        Agregar documento
+        {modo === "almacen" ? "Agregar Guía/NI" : modo === "finanzas" ? "Agregar pago" : "Agregar documento"}
       </Button>
       {disabledReason ? <p className="mt-2 text-xs text-muted-foreground">{disabledReason}</p> : null}
 
@@ -232,8 +253,8 @@ export function AsociarDocumentoGrupoFacturaPanel({
 
           <div className="space-y-4 px-4">
             <div className="rounded-lg border bg-muted/20 p-3 text-sm text-muted-foreground">
-              Esta acción no sube archivos, no ejecuta OCR y no modifica el documento original. Solo crea la asociación
-              operativa dentro del Grupo de Factura V2.
+              Esta acción usa el Grupo de Factura persistido. No reutilices documentos sin evidencia funcional del grupo;
+              el tipo de relación será validado por backend.
             </div>
 
             <div className="grid gap-3 sm:grid-cols-[220px_1fr]">
@@ -246,6 +267,7 @@ export function AsociarDocumentoGrupoFacturaPanel({
                   onValueChange={(value) => {
                     setTipoDocumental(value);
                     setSelected(null);
+                    setEvidenciaFuncionalConfirmada(false);
                     setMessage(null);
                   }}
                 >
@@ -253,7 +275,7 @@ export function AsociarDocumentoGrupoFacturaPanel({
                     <SelectValue placeholder="Tipo" />
                   </SelectTrigger>
                   <SelectContent>
-                    {TIPOS_DOCUMENTOS_GRUPO.map((tipo) => (
+                    {tiposDisponibles.map((tipo) => (
                       <SelectItem key={tipo.value} value={tipo.value}>
                         {tipo.label}
                       </SelectItem>
@@ -273,13 +295,20 @@ export function AsociarDocumentoGrupoFacturaPanel({
                     onChange={(event) => {
                       setTexto(event.target.value);
                       setSelected(null);
+                      setEvidenciaFuncionalConfirmada(false);
                       setMessage(null);
                     }}
-                    placeholder="Número, proveedor o referencia"
+                    placeholder={
+                      modo === "almacen"
+                        ? "Número de guía, nota o proveedor"
+                        : modo === "finanzas"
+                          ? "Operación, constancia, proveedor o referencia"
+                          : "Número, proveedor o referencia"
+                    }
                   />
-                  <Button variant="outline" disabled={candidatosQuery.isFetching || !canQuery}>
+                  <Button variant="outline" disabled={candidatosQuery.isFetching || !grupoFacturaId}>
                     {candidatosQuery.isFetching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
-                    Buscar
+                    Consultar
                   </Button>
                 </div>
               </div>
@@ -304,6 +333,7 @@ export function AsociarDocumentoGrupoFacturaPanel({
                   {candidatos.map((candidato) => {
                     const isSelected = selected?.documentoId === candidato.documentoId;
                     const isDisabled = candidato.yaAsociadoGrupoV2 === true;
+                    const isDisponibleTecnico = !isDisabled;
 
                     return (
                       <button
@@ -312,6 +342,7 @@ export function AsociarDocumentoGrupoFacturaPanel({
                         disabled={isDisabled}
                         onClick={() => {
                           setSelected(candidato);
+                          setEvidenciaFuncionalConfirmada(false);
                           setMessage(null);
                         }}
                         className={`w-full rounded-lg border p-3 text-left transition hover:bg-muted/40 disabled:cursor-not-allowed disabled:opacity-60 ${
@@ -327,11 +358,17 @@ export function AsociarDocumentoGrupoFacturaPanel({
                             <p className="mt-1 text-xs text-muted-foreground">
                               {textValue(candidato.proveedorNombre, "Proveedor no informado")} · {formatDate(candidato.fecha)}
                             </p>
+                            <p className="mt-1 text-xs text-muted-foreground">
+                              {isDisabled
+                                ? "Ya pertenece a otro grupo documental. No disponible para este grupo."
+                                : "Disponible técnicamente; valida evidencia funcional antes de asociar."}
+                            </p>
                           </div>
                           <div className="flex flex-wrap gap-2">
                             <Badge variant="outline">{textValue(candidato.tipoDocumentalLabel ?? candidato.tipoDocumental)}</Badge>
                             <Badge variant="secondary">{textValue(candidato.estado, "Sin estado")}</Badge>
                             {isDisabled ? <Badge variant="outline">Ya asociado</Badge> : null}
+                            {isDisponibleTecnico ? <Badge variant="outline">Disponible técnico</Badge> : null}
                           </div>
                         </div>
                       </button>
@@ -344,7 +381,9 @@ export function AsociarDocumentoGrupoFacturaPanel({
                 </div>
               ) : (
                 <div className="rounded-lg border border-dashed p-3 text-sm text-muted-foreground">
-                  Selecciona un tipo documental o escribe al menos 2 caracteres para buscar candidatos.
+                  {modo === "finanzas"
+                    ? "Selecciona Transferencia o Detracción para consultar candidatos de pago del grupo persistido."
+                    : "Selecciona Guía de remisión o Nota de ingreso para consultar candidatos del grupo persistido."}
                 </div>
               )}
             </div>
@@ -353,6 +392,18 @@ export function AsociarDocumentoGrupoFacturaPanel({
               <div className="space-y-2">
                 <p className="text-xs font-medium uppercase text-muted-foreground">Resumen antes de confirmar</p>
                 <CandidatoSummary candidato={selected} />
+                <label className="flex gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-800 dark:text-amber-200">
+                  <input
+                    type="checkbox"
+                    className="mt-0.5 h-4 w-4 shrink-0"
+                    checked={evidenciaFuncionalConfirmada}
+                    onChange={(event) => setEvidenciaFuncionalConfirmada(event.target.checked)}
+                  />
+                  <span>
+                    Confirmo que existe evidencia funcional para asociar este documento{modo === "finanzas" ? " de pago" : ""} al Grupo de Factura {String(grupoFacturaId)}.
+                    No se debe asociar solo por coincidencia de fecha, monto, RUC, orden, nombre de archivo o por aparecer como candidato.
+                  </span>
+                </label>
               </div>
             ) : null}
 
@@ -372,7 +423,10 @@ export function AsociarDocumentoGrupoFacturaPanel({
           </div>
 
           <SheetFooter>
-            <Button disabled={!selected || selected.yaAsociadoGrupoV2 || asociarMutation.isPending} onClick={() => asociarMutation.mutate()}>
+            <Button
+              disabled={!selected || selected.yaAsociadoGrupoV2 || !evidenciaFuncionalConfirmada || asociarMutation.isPending}
+              onClick={() => asociarMutation.mutate()}
+            >
               {asociarMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
               Confirmar asociación
             </Button>

@@ -129,7 +129,6 @@ export class DocumentosUploadService {
       : codigoExpedientePayload === expedienteInfo.codigoExpediente;
 
     const expedienteTienePrincipal = expedienteInfo?.principalActivo ? true : false;
-    const intentaPrincipal = this.esSolicitudPrincipal(tipoRelacionSugerida, body);
 
     let accionSugerida: 'abrir_existente' | 'vincular_existente' | 'cargar_nuevo' | 'bloquear' | 'requiere_confirmacion' = 'cargar_nuevo';
     let motivo: string | null = null;
@@ -139,14 +138,7 @@ export class DocumentosUploadService {
       motivo = 'ARCHIVO_DUPLICADO_POR_HASH';
     } else if (documentoExistente?.id && documentoYaVinculado?.expedienteId && expedienteId && Number(documentoYaVinculado.expedienteId) !== Number(expedienteId)) {
       accionSugerida = 'bloquear';
-      motivo = 'DOCUMENTO_YA_VINCULADO_A_OTRO_EXPEDIENTE';
-    } else if (codigoExpedienteCoincide === false) {
-      accionSugerida = 'bloquear';
-      motivo = 'CODIGO_EXPEDIENTE_NO_COINCIDE';
-    } else if (intentaPrincipal && expedienteTienePrincipal) {
-      accionSugerida = 'bloquear';
-      motivo = 'EXPEDIENTE_YA_TIENE_DOCUMENTO_PRINCIPAL';
-    } else if (documentoExistente?.id && expedienteId) {
+      motivo = 'DOCUMENTO_YA_VINCULADO_A_OTRO_EXPEDIENTE';    } else if (documentoExistente?.id && expedienteId) {
       accionSugerida = 'vincular_existente';
       motivo = 'MISMA_CLAVE_DOCUMENTAL';
     }
@@ -238,30 +230,6 @@ export class DocumentosUploadService {
         },
       });
     }
-
-    const intentaPrincipal = this.esSolicitudPrincipal(tipoRelacionSugerida, body);
-
-    if (expedienteId && intentaPrincipal) {
-      const expedienteInfo = await this.obtenerResumenExpediente(expedienteId);
-      const principalActivo = expedienteInfo?.principalActivo ?? null;
-
-      if (principalActivo && Number(principalActivo.documentoId) !== Number(documentoIdPayload ?? 0)) {
-        throw new ConflictException({
-          code: 'EXPEDIENTE_YA_TIENE_DOCUMENTO_PRINCIPAL',
-          message: 'El expediente ya tiene un documento principal activo. No se subió nuevamente a R2.',
-          details: {
-            expedienteId,
-            codigoExpediente: expedienteInfo?.codigoExpediente ?? null,
-            documentoId: documentoIdPayload,
-            tipoRelacionSugerida,
-            canalIngreso,
-            principalActivo,
-            accionSugerida: 'bloquear',
-          },
-        });
-      }
-    }
-
     const bucket = this.resolveBucket();
     const storageKey = [
       'documentos',

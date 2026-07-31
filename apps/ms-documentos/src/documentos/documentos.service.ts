@@ -634,28 +634,70 @@ export class DocumentosService {
     id: number,
     input: {
       tipoDocumental?: string;
+      ocrResultadoId?: number;
       metadata?: Record<string, any>;
       observacion?: string;
+      motivo?: string;
+      origen?: string;
     },
     usuarioId?: number,
   ) {
-    const actualizado = await this.repo.actualizarDocumentoManual(id, input, usuarioId);
+    try {
+      const actualizado = await this.repo.actualizarDocumentoManual(
+        id,
+        input,
+        usuarioId,
+      );
 
-    if (!actualizado) {
-      throw new NotFoundException(`Documento ${id} no encontrado`);
+      if (!actualizado) {
+        throw new NotFoundException(`Documento ${id} no encontrado`);
+      }
+
+      return {
+        id: actualizado.id,
+        estado: actualizado.estado,
+        tipoDocumental: actualizado.tipo_documental,
+        claveDocumental: actualizado.clave_documental,
+        numero: actualizado.numero,
+        fechaEmision: actualizado.fecha_emision,
+        moneda: actualizado.moneda,
+        montoTotal: actualizado.monto_total,
+        metadata: actualizado.metadata?.ocr?.metadata ?? actualizado.metadata ?? {},
+      };
+    } catch (error: any) {
+      if (
+        error instanceof BadRequestException ||
+        error instanceof ConflictException ||
+        error instanceof NotFoundException
+      ) {
+        throw error;
+      }
+
+      const code = String(error?.code ?? '');
+      const payload = {
+        code,
+        message: String(error?.message ?? 'No se pudo corregir el documento'),
+        details: error?.details ?? null,
+      };
+
+      if (code === 'DOCUMENTO_DUPLICADO') {
+        throw new ConflictException(payload);
+      }
+
+      if (code === 'ESTADO_DOCUMENTAL_NO_PERMITE_CORRECCION') {
+        throw new ConflictException(payload);
+      }
+
+      if (
+        code === 'MOTIVO_CORRECCION_REQUERIDO' ||
+        code === 'OCR_RESULTADO_REQUERIDO' ||
+        code === 'OCR_RESULTADO_NO_PERTENECE_DOCUMENTO'
+      ) {
+        throw new BadRequestException(payload);
+      }
+
+      throw error;
     }
-
-    return {
-      id: actualizado.id,
-      estado: actualizado.estado,
-      tipoDocumental: actualizado.tipo_documental,
-      claveDocumental: actualizado.clave_documental,
-      numero: actualizado.numero,
-      fechaEmision: actualizado.fecha_emision,
-      moneda: actualizado.moneda,
-      montoTotal: actualizado.monto_total,
-      metadata: actualizado.metadata?.ocr?.metadata ?? actualizado.metadata ?? {},
-    };
   }
 
   async editarOcrResultado(

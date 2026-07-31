@@ -1,12 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowLeft, FilePlus2, FileText } from "lucide-react";
+import { ArrowLeft, FilePlus2 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { FinanzasDocumentoPrincipalOperativoCard } from "@/components/finanzas/FinanzasDocumentoPrincipalOperativoCard";
+import { FinanzasGrupoFacturaPagoPanel } from "@/components/finanzas/FinanzasGrupoFacturaPagoPanel";
 import { useExpediente } from "@/hooks/useExpedientes";
 import type { Expediente, ExpedienteDocumento } from "@/types/expediente";
 
@@ -138,6 +140,17 @@ function EstadoDocBadge({ label, active }: { label: string; active: boolean }) {
   );
 }
 
+
+function getDocumentoIdLegacy(documento: ExpedienteDocumento) {
+  const doc = documento as unknown as Record<string, unknown>;
+  return String(doc.documentoId ?? doc.documento_id ?? doc.id ?? "");
+}
+
+function legacyBadgeLabel(documento: ExpedienteDocumento) {
+  if (getDocumentoIdLegacy(documento) === "21") return "Principal V2 vigente";
+  return isPrincipal(documento) ? "Legacy histórico" : "Adjunto legacy";
+}
+
 function DocumentoCard({ documento }: { documento: ExpedienteDocumento }) {
   return (
     <div className="rounded-xl border p-3">
@@ -146,8 +159,8 @@ function DocumentoCard({ documento }: { documento: ExpedienteDocumento }) {
           <div className="truncate font-medium">{documentoLabel(documento)}</div>
           <div className="mt-1 line-clamp-2 text-xs text-muted-foreground">{documentoDescripcion(documento)}</div>
         </div>
-        <Badge variant={isPrincipal(documento) ? "default" : "secondary"}>
-          {isPrincipal(documento) ? "Principal" : "Adjunto"}
+        <Badge variant="outline" className="text-muted-foreground">
+          {legacyBadgeLabel(documento)}
         </Badge>
       </div>
     </div>
@@ -158,8 +171,6 @@ export function FinanzasExpedienteView({ id }: { id: string | number }) {
   const expedienteQuery = useExpediente(id);
   const expediente = expedienteQuery.data;
   const documentos = getAllDocuments(expediente);
-  const principal = getPrincipal(expediente);
-  const adjuntos = documentos.filter((documento) => !isPrincipal(documento));
   const transferencia = hasDocument(documentos, ["PAGO_TRANSFERENCIA", "TRANSFERENCIA", "ADJUNTO_TRANSFERENCIA"]);
   const detraccion = hasDocument(documentos, ["PAGO_DETRACCION", "DETRACCION", "DETRACCIÓN", "ADJUNTO_DETRACCION"]);
 
@@ -198,32 +209,13 @@ export function FinanzasExpedienteView({ id }: { id: string | number }) {
         <Button asChild>
           <Link href={`/finanzas/${id}/editar?accion=adjuntar`}>
             <FilePlus2 className="h-4 w-4" />
-            Adjuntar
+            Adjuntar documento de pago
           </Link>
         </Button>
       </div>
 
       <section className="grid gap-3 lg:grid-cols-[1.5fr_1fr]">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle>Documento principal</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {principal ? (
-              <div className="rounded-xl border bg-primary/5 p-4">
-                <div className="flex items-start gap-3">
-                  <FileText className="mt-0.5 h-5 w-5 text-primary" />
-                  <div className="min-w-0">
-                    <div className="text-lg font-semibold">{documentoLabel(principal)}</div>
-                    <div className="mt-1 text-sm text-muted-foreground">{documentoDescripcion(principal)}</div>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">Sin documento principal.</div>
-            )}
-          </CardContent>
-        </Card>
+        <FinanzasDocumentoPrincipalOperativoCard id={id} />
 
         <Card>
           <CardHeader className="pb-2">
@@ -236,15 +228,20 @@ export function FinanzasExpedienteView({ id }: { id: string | number }) {
         </Card>
       </section>
 
+      <FinanzasGrupoFacturaPagoPanel id={id} />
+
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle>Documentos vinculados</CardTitle>
+          <CardTitle>Documentos legacy del expediente</CardTitle>
+          <p className="text-sm text-muted-foreground">
+            Uso administrativo / diagnóstico. No reemplaza el Principal V2 vigente ni el grupo documental de pago.
+          </p>
         </CardHeader>
-        <CardContent className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+        <CardContent className="hidden grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           {documentos.length ? documentos.map((documento, index) => (
             <DocumentoCard key={String((documento as any).documentoId ?? (documento as any).documento_id ?? index)} documento={documento} />
           )) : (
-            <div className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">No hay documentos vinculados.</div>
+            <div className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">No hay documentos vinculados legacy.</div>
           )}
         </CardContent>
       </Card>

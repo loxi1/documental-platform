@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { ArrowLeft, FilePlus2, FileText } from "lucide-react";
 
+import { AlmacenDocumentoPrincipalOperativoCard } from "@/components/almacen/AlmacenDocumentoPrincipalOperativoCard";
+import { AlmacenGrupoFacturaOperativoPanel } from "@/components/almacen/AlmacenGrupoFacturaOperativoPanel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -146,8 +148,8 @@ function DocumentoCard({ documento }: { documento: ExpedienteDocumento }) {
           <div className="truncate font-medium">{documentoLabel(documento)}</div>
           <div className="mt-1 line-clamp-2 text-xs text-muted-foreground">{documentoDescripcion(documento)}</div>
         </div>
-        <Badge variant={isPrincipal(documento) ? "default" : "secondary"}>
-          {isPrincipal(documento) ? "Principal" : "Adjunto"}
+        <Badge variant="outline" className="text-muted-foreground">
+          {isPrincipal(documento) ? "Legacy histórico" : "Adjunto legacy"}
         </Badge>
       </div>
     </div>
@@ -199,32 +201,18 @@ export function AlmacenExpedienteView({ id }: { id: string | number }) {
         <Button asChild>
           <Link href={`/almacen/${id}/editar?accion=adjuntar`}>
             <FilePlus2 className="h-4 w-4" />
-            Adjuntar
+            Adjuntar documento de recepción
           </Link>
         </Button>
       </div>
 
       <section className="grid gap-3 lg:grid-cols-[1.5fr_1fr]">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle>Documento principal</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {principal ? (
-              <div className="rounded-xl border bg-primary/5 p-4">
-                <div className="flex items-start gap-3">
-                  <FileText className="mt-0.5 h-5 w-5 text-primary" />
-                  <div className="min-w-0">
-                    <div className="text-lg font-semibold">{documentoLabel(principal)}</div>
-                    <div className="mt-1 text-sm text-muted-foreground">{documentoDescripcion(principal)}</div>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">Sin documento principal.</div>
-            )}
-          </CardContent>
-        </Card>
+        <AlmacenDocumentoPrincipalOperativoCard
+          expedienteId={id}
+          fallbackTitle={principal ? documentoLabel(principal) : null}
+          fallbackDescription={principal ? documentoDescripcion(principal) : null}
+          fallbackActive={Boolean(principal)}
+        />
 
         <Card>
           <CardHeader className="pb-2">
@@ -238,17 +226,26 @@ export function AlmacenExpedienteView({ id }: { id: string | number }) {
         </Card>
       </section>
 
+      <AlmacenGrupoFacturaOperativoPanel expedienteId={id} modo="ver" />
+
       <Card>
-        <CardHeader className="pb-2">
-          <CardTitle>Documentos vinculados</CardTitle>
-        </CardHeader>
-        <CardContent className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-          {documentos.length ? documentos.map((documento, index) => (
-            <DocumentoCard key={String((documento as any).documentoId ?? (documento as any).documento_id ?? index)} documento={documento} />
-          )) : (
-            <div className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">No hay documentos vinculados.</div>
-          )}
-        </CardContent>
+        <details>
+          <summary className="cursor-pointer list-none px-6 py-4">
+            <div className="flex flex-col gap-1">
+              <CardTitle>Documentos legacy del expediente</CardTitle>
+              <p className="text-sm text-muted-foreground">
+                Uso administrativo / diagnóstico. No reemplaza el Principal V2 vigente ni el grupo documental de recepción.
+              </p>
+            </div>
+          </summary>
+          <CardContent className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {documentos.length ? documentos.map((documento, index) => (
+              <DocumentoCard key={String((documento as any).documentoId ?? (documento as any).documento_id ?? index)} documento={documento} />
+            )) : (
+              <div className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">No hay documentos vinculados.</div>
+            )}
+          </CardContent>
+        </details>
       </Card>
     </main>
   );

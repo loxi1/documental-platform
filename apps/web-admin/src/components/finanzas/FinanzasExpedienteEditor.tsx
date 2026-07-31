@@ -7,7 +7,6 @@ import {
   ArrowLeft,
   Eye,
   FilePlus2,
-  FileText,
   Pencil,
   Save,
   Trash2,
@@ -19,6 +18,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import { FinanzasDocumentoPrincipalOperativoCard } from "@/components/finanzas/FinanzasDocumentoPrincipalOperativoCard";
+import { FinanzasGrupoFacturaPagoPanel } from "@/components/finanzas/FinanzasGrupoFacturaPagoPanel";
 import {
   OcrProcessingDialog,
   type OcrProcessingStep,
@@ -1154,29 +1155,7 @@ export function FinanzasExpedienteEditor({ id }: { id: string | number }) {
         ) : null}
 
         <section className="grid gap-4 lg:grid-cols-3">
-          <Card className="lg:col-span-2">
-            <CardHeader className="pb-2">
-              <CardTitle>Documento principal</CardTitle>
-              <Badge variant={principal ? "secondary" : "outline"}>
-                {principal ? "✓ Principal activo" : "Sin principal"}
-              </Badge>
-            </CardHeader>
-            <CardContent>
-              {principal ? (
-                <div className="rounded-xl border bg-primary/5 p-4">
-                  <div className="flex items-start gap-3">
-                    <FileText className="mt-0.5 h-5 w-5 text-primary" />
-                    <DocumentoResumen doc={principal} />
-                  </div>
-                </div>
-              ) : (
-                <div className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
-                  Este expediente no tiene documento principal activo. Finanzas
-                  no puede adjuntar pagos.
-                </div>
-              )}
-            </CardContent>
-          </Card>
+          <FinanzasDocumentoPrincipalOperativoCard id={id} />
 
           <Card>
             <CardContent className="grid gap-3 p-4">
@@ -1204,11 +1183,20 @@ export function FinanzasExpedienteEditor({ id }: { id: string | number }) {
           </Card>
         </section>
 
-        <Card>
+        <FinanzasGrupoFacturaPagoPanel id={id} editable />
+
+        <Card className="border-dashed bg-muted/20">
           <CardHeader className="pb-2">
-            <CardTitle>Adjuntar pagos</CardTitle>
+            <CardTitle>Carga legacy de Finanzas</CardTitle>
+            <p className="text-sm text-muted-foreground">
+              Uso operativo auxiliar / diagnóstico. La asociación documental definitiva se realiza desde el grupo documental persistido superior mediante “Agregar pago”. No reemplaza el flujo V2.
+            </p>
           </CardHeader>
-          <CardContent className="grid gap-3 md:grid-cols-3">
+          <CardContent className="space-y-3">
+            <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-800 dark:text-amber-200">
+              Flujo legacy auxiliar. Para documentos de pago vigentes usa el grupo persistido de arriba y la acción “Agregar pago”.
+            </div>
+            <div className="grid gap-3 md:grid-cols-3">
             {DOCUMENTO_FINANZAS_ADJUNTO_OPTIONS.map((item) => {
               const documentosItem = documentosPorRelacion.get(
                 item.tipoRelacionSugerida,
@@ -1247,12 +1235,13 @@ export function FinanzasExpedienteEditor({ id }: { id: string | number }) {
                       item.tipoRelacionSugerida
                       ? "Subiendo/procesando..."
                       : documentosItem?.length
-                        ? "Adjuntar otro"
-                        : "Adjuntar"}
+                        ? "Adjuntar otro legacy"
+                        : "Adjuntar legacy"}
                   </Button>
                 </div>
               );
             })}
+            </div>
           </CardContent>
         </Card>
       </main>

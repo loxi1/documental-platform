@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import {
-  AlertTriangle,
   CheckCircle2,
   Eye,
   FileText,
@@ -30,7 +29,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useCrearDocumentoAlerta } from "@/hooks/useAlertas";
 import { useRevisionContable } from "@/hooks/useRevisionContable";
 import { getContexto } from "@/lib/auth-storage";
 import type { RevisionContableItem } from "@/types/revision-contable";
@@ -51,6 +49,31 @@ const MESES = [
 ];
 
 const PAGE_SIZE_OPTIONS = ["25", "50", "100"];
+
+
+function formatDateOnlyLocal(value: unknown) {
+  if (!value) return "-";
+
+  const text = String(value).trim();
+  const dateOnly = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
+
+  if (dateOnly) {
+    const [, year, month, day] = dateOnly;
+    return `${day}/${month}/${year}`;
+  }
+
+  const date = new Date(text);
+
+  if (Number.isNaN(date.getTime())) {
+    return text.slice(0, 10);
+  }
+
+  return new Intl.DateTimeFormat("es-PE", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date);
+}
 
 function buildYearOptions() {
   const current = new Date().getFullYear();
@@ -155,22 +178,37 @@ function descripcionExpediente(item: RevisionContableItem) {
   return asText(pick(item.descripcion, item.expediente_descripcion, item.expedienteDescripcion), "Sin descripción");
 }
 
+function fechaEmisionRaw(item: RevisionContableItem) {
+  return pick(item.fecha_emision, item.fechaEmision, null);
+}
+
 function fechaEmision(item: RevisionContableItem) {
-  const value = pick(item.fecha_emision, item.fechaEmision, null);
+  return formatDateOnlyLocal(fechaEmisionRaw(item));
+}
+
+function periodoFactura(item: RevisionContableItem) {
+  const value = fechaEmisionRaw(item);
 
   if (!value) return "-";
 
   const date = new Date(String(value));
 
   if (Number.isNaN(date.getTime())) {
-    return String(value).slice(0, 10);
+    const text = String(value).slice(0, 7);
+    return /^\d{4}-\d{2}$/.test(text) ? text : "-";
   }
 
-  return new Intl.DateTimeFormat("es-PE", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(date);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+
+  return `${year}-${month}`;
+}
+
+function isFacturaRow(item: RevisionContableItem) {
+  const tipo = String(pick(item.tipo_documental, item.tipoDocumental, "")).toUpperCase();
+  const nombre = documentoNombre(item).toUpperCase();
+
+  return tipo === "FACTURA" || nombre.includes("FACTURA");
 }
 
 function montoNumber(item: RevisionContableItem) {
@@ -310,35 +348,28 @@ function EstadoChip({ label, active }: { label: string; active: boolean }) {
 }
 
 function EstadoDocumentalHorizontal({ item }: { item: RevisionContableItem }) {
-  const principal = principalDocumento(item) !== "No informado";
+  const hasRecepcion =
+    hasDocumentType(item, "GUIA_REMISION") ||
+    hasDocumentType(item, "GUIA") ||
+    hasDocumentType(item, "NOTA_INGRESO");
+
+  const hasTransferencia =
+    hasDocumentType(item, "PAGO_TRANSFERENCIA") ||
+    hasDocumentType(item, "TRANSFERENCIA");
+
+  const hasDetraccion =
+    hasDocumentType(item, "PAGO_DETRACCION") ||
+    hasDocumentType(item, "DETRACCION");
 
   const states = [
-    { label: "Principal", active: principal },
-    { label: "OC", active: hasDocumentType(item, "OC") },
-    { label: "OS", active: hasDocumentType(item, "OS") },
-    { label: "Factura", active: hasDocumentType(item, "FACTURA") },
-    {
-      label: "Guía",
-      active:
-        hasDocumentType(item, "GUIA_REMISION") || hasDocumentType(item, "GUIA"),
-    },
-    { label: "NI", active: hasDocumentType(item, "NOTA_INGRESO") },
-    {
-      label: "Transf.",
-      active:
-        hasDocumentType(item, "PAGO_TRANSFERENCIA") ||
-        hasDocumentType(item, "TRANSFERENCIA"),
-    },
-    {
-      label: "Detrac.",
-      active:
-        hasDocumentType(item, "PAGO_DETRACCION") ||
-        hasDocumentType(item, "DETRACCION"),
-    },
+    { label: "Factura", active: true },
+    { label: "Recepción", active: hasRecepcion },
+    { label: "Transferencia", active: hasTransferencia },
+    { label: "Detracción", active: hasDetraccion },
   ];
 
   return (
-    <div className="flex min-w-[560px] flex-wrap gap-1.5">
+    <div className="flex min-w-[420px] flex-wrap gap-1.5">
       {states.map((state) => (
         <EstadoChip key={state.label} {...state} />
       ))}
@@ -356,6 +387,7 @@ function buildSearchText(item: RevisionContableItem) {
     item.descripcion,
     codigoExpediente(item),
     documentoNombre(item),
+    periodoFactura(item),
     principalDocumento(item),
     rucEmisor(item),
     razonSocial(item),
@@ -382,7 +414,6 @@ export default function RevisionContablePage() {
   const [filtroAlertas, setFiltroAlertas] = useState("todos");
   const [pageSize, setPageSize] = useState("50");
   const [page, setPage] = useState(1);
-  const [observandoId, setObservandoId] = useState<number | string | null>(null);
 
   useEffect(() => {
     const anioUrl = getBrowserQueryParam("anio");
@@ -412,9 +443,12 @@ export default function RevisionContablePage() {
 
   const { data, isLoading, error, refetch, isFetching } =
     useRevisionContable(params);
-  const crearAlerta = useCrearDocumentoAlerta();
 
-  const items = data?.items ?? [];
+  const rawItems = data?.items ?? [];
+  const items = useMemo(
+    () => rawItems.filter((item) => isFacturaRow(item)),
+    [rawItems],
+  );
   const filteredItems = useMemo(() => {
     const q = busqueda.trim().toLowerCase();
 
@@ -454,41 +488,13 @@ export default function RevisionContablePage() {
   const start = (safePage - 1) * numericPageSize;
   const pageItems = filteredItems.slice(start, start + numericPageSize);
 
-  async function crearObservacion(item: RevisionContableItem) {
-    const id = documentoId(item);
-
-    if (id === undefined || id === null || id === "-") return;
-    
-    setObservandoId(id);
-
-    try {
-      await crearAlerta.mutateAsync({
-        documentoId: id,
-        payload: {
-          tipoAlerta: "DOCUMENTO_OBSERVADO",
-          mensaje: `Contabilidad observó ${documentoNombre(item)} para revisión.`,
-          metadata: {
-            origen: "web-admin/revision-contable",
-            empresa: params.empresa,
-            anio: params.anio,
-            mes: params.mes,
-            regla: "alerta_manual",
-          },
-        },
-      });
-      await refetch();
-    } finally {
-      setObservandoId(null);
-    }
-  }
-
   return (
     <main className="space-y-3">
       <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
         <div>
           <h1 className="text-2xl font-bold">Revisión documental</h1>
           <p className="text-sm text-muted-foreground">
-            Bandeja operativa para revisar evidencia documental del periodo.
+            Bandeja contable de solo lectura organizada por factura. El periodo se toma de la fecha de emisión de la factura; sin factura no existe fila contable.
           </p>
         </div>
 
@@ -571,7 +577,7 @@ export default function RevisionContablePage() {
               {monthLabel(mes)} {anio}
             </span>
             <span>·</span>
-            <span>{totalFacturas} expediente{totalFacturas === 1 ? "" : "s"} con factura</span>
+            <span>{totalFacturas} factura{totalFacturas === 1 ? "" : "s"} del periodo</span>
             <span>·</span>
             <span>{formatMoney(totalMonto)}</span>
             <span>·</span>
@@ -599,7 +605,7 @@ export default function RevisionContablePage() {
             <Input
               value={busqueda}
               onChange={(event) => setBusqueda(event.target.value)}
-              placeholder="Buscar expediente, PR/CC, factura, proveedor, documento eje..."
+              placeholder="Buscar factura, proveedor, RUC, OC/OS o contexto operativo..."
             />
 
             <Select value={filtroAlertas} onValueChange={setFiltroAlertas}>
@@ -634,7 +640,7 @@ export default function RevisionContablePage() {
           <div className="flex items-center justify-between border-b px-4 py-3">
             <div className="flex items-center gap-2 font-semibold">
               <FileText className="h-5 w-5" />
-              Contextos operativos del periodo
+              Facturas del periodo contable
             </div>
             <div className="text-xs text-muted-foreground">
               Mostrando {pageItems.length ? start + 1 : 0}-
@@ -653,18 +659,22 @@ export default function RevisionContablePage() {
             </Empty>
           ) : (
             <div className="overflow-x-auto">
+
+              <div className="m-3 rounded-xl border border-dashed bg-muted/20 p-3 text-sm text-muted-foreground">
+                Unidad de listado contable: cada fila representa una factura. La OC, Guía, Nota de ingreso, Transferencia y Detracción no generan fila propia; se muestran como documentos relacionados de una factura existente.
+              </div>
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b bg-muted/40 text-left">
-                    <th className="min-w-48 px-4 py-2.5">Contexto operativo</th>
+                    <th className="min-w-52 px-4 py-2.5">Periodo / contexto</th>
                     <th className="min-w-56 px-4 py-2.5">Factura</th>
                     <th className="min-w-56 px-4 py-2.5">Proveedor</th>
-                    <th className="px-4 py-2.5">Fecha</th>
+                    <th className="px-4 py-2.5">Fecha de emisión</th>
                     <th className="px-4 py-2.5">Monto</th>
                     <th className="min-w-56 px-4 py-2.5">Documento principal</th>
-                    <th className="min-w-[580px] px-4 py-2.5">Estado documental</th>
+                    <th className="min-w-[430px] px-4 py-2.5">Estado documental</th>
                     <th className="px-4 py-2.5">Alertas</th>
-                    <th className="px-4 py-2.5 text-right">Acciones</th>
+                    <th className="px-4 py-2.5 text-right">Acción solo lectura</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -690,7 +700,8 @@ export default function RevisionContablePage() {
                         className="border-b align-top hover:bg-muted/30"
                       >
                         <td className="px-4 py-3">
-                          <div className="font-medium">
+                          <div className="font-medium">Periodo {periodoFactura(item)}</div>
+                          <div className="text-xs text-muted-foreground">
                             Centro de costo {codigoExpediente(item)}
                           </div>
                           <div
@@ -700,25 +711,27 @@ export default function RevisionContablePage() {
                             {descripcionExpediente(item)}
                           </div>
                           <Badge className="mt-1" variant="outline">
-                            ID {expId}
+                            Expediente {expId}
                           </Badge>
                         </td>
                         <td className="px-4 py-3">
                           <div className="font-medium">{documentoNombre(item)}</div>
                           <div className="text-xs text-muted-foreground">
-                            Factura ancla · ID {docId}
+                            Factura ancla · ID {docId} · Fecha emisión {fechaEmision(item)}
                           </div>
                           <Badge className="mt-1" variant="secondary">
                             {documentoEstado(item)}
                           </Badge>
                         </td>
                         <td className="px-4 py-3">
-                          <div>{rucEmisor(item)}</div>
                           <div
-                            className="max-w-64 truncate text-xs text-muted-foreground"
+                            className="max-w-[220px] truncate font-medium"
                             title={String(razonSocial(item))}
                           >
                             {razonSocial(item)}
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            RUC {rucEmisor(item)}
                           </div>
                         </td>
                         <td className="px-4 py-3">{fechaEmision(item)}</td>
@@ -731,7 +744,7 @@ export default function RevisionContablePage() {
                             {principalDocumento(item)}
                           </div>
                           <div className="text-xs text-muted-foreground">
-                            OC / OS / factura directa
+                            OC / OS relacionada / factura directa
                           </div>
                         </td>
                         <td className="px-4 py-3">
@@ -746,27 +759,13 @@ export default function RevisionContablePage() {
                             <Badge variant="outline">Sin alertas registradas</Badge>
                           )}
                         </td>
-                        <td className="space-x-2 px-4 py-3 text-right">
+                        <td className="px-4 py-3 text-right">
                           {detalleRevisionHref ? (
                             <Button asChild size="sm" variant="outline">
                               <Link href={detalleRevisionHref}>
                                 <Eye className="mr-1 h-4 w-4" />
-                                Ver
+                                Ver expediente documental
                               </Link>
-                            </Button>
-                          ) : null}
-
-                          {docId !== "-" ? (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => crearObservacion(item)}
-                              disabled={
-                                crearAlerta.isPending && observandoId === docId
-                              }
-                            >
-                              <AlertTriangle className="mr-1 h-4 w-4" />
-                              Observar
                             </Button>
                           ) : null}
                         </td>

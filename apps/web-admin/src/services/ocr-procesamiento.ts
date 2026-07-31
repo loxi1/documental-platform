@@ -386,3 +386,30 @@ export async function confirmarOcrConExpediente(
     });
   }
 }
+
+export type ProveedorCatalogo = {
+  id?: number | string;
+  ruc: string;
+  razonSocial: string;
+  direccion?: string | null;
+  tipoPersona?: string | null;
+};
+
+export async function buscarProveedoresCatalogo(search: string, limit = 20): Promise<ProveedorCatalogo[]> {
+  const termino = search.trim();
+  if (!termino) return [];
+
+  const response = await api.get('/documentos/proveedores', {
+    params: { search: termino, limit, offset: 0 },
+  });
+  const payload = response.data?.data ?? response.data;
+  const rows = Array.isArray(payload?.data) ? payload.data : Array.isArray(payload) ? payload : [];
+
+  return rows.map((row: any) => ({
+    id: row?.id,
+    ruc: String(row?.ruc ?? '').trim(),
+    razonSocial: String(row?.razonSocial ?? row?.razon_social ?? '').trim(),
+    direccion: row?.direccion ?? null,
+    tipoPersona: row?.tipoPersona ?? row?.tipo_persona ?? null,
+  })).filter((row: ProveedorCatalogo) => row.ruc && row.razonSocial);
+}

@@ -40,17 +40,21 @@ function axiosError(status: number, data: unknown): AxiosError<unknown> {
 
 describe('carga-segura.mapper', () => {
   describe('mapSecureUploadSuccess', () => {
-    it('mapea CREATED a 201 y minimiza', () => {
+    it('mapea CREATED a 201 y expone identificadores operativos mínimos', () => {
       expect(
         mapSecureUploadSuccess({
           success: true,
           requestId: 'req-1',
           data: {
             kind: 'CREATED',
+            operacionId: 8,
             documentoId: 12,
             archivoId: 90,
             hashSha256: 'privado',
             storageKey: 'privado',
+            storageBucket: 'privado',
+            signedUrl: 'privado',
+            payloadFingerprint: 'privado',
           },
         }),
       ).toEqual({
@@ -58,17 +62,22 @@ describe('carga-segura.mapper', () => {
         data: {
           kind: 'CREATED',
           documentoId: 12,
+          archivoId: 90,
+          cargaOperacionId: 8,
         },
       });
     });
 
-    it('mapea REPLAYED a 200 y minimiza', () => {
+    it('mapea REPLAYED a 200 y expone identificadores operativos mínimos', () => {
       expect(
         mapSecureUploadSuccess({
           data: {
             kind: 'REPLAYED',
+            operacionId: 8,
             documentoId: 12,
             archivoId: 90,
+            hashSha256: 'privado',
+            storageKey: 'privado',
           },
         }),
       ).toEqual({
@@ -76,6 +85,8 @@ describe('carga-segura.mapper', () => {
         data: {
           kind: 'REPLAYED',
           documentoId: 12,
+          archivoId: 90,
+          cargaOperacionId: 8,
         },
       });
     });
@@ -118,7 +129,10 @@ describe('carga-segura.mapper', () => {
       null,
       {},
       { kind: 'CREATED' },
+      { kind: 'CREATED', operacionId: 8, documentoId: 12 },
+      { kind: 'CREATED', operacionId: 8, documentoId: 12, archivoId: 0 },
       { kind: 'REPLAYED', documentoId: 0 },
+      { kind: 'REPLAYED', operacionId: 8, documentoId: 12 },
       {
         kind: 'RECONCILIATION_REQUIRED',
         operacionId: -1,

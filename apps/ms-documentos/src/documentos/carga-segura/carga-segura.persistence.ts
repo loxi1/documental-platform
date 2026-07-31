@@ -141,28 +141,6 @@ export class CargaSeguraPersistence {
             },
           );
         }
-
-        if (input.command.esPrincipal) {
-          const principalRows = await tx`
-            SELECT documento_id
-            FROM documentos.expediente_documentos
-            WHERE expediente_id =
-              ${expedienteId}::bigint
-              AND es_principal = true
-            ORDER BY creado_en ASC
-            LIMIT 1
-          `;
-
-          if (principalRows[0]) {
-            throw this.persistenceError(
-              'El expediente ya tiene un documento principal',
-              {
-                expedienteId,
-                documentoPrincipalId: Number(principalRows[0].documento_id),
-              },
-            );
-          }
-        }
       }
 
       const fecha = input.fecha ?? new Date();

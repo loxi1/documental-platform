@@ -4,6 +4,7 @@ import Link from "next/link";
 import { BANCO_OPTIONS, MONEDA_OPTIONS, hasCatalogValue } from "@/constants/catalogos";
 import { api } from "@/services/api";
 import {
+  buscarProveedoresCatalogo,
   getDocumentoDuplicadoDetailsFromError,
   type DocumentoDuplicadoEnExpedienteDetails,
 } from "@/services/ocr-procesamiento";
@@ -481,7 +482,7 @@ const FIELD_LABELS: Record<keyof FormState, string> = {
   proveedor: "Proveedor",
   rucProveedor: "RUC proveedor",
   rucComprador: "RUC comprador",
-  rucEmisor: "RUC emisor",
+  rucEmisor: "RUC proveedor / emisor",
   razonSocial: "Razón social",
   montoTotal: "Monto total",
   moneda: "Moneda",
@@ -627,6 +628,8 @@ export function OcrValidationModal({
   const [submittingAction, setSubmittingAction] = useState<null | "save" | "confirm" | "reject" | "version">(null);
   const [previewUrlFromApi, setPreviewUrlFromApi] = useState<string | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
+  const [proveedorEstado, setProveedorEstado] = useState<"SIN_CONSULTAR" | "BUSCANDO" | "RESUELTO" | "NO_ENCONTRADO" | "ERROR_CONSULTA">("SIN_CONSULTAR");
+  const [proveedorOrigen, setProveedorOrigen] = useState<string>("");
 
   useEffect(() => {
     if (open) {
@@ -636,6 +639,8 @@ export function OcrValidationModal({
       setDuplicadoDetails(null);
       setPreviewUrlFromApi(null);
       setPreviewError(null);
+      setProveedorEstado("SIN_CONSULTAR");
+      setProveedorOrigen("");
     }
   }, [open, resultado, expedienteContexto]);
 
@@ -708,6 +713,55 @@ export function OcrValidationModal({
     (formularioContexto === "ALMACEN" || formularioContexto === "FINANZAS") &&
     tipoDocumentalBloqueado;
   const ocultarExpedienteVinculado = false;
+  const esFactura = normalizeTipoParaUi(form.tipoDocumental) === "FACTURA";
+
+  useEffect(() => {
+    if (!open || readOnly || !esFactura) return;
+
+    const ruc = form.rucEmisor.trim() || form.rucProveedor.trim();
+    if (!/^\d{11}$/.test(ruc)) {
+      setProveedorEstado("SIN_CONSULTAR");
+      setProveedorOrigen("");
+      return;
+    }
+
+    let cancelled = false;
+    const timer = window.setTimeout(async () => {
+      setProveedorEstado("BUSCANDO");
+      try {
+        const proveedores = await buscarProveedoresCatalogo(ruc, 20);
+        const exacto = proveedores.find((item) => item.ruc === ruc);
+        if (cancelled) return;
+
+        if (!exacto) {
+          setProveedorEstado("NO_ENCONTRADO");
+          setProveedorOrigen("");
+          setForm((current) => ({ ...current, razonSocial: "", proveedor: "", rucProveedor: ruc, rucEmisor: ruc }));
+          return;
+        }
+
+        setForm((current) => ({
+          ...current,
+          rucEmisor: ruc,
+          rucProveedor: ruc,
+          razonSocial: exacto.razonSocial,
+          proveedor: exacto.razonSocial,
+        }));
+        setProveedorEstado("RESUELTO");
+        setProveedorOrigen("CATALOGO_PROVEEDORES");
+      } catch {
+        if (!cancelled) {
+          setProveedorEstado("ERROR_CONSULTA");
+          setProveedorOrigen("");
+        }
+      }
+    }, 450);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [open, readOnly, esFactura, form.rucEmisor, form.rucProveedor]);
 
   if (!open) return null;
 
@@ -869,17 +923,60 @@ export function OcrValidationModal({
                 </label>
               )}
 
-              <div className="grid gap-3 md:grid-cols-2">
-                {campos.map((campo) => (
-                  <FieldInput
-                    key={campo}
-                    name={campo}
-                    value={String(form[campo] ?? "")}
-                    onChange={updateField}
-                    readOnly={readOnly}
-                  />
-                ))}
-              </div>
+              {esFactura ? (
+                <div className="space-y-4">
+                  <div className="rounded-2xl border border-slate-200 p-4 dark:border-slate-800">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Proveedor / Emisor</p>
+                    <div className="mt-3 grid gap-3 md:grid-cols-2">
+                      <FieldInput
+                        name="rucEmisor"
+                        value={form.rucEmisor || form.rucProveedor}
+                        onChange={(name, value) => {
+                          updateField(name, value.replace(/\D/g, "").slice(0, 11));
+                          updateField("rucProveedor", value.replace(/\D/g, "").slice(0, 11));
+                        }}
+                        readOnly={readOnly}
+                      />
+                      <ReadOnlyInfo label="Razón social resuelta" value={form.razonSocial || form.proveedor} />
+                    </div>
+                    <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
+                      Estado: {proveedorEstado === "RESUELTO" ? "Resuelto" : proveedorEstado === "BUSCANDO" ? "Buscando…" : proveedorEstado === "NO_ENCONTRADO" ? "No encontrado en catálogo" : proveedorEstado === "ERROR_CONSULTA" ? "Error de consulta" : "Pendiente"}
+                      {proveedorOrigen ? ` · Origen: ${proveedorOrigen}` : ""}
+                    </p>
+                  </div>
+
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Empresa compradora</p>
+                    <div className="mt-3 grid gap-3 md:grid-cols-2">
+                      <ReadOnlyInfo label="Empresa" value={expediente.empresa} />
+                      <ReadOnlyInfo label="RUC comprador" value={form.rucComprador || expedienteContexto?.rucComprador || ""} mono />
+                    </div>
+                    <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">Origen: Workspace · Solo lectura</p>
+                  </div>
+
+                  <div className="rounded-2xl border border-slate-200 p-4 dark:border-slate-800">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Datos del comprobante</p>
+                    <div className="mt-3 grid gap-3 md:grid-cols-2">
+                      {(["serie", "numero", "fechaEmision", "moneda", "montoTotal"] as Array<keyof FormState>).map((campo) => (
+                        <FieldInput key={campo} name={campo} value={String(form[campo] ?? "")} onChange={updateField} readOnly={readOnly} />
+                      ))}
+                    </div>
+                  </div>
+
+                  {form.documentoRelacionado ? (
+                    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900">
+                      <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Referencias detectadas</p>
+                      <p className="mt-2 text-sm font-medium text-slate-800 dark:text-slate-200">{form.documentoRelacionado}</p>
+                    </div>
+                  ) : null}
+                </div>
+              ) : (
+                <div className="grid gap-3 md:grid-cols-2">
+                  {campos.map((campo) => (
+                    <FieldInput key={campo} name={campo} value={String(form[campo] ?? "")} onChange={updateField} readOnly={readOnly} />
+                  ))}
+                </div>
+              )}
 
               <div className="grid gap-3 md:grid-cols-2">
                 <ReadOnlyInfo label="Código expediente" value={form.codigoExpediente || expediente.codigo} />
