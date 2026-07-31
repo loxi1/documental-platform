@@ -871,12 +871,23 @@ export class ExpedientesRepository {
       LIMIT ${limit}
     `;
 
-    return rows.map((row) => ({
-      ...row,
-      documentos: Number(row.documentos ?? 0),
-      documentosLista: row.documentosLista ?? [],
-      documentosAdjuntos: row.documentosLista ?? [],
-    }));
+    return rows.map((row) => {
+      const documentosLista = Array.isArray(row.documentosLista)
+        ? row.documentosLista
+        : [];
+
+      return {
+        ...row,
+        documentos: Number(row.documentos ?? 0),
+        documentosLista,
+        documentosPrincipales: documentosLista.filter(
+          (documento: any) => documento?.esPrincipal === true,
+        ),
+        documentosAdjuntos: documentosLista.filter(
+          (documento: any) => documento?.esPrincipal === false,
+        ),
+      };
+    });
   }
 
   async findByCodigoExpediente(codigo: string, empresa?: string) {
