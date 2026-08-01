@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { sql } from '@documental/database';
+import type { DocumentoCorrespondenciaSnapshot } from './finanzas/correspondencia-pago-factura.adapter';
 
 export type DocumentoExistenteV2 = {
   id: number;
@@ -15,6 +16,7 @@ export type DocumentoExistenteV2 = {
   moneda: string | null;
   montoTotal: number | null;
   nombreArchivo: string | null;
+  metadata: Record<string, unknown> | null;
 };
 
 function mapDocumento(row: any): DocumentoExistenteV2 {
@@ -32,11 +34,18 @@ function mapDocumento(row: any): DocumentoExistenteV2 {
     moneda: row.moneda ?? null,
     montoTotal: row.monto_total === null || row.monto_total === undefined ? null : Number(row.monto_total),
     nombreArchivo: row.nombre_archivo ?? null,
+    metadata: row.metadata ?? null,
   };
 }
 
 @Injectable()
 export class DocumentoExistenteReadonlyRepository {
+  async buscarSnapshot(
+    documentoId: number,
+  ): Promise<DocumentoCorrespondenciaSnapshot | null> {
+    return this.buscarPorId(documentoId);
+  }
+
   async buscarPorId(documentoId: number): Promise<DocumentoExistenteV2 | null> {
     const rows = await sql<any[]>`
       SELECT
@@ -52,6 +61,7 @@ export class DocumentoExistenteReadonlyRepository {
         d.fecha_emision,
         d.moneda,
         d.monto_total,
+        d.metadata,
         da.nombre_archivo
       FROM documentos.documentos d
       LEFT JOIN documentos.documentos_archivos da
@@ -89,6 +99,7 @@ export class DocumentoExistenteReadonlyRepository {
         d.fecha_emision,
         d.moneda,
         d.monto_total,
+        d.metadata,
         da.nombre_archivo,
         CASE WHEN dop.id IS NULL THEN false ELSE true END AS ya_es_principal_v2
       FROM documentos.documentos d
@@ -143,6 +154,7 @@ export class DocumentoExistenteReadonlyRepository {
         d.fecha_emision,
         d.moneda,
         d.monto_total,
+        d.metadata,
         da.nombre_archivo,
         CASE WHEN gf.id IS NULL THEN false ELSE true END AS ya_tiene_grupo_factura_v2
       FROM documentos.documentos d
@@ -202,6 +214,7 @@ export class DocumentoExistenteReadonlyRepository {
         d.fecha_emision,
         d.moneda,
         d.monto_total,
+        d.metadata,
         da.nombre_archivo,
         CASE WHEN gfd.id IS NULL THEN false ELSE true END AS ya_asociado_grupo_v2
       FROM documentos.documentos d

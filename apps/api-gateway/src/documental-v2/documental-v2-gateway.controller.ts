@@ -300,17 +300,25 @@ export class DocumentalV2GatewayController {
     @Body() body: any,
   ) {
     const contexto = await this.validateAuthorization(authorization);
+    const puedeAutorizarExcepcion = this.getWorkspaceActions(contexto).includes(
+      'documental_v2.finanzas.correspondencia.autorizar_excepcion',
+    );
 
     try {
       const response = await axios.post(
         `${this.getBaseUrl()}/documental-v2/grupos-factura/documentos/asociar`,
         body,
         {
-          headers: this.buildDocumentosForwardHeaders(
-            authorization,
-            requestId,
-            contexto,
-          ),
+          headers: {
+            ...this.buildDocumentosForwardHeaders(
+              authorization,
+              requestId,
+              contexto,
+            ),
+            'x-finanzas-correspondencia-autorizar-excepcion': String(
+              puedeAutorizarExcepcion,
+            ),
+          },
         },
       );
 
@@ -405,6 +413,41 @@ export class DocumentalV2GatewayController {
         `${this.getBaseUrl()}/documental-v2/contenedores/${id}/anular`,
         { motivo },
         {
+          headers: this.buildDocumentosForwardHeaders(
+            authorization,
+            requestId,
+            contexto,
+          ),
+        },
+      );
+
+      return this.unwrap(response);
+    } catch (error: any) {
+      this.throwUpstreamHttpException(error);
+    }
+  }
+
+
+  @ApiOperation({
+    summary: 'Evaluar correspondencia entre Factura y sustento de pago',
+  })
+  @Get('finanzas/correspondencia/evaluar')
+  async evaluarCorrespondenciaPagoFactura(
+    @Headers('authorization') authorization: string | undefined,
+    @Headers(REQUEST_ID_HEADER) requestId: string | undefined,
+    @Query('facturaDocumentoId') facturaDocumentoId: string,
+    @Query('pagoDocumentoId') pagoDocumentoId?: string,
+  ) {
+    const contexto = await this.validateAuthorization(authorization);
+
+    try {
+      const response = await axios.get(
+        `${this.getBaseUrl()}/documental-v2/finanzas/correspondencia/evaluar`,
+        {
+          params: {
+            facturaDocumentoId,
+            ...(pagoDocumentoId ? { pagoDocumentoId } : {}),
+          },
           headers: this.buildDocumentosForwardHeaders(
             authorization,
             requestId,

@@ -25,6 +25,10 @@ import { TrazabilidadV2ProjectionMapper } from './trazabilidad-v2.projection.map
 import { ConsultarTrazabilidadV2UseCase } from './use-cases/consultar-trazabilidad-v2.usecase';
 import { MaterializarContextoOperativoV2UseCase } from './use-cases/materializar-contexto-operativo-v2.usecase';
 import { AnularContenedorOperativoV2UseCase } from './use-cases/anular-contenedor-operativo-v2.usecase';
+import {
+  CorrespondenciaDocumentoReadonlyPort,
+  EvaluarCorrespondenciaPagoFacturaUseCase,
+} from './finanzas/evaluar-correspondencia-pago-factura.usecase';
 
 @Module({
   controllers: [DocumentalV2Controller],
@@ -43,6 +47,10 @@ import { AnularContenedorOperativoV2UseCase } from './use-cases/anular-contenedo
     WorkspaceDocumentalV2ViewMapper,
     WorkspaceDocumentalV2UseCase,
     DocumentoExistenteReadonlyRepository,
+    {
+      provide: CorrespondenciaDocumentoReadonlyPort,
+      useExisting: DocumentoExistenteReadonlyRepository,
+    },
     AsociarDocumentoPrincipalV2UseCase,
     AsociarGrupoFacturaV2UseCase,
     AsociarDocumentoGrupoFacturaV2UseCase,
@@ -52,6 +60,7 @@ import { AnularContenedorOperativoV2UseCase } from './use-cases/anular-contenedo
     ConsultarTrazabilidadV2UseCase,
     MaterializarContextoOperativoV2UseCase,
     AnularContenedorOperativoV2UseCase,
+    EvaluarCorrespondenciaPagoFacturaUseCase,
   ],
   exports: [
     ContenedorOperativoRepository,

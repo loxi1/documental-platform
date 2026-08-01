@@ -26,6 +26,7 @@ import { DocumentoExistenteReadonlyRepository } from './documento-existente-read
 import { ConsultarTrazabilidadV2UseCase } from './use-cases/consultar-trazabilidad-v2.usecase';
 import { MaterializarContextoOperativoV2UseCase } from './use-cases/materializar-contexto-operativo-v2.usecase';
 import { AnularContenedorOperativoV2UseCase } from './use-cases/anular-contenedor-operativo-v2.usecase';
+import { EvaluarCorrespondenciaPagoFacturaUseCase } from './finanzas/evaluar-correspondencia-pago-factura.usecase';
 
 @ApiTags('documental-v2')
 @Controller('documental-v2')
@@ -43,8 +44,28 @@ export class DocumentalV2Controller {
     private readonly asociarDocumentoGrupoFacturaV2UseCase: AsociarDocumentoGrupoFacturaV2UseCase,
     private readonly consultarTrazabilidadV2UseCase: ConsultarTrazabilidadV2UseCase,
     private readonly documentoExistenteReadonlyRepository: DocumentoExistenteReadonlyRepository,
+    private readonly evaluarCorrespondenciaPagoFacturaUseCase: EvaluarCorrespondenciaPagoFacturaUseCase,
   ) {}
 
+
+  @ApiOperation({
+    summary: 'Evaluar correspondencia documental entre factura y sustento de pago',
+  })
+  @ApiQuery({ name: 'facturaDocumentoId', required: true, example: 26 })
+  @ApiQuery({ name: 'pagoDocumentoId', required: false, example: 29 })
+  @Get('finanzas/correspondencia/evaluar')
+  evaluarCorrespondenciaPagoFactura(
+    @Query('facturaDocumentoId', ParseIntPipe) facturaDocumentoId: number,
+    @Query('pagoDocumentoId') pagoDocumentoId?: string,
+  ) {
+    return this.evaluarCorrespondenciaPagoFacturaUseCase.execute({
+      facturaDocumentoId,
+      pagoDocumentoId:
+        pagoDocumentoId === undefined || pagoDocumentoId === ''
+          ? null
+          : Number(pagoDocumentoId),
+    });
+  }
 
   @ApiOperation({ summary: 'Construir vista interna Workspace Documental V2 desde Expediente V1' })
   @ApiParam({ name: 'expedienteId', example: 41 })
@@ -506,11 +527,14 @@ export class DocumentalV2Controller {
     @Headers('x-cliente-destino-id') clienteDestinoId?: string,
     @Headers('x-request-id') requestId?: string,
     @Headers('x-correlation-id') correlationId?: string,
+    @Headers('x-finanzas-correspondencia-autorizar-excepcion')
+    permisoAutorizarExcepcion?: string,
   ) {
     return this.asociarDocumentoGrupoFacturaV2UseCase.execute({
       grupoFacturaId: Number(dto.grupoFacturaId),
       documentoId: Number(dto.documentoId),
       tipoRelacion: dto.tipoRelacion,
+      decisionCorrespondencia: dto.decisionCorrespondencia,
       usuario: {
         id: userId ? Number(userId) : null,
         email: userEmail ?? null,
@@ -520,6 +544,8 @@ export class DocumentalV2Controller {
         requestId: requestId ?? null,
         correlationId: correlationId ?? null,
         origen: 'api-gateway',
+        tienePermisoAutorizarExcepcion:
+          permisoAutorizarExcepcion === 'true',
       },
     });
   }

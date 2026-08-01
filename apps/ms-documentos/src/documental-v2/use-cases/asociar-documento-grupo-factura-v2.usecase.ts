@@ -1,4 +1,10 @@
-import { ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+  Optional,
+} from '@nestjs/common';
 
 import { ContenedorOperativoRepository } from '../contenedor-operativo.repository';
 import {
@@ -18,6 +24,16 @@ import type {
 } from '../documental-v2.types';
 import { tipoDocumentalLabel } from '../mappers/documental-v2-labels';
 import type { ContextoAutenticadoV2 } from './asociar-grupo-factura-v2.usecase';
+import {
+  aplicarDecisionCorrespondencia,
+  construirAuditoriaDecision,
+} from '../finanzas/correspondencia-pago-factura.evaluator';
+import type {
+  AccionDecisionCorrespondencia,
+  DecisionCorrespondenciaResult,
+  EvaluacionCorrespondenciaPagoFactura,
+} from '../finanzas/correspondencia-pago-factura.types';
+import { EvaluarCorrespondenciaPagoFacturaUseCase } from '../finanzas/evaluar-correspondencia-pago-factura.usecase';
 
 const TIPOS_RELACION_POR_TIPO_DOCUMENTAL: Record<string, string> = {
   GUIA_REMISION: 'adjunto_guia',
@@ -47,6 +63,10 @@ export type AsociarDocumentoGrupoFacturaV2Input = {
   grupoFacturaId: number;
   documentoId: number;
   tipoRelacion: string;
+  decisionCorrespondencia?: {
+    accion: AccionDecisionCorrespondencia;
+    motivo?: string | null;
+  };
   usuario?: ContextoAutenticadoV2;
 };
 
@@ -68,9 +88,10 @@ export type DocumentoGrupoFacturaOperativoV2 = {
 };
 
 export type AsociarDocumentoGrupoFacturaV2Result = {
-  documentoGrupoFactura: DocumentoGrupoFacturaOperativoV2;
+  documentoGrupoFactura: DocumentoGrupoFacturaOperativoV2 | null;
   idempotente: boolean;
   workspaceDebeRefrescar: boolean;
+  correspondencia?: DecisionCorrespondenciaResult;
 };
 
 function crearError(message: string, code: string, details?: JsonObject) {
@@ -119,6 +140,8 @@ export class AsociarDocumentoGrupoFacturaV2UseCase {
     private readonly grupoFacturaDocumentos: GrupoFacturaDocumentoRepository,
     private readonly documentos: DocumentoExistenteReadonlyRepository,
     private readonly auditoria: AuditoriaOperativaV2Repository,
+    @Optional()
+    private readonly evaluarCorrespondencia?: EvaluarCorrespondenciaPagoFacturaUseCase,
   ) {}
 
   async listarDocumentosCandidatos(input: {
@@ -224,6 +247,102 @@ export class AsociarDocumentoGrupoFacturaV2UseCase {
 
     this.validarCompatibilidadDocumentoRelacion(documento, tipoRelacion);
 
+    let evaluacionCorrespondencia:
+      | EvaluacionCorrespondenciaPagoFactura
+      | undefined;
+    let decisionCorrespondencia: DecisionCorrespondenciaResult | undefined;
+
+    if (tipoRelacion === 'adjunto_transferencia') {
+      if (!this.evaluarCorrespondencia) {
+        throw new ConflictException(
+          crearError(
+            'El evaluador de correspondencia financiera no está disponible',
+            'EVALUADOR_CORRESPONDENCIA_NO_DISPONIBLE',
+          ),
+        );
+      }
+
+      evaluacionCorrespondencia = await this.evaluarCorrespondencia.execute({
+        facturaDocumentoId: Number(contexto.grupo.facturaDocumentoId),
+        pagoDocumentoId: documentoId,
+      });
+
+      const requiereDecision =
+        evaluacionCorrespondencia.requiereDecisionHumana ||
+        !evaluacionCorrespondencia.permiteAsociacionOrdinaria;
+
+      if (requiereDecision) {
+        if (!input.decisionCorrespondencia) {
+          throw new ConflictException(
+            crearError(
+              'La transferencia requiere una decisión de correspondencia',
+              'DECISION_CORRESPONDENCIA_REQUERIDA',
+              {
+                estadoEvaluado: evaluacionCorrespondencia.estado,
+                facturaDocumentoId: evaluacionCorrespondencia.facturaDocumentoId,
+                pagoDocumentoId: evaluacionCorrespondencia.pagoDocumentoId,
+              },
+            ),
+          );
+        }
+
+        try {
+          decisionCorrespondencia = aplicarDecisionCorrespondencia(
+            evaluacionCorrespondencia,
+            {
+              accion: input.decisionCorrespondencia.accion,
+              motivo: input.decisionCorrespondencia.motivo,
+              usuarioId: Number(input.usuario?.id),
+              usuarioAutorizadoExcepcion:
+                input.usuario?.tienePermisoAutorizarExcepcion === true,
+            },
+          );
+        } catch (error: any) {
+          throw new ConflictException(
+            crearError(
+              error?.message ?? 'Decisión de correspondencia inválida',
+              'DECISION_CORRESPONDENCIA_INVALIDA',
+              {
+                estadoEvaluado: evaluacionCorrespondencia.estado,
+                accion: input.decisionCorrespondencia.accion,
+              },
+            ),
+          );
+        }
+
+        if (input.decisionCorrespondencia.accion === 'OBSERVAR') {
+          await this.registrarAuditoriaCorrespondencia({
+            contexto,
+            evaluacion: evaluacionCorrespondencia,
+            decision: decisionCorrespondencia,
+            documentoId,
+            asociacionCreada: false,
+            entidadId: `${grupoFacturaId}:${documentoId}`,
+            usuario: input.usuario,
+          });
+
+          return {
+            documentoGrupoFactura: null,
+            idempotente: false,
+            workspaceDebeRefrescar: false,
+            correspondencia: decisionCorrespondencia,
+          };
+        }
+
+        if (!decisionCorrespondencia.permiteAsociacionOrdinaria) {
+          throw new ConflictException(
+            crearError(
+              'La decisión no permite asociar la transferencia',
+              'CORRESPONDENCIA_NO_PERMITE_ASOCIACION',
+              {
+                estadoResultante: decisionCorrespondencia.estado,
+              },
+            ),
+          );
+        }
+      }
+    }
+
     const documentosHistoricosIds =
       await this.grupoFacturaDocumentos.listarHistoricosPorDocumentoId(
         documentoId,
@@ -317,11 +436,79 @@ export class AsociarDocumentoGrupoFacturaV2UseCase {
       },
     });
 
+    if (evaluacionCorrespondencia && decisionCorrespondencia) {
+      await this.registrarAuditoriaCorrespondencia({
+        contexto,
+        evaluacion: evaluacionCorrespondencia,
+        decision: decisionCorrespondencia,
+        documentoId,
+        asociacionCreada: true,
+        entidadId: creado.id,
+        usuario: input.usuario,
+      });
+    }
+
     return {
       documentoGrupoFactura: this.enriquecerVista(creado, documento),
       idempotente: false,
       workspaceDebeRefrescar: true,
+      ...(decisionCorrespondencia
+        ? { correspondencia: decisionCorrespondencia }
+        : {}),
     };
+  }
+
+  private async registrarAuditoriaCorrespondencia(input: {
+    contexto: {
+      grupo: GrupoFacturaRow;
+      principal: DocumentoOperativoPrincipalRow;
+      contenedor: ContenedorOperativoRow;
+    };
+    evaluacion: EvaluacionCorrespondenciaPagoFactura;
+    decision: DecisionCorrespondenciaResult;
+    documentoId: number;
+    asociacionCreada: boolean;
+    entidadId: string | number;
+    usuario?: ContextoAutenticadoV2;
+  }): Promise<void> {
+    const auditoriaDecision = construirAuditoriaDecision(
+      input.evaluacion,
+      input.decision,
+    );
+
+    await this.auditoria.registrarDecisionCorrespondencia({
+      accion: 'CORRESPONDENCIA_PAGO_FACTURA_DECIDIDA',
+      entidad: 'grupo_factura_documento',
+      entidadId: input.entidadId,
+      descripcion:
+        'Decisión humana de correspondencia entre Factura y transferencia.',
+      empresaCodigo: input.contexto.contenedor.empresaCodigo,
+      usuario: input.usuario,
+      antes: {
+        estadoEvaluado: input.evaluacion.estado,
+        comparaciones: input.evaluacion.comparaciones,
+      },
+      despues: {
+        facturaDocumentoId: auditoriaDecision.facturaDocumentoId,
+        pagoDocumentoId: auditoriaDecision.pagoDocumentoId,
+        grupoFacturaId: input.contexto.grupo.id,
+        estadoEvaluado: auditoriaDecision.estadoAnterior,
+        comparaciones: auditoriaDecision.comparaciones,
+        accion: auditoriaDecision.accion,
+        estadoResultante: auditoriaDecision.estadoResultante,
+        motivo: auditoriaDecision.motivo,
+        usuario: input.usuario ?? null,
+        workspace: input.usuario?.workspaceId ?? null,
+        empresa: input.contexto.contenedor.empresaCodigo,
+        requestId: input.usuario?.requestId ?? null,
+        correlationId: input.usuario?.correlationId ?? null,
+        fecha: auditoriaDecision.fecha,
+        permisoExcepcionUtilizado:
+          auditoriaDecision.accion === 'AUTORIZAR_EXCEPCION',
+        asociacionCreada: input.asociacionCreada,
+        documentoId: input.documentoId,
+      },
+    });
   }
 
   private async obtenerContextoGrupo(grupoFacturaId: number, usuario?: ContextoAutenticadoV2) {

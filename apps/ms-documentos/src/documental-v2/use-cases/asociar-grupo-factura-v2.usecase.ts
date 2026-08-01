@@ -24,6 +24,7 @@ export type ContextoAutenticadoV2 = {
   requestId?: string | null;
   correlationId?: string | null;
   origen?: string | null;
+  tienePermisoAutorizarExcepcion?: boolean;
 };
 
 export type AsociarGrupoFacturaV2Input = {

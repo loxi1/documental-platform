@@ -529,10 +529,67 @@ describe('DocumentalV2GatewayController', () => {
           'x-cliente-destino-id': '2',
           'x-request-id': 'req-5',
           'x-correlation-id': 'req-5',
+          'x-finanzas-correspondencia-autorizar-excepcion': 'false',
         },
       },
     );
     expect(result).toEqual(respuesta);
+  });
+
+  it('propaga permiso explícito para autorizar excepción financiera', async () => {
+    const { controller } = buildController({
+      sub: 1,
+      email: 'admin@documental.local',
+      workspaceId: 1,
+      permisos: {
+        actions: [
+          'documental_v2.finanzas.correspondencia.autorizar_excepcion',
+        ],
+      },
+    });
+
+    (axios.post as jest.Mock).mockResolvedValueOnce({
+      data: {
+        success: true,
+        data: {
+          documentoGrupoFactura: {
+            id: 2,
+            grupoFacturaId: 2,
+            documentoId: 29,
+            tipoRelacion: 'adjunto_transferencia',
+            estado: 'activo',
+          },
+          idempotente: false,
+          workspaceDebeRefrescar: true,
+        },
+      },
+    });
+
+    const body = {
+      grupoFacturaId: 2,
+      documentoId: 29,
+      tipoRelacion: 'adjunto_transferencia',
+      decisionCorrespondencia: {
+        accion: 'AUTORIZAR_EXCEPCION',
+        motivo: 'Excepción autorizada para prueba controlada.',
+      },
+    };
+
+    await controller.asociarDocumentoGrupoFactura(
+      'Bearer token-valido',
+      'req-finanzas-excepcion',
+      body,
+    );
+
+    expect(axios.post).toHaveBeenCalledWith(
+      'http://ms-documentos:3002/api/v1/documental-v2/grupos-factura/documentos/asociar',
+      body,
+      {
+        headers: expect.objectContaining({
+          'x-finanzas-correspondencia-autorizar-excepcion': 'true',
+        }),
+      },
+    );
   });
 
 
@@ -777,6 +834,64 @@ describe('DocumentalV2GatewayController', () => {
       idempotente: true,
       workspaceDebeRefrescar: false,
     });
+  });
+
+
+
+  it('expone evaluación de correspondencia pago-factura por proxy controlado', async () => {
+    const { controller, nats } = buildController({
+      sub: 1,
+      email: 'admin@documental.local',
+      workspaceId: 1,
+    });
+
+    const respuesta = {
+      estado: 'NO_VERIFICABLE',
+      facturaDocumentoId: 26,
+      pagoDocumentoId: 29,
+      requiereDecisionHumana: true,
+      permiteAsociacionOrdinaria: false,
+    };
+
+    (axios.get as jest.Mock).mockResolvedValueOnce({
+      data: {
+        success: true,
+        data: respuesta,
+      },
+    });
+
+    const result = await controller.evaluarCorrespondenciaPagoFactura(
+      'Bearer token-valido',
+      'req-finanzas-1',
+      '26',
+      '29',
+    );
+
+    expect(nats.send).toHaveBeenCalledWith('auth.validate-token', {
+      token: 'token-valido',
+    });
+
+    expect(axios.get).toHaveBeenCalledWith(
+      'http://ms-documentos:3002/api/v1/documental-v2/finanzas/correspondencia/evaluar',
+      {
+        params: {
+          facturaDocumentoId: '26',
+          pagoDocumentoId: '29',
+        },
+        headers: {
+          authorization: 'Bearer token-valido',
+          'x-user-id': '1',
+          'x-user-email': 'admin@documental.local',
+          'x-workspace-id': '1',
+          'x-empresa-codigo': 'BBTI',
+          'x-cliente-destino-id': '2',
+          'x-request-id': 'req-finanzas-1',
+          'x-correlation-id': 'req-finanzas-1',
+        },
+      },
+    );
+
+    expect(result).toEqual(respuesta);
   });
 
 
