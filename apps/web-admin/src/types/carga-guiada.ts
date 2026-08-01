@@ -6,6 +6,7 @@ export type TipoEsperado =
   | "FACTURA"
   | "GUIA_REMISION"
   | "NOTA_INGRESO"
+  | "TRANSFERENCIA"
   | "PAGO_TRANSFERENCIA"
   | "PAGO_DETRACCION"
   | "RECIBO_HONORARIO"

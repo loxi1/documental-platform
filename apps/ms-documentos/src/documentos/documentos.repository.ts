@@ -2230,7 +2230,7 @@ export class DocumentosRepository {
       }
     }
 
-    if (['PAGO_TRANSFERENCIA', 'PAGO_DETRACCION'].includes(tipoKey)) {
+    if (['TRANSFERENCIA', 'PAGO_TRANSFERENCIA', 'PAGO_DETRACCION'].includes(tipoKey)) {
       if (clienteKey && numeroOperacion) {
         return `${clienteKey}|${tipoKey}|${numeroOperacion}`;
       }

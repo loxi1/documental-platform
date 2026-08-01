@@ -684,7 +684,7 @@ export class ExpedientesRepository {
         COUNT(*) FILTER (WHERE d.tipo_documental = 'FACTURA')::int AS total_facturas,
         COUNT(*) FILTER (WHERE d.tipo_documental = 'GUIA_REMISION')::int AS total_guias,
         COUNT(*) FILTER (WHERE d.tipo_documental = 'NOTA_INGRESO')::int AS total_notas_ingreso,
-        COUNT(*) FILTER (WHERE d.tipo_documental IN ('PAGO_TRANSFERENCIA', 'PAGO_DETRACCION'))::int AS total_pagos,
+        COUNT(*) FILTER (WHERE d.tipo_documental IN ('TRANSFERENCIA', 'PAGO_TRANSFERENCIA', 'PAGO_DETRACCION'))::int AS total_pagos,
         COALESCE(
           json_agg(
             json_build_object(

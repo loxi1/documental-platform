@@ -95,7 +95,9 @@ export class DocumentosUploadService {
       throw new BadRequestException('clienteAbreviatura es obligatorio');
     }
 
-    const tipoEsperado = normalizeUpper(body.tipoEsperado, 'OTRO');
+    const tipoEsperadoRaw = normalizeUpper(body.tipoEsperado, 'OTRO');
+    const tipoEsperado =
+      tipoEsperadoRaw === 'PAGO_TRANSFERENCIA' ? 'TRANSFERENCIA' : tipoEsperadoRaw;
     const tipoRelacionSugerida = firstNonEmpty(body.tipoRelacionSugerida) ?? null;
     const expedienteId = toOptionalNumber(body.expedienteId);
     const documentoIdPayload = toOptionalNumber(body.documentoId);
@@ -186,7 +188,9 @@ export class DocumentosUploadService {
       throw new BadRequestException('clienteAbreviatura es obligatorio');
     }
 
-    const tipoEsperado = normalizeUpper(body.tipoEsperado, 'OTRO');
+    const tipoEsperadoRaw = normalizeUpper(body.tipoEsperado, 'OTRO');
+    const tipoEsperado =
+      tipoEsperadoRaw === 'PAGO_TRANSFERENCIA' ? 'TRANSFERENCIA' : tipoEsperadoRaw;
     const areaOrigen = normalizeUpper(body.areaOrigen, DEFAULT_AREA_ORIGEN);
     const canalIngreso = normalizeUpper(body.canalIngreso, DEFAULT_CANAL_INGRESO);
     const tipoRelacionSugerida = firstNonEmpty(body.tipoRelacionSugerida) ?? null;

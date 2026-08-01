@@ -265,7 +265,7 @@ function normalizeTipoDocumentalParaBackend(tipoDocumental: string) {
   const tipo = String(tipoDocumental || "")
     .trim()
     .toUpperCase();
-  if (tipo === "TRANSFERENCIA") return "PAGO_TRANSFERENCIA";
+  if (tipo === "PAGO_TRANSFERENCIA") return "TRANSFERENCIA";
   if (tipo === "DETRACCION" || tipo === "DETRACCIÓN") return "PAGO_DETRACCION";
   return tipo;
 }
@@ -275,7 +275,9 @@ function getTipoRelacionPorTipoDocumental(
   fallback: string,
 ) {
   const tipo = normalizeTipoDocumentalParaBackend(tipoDocumental);
-  if (tipo === "PAGO_TRANSFERENCIA") return "adjunto_transferencia";
+  if (tipo === "TRANSFERENCIA" || tipo === "PAGO_TRANSFERENCIA") {
+    return "adjunto_transferencia";
+  }
   if (tipo === "PAGO_DETRACCION") return "adjunto_detraccion";
   return fallback || "adjunto_transferencia";
 }
@@ -701,7 +703,9 @@ export function FinanzasExpedienteEditor({ id }: { id: string | number }) {
       const documentoId = getDocumentoId(doc);
       if (!documentoId) throw new Error("No se encontró documentoId del pago.");
 
-      const tipoDocumental = getTipoDocumentalDoc(doc) || "PAGO_TRANSFERENCIA";
+      const tipoDocumental = normalizeTipoDocumentalParaBackend(
+        getTipoDocumentalDoc(doc) || "TRANSFERENCIA",
+      );
       const metadata = {
         tipoDocumental,
         clienteAbreviatura: empresa,
