@@ -370,11 +370,16 @@ export function AlmacenBandeja() {
     const sourceRows = searchMode ? remoteRows : expedientes;
     const scopedRows = sourceRows.filter((expediente) => getEmpresa(expediente) === empresa);
     const withPrincipal = scopedRows.filter((expediente) => Boolean(getPrincipal(expediente)));
+    const visibleRows = searchMode
+      ? withPrincipal
+      : withPrincipal.length > 0
+        ? withPrincipal
+        : scopedRows;
 
     if (searchMode) return withPrincipal;
-    if (!value) return withPrincipal;
+    if (!value) return visibleRows;
 
-    return withPrincipal.filter((expediente) =>
+    return visibleRows.filter((expediente) =>
       [
         getEmpresa(expediente),
         getClienteNombre(expediente),
@@ -549,6 +554,11 @@ export function AlmacenBandeja() {
           {detailErrors.length > 0 ? (
             <p className="text-xs text-amber-700">
               {detailErrors.length} expediente(s) no pudieron completar su detalle y fueron excluidos de esta vista.
+            </p>
+          ) : null}
+          {!searchMode && rows.length > 0 && rows.some((expediente) => !getPrincipal(expediente)) ? (
+            <p className="text-xs text-amber-700">
+              Esta página contiene expedientes sin documento principal disponible para Almacén. Se muestran para no ocultar la paginación general; use la búsqueda para ubicar un caso documental específico.
             </p>
           ) : null}
         </CardHeader>
