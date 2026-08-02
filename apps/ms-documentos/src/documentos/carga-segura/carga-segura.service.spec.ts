@@ -438,4 +438,58 @@ describe('CargaSeguraService', () => {
       errorDetalle: 'postStorageReason=MARCAR_ALMACENADA_ERROR',
     });
   });
+
+  it('preserva PRINCIPAL_ACTIVO_EXISTENTE después de compensar', async () => {
+    const storedOperation = operation({
+      estado: 'almacenada',
+      storageProvider: 'r2',
+      storageBucket: 'documentos',
+      storageKey: 'storage-key',
+    });
+
+    repository.reservar.mockResolvedValue({
+      kind: 'RESERVED',
+      operacion: operation(),
+    });
+
+    storage.putObject.mockResolvedValue({
+      kind: 'CREATED',
+      provider: 'r2',
+      bucket: 'documentos',
+      key: 'storage-key',
+      preexisting: false,
+    });
+
+    repository.marcarAlmacenada.mockResolvedValue(storedOperation);
+    repository.buscarPorId.mockResolvedValue(storedOperation);
+
+    persistence.persistir.mockRejectedValue(
+      new CargaSeguraError(
+        'PRINCIPAL_ACTIVO_EXISTENTE',
+        'Principal activo existente',
+        {
+          expedienteId: 17,
+          tipoRelacion: 'principal_oc',
+          documentoPrincipalId: 35,
+        },
+      ),
+    );
+
+    compensation.compensate.mockResolvedValue({
+      kind: 'COMPENSATED',
+      operacionId: 50,
+    });
+
+    await expect(createService().ejecutar(command())).rejects.toMatchObject({
+      code: 'PRINCIPAL_ACTIVO_EXISTENTE',
+      details: {
+        expedienteId: 17,
+        tipoRelacion: 'principal_oc',
+        documentoPrincipalId: 35,
+      },
+    });
+
+    expect(compensation.compensate).toHaveBeenCalledTimes(1);
+  });
+
 });

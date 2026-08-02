@@ -148,24 +148,36 @@ describe('DocumentosGatewayController - carga segura', () => {
       {
         data: {
           kind: 'CREATED',
+          operacionId: 55,
           documentoId: 101,
           archivoId: 900,
           storageKey: 'privado',
         },
       },
       HttpStatus.CREATED,
-      { kind: 'CREATED', documentoId: 101 },
+      {
+        kind: 'CREATED',
+        documentoId: 101,
+        archivoId: 900,
+        cargaOperacionId: 55,
+      },
     ],
     [
       {
         data: {
           kind: 'REPLAYED',
+          operacionId: 56,
           documentoId: 101,
           archivoId: 900,
         },
       },
       HttpStatus.OK,
-      { kind: 'REPLAYED', documentoId: 101 },
+      {
+        kind: 'REPLAYED',
+        documentoId: 101,
+        archivoId: 900,
+        cargaOperacionId: 56,
+      },
     ],
     [
       {
@@ -184,7 +196,7 @@ describe('DocumentosGatewayController - carga segura', () => {
       },
     ],
   ])(
-    'mapea éxito minimizado a HTTP %i',
+    'mapea éxito minimizado caso %#',
     async (upstreamPayload, expectedStatus, expectedBody) => {
       const { controller } = prepareAuthorizedController();
       const response = createResponse();
@@ -211,7 +223,12 @@ describe('DocumentosGatewayController - carga segura', () => {
     const { controller, internal } = prepareAuthorizedController();
     const response = createResponse();
     const axiosRequest = jest.spyOn(axios, 'request').mockResolvedValue({
-      data: { kind: 'CREATED', documentoId: 101 },
+      data: {
+        kind: 'CREATED',
+        operacionId: 55,
+        documentoId: 101,
+        archivoId: 900,
+      },
     });
 
     await controller.cargaSegura(
@@ -267,7 +284,12 @@ describe('DocumentosGatewayController - carga segura', () => {
     const { controller } = prepareAuthorizedController();
     const response = createResponse();
     const axiosRequest = jest.spyOn(axios, 'request').mockResolvedValue({
-      data: { kind: 'CREATED', documentoId: 101 },
+      data: {
+        kind: 'CREATED',
+        operacionId: 55,
+        documentoId: 101,
+        archivoId: 900,
+      },
     });
 
     await controller.cargaSegura(

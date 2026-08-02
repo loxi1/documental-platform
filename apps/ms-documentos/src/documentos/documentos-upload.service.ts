@@ -108,13 +108,28 @@ export class DocumentosUploadService {
     const contentType = inferContentType(file, originalFilename);
     const sha256 = createHash('sha256').update(file.buffer).digest('hex');
 
+    const solicitudPrincipal = this.esSolicitudPrincipal(
+      tipoRelacionSugerida,
+      body,
+    );
+    const relacionPrincipalSolicitada =
+      solicitudPrincipal &&
+      String(tipoRelacionSugerida ?? '').trim().toLowerCase().startsWith('principal_')
+        ? String(tipoRelacionSugerida).trim().toLowerCase()
+        : null;
+
     const [duplicados, expedienteInfo, documentoExistente] = await Promise.all([
       this.buscarDuplicadosPorHash({
         sha256,
         documentoId: documentoIdPayload,
         expedienteId,
       }),
-      expedienteId ? this.obtenerResumenExpediente(expedienteId) : Promise.resolve(null),
+      expedienteId
+        ? this.obtenerResumenExpediente(
+            expedienteId,
+            relacionPrincipalSolicitada,
+          )
+        : Promise.resolve(null),
       claveDocumental ? this.buscarDocumentoPorClave(claveDocumental) : Promise.resolve(null),
     ]);
 
@@ -143,6 +158,12 @@ export class DocumentosUploadService {
       motivo = 'DOCUMENTO_YA_VINCULADO_A_OTRO_EXPEDIENTE';    } else if (documentoExistente?.id && expedienteId) {
       accionSugerida = 'vincular_existente';
       motivo = 'MISMA_CLAVE_DOCUMENTAL';
+    } else if (
+      relacionPrincipalSolicitada &&
+      expedienteInfo?.principalActivo
+    ) {
+      accionSugerida = 'bloquear';
+      motivo = 'PRINCIPAL_ACTIVO_EXISTENTE';
     }
 
     return {
@@ -502,7 +523,10 @@ export class DocumentosUploadService {
     };
   }
 
-  private async obtenerResumenExpediente(expedienteId: number) {
+  private async obtenerResumenExpediente(
+    expedienteId: number,
+    tipoRelacionPrincipal: string | null = null,
+  ) {
     const expedienteRows = await sql`
       SELECT id, codigo_expediente, empresa_codigo, cliente_destino_id
       FROM documentos.expedientes
@@ -526,6 +550,11 @@ export class DocumentosUploadService {
         ON d.id = ed.documento_id
       WHERE ed.expediente_id = ${expedienteId}::bigint
         AND ed.es_principal = true
+        AND (
+          ${tipoRelacionPrincipal}::text IS NULL
+          OR ed.tipo_relacion = ${tipoRelacionPrincipal}::text
+        )
+        AND COALESCE(d.estado, '') <> 'anulado'
       ORDER BY ed.orden ASC, ed.creado_en ASC
       LIMIT 1
     `;

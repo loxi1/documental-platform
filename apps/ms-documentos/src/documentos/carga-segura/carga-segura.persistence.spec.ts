@@ -157,6 +157,7 @@ describe('CargaSeguraPersistence', () => {
           cliente_destino_id: 2,
         },
       ],
+      [],
       [{ id: 100 }],
       [{ id: 200 }],
       [],
@@ -179,7 +180,7 @@ describe('CargaSeguraPersistence', () => {
     });
 
     expect(beginMock).toHaveBeenCalledTimes(1);
-    expect(executedQueries).toBe(8);
+    expect(executedQueries).toBe(9);
   });
 
   it('persiste sin relación cuando no existe expediente', async () => {
@@ -212,7 +213,7 @@ describe('CargaSeguraPersistence', () => {
     expect(executedQueries).toBe(5);
   });
 
-  it('permite otro documento principal en el mismo expediente', async () => {
+  it('bloquea otro principal de la misma relación en el mismo expediente', async () => {
     queue(
       [storedOperationRow()],
       [],
@@ -223,6 +224,46 @@ describe('CargaSeguraPersistence', () => {
           cliente_destino_id: 2,
         },
       ],
+      [
+        {
+          documento_id: 35,
+          tipo_relacion: 'principal_oc',
+          tipo_documental: 'OC',
+          serie: null,
+          numero: '008312',
+        },
+      ],
+    );
+
+    await expect(
+      new CargaSeguraPersistence().persistir({
+        operacion: operation(),
+        command: command(),
+      }),
+    ).rejects.toMatchObject({
+      code: 'PRINCIPAL_ACTIVO_EXISTENTE',
+      details: {
+        expedienteId: 17,
+        tipoRelacion: 'principal_oc',
+        documentoPrincipalId: 35,
+      },
+    });
+
+    expect(executedQueries).toBe(4);
+  });
+
+  it('permite otro principal de distinta relación en el mismo expediente', async () => {
+    queue(
+      [storedOperationRow()],
+      [],
+      [
+        {
+          id: 17,
+          empresa_codigo: 'BBTI',
+          cliente_destino_id: 2,
+        },
+      ],
+      [],
       [{ id: 100 }],
       [{ id: 200 }],
       [],
@@ -232,7 +273,10 @@ describe('CargaSeguraPersistence', () => {
 
     const result = await new CargaSeguraPersistence().persistir({
       operacion: operation(),
-      command: command(),
+      command: command({
+        tipoDocumental: 'OS',
+        tipoRelacion: 'principal_os',
+      }),
     });
 
     expect(result).toMatchObject({
@@ -242,7 +286,7 @@ describe('CargaSeguraPersistence', () => {
       expedienteId: 17,
     });
 
-    expect(executedQueries).toBe(8);
+    expect(executedQueries).toBe(9);
   });
 
   it('rechaza una operación que no está almacenada', async () => {

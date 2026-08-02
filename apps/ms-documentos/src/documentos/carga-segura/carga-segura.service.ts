@@ -198,6 +198,13 @@ export class CargaSeguraService {
         };
       }
 
+      if (
+        error instanceof CargaSeguraError &&
+        error.code === 'PRINCIPAL_ACTIVO_EXISTENTE'
+      ) {
+        throw error;
+      }
+
       throw new CargaSeguraError(
         'CARGA_SEGURA_PERSISTENCE_FAILED',
         'La persistencia documental falló y fue compensada',

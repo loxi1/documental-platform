@@ -167,6 +167,7 @@ export class CargaSeguraHttpExceptionFilter implements ExceptionFilter {
       case 'CARGA_SEGURA_IDEMPOTENCY_CONFLICT':
       case 'CARGA_SEGURA_DUPLICATE':
       case 'CARGA_SEGURA_OPERACION_EN_PROGRESO':
+      case 'PRINCIPAL_ACTIVO_EXISTENTE':
         return {
           status: HttpStatus.CONFLICT,
           code: error.code,

@@ -142,6 +142,7 @@ function statusForCode(code: SecureUploadPublicErrorCode): number {
     case 'CARGA_SEGURA_DUPLICATE':
     case 'CARGA_SEGURA_IDEMPOTENCY_CONFLICT':
     case 'CARGA_SEGURA_OPERACION_EN_PROGRESO':
+    case 'PRINCIPAL_ACTIVO_EXISTENTE':
       return HttpStatus.CONFLICT;
 
     case 'CARGA_SEGURA_SOLICITUD_INVALIDA':
