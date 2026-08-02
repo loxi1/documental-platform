@@ -16,9 +16,9 @@ import {
 } from "@/components/ui/empty";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useExpedientes } from "@/hooks/useExpedientes";
+import { useExpedientesPage } from "@/hooks/useExpedientes";
 import { getContexto } from "@/lib/auth-storage";
-import { buscarExpedientes } from "@/services/expedientes";
+import { buscarExpedientes, enriquecerExpedientes } from "@/services/expedientes";
 import type { Expediente, ExpedienteDocumento } from "@/types/expediente";
 
 type ExpedientesApiResponse = {
@@ -109,27 +109,29 @@ function getEstado(expediente: Expediente) {
 }
 
 function getPrincipal(expediente: Expediente): ExpedienteDocumento | null {
-  const documentoPrincipal = field<ExpedienteDocumento | null>(
-    expediente,
-    "documentoPrincipal",
-  );
+  const documentoPrincipal = field(expediente, "documentoPrincipal") as
+    | ExpedienteDocumento
+    | undefined;
+  const documentosPrincipales = field(expediente, "documentosPrincipales");
+  const documentos = field(expediente, "documentos");
+  const documentosLista = field(expediente, "documentosLista");
+  const documentosAdjuntos = field(expediente, "documentosAdjuntos");
 
-  if (documentoPrincipal) return documentoPrincipal;
-
-  const documentosPrincipales = field<ExpedienteDocumento[]>(
-    expediente,
-    "documentosPrincipales",
-  );
-  const documentos = field<ExpedienteDocumento[]>(expediente, "documentos");
-  const documentosAdjuntos = field<ExpedienteDocumento[]>(
-    expediente,
-    "documentosAdjuntos",
-  );
+  const findPrincipal = (value: unknown) =>
+    Array.isArray(value)
+      ? (value.find((documento) =>
+          Boolean(field(documento, "esPrincipal")),
+        ) as ExpedienteDocumento | undefined)
+      : undefined;
 
   return (
-    documentosPrincipales?.[0] ??
-    documentos?.find((documento) => Boolean(field(documento, "esPrincipal"))) ??
-    documentosAdjuntos?.find((documento) => Boolean(field(documento, "esPrincipal"))) ??
+    documentoPrincipal ??
+    (Array.isArray(documentosPrincipales)
+      ? (documentosPrincipales[0] as ExpedienteDocumento | undefined)
+      : undefined) ??
+    findPrincipal(documentos) ??
+    findPrincipal(documentosLista) ??
+    findPrincipal(documentosAdjuntos) ??
     null
   );
 }
@@ -357,6 +359,7 @@ export function FinanzasBandeja() {
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [remoteRows, setRemoteRows] = useState<Expediente[]>([]);
+  const [remoteDetailErrors, setRemoteDetailErrors] = useState<Array<number | string>>([]);
   const [searchMode, setSearchMode] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
@@ -368,14 +371,24 @@ export function FinanzasBandeja() {
     setEmpresa(empresaContexto);
   }, []);
 
-  const { data, isLoading, error } = useExpedientes({
+  const offset = (page - 1) * PAGE_SIZE;
+  const {
+    data: pageData,
+    isLoading,
+    isFetching,
+    error,
+  } = useExpedientesPage({
     empresa,
     estado,
-    limit: 50,
-    offset: 0,
+    limit: PAGE_SIZE,
+    offset,
   });
 
-  const expedientes = useMemo(() => normalizeExpedientes(data), [data]);
+  const expedientes = pageData?.data ?? [];
+  const backendTotal = pageData?.total ?? 0;
+  const detailErrors = searchMode
+    ? remoteDetailErrors
+    : pageData?.detailErrors ?? [];
 
   const rows = useMemo(() => {
     const value = search.trim().toLowerCase();
@@ -409,6 +422,7 @@ export function FinanzasBandeja() {
     if (value.length < 2) {
       setSearchMode(false);
       setRemoteRows([]);
+      setRemoteDetailErrors([]);
       setSearchError(null);
       return;
     }
@@ -418,7 +432,11 @@ export function FinanzasBandeja() {
 
     try {
       const results = await buscarExpedientes(value, 50);
-      setRemoteRows(results as unknown as Expediente[]);
+      const enriched = await enriquecerExpedientes(
+        results as unknown as Expediente[],
+      );
+      setRemoteRows(enriched.data);
+      setRemoteDetailErrors(enriched.detailErrors);
       setSearchMode(true);
       setPage(1);
     } catch {
@@ -431,31 +449,42 @@ export function FinanzasBandeja() {
   function limpiarBusqueda() {
     setSearch("");
     setRemoteRows([]);
+    setRemoteDetailErrors([]);
     setSearchMode(false);
     setSearchError(null);
     setPage(1);
   }
 
-  const totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
+  const totalRows = searchMode ? rows.length : backendTotal;
+  const totalPages = Math.max(1, Math.ceil(totalRows / PAGE_SIZE));
   const currentPage = Math.min(page, totalPages);
   const paginatedRows = useMemo(() => {
+    if (!searchMode) return rows;
+
     const start = (currentPage - 1) * PAGE_SIZE;
     return rows.slice(start, start + PAGE_SIZE);
-  }, [currentPage, rows]);
+  }, [currentPage, rows, searchMode]);
 
   useEffect(() => {
     setPage(1);
-  }, [empresa, estado, search]);
+  }, [empresa, estado]);
 
   useEffect(() => {
     if (!search.trim()) {
       setSearchMode(false);
       setRemoteRows([]);
+      setRemoteDetailErrors([]);
       setSearchError(null);
     }
   }, [search]);
 
-  if (isLoading) {
+  useEffect(() => {
+    if (page > totalPages) {
+      setPage(totalPages);
+    }
+  }, [page, totalPages]);
+
+  if (isLoading && !pageData) {
     return (
       <main className="space-y-4">
         <Skeleton className="h-10 w-72" />
@@ -541,27 +570,49 @@ export function FinanzasBandeja() {
             </p>
           ) : null}
           {searchError ? <p className="text-xs text-red-600">{searchError}</p> : null}
+          {detailErrors.length > 0 ? (
+            <p className="text-xs text-amber-700">
+              {detailErrors.length} expediente(s) no pudieron completar su detalle y fueron excluidos de esta vista.
+            </p>
+          ) : null}
         </CardHeader>
       </Card>
 
       <Card>
         <CardHeader>
-          <CardTitle>Bandeja de finanzas</CardTitle>
+          <div className="flex items-center justify-between gap-3">
+            <CardTitle>Bandeja de finanzas</CardTitle>
+            {isFetching ? (
+              <span className="text-xs text-muted-foreground">Actualizando…</span>
+            ) : null}
+          </div>
         </CardHeader>
 
         <CardContent className="space-y-4">
           {rows.length === 0 ? (
-            <Empty>
+            <>
+              <Empty>
               <EmptyHeader>
                 <EmptyMedia variant="icon">📦</EmptyMedia>
                 <EmptyTitle>Sin expedientes para finanzas</EmptyTitle>
                 <EmptyDescription>
                   {searchMode
                     ? "No se encontraron expedientes con principal para esa búsqueda."
-                    : "No hay expedientes con documento principal para los filtros seleccionados."}
+                    : "La página consultada no contiene expedientes con principal disponible. Use la paginación o búsqueda para continuar."}
                 </EmptyDescription>
               </EmptyHeader>
-            </Empty>
+              </Empty>
+
+              {!searchMode && totalPages > 1 ? (
+                <PaginationControls
+                  page={currentPage}
+                  totalPages={totalPages}
+                  totalRows={totalRows}
+                  pageSize={PAGE_SIZE}
+                  onPageChange={setPage}
+                />
+              ) : null}
+            </>
           ) : (
             <>
               <div className="overflow-x-auto">
@@ -626,7 +677,7 @@ export function FinanzasBandeja() {
               <PaginationControls
                 page={currentPage}
                 totalPages={totalPages}
-                totalRows={rows.length}
+                totalRows={totalRows}
                 pageSize={PAGE_SIZE}
                 onPageChange={setPage}
               />
