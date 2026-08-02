@@ -16,17 +16,10 @@ import {
 } from "@/components/ui/empty";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useExpedientes } from "@/hooks/useExpedientes";
+import { useExpedientesPage } from "@/hooks/useExpedientes";
 import { getContexto } from "@/lib/auth-storage";
-import { buscarExpedientes } from "@/services/expedientes";
+import { buscarExpedientes, enriquecerExpedientes } from "@/services/expedientes";
 import type { Expediente, ExpedienteDocumento } from "@/types/expediente";
-
-type ExpedientesApiResponse = {
-  total?: number;
-  limit?: number;
-  offset?: number;
-  data?: Expediente[];
-};
 
 const PAGE_SIZE = 8;
 
@@ -41,22 +34,6 @@ const EMPRESA_LABELS: Record<string, string> = {
 
 function empresaLabel(value: string) {
   return EMPRESA_LABELS[value] ?? value;
-}
-
-
-function normalizeExpedientes(input: unknown): Expediente[] {
-  if (Array.isArray(input)) return input as Expediente[];
-
-  if (
-    input &&
-    typeof input === "object" &&
-    "data" in input &&
-    Array.isArray((input as ExpedientesApiResponse).data)
-  ) {
-    return (input as ExpedientesApiResponse).data ?? [];
-  }
-
-  return [];
 }
 
 function text(value: unknown, fallback = "") {
@@ -357,6 +334,7 @@ export function AlmacenBandeja() {
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [remoteRows, setRemoteRows] = useState<Expediente[]>([]);
+  const [remoteDetailErrors, setRemoteDetailErrors] = useState<Array<number | string>>([]);
   const [searchMode, setSearchMode] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
@@ -368,14 +346,24 @@ export function AlmacenBandeja() {
     setEmpresa(empresaContexto);
   }, []);
 
-  const { data, isLoading, error } = useExpedientes({
+  const offset = (page - 1) * PAGE_SIZE;
+  const {
+    data: pageData,
+    isLoading,
+    isFetching,
+    error,
+  } = useExpedientesPage({
     empresa,
     estado,
-    limit: 50,
-    offset: 0,
+    limit: PAGE_SIZE,
+    offset,
   });
 
-  const expedientes = useMemo(() => normalizeExpedientes(data), [data]);
+  const expedientes = pageData?.data ?? [];
+  const backendTotal = pageData?.total ?? 0;
+  const detailErrors = searchMode
+    ? remoteDetailErrors
+    : pageData?.detailErrors ?? [];
 
   const rows = useMemo(() => {
     const value = search.trim().toLowerCase();
@@ -409,6 +397,7 @@ export function AlmacenBandeja() {
     if (value.length < 2) {
       setSearchMode(false);
       setRemoteRows([]);
+      setRemoteDetailErrors([]);
       setSearchError(null);
       return;
     }
@@ -418,7 +407,11 @@ export function AlmacenBandeja() {
 
     try {
       const results = await buscarExpedientes(value, 50);
-      setRemoteRows(results as unknown as Expediente[]);
+      const enriched = await enriquecerExpedientes(
+        results as unknown as Expediente[],
+      );
+      setRemoteRows(enriched.data);
+      setRemoteDetailErrors(enriched.detailErrors);
       setSearchMode(true);
       setPage(1);
     } catch {
@@ -431,31 +424,43 @@ export function AlmacenBandeja() {
   function limpiarBusqueda() {
     setSearch("");
     setRemoteRows([]);
+    setRemoteDetailErrors([]);
     setSearchMode(false);
     setSearchError(null);
     setPage(1);
   }
 
-  const totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
+  const totalRows = searchMode ? rows.length : backendTotal;
+  const totalPages = Math.max(1, Math.ceil(totalRows / PAGE_SIZE));
   const currentPage = Math.min(page, totalPages);
   const paginatedRows = useMemo(() => {
+    if (!searchMode) return rows;
+
     const start = (currentPage - 1) * PAGE_SIZE;
     return rows.slice(start, start + PAGE_SIZE);
-  }, [currentPage, rows]);
+  }, [currentPage, rows, searchMode]);
 
   useEffect(() => {
     setPage(1);
-  }, [empresa, estado, search]);
+  }, [empresa, estado]);
 
   useEffect(() => {
     if (!search.trim()) {
       setSearchMode(false);
       setRemoteRows([]);
+      setRemoteDetailErrors([]);
       setSearchError(null);
     }
   }, [search]);
 
-  if (isLoading) {
+
+  useEffect(() => {
+    if (page > totalPages) {
+      setPage(totalPages);
+    }
+  }, [page, totalPages]);
+
+  if (isLoading && !pageData) {
     return (
       <main className="space-y-4">
         <Skeleton className="h-10 w-72" />
@@ -541,12 +546,22 @@ export function AlmacenBandeja() {
             </p>
           ) : null}
           {searchError ? <p className="text-xs text-red-600">{searchError}</p> : null}
+          {detailErrors.length > 0 ? (
+            <p className="text-xs text-amber-700">
+              {detailErrors.length} expediente(s) no pudieron completar su detalle y fueron excluidos de esta vista.
+            </p>
+          ) : null}
         </CardHeader>
       </Card>
 
       <Card>
         <CardHeader>
-          <CardTitle>Bandeja de almacén</CardTitle>
+          <div className="flex items-center justify-between gap-3">
+            <CardTitle>Bandeja de almacén</CardTitle>
+            {isFetching ? (
+              <span className="text-xs text-muted-foreground">Actualizando…</span>
+            ) : null}
+          </div>
           <p className="text-sm text-muted-foreground">
             Las acciones de recepción se habilitan en el detalle cuando Workspace V2 expone grupoFacturaId real.
           </p>
@@ -554,17 +569,29 @@ export function AlmacenBandeja() {
 
         <CardContent className="space-y-4">
           {rows.length === 0 ? (
-            <Empty>
+            <>
+              <Empty>
               <EmptyHeader>
                 <EmptyMedia variant="icon">📦</EmptyMedia>
                 <EmptyTitle>Sin expedientes para almacén</EmptyTitle>
                 <EmptyDescription>
                   {searchMode
                     ? "No se encontraron expedientes con principal para esa búsqueda."
-                    : "No hay expedientes con documento principal para los filtros seleccionados."}
+                    : "La página consultada no contiene expedientes con principal disponible. Use la paginación o búsqueda para continuar."}
                 </EmptyDescription>
               </EmptyHeader>
-            </Empty>
+              </Empty>
+
+              {!searchMode && totalPages > 1 ? (
+                <PaginationControls
+                  page={currentPage}
+                  totalPages={totalPages}
+                  totalRows={totalRows}
+                  pageSize={PAGE_SIZE}
+                  onPageChange={setPage}
+                />
+              ) : null}
+            </>
           ) : (
             <>
               <div className="overflow-x-auto">
@@ -631,7 +658,7 @@ export function AlmacenBandeja() {
               <PaginationControls
                 page={currentPage}
                 totalPages={totalPages}
-                totalRows={rows.length}
+                totalRows={totalRows}
                 pageSize={PAGE_SIZE}
                 onPageChange={setPage}
               />
