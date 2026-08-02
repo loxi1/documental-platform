@@ -15,6 +15,31 @@ import {
   getMontoDocumento,
 } from "./workspace-v2-utils";
 
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+}
+
+function getDocumentoMetadata(documento: WorkspaceV2Documento) {
+  const record = asRecord(documento);
+  const vista = asRecord(record.vista);
+  return asRecord(record.metadata ?? vista.metadata);
+}
+
+function isTruthyFlag(value: unknown) {
+  return value === true || String(value).trim().toLowerCase() === "true";
+}
+
+function isPruebaControlada(documento: WorkspaceV2Documento) {
+  const metadata = getDocumentoMetadata(documento);
+  return isTruthyFlag(metadata.pruebaControlada ?? metadata.prueba_controlada);
+}
+
+function isDocumentoNoRelacionado(documento: WorkspaceV2Documento) {
+  const metadata = getDocumentoMetadata(documento);
+  return isTruthyFlag(metadata.documentoNoRelacionado ?? metadata.documento_no_relacionado);
+}
+
 type AdjuntosListProps = {
   documentos: WorkspaceV2Documento[];
   emptyLabel?: string;
@@ -43,6 +68,8 @@ export function AdjuntosList({
           ? getGrupoFacturaDocumentoPersistidoId(documento, { permitirIdGenerico: true })
           : null;
         const label = documentoLabel(documento);
+        const pruebaControlada = isPruebaControlada(documento);
+        const documentoNoRelacionado = isDocumentoNoRelacionado(documento);
 
         return (
           <div
@@ -57,11 +84,25 @@ export function AdjuntosList({
                 <div className="flex flex-wrap items-center gap-2">
                   <p className="font-medium text-foreground">{label}</p>
                   <Badge variant="outline">{getDocumentoTipo(documento)}</Badge>
+                  {documentoGrupoFacturaId ? (
+                    <Badge variant="outline">Persistido en grupo</Badge>
+                  ) : (
+                    <Badge variant="outline">Solo expediente</Badge>
+                  )}
+                  {pruebaControlada ? <Badge variant="secondary">Prueba controlada</Badge> : null}
+                  {documentoNoRelacionado ? <Badge variant="destructive">Documento no relacionado</Badge> : null}
                 </div>
                 <p className="mt-1 text-xs text-muted-foreground">
                   Fecha: {getFechaDocumento(documento)} · Monto: {getMontoDocumento(documento)}
                 </p>
-                <p className="mt-1 truncate text-xs text-muted-foreground">Archivo: {getDocumentoArchivo(documento)}</p>
+                <p className="mt-1 truncate text-xs text-muted-foreground" title={getDocumentoArchivo(documento)}>
+                  Archivo: {getDocumentoArchivo(documento)}
+                </p>
+                {pruebaControlada || documentoNoRelacionado ? (
+                  <p className="mt-1 rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-xs text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-300">
+                    Prueba controlada. Documento no relacionado con la factura. No debe utilizarse para validar correspondencia.
+                  </p>
+                ) : null}
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-2 sm:justify-end">

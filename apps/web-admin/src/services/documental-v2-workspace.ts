@@ -154,3 +154,47 @@ export async function anularGrupoFacturaDocumentoV2(
     workspaceDebeRefrescar: true,
   });
 }
+
+export type FinanzasCorrespondenciaComparacion = {
+  estado?: string | null;
+  resultado?: string | null;
+  factura?: string | number | null;
+  sustento?: string | number | null;
+  facturaValor?: string | number | null;
+  sustentoValor?: string | number | null;
+  valorFactura?: string | number | null;
+  valorSustento?: string | number | null;
+  detalle?: string | null;
+  mensaje?: string | null;
+};
+
+export type FinanzasCorrespondenciaEvaluacion = {
+  estadoGeneral?: string | null;
+  estado?: string | null;
+  requiereDecisionHumana?: boolean | null;
+  requiere_decision_humana?: boolean | null;
+  permiteAsociacionOrdinaria?: boolean | null;
+  permite_asociacion_ordinaria?: boolean | null;
+  advertencias?: string[] | null;
+  comparaciones?: {
+    proveedor?: FinanzasCorrespondenciaComparacion | null;
+    moneda?: FinanzasCorrespondenciaComparacion | null;
+    importe?: FinanzasCorrespondenciaComparacion | null;
+    documentoReferenciado?: FinanzasCorrespondenciaComparacion | null;
+    documento_referenciado?: FinanzasCorrespondenciaComparacion | null;
+  } | null;
+};
+
+export async function evaluarCorrespondenciaPagoFactura(params: {
+  facturaDocumentoId: string | number;
+  pagoDocumentoId: string | number;
+}): Promise<FinanzasCorrespondenciaEvaluacion> {
+  const { data } = await api.get("/documental-v2/finanzas/correspondencia/evaluar", {
+    params: {
+      facturaDocumentoId: params.facturaDocumentoId,
+      pagoDocumentoId: params.pagoDocumentoId,
+    },
+  });
+
+  return (data?.data ?? data) as FinanzasCorrespondenciaEvaluacion;
+}

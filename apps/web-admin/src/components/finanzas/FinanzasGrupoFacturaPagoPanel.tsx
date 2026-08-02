@@ -9,7 +9,11 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { getWorkspaceDocumentalV2 } from "@/services/documental-v2-workspace";
+import {
+  evaluarCorrespondenciaPagoFactura,
+  getWorkspaceDocumentalV2,
+  type FinanzasCorrespondenciaEvaluacion,
+} from "@/services/documental-v2-workspace";
 import type { WorkspaceV2Documento, WorkspaceV2GrupoFactura } from "@/types/documental-v2-workspace";
 import {
   entityVista,
@@ -38,6 +42,203 @@ function hasAdjunto(grupo: WorkspaceV2GrupoFactura, aliases: string[]) {
   });
 }
 
+
+function isTransferenciaDocumento(documento: WorkspaceV2Documento) {
+  const vista = entityVista<Record<string, unknown>>(documento);
+  const tipo = String(vista.tipoDocumental ?? vista.tipo_documental ?? "").toUpperCase();
+  const relacion = String(vista.tipoRelacion ?? vista.tipo_relacion ?? "").toUpperCase();
+  return ["TRANSFERENCIA", "ADJUNTO_TRANSFERENCIA", "PAGO_TRANSFERENCIA"].some(
+    (alias) => tipo.includes(alias) || relacion.includes(alias),
+  );
+}
+
+function getWorkspaceDocumentoId(documento: WorkspaceV2Documento) {
+  const vista = entityVista<Record<string, unknown>>(documento);
+  const record = documento as Record<string, unknown>;
+  const candidates = [
+    vista.documentoId,
+    vista.documento_id,
+    record.documentoId,
+    record.documento_id,
+    vista.id,
+    record.id,
+  ];
+
+  return candidates.find((value) => value !== null && value !== undefined && String(value).trim() !== "") ?? null;
+}
+
+function getTransferenciaDocumento(grupo: WorkspaceV2GrupoFactura) {
+  return getAdjuntosGrupo(grupo).find(isTransferenciaDocumento) ?? null;
+}
+
+function asBool(value: unknown) {
+  return value === true || String(value).trim().toLowerCase() === "true";
+}
+
+function estadoTexto(value: unknown, fallback = "No informado") {
+  return textValue(value, fallback);
+}
+
+function getEstadoGeneral(evaluacion: FinanzasCorrespondenciaEvaluacion | undefined) {
+  return estadoTexto(evaluacion?.estadoGeneral ?? evaluacion?.estado, "Correspondencia pendiente");
+}
+
+function getRequiereDecisionHumana(evaluacion: FinanzasCorrespondenciaEvaluacion | undefined) {
+  return asBool(evaluacion?.requiereDecisionHumana ?? evaluacion?.requiere_decision_humana);
+}
+
+function getPermiteAsociacionOrdinaria(evaluacion: FinanzasCorrespondenciaEvaluacion | undefined) {
+  const record = (evaluacion ?? {}) as Record<string, unknown>;
+  const value = record.permiteAsociacionOrdinaria ?? record.permite_asociacion_ordinaria;
+
+  if (value === null || value === undefined || value === "") return null;
+  return asBool(value);
+}
+
+function getAdvertencias(evaluacion: FinanzasCorrespondenciaEvaluacion | undefined) {
+  const advertencias = evaluacion?.advertencias;
+  return Array.isArray(advertencias) ? advertencias.filter(Boolean).map(String) : [];
+}
+
+function getComparacion(
+  evaluacion: FinanzasCorrespondenciaEvaluacion | undefined,
+  key: "proveedor" | "moneda" | "importe" | "documentoReferenciado",
+) {
+  const comparaciones = evaluacion?.comparaciones ?? {};
+  if (key === "documentoReferenciado") {
+    return comparaciones.documentoReferenciado ?? comparaciones.documento_referenciado ?? null;
+  }
+  return comparaciones[key] ?? null;
+}
+
+function getValorFactura(comparacion: ReturnType<typeof getComparacion>) {
+  return estadoTexto(
+    comparacion?.factura ?? comparacion?.facturaValor ?? comparacion?.valorFactura,
+    "No informado",
+  );
+}
+
+function getValorSustento(comparacion: ReturnType<typeof getComparacion>) {
+  return estadoTexto(
+    comparacion?.sustento ?? comparacion?.sustentoValor ?? comparacion?.valorSustento,
+    "No informado",
+  );
+}
+
+function getResultadoComparacion(comparacion: ReturnType<typeof getComparacion>) {
+  return estadoTexto(comparacion?.resultado ?? comparacion?.estado ?? comparacion?.mensaje ?? comparacion?.detalle, "No verificable");
+}
+
+function ResultadoBadge({ resultado }: { resultado: string }) {
+  const normalized = resultado.toLowerCase();
+  const variant = normalized.includes("no coincide") || normalized.includes("bloque") || normalized.includes("incompatible")
+    ? "destructive"
+    : normalized.includes("coincide") || normalized.includes("valid")
+      ? "secondary"
+      : "outline";
+
+  return <Badge variant={variant}>{resultado}</Badge>;
+}
+
+function EvaluacionCorrespondenciaPago({
+  hasSustento,
+  isLoading,
+  isError,
+  evaluacion,
+}: {
+  hasSustento: boolean;
+  isLoading: boolean;
+  isError: boolean;
+  evaluacion?: FinanzasCorrespondenciaEvaluacion;
+}) {
+  if (!hasSustento) {
+    return (
+      <div className="rounded-lg border border-dashed p-3 text-xs text-muted-foreground">
+        Sin sustento de pago asociado al grupo.
+      </div>
+    );
+  }
+
+  if (isLoading) {
+    return (
+      <div className="rounded-lg border border-dashed p-3 text-xs text-muted-foreground">
+        Consultando correspondencia factura–sustento...
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-300">
+        No se pudo consultar la evaluación de correspondencia. Mantener revisión humana antes de asociar o validar el sustento.
+      </div>
+    );
+  }
+
+  if (!evaluacion) {
+    return (
+      <div className="rounded-lg border border-dashed p-3 text-xs text-muted-foreground">
+        Correspondencia pendiente de evaluación.
+      </div>
+    );
+  }
+
+  const requiereDecisionHumana = getRequiereDecisionHumana(evaluacion);
+  const permiteAsociacionOrdinaria = getPermiteAsociacionOrdinaria(evaluacion);
+  const advertencias = getAdvertencias(evaluacion);
+  const rows = [
+    ["Proveedor", getComparacion(evaluacion, "proveedor")],
+    ["Moneda", getComparacion(evaluacion, "moneda")],
+    ["Importe", getComparacion(evaluacion, "importe")],
+    ["Documento referenciado", getComparacion(evaluacion, "documentoReferenciado")],
+  ] as const;
+
+  return (
+    <div className="space-y-3 rounded-lg border bg-muted/10 p-3 text-xs">
+      <div className="flex flex-wrap items-center gap-2">
+        <Badge variant="outline">Estado general: {getEstadoGeneral(evaluacion)}</Badge>
+        {requiereDecisionHumana ? <Badge variant="secondary">Requiere revisión humana</Badge> : null}
+        {permiteAsociacionOrdinaria === false ? <Badge variant="destructive">Asociación ordinaria bloqueada</Badge> : null}
+        {permiteAsociacionOrdinaria === true ? <Badge variant="outline">Asociación ordinaria permitida</Badge> : null}
+      </div>
+
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[520px] text-left text-xs">
+          <thead className="text-muted-foreground">
+            <tr className="border-b">
+              <th className="py-2 pr-3 font-medium">Comparación</th>
+              <th className="py-2 pr-3 font-medium">Factura</th>
+              <th className="py-2 pr-3 font-medium">Sustento</th>
+              <th className="py-2 font-medium">Resultado</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map(([label, comparacion]) => {
+              const resultado = getResultadoComparacion(comparacion);
+              return (
+                <tr key={label} className="border-b last:border-0">
+                  <td className="py-2 pr-3 font-medium">{label}</td>
+                  <td className="py-2 pr-3 text-muted-foreground">{getValorFactura(comparacion)}</td>
+                  <td className="py-2 pr-3 text-muted-foreground">{getValorSustento(comparacion)}</td>
+                  <td className="py-2"><ResultadoBadge resultado={resultado} /></td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      {advertencias.length ? (
+        <div className="space-y-1 rounded-md border border-amber-200 bg-amber-50 p-2 text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-300">
+          {advertencias.map((advertencia, index) => (
+            <p key={`${advertencia}-${index}`}>{advertencia}</p>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function EstadoPagoBadge({ label, active }: { label: string; active: boolean }) {
   return (
     <Badge variant={active ? "secondary" : "outline"} className={active ? "gap-1" : "gap-1 text-muted-foreground"}>
@@ -61,7 +262,17 @@ function GrupoPagoCard({
   const grupoFacturaId = getGrupoFacturaPersistidoId(grupo);
   const principalDocumentoId = getGrupoDocumentoPrincipalDocumentoId(grupo);
   const facturaDocumentoId = getGrupoFacturaDocumentoId(grupo);
-  const transferencia = hasAdjunto(grupo, ["TRANSFERENCIA", "ADJUNTO_TRANSFERENCIA", "PAGO_TRANSFERENCIA"]);
+  const pagoDocumento = getTransferenciaDocumento(grupo);
+  const pagoDocumentoId = pagoDocumento ? getWorkspaceDocumentoId(pagoDocumento) : null;
+  const sustentoPago = Boolean(pagoDocumentoId);
+  const correspondenciaQuery = useQuery({
+    queryKey: ["finanzas-correspondencia-pago-factura", facturaDocumentoId, pagoDocumentoId],
+    enabled: Boolean(facturaDocumentoId && pagoDocumentoId),
+    queryFn: () => evaluarCorrespondenciaPagoFactura({
+      facturaDocumentoId: facturaDocumentoId as string | number,
+      pagoDocumentoId: pagoDocumentoId as string | number,
+    }),
+  });
   const detraccion = hasAdjunto(grupo, ["DETRACCION", "DETRACCIÓN", "ADJUNTO_DETRACCION", "PAGO_DETRACCION"]);
   const recepcionConEvidencia = hasAdjunto(grupo, [
     "GUIA_REMISION",
@@ -80,7 +291,7 @@ function GrupoPagoCard({
           <div className="flex flex-wrap items-center gap-2">
             <CreditCard className="h-4 w-4 text-muted-foreground" />
             <h3 className="font-semibold">{getGrupoFacturaLabel(grupo)}</h3>
-            <Badge variant="secondary">Disponible para pago</Badge>
+            <Badge variant="secondary">Pendiente de evaluación financiera</Badge>
             {grupoFacturaId ? <Badge variant="outline">grupoFacturaId {String(grupoFacturaId)}</Badge> : null}
           </div>
 
@@ -114,7 +325,7 @@ function GrupoPagoCard({
             <div className="flex flex-wrap gap-2">
               <EstadoPagoBadge label="Factura" active />
               <EstadoPagoBadge label="Recepción" active={recepcionConEvidencia} />
-              <EstadoPagoBadge label="Transferencia" active={transferencia} />
+              <EstadoPagoBadge label="Sustento de pago" active={sustentoPago} />
               <EstadoPagoBadge label="Detracción" active={detraccion} />
             </div>
             {!recepcionConEvidencia ? (
@@ -122,6 +333,17 @@ function GrupoPagoCard({
                 Recepción sin evidencia asociada en el grupo. Finanzas no infiere recepción completa solo por existir factura o grupo persistido.
               </p>
             ) : null}
+            {sustentoPago ? (
+              <p className="text-xs text-muted-foreground">
+                Sustento de pago presente. Finanzas no infiere factura pagada, conciliada, liquidada ni saldo cero sin validación de correspondencia.
+              </p>
+            ) : null}
+            <EvaluacionCorrespondenciaPago
+              hasSustento={sustentoPago}
+              isLoading={correspondenciaQuery.isLoading || correspondenciaQuery.isFetching}
+              isError={correspondenciaQuery.isError}
+              evaluacion={correspondenciaQuery.data}
+            />
           </div>
         </div>
 
@@ -136,7 +358,7 @@ function GrupoPagoCard({
             <AsociarDocumentoGrupoFacturaPanel grupoFacturaId={grupoFacturaId} modo="finanzas" onAssociated={onRefresh} />
           ) : (
             <Button asChild size="sm">
-              <Link href={`/finanzas/${expedienteId}/editar`}>Adjuntar pago</Link>
+              <Link href={`/finanzas/${expedienteId}/editar`}>Adjuntar sustento de pago</Link>
             </Button>
           )}
         </div>
