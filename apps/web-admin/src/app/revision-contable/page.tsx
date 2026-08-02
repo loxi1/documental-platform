@@ -398,6 +398,15 @@ function buildSearchText(item: RevisionContableItem) {
     .toLowerCase();
 }
 
+function normalizeSearchValue(value: unknown) {
+  return String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .replace(/[^a-z0-9]/g, "");
+}
+
 export default function RevisionContablePage() {
   const contexto = getContexto();
   const workspaceEmpresa = normalizeEmpresa(contexto?.empresa);
@@ -450,9 +459,14 @@ export default function RevisionContablePage() {
   );
   const filteredItems = useMemo(() => {
     const q = busqueda.trim().toLowerCase();
+    const compactQuery = normalizeSearchValue(busqueda);
 
     return items.filter((item) => {
-      const matchesText = !q || buildSearchText(item).includes(q);
+      const searchText = buildSearchText(item);
+      const matchesText =
+        !q ||
+        searchText.includes(q) ||
+        normalizeSearchValue(searchText).includes(compactQuery);
 
       return matchesText;
     });
