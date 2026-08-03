@@ -7,6 +7,7 @@ jest.mock('axios', () => {
   const request = {
     get: jest.fn(),
     post: jest.fn(),
+    patch: jest.fn(),
     isAxiosError: jest.fn((error: any) => Boolean(error?.isAxiosError)),
   };
   return {
@@ -1039,6 +1040,479 @@ describe('DocumentalV2GatewayController', () => {
     );
 
     expect(result).toEqual(respuesta);
+  });
+
+
+  it('lista Contenedores Operativos usando empresa y cliente del contexto autenticado', async () => {
+    const { controller } = buildController({
+      sub: 4,
+      email: 'compras@documental.local',
+      workspaceId: 4,
+      permisos: {
+        actions: ['documental_v2.contenedores.ver'],
+      },
+    });
+
+    const respuesta = {
+      items: [
+        {
+          id: 21,
+          empresaCodigo: 'BBTI',
+          clienteDestinoId: 2,
+          tipoContexto: 'centro_costo_op',
+          codigo: 'CC-MVP-001',
+          estado: 'activo',
+        },
+      ],
+      total: 1,
+      limit: 50,
+      offset: 0,
+    };
+
+    (axios.get as jest.Mock).mockResolvedValueOnce({
+      data: {
+        success: true,
+        data: respuesta,
+      },
+    });
+
+    const result = await controller.listarContenedoresOperativos(
+      'Bearer token-compras',
+      'req-listar-1',
+      {
+        empresaCodigo: 'OTRA',
+        clienteDestinoId: '999',
+        tipoContexto: 'centro_costo_op',
+        estado: 'activo',
+        q: 'MVP',
+        limit: '50',
+        offset: '0',
+      },
+    );
+
+    expect(axios.get).toHaveBeenCalledWith(
+      'http://ms-documentos:3002/api/v1/documental-v2/contenedores',
+      {
+        params: {
+          empresaCodigo: 'BBTI',
+          clienteDestinoId: 2,
+          tipoContexto: 'centro_costo_op',
+          estado: 'activo',
+          q: 'MVP',
+          limit: '50',
+          offset: '0',
+        },
+        headers: expect.objectContaining({
+          authorization: 'Bearer token-compras',
+          'x-user-id': '4',
+          'x-user-email': 'compras@documental.local',
+          'x-workspace-id': '4',
+          'x-empresa-codigo': 'BBTI',
+          'x-cliente-destino-id': '2',
+          'x-request-id': 'req-listar-1',
+        }),
+      },
+    );
+
+    expect(result).toEqual(respuesta);
+  });
+
+  it('rechaza listar Contenedores Operativos sin capacidad ver', async () => {
+    const { controller } = buildController({
+      perfil: 'compras',
+      permisos: {
+        actions: ['documentos.ver'],
+      },
+    });
+
+    await expect(
+      controller.listarContenedoresOperativos(
+        'Bearer token-sin-ver',
+        'req-listar-403',
+        {
+          tipoContexto: 'centro_costo_op',
+        },
+      ),
+    ).rejects.toThrow(
+      'No tienes permiso para consultar Contenedores Operativos V2',
+    );
+
+    expect(axios.get).not.toHaveBeenCalled();
+  });
+
+  it('busca Contenedor Operativo por clave usando la empresa del contexto', async () => {
+    const { controller } = buildController({
+      permisos: {
+        actions: ['documental_v2.contenedores.ver'],
+      },
+    });
+
+    const contenedor = {
+      id: 22,
+      empresaCodigo: 'BBTI',
+      clienteDestinoId: 2,
+      tipoContexto: 'centro_costo_op',
+      codigo: 'CC-MVP-002',
+      estado: 'activo',
+    };
+
+    (axios.get as jest.Mock).mockResolvedValueOnce({
+      data: {
+        success: true,
+        data: contenedor,
+      },
+    });
+
+    const result = await controller.buscarContenedorOperativoPorClave(
+      'Bearer token-ver',
+      'req-buscar-1',
+      {
+        empresaCodigo: 'OTRA',
+        tipoContexto: 'centro_costo_op',
+        codigo: 'CC-MVP-002',
+      },
+    );
+
+    expect(axios.get).toHaveBeenCalledWith(
+      'http://ms-documentos:3002/api/v1/documental-v2/contenedores/buscar',
+      {
+        params: {
+          empresaCodigo: 'BBTI',
+          tipoContexto: 'centro_costo_op',
+          codigo: 'CC-MVP-002',
+        },
+        headers: expect.objectContaining({
+          'x-empresa-codigo': 'BBTI',
+          'x-cliente-destino-id': '2',
+        }),
+      },
+    );
+
+    expect(result).toEqual(contenedor);
+  });
+
+  it('obtiene detalle y valida empresa y cliente destino', async () => {
+    const { controller } = buildController({
+      permisos: {
+        actions: ['documental_v2.contenedores.ver'],
+      },
+    });
+
+    const contenedor = {
+      id: 23,
+      empresaCodigo: 'BBTI',
+      clienteDestinoId: 2,
+      tipoContexto: 'centro_costo_op',
+      codigo: 'CC-MVP-003',
+      estado: 'activo',
+    };
+
+    (axios.get as jest.Mock).mockResolvedValueOnce({
+      data: {
+        success: true,
+        data: contenedor,
+      },
+    });
+
+    await expect(
+      controller.obtenerContenedorOperativo(
+        'Bearer token-ver',
+        'req-detalle-1',
+        '23',
+      ),
+    ).resolves.toEqual(contenedor);
+  });
+
+  it('rechaza detalle perteneciente a otro cliente destino', async () => {
+    const { controller } = buildController({
+      permisos: {
+        actions: ['documental_v2.contenedores.ver'],
+      },
+    });
+
+    (axios.get as jest.Mock).mockResolvedValueOnce({
+      data: {
+        success: true,
+        data: {
+          id: 24,
+          empresaCodigo: 'BBTI',
+          clienteDestinoId: 99,
+          tipoContexto: 'centro_costo_op',
+          codigo: 'CC-AJENO',
+          estado: 'activo',
+        },
+      },
+    });
+
+    await expect(
+      controller.obtenerContenedorOperativo(
+        'Bearer token-ver',
+        'req-detalle-ajeno',
+        '24',
+      ),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it('propaga 404 del detalle de Contenedor Operativo', async () => {
+    const { controller } = buildController({
+      permisos: {
+        actions: ['documental_v2.contenedores.ver'],
+      },
+    });
+
+    (axios.get as jest.Mock).mockRejectedValueOnce({
+      isAxiosError: true,
+      response: {
+        status: 404,
+        data: {
+          error: {
+            code: 'CONTENEDOR_OPERATIVO_NO_ENCONTRADO',
+            message: 'Contenedor Operativo no encontrado',
+          },
+        },
+      },
+    });
+
+    await expect(
+      controller.obtenerContenedorOperativo(
+        'Bearer token-ver',
+        'req-detalle-404',
+        '999999',
+      ),
+    ).rejects.toMatchObject({
+      status: 404,
+      response: expect.objectContaining({
+        code: 'CONTENEDOR_OPERATIVO_NO_ENCONTRADO',
+      }),
+    });
+  });
+
+  it('crea Contenedor Operativo reemplazando empresa y cliente manipulables', async () => {
+    const { controller } = buildController({
+      sub: 4,
+      email: 'compras@documental.local',
+      workspaceId: 4,
+      permisos: {
+        actions: ['documental_v2.contenedores.crear'],
+      },
+    });
+
+    const creado = {
+      id: 25,
+      empresaCodigo: 'BBTI',
+      clienteDestinoId: 2,
+      tipoContexto: 'centro_costo_op',
+      codigo: 'CC-MVP-004',
+      descripcion: 'Centro de costo controlado',
+      estado: 'activo',
+    };
+
+    (axios.post as jest.Mock).mockResolvedValueOnce({
+      data: {
+        success: true,
+        data: creado,
+      },
+    });
+
+    const result = await controller.crearContenedorOperativo(
+      'Bearer token-crear',
+      'req-crear-1',
+      {
+        empresaCodigo: 'OTRA',
+        clienteDestinoId: 999,
+        tipoContexto: 'centro_costo_op',
+        codigo: 'CC-MVP-004',
+        descripcion: 'Centro de costo controlado',
+        centroCostoCodigo: 'CC-MVP-004',
+      },
+    );
+
+    expect(axios.post).toHaveBeenCalledWith(
+      'http://ms-documentos:3002/api/v1/documental-v2/contenedores',
+      {
+        empresaCodigo: 'BBTI',
+        clienteDestinoId: 2,
+        tipoContexto: 'centro_costo_op',
+        codigo: 'CC-MVP-004',
+        descripcion: 'Centro de costo controlado',
+        centroCostoCodigo: 'CC-MVP-004',
+      },
+      {
+        headers: expect.objectContaining({
+          authorization: 'Bearer token-crear',
+          'x-user-id': '4',
+          'x-empresa-codigo': 'BBTI',
+          'x-cliente-destino-id': '2',
+        }),
+      },
+    );
+
+    expect(result).toEqual(creado);
+  });
+
+  it('propaga 409 de código activo duplicado al crear', async () => {
+    const { controller } = buildController({
+      permisos: {
+        actions: ['documental_v2.contenedores.crear'],
+      },
+    });
+
+    (axios.post as jest.Mock).mockRejectedValueOnce({
+      isAxiosError: true,
+      response: {
+        status: 409,
+        data: {
+          error: {
+            code: 'CONTENEDOR_OPERATIVO_YA_EXISTE',
+            message:
+              'Ya existe un contenedor operativo activo con la misma empresa, tipo y código.',
+          },
+        },
+      },
+    });
+
+    await expect(
+      controller.crearContenedorOperativo(
+        'Bearer token-crear',
+        'req-crear-409',
+        {
+          tipoContexto: 'centro_costo_op',
+          codigo: 'CC-DUPLICADO',
+        },
+      ),
+    ).rejects.toMatchObject({
+      status: 409,
+      response: expect.objectContaining({
+        code: 'CONTENEDOR_OPERATIVO_YA_EXISTE',
+      }),
+    });
+  });
+
+  it('actualiza un Contenedor Operativo activo después de validar su alcance', async () => {
+    const { controller } = buildController({
+      permisos: {
+        actions: ['documental_v2.contenedores.editar'],
+      },
+    });
+
+    const actual = {
+      id: 26,
+      empresaCodigo: 'BBTI',
+      clienteDestinoId: 2,
+      tipoContexto: 'centro_costo_op',
+      codigo: 'CC-MVP-005',
+      descripcion: 'Descripción inicial',
+      estado: 'activo',
+    };
+
+    const actualizado = {
+      ...actual,
+      descripcion: 'Descripción actualizada',
+    };
+
+    (axios.get as jest.Mock).mockResolvedValueOnce({
+      data: {
+        success: true,
+        data: actual,
+      },
+    });
+
+    (axios.patch as jest.Mock).mockResolvedValueOnce({
+      data: {
+        success: true,
+        data: actualizado,
+      },
+    });
+
+    const result = await controller.actualizarContenedorOperativo(
+      'Bearer token-editar',
+      'req-editar-1',
+      '26',
+      {
+        descripcion: 'Descripción actualizada',
+      },
+    );
+
+    expect(axios.patch).toHaveBeenCalledWith(
+      'http://ms-documentos:3002/api/v1/documental-v2/contenedores/26',
+      {
+        descripcion: 'Descripción actualizada',
+      },
+      {
+        headers: expect.objectContaining({
+          authorization: 'Bearer token-editar',
+          'x-empresa-codigo': 'BBTI',
+          'x-cliente-destino-id': '2',
+        }),
+      },
+    );
+
+    expect(result).toEqual(actualizado);
+  });
+
+  it('rechaza con 409 la edición de un Contenedor Operativo anulado', async () => {
+    const { controller } = buildController({
+      permisos: {
+        actions: ['documental_v2.contenedores.editar'],
+      },
+    });
+
+    (axios.get as jest.Mock).mockResolvedValueOnce({
+      data: {
+        success: true,
+        data: {
+          id: 27,
+          empresaCodigo: 'BBTI',
+          clienteDestinoId: 2,
+          tipoContexto: 'centro_costo_op',
+          codigo: 'CC-ANULADO',
+          estado: 'anulado',
+        },
+      },
+    });
+
+    await expect(
+      controller.actualizarContenedorOperativo(
+        'Bearer token-editar',
+        'req-editar-anulado',
+        '27',
+        {
+          descripcion: 'No debe actualizarse',
+        },
+      ),
+    ).rejects.toMatchObject({
+      status: 409,
+      response: expect.objectContaining({
+        code: 'CONTENEDOR_OPERATIVO_ANULADO_NO_EDITABLE',
+      }),
+    });
+
+    expect(axios.patch).not.toHaveBeenCalled();
+  });
+
+  it('rechaza editar sin capacidad específica aunque el perfil sea compras', async () => {
+    const { controller } = buildController({
+      perfil: 'compras',
+      permisos: {
+        actions: ['documental_v2.contenedores.ver'],
+      },
+    });
+
+    await expect(
+      controller.actualizarContenedorOperativo(
+        'Bearer token-sin-editar',
+        'req-editar-403',
+        '28',
+        {
+          descripcion: 'No autorizado',
+        },
+      ),
+    ).rejects.toThrow(
+      'No tienes permiso para editar Contenedores Operativos V2',
+    );
+
+    expect(axios.get).not.toHaveBeenCalled();
+    expect(axios.patch).not.toHaveBeenCalled();
   });
 
 });
