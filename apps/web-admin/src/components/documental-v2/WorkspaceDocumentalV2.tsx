@@ -1,6 +1,9 @@
+"use client";
+
 import { Layers3 } from "lucide-react";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useWorkspaceV2Capabilities } from "@/hooks/useWorkspaceV2Capabilities";
 import type { WorkspaceDocumentalV2 as WorkspaceDocumentalV2Type } from "@/types/documental-v2-workspace";
 import { AdjuntosList } from "./AdjuntosList";
 import { ContextoOperativoCard } from "./ContextoOperativoCard";
@@ -47,11 +50,24 @@ export function WorkspaceDocumentalV2({
   const adjuntosNoClasificados = getAdjuntosNoClasificados(workspace);
   const alertas = getAlertas(workspace);
   const contenedorOperativoId = getContenedorOperativoId(workspace, contexto);
+  const capabilities = useWorkspaceV2Capabilities();
 
   return (
     <div className="space-y-4">
+      {capabilities.isReadOnly ? (
+        <div className="rounded-lg border bg-muted/20 px-4 py-3 text-sm text-muted-foreground">
+          Workspace en modo solo lectura. Las acciones operativas no están disponibles para este contexto de sesión.
+        </div>
+      ) : null}
+
       <ContextoOperativoCard contexto={contexto} />
-      <DocumentoOperativoPrincipalCard documento={principal} contexto={contexto} onWorkspaceRefresh={onRefresh} />
+      <DocumentoOperativoPrincipalCard
+        documento={principal}
+        contexto={contexto}
+        onWorkspaceRefresh={onRefresh}
+        canAssociatePrincipal={capabilities.canAssociatePrincipal}
+        canCancelPrincipal={capabilities.canCancelPrincipal}
+      />
 
       <Card>
         <CardHeader className="border-b">
@@ -76,6 +92,9 @@ export function WorkspaceDocumentalV2({
                   grupo={grupo}
                   index={index}
                   onWorkspaceRefresh={onRefresh}
+                  canAssociateGroupDocument={capabilities.canAssociateGroupDocument}
+                  canCancelGroup={capabilities.canCancelGroup}
+                  canRemoveGroupDocument={capabilities.canRemoveGroupDocument}
                 />
               ))}
             </div>

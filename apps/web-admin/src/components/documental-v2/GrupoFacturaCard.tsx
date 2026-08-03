@@ -24,10 +24,16 @@ export function GrupoFacturaCard({
   grupo,
   index,
   onWorkspaceRefresh,
+  canAssociateGroupDocument = false,
+  canCancelGroup = false,
+  canRemoveGroupDocument = false,
 }: {
   grupo: WorkspaceV2GrupoFactura;
   index: number;
   onWorkspaceRefresh?: () => Promise<unknown> | unknown;
+  canAssociateGroupDocument?: boolean;
+  canCancelGroup?: boolean;
+  canRemoveGroupDocument?: boolean;
 }) {
   const adjuntos = getAdjuntosGrupo(grupo);
   const grupoFacturaId = getGrupoFacturaPersistidoId(grupo);
@@ -57,18 +63,27 @@ export function GrupoFacturaCard({
             {grupoPersistido ? <Badge variant="outline">Listo para Almacén</Badge> : null}
             {grupoFacturaId ? (
               <>
-                <AsociarDocumentoGrupoFacturaPanel grupoFacturaId={grupoFacturaId} onAssociated={onWorkspaceRefresh} />
-                <RevertirEntidadDialog
-                  title="Anular Grupo de Factura"
-                  description="Esta acción desactiva el Grupo de Factura. No elimina documentos ni archivos."
-                  entityLabel={label}
-                  triggerLabel="Anular grupo"
-                  confirmLabel="Anular grupo"
-                  onConfirm={async (motivo) => {
-                    await anularGrupoFacturaV2(grupoFacturaId, { motivo });
-                    await onWorkspaceRefresh?.();
-                  }}
-                />
+                {canAssociateGroupDocument ? (
+                  <AsociarDocumentoGrupoFacturaPanel
+                    grupoFacturaId={grupoFacturaId}
+                    authorized={canAssociateGroupDocument}
+                    onAssociated={onWorkspaceRefresh}
+                  />
+                ) : null}
+                {canCancelGroup ? (
+                  <RevertirEntidadDialog
+                    title="Anular Grupo de Factura"
+                    description="Esta acción desactiva el Grupo de Factura. No elimina documentos ni archivos."
+                    entityLabel={label}
+                    triggerLabel="Anular grupo"
+                    confirmLabel="Anular grupo"
+                    onConfirm={async (motivo) => {
+                      if (!canCancelGroup) return;
+                      await anularGrupoFacturaV2(grupoFacturaId, { motivo });
+                      await onWorkspaceRefresh?.();
+                    }}
+                  />
+                ) : null}
               </>
             ) : (
               <div className="flex items-center gap-1 rounded-md border border-dashed px-2 py-1 text-xs text-muted-foreground">
@@ -138,6 +153,7 @@ export function GrupoFacturaCard({
             emptyLabel="Sin documentos asociados todavía."
             onWorkspaceRefresh={onWorkspaceRefresh}
             permitirReversionGrupo
+            canRemoveGroupDocument={canRemoveGroupDocument}
           />
         </div>
       </CardContent>

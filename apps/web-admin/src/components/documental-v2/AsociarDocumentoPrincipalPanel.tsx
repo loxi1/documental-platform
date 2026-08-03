@@ -133,11 +133,13 @@ export function AsociarDocumentoPrincipalPanel({
   contenedorOperativoId,
   empresaCodigo,
   disabled,
+  authorized = false,
   onAssociated,
 }: {
   contenedorOperativoId?: string | number | null;
   empresaCodigo?: string | null;
   disabled?: boolean;
+  authorized?: boolean;
   onAssociated?: (result: AsociarDocumentoPrincipalV2Result) => Promise<unknown> | unknown;
 }) {
   const [open, setOpen] = useState(false);
@@ -163,6 +165,10 @@ export function AsociarDocumentoPrincipalPanel({
 
   const asociarMutation = useMutation({
     mutationFn: async () => {
+      if (!authorized) {
+        throw new Error("No tienes permiso para asociar el documento principal.");
+      }
+
       if (!contenedorOperativoId || !selected?.documentoId) {
         throw new Error("Falta seleccionar un documento candidato.");
       }
@@ -196,7 +202,13 @@ export function AsociarDocumentoPrincipalPanel({
 
   return (
     <>
-      <Button disabled={disabled || Boolean(disabledReason)} onClick={() => setOpen(true)}>
+      <Button
+        disabled={disabled || !authorized || Boolean(disabledReason)}
+        onClick={() => {
+          if (!authorized) return;
+          setOpen(true);
+        }}
+      >
         Asociar documento principal
       </Button>
       {disabledReason ? <p className="mt-2 text-xs text-muted-foreground">{disabledReason}</p> : null}
@@ -328,7 +340,10 @@ export function AsociarDocumentoPrincipalPanel({
           <SheetFooter>
             <Button
               disabled={!selected || asociarMutation.isPending}
-              onClick={() => asociarMutation.mutate()}
+              onClick={() => {
+                if (!authorized) return;
+                asociarMutation.mutate();
+              }}
             >
               {asociarMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
               Confirmar asociación

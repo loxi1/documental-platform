@@ -45,6 +45,7 @@ type AdjuntosListProps = {
   emptyLabel?: string;
   onWorkspaceRefresh?: () => Promise<unknown> | unknown;
   permitirReversionGrupo?: boolean;
+  canRemoveGroupDocument?: boolean;
 };
 
 export function AdjuntosList({
@@ -52,6 +53,7 @@ export function AdjuntosList({
   emptyLabel = "Sin adjuntos informados por el Workspace V2.",
   onWorkspaceRefresh,
   permitirReversionGrupo = false,
+  canRemoveGroupDocument = false,
 }: AdjuntosListProps) {
   if (!documentos.length) {
     return (
@@ -107,7 +109,7 @@ export function AdjuntosList({
             </div>
             <div className="flex flex-wrap items-center gap-2 sm:justify-end">
               <Badge variant="secondary">{getEstado(documento)}</Badge>
-              {documentoGrupoFacturaId ? (
+              {documentoGrupoFacturaId && canRemoveGroupDocument ? (
                 <RevertirEntidadDialog
                   title="Anular documento asociado"
                   description="Esta acción desactiva la relación del documento con el Grupo de Factura. No elimina el documento ni sus archivos."
@@ -115,6 +117,7 @@ export function AdjuntosList({
                   triggerLabel="Quitar"
                   confirmLabel="Quitar documento"
                   onConfirm={async (motivo) => {
+                    if (!canRemoveGroupDocument) return;
                     await anularGrupoFacturaDocumentoV2(documentoGrupoFacturaId, { motivo });
                     await onWorkspaceRefresh?.();
                   }}

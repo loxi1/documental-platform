@@ -159,11 +159,13 @@ function CandidatoSummary({ candidato }: { candidato: DocumentoGrupoFacturaCandi
 export function AsociarDocumentoGrupoFacturaPanel({
   grupoFacturaId,
   disabled,
+  authorized = false,
   onAssociated,
   modo = "almacen",
 }: {
   grupoFacturaId?: string | number | null;
   disabled?: boolean;
+  authorized?: boolean;
   onAssociated?: (result: AsociarDocumentoGrupoFacturaV2Result) => Promise<unknown> | unknown;
   modo?: "almacen" | "finanzas" | "grupo";
 }) {
@@ -201,6 +203,10 @@ export function AsociarDocumentoGrupoFacturaPanel({
 
   const asociarMutation = useMutation({
     mutationFn: async () => {
+      if (!authorized) {
+        throw new Error("No tienes permiso para asociar documentos al Grupo de Factura.");
+      }
+
       if (!grupoFacturaId || !selected?.documentoId || !selected.tipoRelacion) {
         throw new Error("Falta seleccionar un documento candidato.");
       }
@@ -236,7 +242,14 @@ export function AsociarDocumentoGrupoFacturaPanel({
 
   return (
     <>
-      <Button size="sm" disabled={disabled || Boolean(disabledReason)} onClick={() => setOpen(true)}>
+      <Button
+        size="sm"
+        disabled={disabled || !authorized || Boolean(disabledReason)}
+        onClick={() => {
+          if (!authorized) return;
+          setOpen(true);
+        }}
+      >
         <Plus className="h-4 w-4" />
         {modo === "almacen" ? "Agregar Guía/NI" : modo === "finanzas" ? "Agregar pago" : "Agregar documento"}
       </Button>
@@ -425,7 +438,10 @@ export function AsociarDocumentoGrupoFacturaPanel({
           <SheetFooter>
             <Button
               disabled={!selected || selected.yaAsociadoGrupoV2 || !evidenciaFuncionalConfirmada || asociarMutation.isPending}
-              onClick={() => asociarMutation.mutate()}
+              onClick={() => {
+                if (!authorized) return;
+                asociarMutation.mutate();
+              }}
             >
               {asociarMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
               Confirmar asociación

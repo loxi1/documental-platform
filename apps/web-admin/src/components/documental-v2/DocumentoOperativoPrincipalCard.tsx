@@ -27,10 +27,14 @@ export function DocumentoOperativoPrincipalCard({
   documento,
   contexto,
   onWorkspaceRefresh,
+  canAssociatePrincipal = false,
+  canCancelPrincipal = false,
 }: {
   documento?: WorkspaceV2Documento | null;
   contexto?: WorkspaceV2ContextoOperativo | null;
   onWorkspaceRefresh?: () => Promise<unknown> | unknown;
+  canAssociatePrincipal?: boolean;
+  canCancelPrincipal?: boolean;
 }) {
   if (!documento) {
     const contenedorOperativoId = getContextoOperativoId(contexto);
@@ -50,15 +54,20 @@ export function DocumentoOperativoPrincipalCard({
           <div className="rounded-lg border border-dashed bg-muted/20 p-4 text-sm text-muted-foreground">
             <p className="font-medium text-foreground">Sin Documento Operativo Principal</p>
             <p className="mt-1">
-              Asocia un documento existente como Documento Operativo Principal de este contexto.
+              {canAssociatePrincipal
+                ? "Asocia un documento existente como Documento Operativo Principal de este contexto."
+                : "No se ha informado un Documento Operativo Principal para este contexto."}
             </p>
-            <div className="mt-4">
-              <AsociarDocumentoPrincipalPanel
-                contenedorOperativoId={contenedorOperativoId}
-                empresaCodigo={empresaCodigo}
-                onAssociated={onWorkspaceRefresh}
-              />
-            </div>
+            {canAssociatePrincipal ? (
+              <div className="mt-4">
+                <AsociarDocumentoPrincipalPanel
+                  contenedorOperativoId={contenedorOperativoId}
+                  empresaCodigo={empresaCodigo}
+                  authorized={canAssociatePrincipal}
+                  onAssociated={onWorkspaceRefresh}
+                />
+              </div>
+            ) : null}
           </div>
         </CardContent>
       </Card>
@@ -89,7 +98,7 @@ export function DocumentoOperativoPrincipalCard({
             <Badge variant="secondary">{getEstado(documento)}</Badge>
             {documentoOperativoPrincipalId ? <Badge variant="outline">Principal V2 {String(documentoOperativoPrincipalId)}</Badge> : null}
             {documentoId ? <Badge variant="outline">Documento {String(documentoId)}</Badge> : null}
-            {documentoOperativoPrincipalId ? (
+            {documentoOperativoPrincipalId && canCancelPrincipal ? (
               <RevertirEntidadDialog
                 title="Anular documento principal"
                 description="Esta acción desactiva la relación del Documento Operativo Principal. No elimina el documento ni sus archivos."
@@ -97,6 +106,7 @@ export function DocumentoOperativoPrincipalCard({
                 triggerLabel="Anular"
                 confirmLabel="Anular principal"
                 onConfirm={async (motivo) => {
+                  if (!canCancelPrincipal) return;
                   await anularDocumentoOperativoPrincipalV2(documentoOperativoPrincipalId, { motivo });
                   await onWorkspaceRefresh?.();
                 }}
