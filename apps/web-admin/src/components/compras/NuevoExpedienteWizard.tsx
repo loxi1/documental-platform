@@ -166,11 +166,27 @@ function prevalidacionMessage(resultado: CargaGuiadaPrevalidacionResponse) {
     ].filter(Boolean).join("\n");
   }
 
-  if (resultado.expedienteTienePrincipal || motivo === "EXPEDIENTE_YA_TIENE_DOCUMENTO_PRINCIPAL") {
+  if (accion === "bloquear" && motivo === "PRINCIPAL_ACTIVO_EXISTENTE") {
+    const tipoPrincipal = String(
+      principal?.tipoDocumental ?? resultado.tipoEsperado ?? "",
+    ).toUpperCase();
+
+    const etiquetaPrincipal =
+      tipoPrincipal === "OC"
+        ? "Orden de Compra"
+        : tipoPrincipal === "OS"
+          ? "Orden de Servicio"
+          : tipoPrincipal === "FACTURA"
+            ? "Factura"
+            : "documento";
+
     return [
-      "Este centro de costo ya tiene un documento principal activo.",
-      principal?.numero ? `Principal actual: ${String(principal.numero)}.` : null,
-      "No se reemplazará automáticamente. Cancela o gestiona el expediente.",
+      `Este expediente ya contiene una ${etiquetaPrincipal} principal activa.`,
+      principal?.numero
+        ? `${etiquetaPrincipal} actual: ${String(principal.numero)}.`
+        : null,
+      "El nuevo documento debe registrarse como una operación independiente antes de asociar facturas, guías u otros documentos.",
+      "No se reemplazará automáticamente el documento existente.",
     ].filter(Boolean).join("\n");
   }
 
@@ -213,12 +229,15 @@ function toIdValue(value: unknown): string | number | null | undefined {
 function getPrevalidacionExistente(resultado: CargaGuiadaPrevalidacionResponse): PrevalidacionExistenteUI | null {
   const duplicado = resultado.duplicados?.[0];
   const documentoExistente = resultado.documentoExistente as Record<string, unknown> | null | undefined;
+  const principalActivo = resultado.principalActivo as Record<string, unknown> | null | undefined;
 
   const documentoId =
     toIdValue(duplicado?.documentoId) ??
     toIdValue(documentoExistente?.documentoId) ??
     toIdValue(documentoExistente?.documento_id) ??
     toIdValue(documentoExistente?.id) ??
+    toIdValue(principalActivo?.documentoId) ??
+    toIdValue(principalActivo?.documento_id) ??
     toIdValue(resultado.documentoId);
 
   const archivoId =
