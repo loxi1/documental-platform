@@ -51,6 +51,7 @@ export type VincularOcrExpedientePayload = {
 
 export type ConfirmarOcrConExpedientePayload = {
   expedienteId: number | string;
+  documentoBaseId?: number | null;
   tipoRelacion: string;
   esPrincipal?: boolean;
   orden?: number;

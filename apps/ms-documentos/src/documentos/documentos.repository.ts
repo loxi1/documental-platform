@@ -508,6 +508,7 @@ export class DocumentosRepository {
     id: number,
     input: {
       expedienteId: number;
+      documentoBaseId?: number;
       tipoRelacion?: string;
       esPrincipal?: boolean;
       orden?: number;
@@ -562,6 +563,32 @@ export class DocumentosRepository {
           { expedienteId: input.expedienteId },
         );
       }
+
+      const principalesRows = await tx`
+        SELECT
+          d.id AS documento_id,
+          d.tipo_documental,
+          d.estado,
+          ed.tipo_relacion,
+          ed.es_principal
+        FROM documentos.expediente_documentos ed
+        JOIN documentos.documentos d
+          ON d.id = ed.documento_id
+        WHERE ed.expediente_id = ${input.expedienteId}::bigint
+          AND ed.es_principal = true
+          AND COALESCE(d.estado, '') <> 'anulado'
+        ORDER BY ed.orden ASC, ed.vinculado_en ASC, d.id ASC
+      `;
+
+      const documentoBaseIdFinal = this.resolverDocumentoBaseConfirmacion(
+        {
+          documentoBaseId: input.documentoBaseId,
+          esPrincipal: input.esPrincipal === true,
+          tipoRelacion: input.tipoRelacion,
+          expedienteId: input.expedienteId,
+        },
+        principalesRows,
+      );
 
       const metadataActual = ocr.metadata?.metadata ?? {};
       const metadataEntrada = this.limpiarCamposLegacyOcr({
@@ -632,7 +659,26 @@ export class DocumentosRepository {
           : {}),
       });
 
+      if (documentoBaseIdFinal) {
+        metadataFinal.documentoBaseId = documentoBaseIdFinal;
+        metadataFinal.contextoValidacion = {
+          ...(metadataFinal.contextoValidacion &&
+          typeof metadataFinal.contextoValidacion === 'object'
+            ? metadataFinal.contextoValidacion
+            : {}),
+          documentoBaseId: documentoBaseIdFinal,
+          resolucionDocumentoBase:
+            input.documentoBaseId == null ? 'AUTO_UNICO_PRINCIPAL' : 'EXPLICITO',
+        };
+      }
+
       const metadataSourceOverrides: Record<string, string> = {};
+
+      this.normalizarIdentidadEmisorConfirmacion(
+        tipoDocumental,
+        metadataFinal,
+      );
+
       await this.completarProveedorDesdeCatalogoTx(
         tx,
         tipoDocumental,
@@ -2031,6 +2077,114 @@ export class DocumentosRepository {
     `;
 
     return insertedRows[0] ?? null;
+  }
+
+
+  private resolverDocumentoBaseConfirmacion(
+    input: {
+      documentoBaseId?: number;
+      esPrincipal: boolean;
+      tipoRelacion?: string;
+      expedienteId: number;
+    },
+    principales: Array<Record<string, any>>,
+  ): number | null {
+    const relacion = String(input.tipoRelacion ?? '').trim().toLowerCase();
+    const esAdjunto = !input.esPrincipal && !relacion.startsWith('principal_');
+
+    if (!esAdjunto) return null;
+
+    const activos = principales.filter((row) => {
+      const id = Number(row.documento_id ?? row.documentoId ?? row.id);
+      const tipo = String(
+        row.tipo_documental ?? row.tipoDocumental ?? '',
+      ).trim().toUpperCase();
+      const esPrincipal =
+        row.es_principal === true ||
+        row.esPrincipal === true ||
+        String(row.es_principal ?? row.esPrincipal ?? '').toLowerCase() === 't';
+
+      return (
+        Number.isInteger(id) &&
+        id > 0 &&
+        esPrincipal &&
+        (tipo === 'OC' || tipo === 'OS')
+      );
+    });
+
+    if (activos.length === 0) {
+      this.throwDomainError(
+        'DOCUMENTO_BASE_REQUERIDO',
+        'El expediente no tiene una OC/OS principal activa para asociar el adjunto.',
+        { expedienteId: input.expedienteId },
+      );
+    }
+
+    const solicitado =
+      input.documentoBaseId == null ? null : Number(input.documentoBaseId);
+
+    if (activos.length > 1 && !solicitado) {
+      this.throwDomainError(
+        'DOCUMENTO_BASE_REQUERIDO_MULTIPLES_PRINCIPALES',
+        'Selecciona la orden de compra o servicio a la que corresponde este documento.',
+        {
+          expedienteId: input.expedienteId,
+          principalesDisponibles: activos.map((row) =>
+            Number(row.documento_id ?? row.documentoId ?? row.id),
+          ),
+        },
+      );
+    }
+
+    const resuelto =
+      solicitado ??
+      Number(
+        activos[0].documento_id ??
+          activos[0].documentoId ??
+          activos[0].id,
+      );
+
+    const principal = activos.find(
+      (row) =>
+        Number(row.documento_id ?? row.documentoId ?? row.id) === resuelto,
+    );
+
+    if (!principal) {
+      this.throwDomainError(
+        'DOCUMENTO_BASE_INVALIDO',
+        'El documento base no pertenece al expediente o no es una OC/OS principal activa.',
+        {
+          expedienteId: input.expedienteId,
+          documentoBaseId: resuelto,
+        },
+      );
+    }
+
+    return resuelto;
+  }
+
+
+  private normalizarIdentidadEmisorConfirmacion(
+    tipoDocumental: string,
+    metadata: Record<string, any>,
+  ) {
+    const tipoKey = this.normalizarTipoDocumentalConfirmacion(tipoDocumental);
+
+    if (tipoKey !== 'GUIA_REMISION') {
+      return;
+    }
+
+    const rucEmisorFinal = this.cleanText(
+      metadata.rucEmisor ?? metadata.ruc ?? metadata.rucProveedor,
+    );
+
+    if (!rucEmisorFinal) {
+      return;
+    }
+
+    metadata.ruc = rucEmisorFinal;
+    metadata.rucEmisor = rucEmisorFinal;
+    metadata.rucProveedor = rucEmisorFinal;
   }
 
 

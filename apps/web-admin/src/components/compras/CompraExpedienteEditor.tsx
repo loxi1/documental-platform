@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { type ChangeEvent, useMemo, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { type ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, FilePlus2, History } from "lucide-react";
 
@@ -652,14 +653,47 @@ function getArchivoId(source: Record<string, unknown> | null | undefined) {
   return String(value);
 }
 
-function getDocumentoId(source: Record<string, unknown> | null | undefined) {
+function getDocumentoId(
+  source: Record<string, unknown> | null | undefined,
+): number | null {
   const value =
     source?.documentoId ??
     source?.documento_id ??
     source?.id;
 
   if (value === null || value === undefined || value === "") return null;
-  return String(value);
+
+  const id = Number(value);
+  return Number.isInteger(id) && id > 0 ? id : null;
+}
+
+function getDocumentoPrincipalLabel(
+  source: Record<string, unknown> | null | undefined,
+): string {
+  const tipo = text(
+    source?.tipoDocumental ??
+      source?.tipo_documental ??
+      source?.tipo ??
+      source?.tipoPrincipal,
+    "Documento principal",
+  );
+  const serie = text(
+    source?.serie ??
+      source?.serieDocumento ??
+      source?.serie_documento,
+    "",
+  );
+  const numero = text(
+    source?.numero ??
+      source?.numeroDocumento ??
+      source?.numero_documento ??
+      source?.codigoDocumento ??
+      source?.codigo_documento,
+    "",
+  );
+
+  const identidad = [serie, numero].filter(Boolean).join("-");
+  return identidad ? `${tipo} ${identidad}` : tipo;
 }
 
 function formatFechaVersion(value: unknown) {
@@ -843,6 +877,7 @@ function buildMetadataDesdeFormulario(
     clienteAbreviatura?: string;
     expedienteId?: string | number;
     tipoRelacion?: string;
+    documentoBaseId?: number | null;
   },
 ) {
   const tipo = normalizeTipoDocumentalParaBackend(String(form.tipoDocumental || ""));
@@ -876,6 +911,7 @@ function buildMetadataDesdeFormulario(
       expedienteId: context.expedienteId,
       codigoExpediente,
       tipoRelacionSugerida: context.tipoRelacion,
+      documentoBaseId: context.documentoBaseId ?? null,
       confirmadoDesde: "compras_editar",
     },
   };
@@ -930,6 +966,8 @@ function buildResultadoConContexto(
 
 export function CompraExpedienteEditor({ id }: { id: string | number }) {
   const queryClient = useQueryClient();
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const { data: expediente, isLoading, error } = useExpediente(id);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [modalAbierto, setModalAbierto] = useState(false);
@@ -958,11 +996,71 @@ export function CompraExpedienteEditor({ id }: { id: string | number }) {
     () => getDocumentosPorRelacion(documentosQuery.data ?? []),
     [documentosQuery.data],
   );
-  const principalActual = useMemo(
-    () => pickDocumentoPrincipalActual(documentosQuery.data ?? []),
+  const documentosPrincipales = useMemo(
+    () =>
+      (documentosQuery.data ?? [])
+        .filter(isDocumentoPrincipalActivo)
+        .filter((doc) => {
+          const tipo = text(
+            doc.tipo_documental ?? doc.tipoDocumental,
+            "",
+          ).toUpperCase();
+          return tipo === "OC" || tipo === "OS";
+        }),
     [documentosQuery.data],
   );
-  const principalActualRelacion = principalActual?.relacion ?? principalActual?.option.tipoRelacionSugerida ?? "";
+
+  const principalIdParam = searchParams.get("principalId");
+  const principalIdSeleccionado = principalIdParam
+    ? Number(principalIdParam)
+    : null;
+
+  const principalSeleccionado = useMemo(
+    () =>
+      documentosPrincipales.find(
+        (doc) => getDocumentoId(doc) === principalIdSeleccionado,
+      ) ?? null,
+    [documentosPrincipales, principalIdSeleccionado],
+  );
+
+  useEffect(() => {
+    if (documentosPrincipales.length !== 1 || principalSeleccionado) return;
+
+    const unicoId = getDocumentoId(documentosPrincipales[0]);
+    if (!unicoId) return;
+
+    router.replace(`/compras/${id}/editar?principalId=${unicoId}`);
+  }, [documentosPrincipales, principalSeleccionado, router, id]);
+
+  const seleccionPrincipalRequerida =
+    documentosPrincipales.length > 1 && !principalSeleccionado;
+
+  const principalActual = useMemo(() => {
+    if (!principalSeleccionado) return null;
+
+    const relacion = getRelacion(principalSeleccionado);
+    const option =
+      DOCUMENTO_PRINCIPAL_OPTIONS.find(
+        (item) => item.tipoRelacionSugerida === relacion,
+      ) ??
+      DOCUMENTO_PRINCIPAL_OPTIONS.find(
+        (item) =>
+          item.tipoEsperado ===
+          text(
+            principalSeleccionado.tipo_documental ??
+              principalSeleccionado.tipoDocumental,
+            "",
+          ),
+      ) ??
+      DOCUMENTO_PRINCIPAL_OPTIONS[0];
+
+    return { option, doc: principalSeleccionado, relacion };
+  }, [principalSeleccionado]);
+
+  const principalActualRelacion =
+    principalActual?.relacion ??
+    principalActual?.option.tipoRelacionSugerida ??
+    "";
 
   const cargaRealMutation = useMutation<
     ProcesarOcrResultado,
@@ -991,6 +1089,10 @@ export function CompraExpedienteEditor({ id }: { id: string | number }) {
         clienteAbreviatura,
         tipoEsperado: accion.tipoEsperado as CargaGuiadaPayloadPreview["tipoEsperado"],
         expedienteId: id,
+        documentoBaseId:
+          accion.grupo === "adjunto"
+            ? getDocumentoId(principalSeleccionado)
+            : null,
         tipoRelacionSugerida: accion.tipoRelacionSugerida as CargaGuiadaPayloadPreview["tipoRelacionSugerida"],
         canalIngreso: "COMPRAS_EDITAR_UPLOAD",
         observacion: `Carga desde Compras Editar: ${accion.grupo} - ${accion.label}`,
@@ -1024,6 +1126,10 @@ export function CompraExpedienteEditor({ id }: { id: string | number }) {
         areaOrigen: "COMPRAS",
         clienteAbreviatura,
         expedienteId: id,
+        documentoBaseId:
+          accion.grupo === "adjunto"
+            ? getDocumentoId(principalSeleccionado)
+            : null,
         tipoRelacionSugerida: accion.tipoRelacionSugerida,
         canalIngreso: "COMPRAS_EDITAR_UPLOAD",
         reprocesar: true,
@@ -1070,6 +1176,12 @@ export function CompraExpedienteEditor({ id }: { id: string | number }) {
   });
 
   function iniciarSeleccionArchivo(option: DocumentoCargaOption, grupo: AccionCargaGuiada["grupo"]) {
+    if (grupo === "adjunto" && !principalSeleccionado) {
+      setMensajeValidacion(
+        "Selecciona la orden de compra o servicio a la que corresponde este documento.",
+      );
+      return;
+    }
     setAccionActual({
       ...option,
       grupo,
@@ -1218,7 +1330,7 @@ export function CompraExpedienteEditor({ id }: { id: string | number }) {
     const summary = getDocumentoSummary(doc, option);
     const contextoLabel = option.tipoRelacionSugerida.startsWith("principal_") ? `Documento principal · ${option.label}` : `Adjunto de compras · ${option.label}`;
     setVersionesModal({
-      documentoId,
+      documentoId: String(documentoId),
       titulo: summary.title,
       contextoLabel,
       archivos: [],
@@ -1229,7 +1341,7 @@ export function CompraExpedienteEditor({ id }: { id: string | number }) {
     try {
       const response = await getDocumentoArchivos(documentoId);
       setVersionesModal({
-        documentoId,
+        documentoId: String(documentoId),
         titulo: summary.title,
         contextoLabel,
         archivos: response.data ?? [],
@@ -1297,6 +1409,10 @@ export function CompraExpedienteEditor({ id }: { id: string | number }) {
       clienteAbreviatura: empresa,
       expedienteId: id,
       tipoRelacion,
+      documentoBaseId:
+        accionActual?.grupo === "adjunto"
+          ? getDocumentoId(principalSeleccionado)
+          : null,
     });
 
     await editarOcrResultado(ocrResultadoId, {
@@ -1362,6 +1478,10 @@ export function CompraExpedienteEditor({ id }: { id: string | number }) {
         clienteAbreviatura: empresa,
         expedienteId: id,
         tipoRelacion: tipoRelacionFinal,
+        documentoBaseId:
+          accionActual?.grupo === "adjunto"
+            ? getDocumentoId(principalSeleccionado)
+            : null,
       },
     );
 
@@ -1369,6 +1489,8 @@ export function CompraExpedienteEditor({ id }: { id: string | number }) {
 
     await confirmarOcrConExpediente(ocrResultadoId, {
       expedienteId: id,
+      documentoBaseId:
+        esPrincipalFinal ? null : getDocumentoId(principalSeleccionado),
       tipoRelacion: tipoRelacionFinal,
       esPrincipal: esPrincipalFinal,
       orden: esPrincipalFinal ? 1 : 10,
@@ -1490,6 +1612,69 @@ export function CompraExpedienteEditor({ id }: { id: string | number }) {
 
         <Card>
           <CardHeader className="pb-2">
+            <CardTitle>Seleccionar documento principal</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {documentosPrincipales.length === 0 ? (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                Este expediente no tiene una OC/OS principal activa. No se pueden cargar adjuntos.
+              </div>
+            ) : (
+              <div className="grid gap-2 md:grid-cols-3">
+                {documentosPrincipales.map((doc) => {
+                  const documentoId = getDocumentoId(doc);
+                  const seleccionado =
+                    documentoId === principalIdSeleccionado;
+
+                  return (
+                    <button
+                      key={documentoId ?? getDocumentoPrincipalLabel(doc)}
+                      type="button"
+                      className={`rounded-xl border px-3 py-3 text-left text-sm transition ${
+                        seleccionado
+                          ? "border-primary bg-primary/5 ring-1 ring-primary/20"
+                          : "hover:border-primary/50"
+                      }`}
+                      onClick={() => {
+                        if (!documentoId) return;
+
+                        setMensajeValidacion(null);
+                        setModalAbierto(false);
+                        setResultadoModal(null);
+                        setAccionActual(null);
+                        setProcessingError(null);
+                        router.replace(
+                          `/compras/${id}/editar?principalId=${documentoId}`,
+                        );
+                      }}
+                    >
+                      <div className="font-semibold">
+                        {getDocumentoPrincipalLabel(doc)}
+                      </div>
+                      <div className="mt-1 text-xs text-muted-foreground">
+                        Documento ID: {documentoId ?? "sin ID"}
+                      </div>
+                      <div className="mt-2 text-xs font-medium">
+                        {seleccionado
+                          ? "Principal seleccionado"
+                          : "Seleccionar"}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            {seleccionPrincipalRequerida ? (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                Selecciona la orden de compra a la que corresponde este documento.
+              </div>
+            ) : null}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-2">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <CardTitle>Documento principal</CardTitle>
               {principalActual ? (
@@ -1504,8 +1689,10 @@ export function CompraExpedienteEditor({ id }: { id: string | number }) {
               {DOCUMENTO_PRINCIPAL_OPTIONS.map((item) => {
                 const documentosItem = documentosPorRelacion.get(item.tipoRelacionSugerida);
                 const principalActivo = principalActualRelacion === item.tipoRelacionSugerida;
+                const documentosVisibles = principalActivo && principalActual?.doc
+                  ? [principalActual.doc]
+                  : documentosItem;
                 const tieneCandidatosNoActivos = Boolean(documentosItem?.length && !principalActivo);
-                const bloquearCargaPrincipal = principalActivo;
 
                 return (
                 <div
@@ -1533,16 +1720,16 @@ export function CompraExpedienteEditor({ id }: { id: string | number }) {
                   </div>
 
                   <DocumentoExistenteResumen
-                    documentos={documentosItem}
+                    documentos={documentosVisibles}
                     option={item}
                     onVerValidar={(doc) => abrirDocumentoExistente(doc, item)}
                     onVerVersiones={(doc) => abrirHistorialVersiones(doc, item)}
                     mostrarContenido={principalActivo}
                   />
 
-                  {bloquearCargaPrincipal ? (
-                    <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-300">
-                      Esta relación ya tiene un documento principal activo. No se reemplazará automáticamente.
+                  {principalActivo ? (
+                    <div className="mt-3 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-[11px] text-blue-800 dark:border-blue-900/60 dark:bg-blue-950/30 dark:text-blue-300">
+                      Ya existen documentos principales de este tipo. Puedes cargar otro documento distinto; el backend conservará la validación de duplicados reales.
                     </div>
                   ) : null}
 
@@ -1550,16 +1737,16 @@ export function CompraExpedienteEditor({ id }: { id: string | number }) {
                     className="mt-3 w-full"
                     variant="outline"
                     size="sm"
-                    disabled={procesando || bloquearCargaPrincipal}
+                    disabled={procesando}
                     onClick={() => iniciarSeleccionArchivo(item, "principal")}
                   >
                     <FilePlus2 className="h-4 w-4" />
                     {procesando && accionActual?.tipoRelacionSugerida === item.tipoRelacionSugerida
                       ? "Subiendo/procesando..."
                       : principalActivo
-                        ? "Reemplazar principal no disponible"
+                        ? "Cargar otro principal"
                         : tieneCandidatosNoActivos
-                          ? "Convertir en principal no disponible"
+                          ? "Cargar nuevo principal"
                           : "Cargar como principal"}
                   </Button>
                 </div>
@@ -1596,7 +1783,7 @@ export function CompraExpedienteEditor({ id }: { id: string | number }) {
                   className="mt-3 w-full"
                   variant="outline"
                   size="sm"
-                  disabled={procesando}
+                  disabled={procesando || !principalSeleccionado}
                   onClick={() => iniciarSeleccionArchivo(item, "adjunto")}
                 >
                   <FilePlus2 className="h-4 w-4" />
