@@ -736,7 +736,15 @@ export function OcrValidationModal({
         if (!exacto) {
           setProveedorEstado("NO_ENCONTRADO");
           setProveedorOrigen("");
-          setForm((current) => ({ ...current, razonSocial: "", proveedor: "", rucProveedor: ruc, rucEmisor: ruc }));
+
+          setForm((current) => ({
+            ...current,
+            razonSocial: current.razonSocial || current.proveedor,
+            proveedor: current.proveedor || current.razonSocial,
+            rucProveedor: ruc,
+            rucEmisor: ruc,
+          }));
+
           return;
         }
 
@@ -803,8 +811,23 @@ export function OcrValidationModal({
   }
 
   function handleConfirm() {
+    setActionError(null);
+
     if (!expediente.id && !form.codigoExpediente.trim()) {
-      setActionError("Selecciona o completa el expediente antes de guardar y confirmar.");
+      setActionError(
+        "Selecciona o completa el expediente antes de guardar y confirmar.",
+      );
+      return;
+    }
+
+    if (
+      normalizeTipoParaUi(form.tipoDocumental) === "FACTURA" &&
+      !form.proveedor.trim() &&
+      !form.razonSocial.trim()
+    ) {
+      setActionError(
+        "Ingresa la razón social del proveedor antes de guardar y confirmar.",
+      );
       return;
     }
 
@@ -937,7 +960,35 @@ export function OcrValidationModal({
                         }}
                         readOnly={readOnly}
                       />
-                      <ReadOnlyInfo label="Razón social resuelta" value={form.razonSocial || form.proveedor} />
+                      {proveedorEstado === "NO_ENCONTRADO" ||
+                        proveedorEstado === "ERROR_CONSULTA" ? (
+                          <label className="block">
+                            <span className="text-[11px] font-medium uppercase tracking-wide text-slate-400">
+                              Razón social del proveedor
+                            </span>
+
+                            <input
+                              value={form.razonSocial || form.proveedor}
+                              onChange={(event) => {
+                                const value = event.target.value;
+
+                                setForm((current) => ({
+                                  ...current,
+                                  razonSocial: value,
+                                  proveedor: value,
+                                }));
+                              }}
+                              placeholder="Ingrese la razón social"
+                              disabled={readOnly}
+                              className="mt-1 h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-950 outline-none transition focus:border-slate-400 disabled:cursor-not-allowed disabled:bg-slate-50 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100"
+                            />
+                          </label>
+                        ) : (
+                          <ReadOnlyInfo
+                            label="Razón social resuelta"
+                            value={form.razonSocial || form.proveedor}
+                          />
+                        )}
                     </div>
                     <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
                       Estado: {proveedorEstado === "RESUELTO" ? "Resuelto" : proveedorEstado === "BUSCANDO" ? "Buscando…" : proveedorEstado === "NO_ENCONTRADO" ? "No encontrado en catálogo" : proveedorEstado === "ERROR_CONSULTA" ? "Error de consulta" : "Pendiente"}
