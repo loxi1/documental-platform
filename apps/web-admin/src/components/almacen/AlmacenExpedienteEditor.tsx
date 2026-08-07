@@ -22,7 +22,10 @@ import {
 } from "@/constants/documentos";
 import { useExpediente } from "@/hooks/useExpedientes";
 import { api } from "@/services/api";
-import { subirDocumentoGuiado } from "@/services/carga-guiada";
+import {
+  prevalidarDocumentoGuiado,
+  subirDocumentoGuiado,
+} from "@/services/carga-guiada";
 import { agregarArchivoComoVersion, actualizarDocumentoManual } from "@/services/documentos";
 import { getDocumentoArchivoPreviewUrl } from "@/services/documentos-preview";
 import {
@@ -304,9 +307,21 @@ function buildMetadataDesdeFormulario(
 ) {
   const tipo = normalizeTipoDocumentalParaBackend(String(form.tipoDocumental || ""));
   const codigoExpediente = emptyToUndefined(form.codigoExpediente) ?? emptyToUndefined(context.codigoExpediente);
-  const rucComprador = emptyToUndefined(form.rucComprador) ?? emptyToUndefined(context.rucComprador);
-  const rucEmisor = tipo === "NOTA_INGRESO" ? undefined : emptyToUndefined(form.rucEmisor);
-  const rucProveedor = tipo === "NOTA_INGRESO" ? undefined : emptyToUndefined(form.rucProveedor) ?? rucEmisor;
+  const rucComprador =
+    emptyToUndefined(form.rucComprador) ??
+    emptyToUndefined(context.rucComprador);
+  const rucEmisorCapturado =
+    tipo === "NOTA_INGRESO" ? undefined : emptyToUndefined(form.rucEmisor);
+  const rucProveedorCapturado =
+    tipo === "NOTA_INGRESO" ? undefined : emptyToUndefined(form.rucProveedor);
+  const rucEmisor =
+    tipo === "GUIA_REMISION"
+      ? rucEmisorCapturado ?? rucProveedorCapturado
+      : rucEmisorCapturado;
+  const rucProveedor =
+    tipo === "GUIA_REMISION"
+      ? rucEmisor
+      : rucProveedorCapturado ?? rucEmisor;
   const razonSocial = tipo === "NOTA_INGRESO" ? undefined : emptyToUndefined(form.razonSocial);
   const proveedor = tipo === "NOTA_INGRESO" ? undefined : emptyToUndefined(form.proveedor) ?? razonSocial;
 
@@ -646,16 +661,39 @@ export function AlmacenExpedienteEditor({ id }: { id: string | number }) {
         throw new Error("No se pudo resolver clienteAbreviatura del expediente.");
       }
 
+      const tipoEsperado = normalizeTipoDocumentalParaBackend(
+        accion.tipoEsperado,
+      ) as CargaGuiadaPayloadPreview["tipoEsperado"];
+      const canalIngreso =
+        accion.tipoRelacionSugerida === "adjunto_nota_ingreso"
+          ? "ALMACEN_LEGACY_UPLOAD_NOTA_INGRESO"
+          : "ALMACEN_LEGACY_UPLOAD_GUIA";
+
       const uploadPayload: CargaGuiadaPayloadPreview = {
         areaOrigen: "ALMACEN",
         clienteAbreviatura,
-        tipoEsperado: accion.tipoEsperado as CargaGuiadaPayloadPreview["tipoEsperado"],
+        tipoEsperado,
         expedienteId: id,
-        tipoRelacionSugerida: accion.tipoRelacionSugerida as CargaGuiadaPayloadPreview["tipoRelacionSugerida"],
-        canalIngreso: "ALMACEN_EDITAR_UPLOAD",
-        observacion: `Carga desde Almacén: ${accion.label}`,
+        tipoRelacionSugerida:
+          accion.tipoRelacionSugerida as CargaGuiadaPayloadPreview["tipoRelacionSugerida"],
+        canalIngreso,
+        observacion: `Carga legacy desde Almacén: ${accion.label}`,
+        esPrincipal: false,
       };
 
+      setProcessingStep("prevalidating");
+      const prevalidacion = await prevalidarDocumentoGuiado(uploadPayload, file);
+
+      if (prevalidacion.accionSugerida !== "cargar_nuevo") {
+        throw new Error(
+          prevalidacion.motivo ||
+            `La prevalidación detuvo la carga: ${
+              prevalidacion.accionSugerida || "acción no determinada"
+            }.`,
+        );
+      }
+
+      setProcessingStep("uploading");
       const uploadResponse = await subirDocumentoGuiado(uploadPayload, file);
       const archivoId = getArchivoId(uploadResponse as Record<string, unknown>);
 
@@ -666,12 +704,12 @@ export function AlmacenExpedienteEditor({ id }: { id: string | number }) {
       setProcessingStep("processing_ocr");
 
       const resultado = await procesarArchivoOcr(archivoId, {
-        tipoEsperado: accion.tipoEsperado,
+        tipoEsperado,
         areaOrigen: "ALMACEN",
         clienteAbreviatura,
         expedienteId: id,
         tipoRelacionSugerida: accion.tipoRelacionSugerida,
-        canalIngreso: "ALMACEN_EDITAR_UPLOAD",
+        canalIngreso,
         reprocesar: true,
       });
 
