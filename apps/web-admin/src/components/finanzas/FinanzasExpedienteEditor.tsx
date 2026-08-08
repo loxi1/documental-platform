@@ -1,7 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { type ChangeEvent, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import {
+  type ChangeEvent,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
@@ -38,6 +45,7 @@ import {
 import { useExpediente } from "@/hooks/useExpedientes";
 import { api } from "@/services/api";
 import { subirDocumentoGuiado } from "@/services/carga-guiada";
+import { getWorkspaceDocumentalV2 } from "@/services/documental-v2-workspace";
 import {
   agregarArchivoComoVersion,
   actualizarDocumentoManual,
@@ -45,12 +53,19 @@ import {
 import { getDocumentoArchivoPreviewUrl } from "@/services/documentos-preview";
 import {
   confirmarOcrConExpediente,
+  OcrApiError,
   editarOcrResultado,
   procesarArchivoOcr,
   rechazarOcrResultado,
   type ProcesarOcrResultado,
 } from "@/services/ocr-procesamiento";
+import { getOcrResultado } from "@/services/ocr-resultados";
 import type { CargaGuiadaPayloadPreview } from "@/types/carga-guiada";
+import {
+  getGrupoDocumentoPrincipalDocumentoId,
+  getGrupoFacturaPersistidoId,
+  getGruposFactura,
+} from "@/components/documental-v2/workspace-v2-utils";
 
 type DocumentoVinculado = Record<string, any>;
 
@@ -81,6 +96,11 @@ const FINANZAS_TIPOS_DOCUMENTALES_PERMITIDOS = [
   "TRANSFERENCIA",
   "DETRACCION",
 ] as const;
+
+function positiveInteger(value: unknown) {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+}
 
 function normalizeCompare(value: unknown) {
   return String(value ?? "")
@@ -321,6 +341,8 @@ function buildMetadataDesdeFormulario(
     emptyToUndefined(form.fechaPago) ?? emptyToUndefined(form.fechaEmision);
   const banco =
     emptyToUndefined(form.banco) ?? emptyToUndefined(form.cotizacion);
+  const esDocumentoPago =
+    tipo === "TRANSFERENCIA" || tipo === "PAGO_DETRACCION";
   const comprobante =
     emptyToUndefined(form.comprobante) ??
     emptyToUndefined(form.documentoRelacionado);
@@ -328,13 +350,13 @@ function buildMetadataDesdeFormulario(
   return {
     tipoDocumental: tipo,
     clienteAbreviatura: emptyToUndefined(context.clienteAbreviatura),
-    numero: tipo.startsWith("PAGO_")
+    numero: esDocumentoPago
       ? numeroOperacion
       : emptyToUndefined(form.numero),
     numeroOperacion,
     numeroConstancia: tipo === "PAGO_DETRACCION" ? numeroOperacion : undefined,
     serie: emptyToUndefined(form.serie),
-    fechaEmision: tipo.startsWith("PAGO_")
+    fechaEmision: esDocumentoPago
       ? fechaPago
       : emptyToUndefined(form.fechaEmision),
     fechaPago,
@@ -642,12 +664,19 @@ function DocumentosExistentes({
 
 export function FinanzasExpedienteEditor({ id }: { id: string | number }) {
   const queryClient = useQueryClient();
+  const searchParams = useSearchParams();
   const { data: expediente, isLoading, error } = useExpediente(id);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [modalAbierto, setModalAbierto] = useState(false);
   const [resultadoModal, setResultadoModal] =
     useState<ProcesarOcrResultado | null>(null);
   const [accionActual, setAccionActual] = useState<AccionFinanzas | null>(null);
+  const [decisionCorrespondencia, setDecisionCorrespondencia] = useState<{
+    accion: "ACEPTAR" | "OBSERVAR";
+    motivo: string;
+  } | null>(null);
+  const [decisionCorrespondenciaRequerida, setDecisionCorrespondenciaRequerida] =
+    useState(false);
   const [mensajeValidacion, setMensajeValidacion] = useState<string | null>(
     null,
   );
@@ -676,6 +705,161 @@ export function FinanzasExpedienteEditor({ id }: { id: string | number }) {
     comprobante: "",
     observacion: "",
   });
+
+  const grupoFacturaId = positiveInteger(searchParams.get("grupoFacturaId"));
+  const ocrResultadoIdRecuperar = positiveInteger(
+    searchParams.get("ocrResultadoId"),
+  );
+
+  const workspaceQuery = useQuery({
+    queryKey: ["finanzas-editor-workspace-v2", String(id)],
+    enabled: Boolean(id),
+    queryFn: () => getWorkspaceDocumentalV2(id),
+  });
+
+  const gruposFactura = useMemo(
+    () => (workspaceQuery.data ? getGruposFactura(workspaceQuery.data) : []),
+    [workspaceQuery.data],
+  );
+
+  const grupoFacturaSeleccionado = useMemo(
+    () =>
+      grupoFacturaId === null
+        ? null
+        : gruposFactura.find(
+            (grupo) =>
+              positiveInteger(getGrupoFacturaPersistidoId(grupo)) ===
+              grupoFacturaId,
+          ) ?? null,
+    [grupoFacturaId, gruposFactura],
+  );
+
+  const documentoBaseId = positiveInteger(
+    grupoFacturaSeleccionado
+      ? getGrupoDocumentoPrincipalDocumentoId(grupoFacturaSeleccionado)
+      : null,
+  );
+
+  function requireContextoV2() {
+    if (grupoFacturaId === null) {
+      throw new Error(
+        "Falta grupoFacturaId. Vuelva a abrir Finanzas desde el Grupo de Factura correspondiente.",
+      );
+    }
+
+    if (workspaceQuery.isLoading) {
+      throw new Error("El Grupo de Factura todavía se está validando.");
+    }
+
+    if (workspaceQuery.isError || !grupoFacturaSeleccionado) {
+      throw new Error(
+        "No se pudo resolver el Grupo de Factura seleccionado en este expediente.",
+      );
+    }
+
+    if (documentoBaseId === null) {
+      throw new Error(
+        "No se pudo resolver el documento principal del Grupo de Factura.",
+      );
+    }
+
+    return { grupoFacturaId, documentoBaseId };
+  }
+
+  const ocrRecuperacionQuery = useQuery({
+    queryKey: ["finanzas-recuperar-ocr", ocrResultadoIdRecuperar],
+    enabled: ocrResultadoIdRecuperar !== null,
+    queryFn: () => getOcrResultado(ocrResultadoIdRecuperar!),
+  });
+
+  const ocrRecuperadoRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (
+      ocrResultadoIdRecuperar === null ||
+      !ocrRecuperacionQuery.data ||
+      ocrRecuperadoRef.current === ocrResultadoIdRecuperar
+    ) {
+      return;
+    }
+
+    const ocr = ocrRecuperacionQuery.data as unknown as Record<
+      string,
+      unknown
+    >;
+
+    const metadataPersistida =
+      ocr.metadata &&
+      typeof ocr.metadata === "object" &&
+      !Array.isArray(ocr.metadata)
+        ? (ocr.metadata as Record<string, unknown>)
+        : {};
+
+    const resultadoProcesamiento = {
+      ...metadataPersistida,
+      ocrResultadoId: ocr.id ?? ocrResultadoIdRecuperar,
+      archivoId: ocr.archivo_id ?? ocr.archivoId,
+      documentoId: ocr.documento_id ?? ocr.documentoId,
+      tipoDocumental:
+        metadataPersistida.tipoDocumental ??
+        ocr.tipo_propuesto ??
+        ocr.tipoPropuesto,
+      claveDocumental:
+        metadataPersistida.claveDocumental ??
+        ocr.clave_documental ??
+        ocr.claveDocumental,
+    } as unknown as ProcesarOcrResultado;
+
+    const tipoRecuperado = normalizeTipoDocumentalParaBackend(
+      String(
+        ocr.tipo_propuesto ??
+          ocr.tipoPropuesto ??
+          resultadoProcesamiento.tipoDocumental ??
+          "",
+      ),
+    );
+
+    const option = DOCUMENTO_FINANZAS_ADJUNTO_OPTIONS.find(
+      (candidate) =>
+        normalizeTipoDocumentalParaBackend(
+          String(candidate.tipoEsperado ?? ""),
+        ) === tipoRecuperado,
+    );
+
+    if (!option) {
+      setMensajeValidacion(
+        `No se pudo resolver la acción de Finanzas para el OCR ${ocrResultadoIdRecuperar}.`,
+      );
+      return;
+    }
+
+    const accion = { ...option, grupo: "adjunto" as const };
+
+    setAccionActual(accion);
+    setResultadoModal(
+      buildResultadoConContexto(resultadoProcesamiento, accion, {
+        archivoId: String(
+          ocr.archivo_id ?? ocr.archivoId ?? resultadoProcesamiento.archivoId,
+        ),
+        filename: String(
+          ocr.nombre_archivo ??
+            ocr.nombreArchivo ??
+            getRecordValue(metadataPersistida, ["archivo", "filename"]) ??
+            "documento.pdf",
+        ),
+        uploadResponse: {},
+      }),
+    );
+
+    setMensajeValidacion(
+      `OCR ${ocrResultadoIdRecuperar} recuperado para continuar su validación en Finanzas.`,
+    );
+    setModalAbierto(true);
+    ocrRecuperadoRef.current = ocrResultadoIdRecuperar;
+  }, [
+    ocrResultadoIdRecuperar,
+    ocrRecuperacionQuery.data,
+  ]);
 
   const documentosQuery = useQuery({
     queryKey: ["expediente-documentos", String(id)],
@@ -759,6 +943,8 @@ export function FinanzasExpedienteEditor({ id }: { id: string | number }) {
     UploadYProcesarArgs
   >({
     mutationFn: async ({ accion, file }) => {
+      const contextoV2 = requireContextoV2();
+
       setProcessingFileName(file.name);
       setProcessingError(null);
       setProcessingStep("uploading");
@@ -783,6 +969,7 @@ export function FinanzasExpedienteEditor({ id }: { id: string | number }) {
         tipoEsperado:
           accion.tipoEsperado as CargaGuiadaPayloadPreview["tipoEsperado"],
         expedienteId: id,
+        documentoBaseId: contextoV2.documentoBaseId,
         tipoRelacionSugerida:
           accion.tipoRelacionSugerida as CargaGuiadaPayloadPreview["tipoRelacionSugerida"],
         canalIngreso: "FINANZAS_EDITAR_UPLOAD",
@@ -803,6 +990,7 @@ export function FinanzasExpedienteEditor({ id }: { id: string | number }) {
         areaOrigen: "FINANZAS",
         clienteAbreviatura,
         expedienteId: id,
+        documentoBaseId: contextoV2.documentoBaseId,
         tipoRelacionSugerida: accion.tipoRelacionSugerida,
         canalIngreso: "FINANZAS_EDITAR_UPLOAD",
         reprocesar: true,
@@ -943,6 +1131,7 @@ export function FinanzasExpedienteEditor({ id }: { id: string | number }) {
   }
 
   async function confirmarOcrFinal(form: OcrValidationFormState) {
+    const contextoV2 = requireContextoV2();
     const resultadoActual = resultadoModal as Record<string, unknown> | null;
     const ocrResultadoId = getOcrResultadoId(resultadoActual);
 
@@ -988,15 +1177,40 @@ export function FinanzasExpedienteEditor({ id }: { id: string | number }) {
       },
     );
 
-    await confirmarOcrConExpediente(ocrResultadoId, {
-      expedienteId: id,
-      tipoRelacion: tipoRelacionFinal,
-      esPrincipal: false,
-      orden: 20,
-      metadata,
-      observacion: "Guardar y confirmar pago desde Finanzas",
-    });
+    try {
+      await confirmarOcrConExpediente(ocrResultadoId, {
+        expedienteId: id,
+        documentoBaseId: contextoV2.documentoBaseId,
+        grupoFacturaId: contextoV2.grupoFacturaId,
+        tipoRelacion: tipoRelacionFinal,
+        esPrincipal: false,
+        orden: 20,
+        metadata,
+        observacion: "Guardar y confirmar pago desde Finanzas",
+        ...(decisionCorrespondencia
+          ? {
+              decisionCorrespondencia: {
+                accion: decisionCorrespondencia.accion,
+                motivo: decisionCorrespondencia.motivo.trim(),
+              },
+            }
+          : {}),
+      });
+    } catch (error) {
+      if (
+        error instanceof OcrApiError &&
+        error.code === "DECISION_CORRESPONDENCIA_REQUERIDA"
+      ) {
+        setDecisionCorrespondenciaRequerida(true);
+        setMensajeValidacion(
+          "La transferencia requiere una decisión humana de correspondencia antes de asociarse al grupo.",
+        );
+      }
+      throw error;
+    }
 
+    setDecisionCorrespondenciaRequerida(false);
+    setDecisionCorrespondencia(null);
     setModalAbierto(false);
     setMensajeValidacion(
       `Documento confirmado y vinculado al expediente ${codigo || id}.`,
@@ -1151,6 +1365,72 @@ export function FinanzasExpedienteEditor({ id }: { id: string | number }) {
             </div>
           </div>
         </div>
+
+        {decisionCorrespondenciaRequerida ? (
+          <div className="mb-4 rounded-xl border p-4">
+            <p className="font-medium">
+              Esta transferencia requiere una decisión humana de correspondencia.
+            </p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              La evaluación automática no puede verificar la correspondencia con la factura del grupo.
+            </p>
+
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Button
+                type="button"
+                variant={
+                  decisionCorrespondencia?.accion === "ACEPTAR"
+                    ? "default"
+                    : "outline"
+                }
+                size="sm"
+                onClick={() => {
+                  setDecisionCorrespondencia((current) => ({
+                    accion: "ACEPTAR",
+                    motivo: current?.motivo ?? "",
+                  }));
+                  setModalAbierto(true);
+                }}
+              >
+                Aceptar asociación
+              </Button>
+
+              <Button
+                type="button"
+                variant={
+                  decisionCorrespondencia?.accion === "OBSERVAR"
+                    ? "default"
+                    : "outline"
+                }
+                size="sm"
+                onClick={() => {
+                  setDecisionCorrespondencia((current) => ({
+                    accion: "OBSERVAR",
+                    motivo: current?.motivo ?? "",
+                  }));
+                  setModalAbierto(true);
+                }}
+              >
+                Observar
+              </Button>
+            </div>
+
+            <div className="mt-3">
+              <label className="text-sm font-medium">Motivo</label>
+              <Input
+                className="mt-1"
+                value={decisionCorrespondencia?.motivo ?? ""}
+                onChange={(e) =>
+                  setDecisionCorrespondencia((current) => ({
+                    accion: current?.accion ?? "ACEPTAR",
+                    motivo: e.target.value,
+                  }))
+                }
+                placeholder="Indica el motivo de la decisión"
+              />
+            </div>
+          </div>
+        ) : null}
 
         {mensajeValidacion ? (
           <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-300">

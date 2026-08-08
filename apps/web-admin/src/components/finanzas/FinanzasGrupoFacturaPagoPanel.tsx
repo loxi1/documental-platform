@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useWorkspaceV2Capabilities } from "@/hooks/useWorkspaceV2Capabilities";
 import {
   evaluarCorrespondenciaPagoFactura,
   getWorkspaceDocumentalV2,
@@ -120,7 +121,10 @@ function getValorFactura(comparacion: ReturnType<typeof getComparacion>) {
 
 function getValorSustento(comparacion: ReturnType<typeof getComparacion>) {
   return estadoTexto(
-    comparacion?.sustento ?? comparacion?.sustentoValor ?? comparacion?.valorSustento,
+    comparacion?.pago ??
+      comparacion?.sustento ??
+      comparacion?.sustentoValor ??
+      comparacion?.valorSustento,
     "No informado",
   );
 }
@@ -197,8 +201,10 @@ function EvaluacionCorrespondenciaPago({
     <div className="space-y-3 rounded-lg border bg-muted/10 p-3 text-xs">
       <div className="flex flex-wrap items-center gap-2">
         <Badge variant="outline">Estado general: {getEstadoGeneral(evaluacion)}</Badge>
-        {requiereDecisionHumana ? <Badge variant="secondary">Requiere revisión humana</Badge> : null}
-        {permiteAsociacionOrdinaria === false ? <Badge variant="destructive">Asociación ordinaria bloqueada</Badge> : null}
+        {requiereDecisionHumana ? <Badge variant="secondary">Evaluación automática requiere decisión humana</Badge> : null}
+        {permiteAsociacionOrdinaria === false ? (
+          <Badge variant="destructive">Sin decisión humana, asociación ordinaria bloqueada</Badge>
+        ) : null}
         {permiteAsociacionOrdinaria === true ? <Badge variant="outline">Asociación ordinaria permitida</Badge> : null}
       </div>
 
@@ -252,11 +258,13 @@ function GrupoPagoCard({
   grupo,
   expedienteId,
   editable,
+  canAssociateGroupDocument,
   onRefresh,
 }: {
   grupo: WorkspaceV2GrupoFactura;
   expedienteId: string | number;
   editable: boolean;
+  canAssociateGroupDocument: boolean;
   onRefresh: () => Promise<unknown> | unknown;
 }) {
   const grupoFacturaId = getGrupoFacturaPersistidoId(grupo);
@@ -355,7 +363,12 @@ function GrupoPagoCard({
             </Link>
           </Button>
           {editable ? (
-            <AsociarDocumentoGrupoFacturaPanel grupoFacturaId={grupoFacturaId} modo="finanzas" onAssociated={onRefresh} />
+            <AsociarDocumentoGrupoFacturaPanel
+              grupoFacturaId={grupoFacturaId}
+              modo="finanzas"
+              authorized={canAssociateGroupDocument}
+              onAssociated={onRefresh}
+            />
           ) : (
             <Button asChild size="sm">
               <Link href={`/finanzas/${expedienteId}/editar`}>Adjuntar sustento de pago</Link>
@@ -368,6 +381,8 @@ function GrupoPagoCard({
 }
 
 export function FinanzasGrupoFacturaPagoPanel({ id, editable = false }: { id: string | number; editable?: boolean }) {
+  const capabilities = useWorkspaceV2Capabilities();
+
   const workspaceQuery = useQuery({
     queryKey: ["finanzas-v2-grupos-pago", String(id)],
     queryFn: () => getWorkspaceDocumentalV2(id),
@@ -430,6 +445,7 @@ export function FinanzasGrupoFacturaPagoPanel({ id, editable = false }: { id: st
               grupo={grupo}
               expedienteId={id}
               editable={editable}
+              canAssociateGroupDocument={capabilities.canAssociateGroupDocument}
               onRefresh={() => workspaceQuery.refetch()}
             />
           ))

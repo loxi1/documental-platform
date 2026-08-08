@@ -387,6 +387,7 @@ export async function confirmarOcrConExpediente(
       "CODIGO_EXPEDIENTE_NO_COINCIDE",
       "EXPEDIENTE_YA_TIENE_DOCUMENTO_PRINCIPAL",
       "ARCHIVO_DUPLICADO_EN_CARGA_GUIADA",
+      "DECISION_CORRESPONDENCIA_REQUERIDA",
     ]);
 
     throw new OcrApiError(message, {

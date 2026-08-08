@@ -159,6 +159,7 @@ export type FinanzasCorrespondenciaComparacion = {
   estado?: string | null;
   resultado?: string | null;
   factura?: string | number | null;
+  pago?: string | number | null;
   sustento?: string | number | null;
   facturaValor?: string | number | null;
   sustentoValor?: string | number | null;

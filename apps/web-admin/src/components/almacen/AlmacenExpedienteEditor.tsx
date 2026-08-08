@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { type ChangeEvent, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Eye, FilePlus2, FileText, History, Pencil, Save, Trash2, X } from "lucide-react";
@@ -28,6 +29,13 @@ import {
 } from "@/services/carga-guiada";
 import { agregarArchivoComoVersion, actualizarDocumentoManual } from "@/services/documentos";
 import { getDocumentoArchivoPreviewUrl } from "@/services/documentos-preview";
+import { getWorkspaceDocumentalV2 } from "@/services/documental-v2-workspace";
+import {
+  getGrupoDocumentoPrincipalDocumentoId,
+  getGrupoFacturaDocumentoId,
+  getGrupoFacturaPersistidoId,
+  getGruposFactura,
+} from "@/components/documental-v2/workspace-v2-utils";
 import {
   confirmarOcrConExpediente,
   editarOcrResultado,
@@ -58,6 +66,11 @@ type AlmacenEditForm = {
   observacion: string;
 };
 const ALMACEN_TIPOS_DOCUMENTALES_PERMITIDOS = ["FACTURA", "GUIA", "NOTA_INGRESO"] as const;
+
+function positiveInteger(value: unknown) {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+}
 
 function normalizeCompare(value: unknown) {
   return String(value ?? "")
@@ -561,6 +574,7 @@ function DocumentosExistentes({
 
 export function AlmacenExpedienteEditor({ id }: { id: string | number }) {
   const queryClient = useQueryClient();
+  const searchParams = useSearchParams();
   const { data: expediente, isLoading, error } = useExpediente(id);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [modalAbierto, setModalAbierto] = useState(false);
@@ -584,6 +598,73 @@ export function AlmacenExpedienteEditor({ id }: { id: string | number }) {
     moneda: "",
     observacion: "",
   });
+
+  const grupoFacturaId = positiveInteger(searchParams.get("grupoFacturaId"));
+  const workspaceQuery = useQuery({
+    queryKey: ["almacen-editor-workspace-v2", String(id)],
+    enabled: Boolean(id),
+    queryFn: () => getWorkspaceDocumentalV2(id),
+  });
+
+  const gruposFactura = useMemo(
+    () => (workspaceQuery.data ? getGruposFactura(workspaceQuery.data) : []),
+    [workspaceQuery.data],
+  );
+  const grupoFacturaSeleccionado = useMemo(
+    () =>
+      grupoFacturaId === null
+        ? null
+        : gruposFactura.find(
+            (grupo) => positiveInteger(getGrupoFacturaPersistidoId(grupo)) === grupoFacturaId,
+          ) ?? null,
+    [grupoFacturaId, gruposFactura],
+  );
+  const documentoBaseId = positiveInteger(
+    grupoFacturaSeleccionado
+      ? getGrupoDocumentoPrincipalDocumentoId(grupoFacturaSeleccionado)
+      : null,
+  );
+  const facturaDocumentoId = positiveInteger(
+    grupoFacturaSeleccionado
+      ? getGrupoFacturaDocumentoId(grupoFacturaSeleccionado)
+      : null,
+  );
+  const contextoV2Listo =
+    !workspaceQuery.isLoading &&
+    !workspaceQuery.isError &&
+    grupoFacturaId !== null &&
+    grupoFacturaSeleccionado !== null &&
+    documentoBaseId !== null &&
+    facturaDocumentoId !== null;
+  const contextoV2Mensaje = workspaceQuery.isLoading
+    ? "Validando el Grupo Factura seleccionado..."
+    : workspaceQuery.isError
+      ? "No se pudo consultar Workspace V2. Regrese a Almacén y vuelva a abrir la operación desde el grupo correspondiente."
+      : grupoFacturaId === null
+        ? "Falta un grupoFacturaId válido. Regrese a Almacén y vuelva a abrir la operación desde el grupo correspondiente."
+        : !grupoFacturaSeleccionado
+          ? "El Grupo Factura indicado no pertenece al expediente abierto."
+          : documentoBaseId === null
+            ? "No se pudo resolver el documento principal del Grupo Factura."
+            : facturaDocumentoId === null
+              ? "No se pudo resolver la factura fundadora del Grupo Factura."
+              : null;
+
+  function requireContextoV2() {
+    if (
+      !contextoV2Listo ||
+      grupoFacturaId === null ||
+      documentoBaseId === null ||
+      facturaDocumentoId === null
+    ) {
+      throw new Error(
+        contextoV2Mensaje ??
+          "No se pudo determinar de forma segura el Grupo Factura y el documento principal.",
+      );
+    }
+
+    return { grupoFacturaId, documentoBaseId, facturaDocumentoId };
+  }
 
   const documentosQuery = useQuery({
     queryKey: ["expediente-documentos", String(id)],
@@ -645,9 +726,11 @@ export function AlmacenExpedienteEditor({ id }: { id: string | number }) {
 
   const cargaRealMutation = useMutation<ProcesarOcrResultado, Error, UploadYProcesarArgs>({
     mutationFn: async ({ accion, file }) => {
+      const contextoV2 = requireContextoV2();
+
       setProcessingFileName(file.name);
       setProcessingError(null);
-      setProcessingStep("uploading");
+      setProcessingStep("prevalidating");
 
       const clienteAbreviatura = text(
         (expediente as any)?.empresa_codigo ??
@@ -674,6 +757,7 @@ export function AlmacenExpedienteEditor({ id }: { id: string | number }) {
         clienteAbreviatura,
         tipoEsperado,
         expedienteId: id,
+        documentoBaseId: contextoV2.documentoBaseId,
         tipoRelacionSugerida:
           accion.tipoRelacionSugerida as CargaGuiadaPayloadPreview["tipoRelacionSugerida"],
         canalIngreso,
@@ -681,7 +765,6 @@ export function AlmacenExpedienteEditor({ id }: { id: string | number }) {
         esPrincipal: false,
       };
 
-      setProcessingStep("prevalidating");
       const prevalidacion = await prevalidarDocumentoGuiado(uploadPayload, file);
 
       if (prevalidacion.accionSugerida !== "cargar_nuevo") {
@@ -708,6 +791,7 @@ export function AlmacenExpedienteEditor({ id }: { id: string | number }) {
         areaOrigen: "ALMACEN",
         clienteAbreviatura,
         expedienteId: id,
+        documentoBaseId: contextoV2.documentoBaseId,
         tipoRelacionSugerida: accion.tipoRelacionSugerida,
         canalIngreso,
         reprocesar: true,
@@ -738,8 +822,9 @@ export function AlmacenExpedienteEditor({ id }: { id: string | number }) {
       }, 450);
     },
     onError: (err, { accion }) => {
-      const message = `No se pudo cargar/procesar OCR para ${accion.label}. ${err.message}`;
       setAccionActual(accion);
+
+      const message = `No se pudo cargar/procesar OCR para ${accion.label}. ${err.message}`;
       setProcessingStep("error");
       setProcessingError(message);
       setMensajeValidacion(message);
@@ -747,6 +832,14 @@ export function AlmacenExpedienteEditor({ id }: { id: string | number }) {
   });
 
   function iniciarSeleccionArchivo(option: DocumentoCargaOption) {
+    if (!contextoV2Listo) {
+      setMensajeValidacion(
+        contextoV2Mensaje ??
+          "No se pudo determinar de forma segura el Grupo Factura y el documento principal. Regrese a Almacén y vuelva a abrir la operación desde el grupo correspondiente.",
+      );
+      return;
+    }
+
     setAccionActual({ ...option, grupo: "adjunto" });
     setMensajeValidacion(null);
     fileInputRef.current?.click();
@@ -814,6 +907,7 @@ export function AlmacenExpedienteEditor({ id }: { id: string | number }) {
   }
 
   async function confirmarOcrFinal(form: OcrValidationFormState) {
+    const contextoV2 = requireContextoV2();
     const resultadoActual = resultadoModal as Record<string, unknown> | null;
     const ocrResultadoId = getOcrResultadoId(resultadoActual);
 
@@ -850,6 +944,8 @@ export function AlmacenExpedienteEditor({ id }: { id: string | number }) {
 
     await confirmarOcrConExpediente(ocrResultadoId, {
       expedienteId: id,
+      documentoBaseId: contextoV2.documentoBaseId,
+      grupoFacturaId: contextoV2.grupoFacturaId,
       tipoRelacion: tipoRelacionFinal,
       esPrincipal: false,
       orden: 20,
@@ -974,6 +1070,18 @@ export function AlmacenExpedienteEditor({ id }: { id: string | number }) {
           </div>
         ) : null}
 
+        {!contextoV2Listo ? (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-300">
+            {contextoV2Mensaje}
+          </div>
+        ) : (
+          <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+            <Badge variant="outline">Grupo Factura {grupoFacturaId}</Badge>
+            <Badge variant="outline">Principal documento {documentoBaseId}</Badge>
+            <Badge variant="outline">Factura documento {facturaDocumentoId}</Badge>
+          </div>
+        )}
+
         <section className="grid gap-4 lg:grid-cols-3">
           <div className="lg:col-span-2">
             <AlmacenDocumentoPrincipalOperativoCard
@@ -1049,7 +1157,7 @@ export function AlmacenExpedienteEditor({ id }: { id: string | number }) {
                     className="mt-3 w-full"
                     variant="outline"
                     size="sm"
-                    disabled={procesando || !principal}
+                    disabled={procesando || !principal || !contextoV2Listo}
                     onClick={() => iniciarSeleccionArchivo(item)}
                   >
                     <FilePlus2 className="h-4 w-4" />
