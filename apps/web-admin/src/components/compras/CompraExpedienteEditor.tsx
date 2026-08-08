@@ -115,6 +115,41 @@ function getRelacion(doc: DocumentoVinculado) {
   return text(doc.tipo_relacion ?? doc.tipoRelacion ?? doc.relacion, "");
 }
 
+function normalizeDocumentoId(value: unknown): number | null {
+  if (value === null || value === undefined || value === "") return null;
+
+  const normalized = Number(value);
+  return Number.isFinite(normalized) && normalized > 0 ? normalized : null;
+}
+
+function getDocumentoBaseId(doc: DocumentoVinculado | null | undefined): number | null {
+  if (!doc) return null;
+
+  const ocr = doc.metadata?.ocr;
+  const audit = Array.isArray(ocr?.audit) ? ocr.audit : [];
+  const ultimoAudit = audit.length ? audit[audit.length - 1] : null;
+
+  const candidatos = [
+    doc.documentoBaseId,
+    doc.documento_base_id,
+    doc.documentoPrincipalId,
+    doc.documento_principal_id,
+    doc.metadata?.documentoBaseId,
+    ocr?.metadata?.documentoBaseId,
+    ocr?.contextoCarga?.documentoBaseId,
+    ocr?.contextoValidacion?.documentoBaseId,
+    ultimoAudit?.cambios?.metadata?.documentoBaseId,
+    ultimoAudit?.cambios?.contextoValidacion?.documentoBaseId,
+  ];
+
+  for (const candidato of candidatos) {
+    const id = normalizeDocumentoId(candidato);
+    if (id !== null) return id;
+  }
+
+  return null;
+}
+
 function ordenarDocumentosPorFecha(documentos: DocumentoVinculado[] = []) {
   return [...documentos].sort((a, b) => getCreatedTime(b) - getCreatedTime(a));
 }
@@ -992,10 +1027,6 @@ export function CompraExpedienteEditor({ id }: { id: string | number }) {
     },
   });
 
-  const documentosPorRelacion = useMemo(
-    () => getDocumentosPorRelacion(documentosQuery.data ?? []),
-    [documentosQuery.data],
-  );
   const documentosPrincipales = useMemo(
     () =>
       (documentosQuery.data ?? [])
@@ -1021,6 +1052,41 @@ export function CompraExpedienteEditor({ id }: { id: string | number }) {
         (doc) => getDocumentoId(doc) === principalIdSeleccionado,
       ) ?? null,
     [documentosPrincipales, principalIdSeleccionado],
+  );
+
+  const documentosAdjuntos = useMemo(
+    () =>
+      (documentosQuery.data ?? []).filter(
+        (doc) => !isDocumentoPrincipalActivo(doc),
+      ),
+    [documentosQuery.data],
+  );
+
+  const documentosDelPrincipalSeleccionado = useMemo(() => {
+    const principalId = getDocumentoId(principalSeleccionado);
+    if (!principalId) return [];
+
+    return documentosAdjuntos.filter(
+      (doc) => getDocumentoBaseId(doc) === principalId,
+    );
+  }, [documentosAdjuntos, principalSeleccionado]);
+
+  const documentosSinPrincipal = useMemo(
+    () =>
+      documentosAdjuntos.filter(
+        (doc) => getDocumentoBaseId(doc) === null,
+      ),
+    [documentosAdjuntos],
+  );
+
+  const documentosPorRelacion = useMemo(
+    () => getDocumentosPorRelacion(documentosDelPrincipalSeleccionado),
+    [documentosDelPrincipalSeleccionado],
+  );
+
+  const documentosSinPrincipalPorRelacion = useMemo(
+    () => getDocumentosPorRelacion(documentosSinPrincipal),
+    [documentosSinPrincipal],
   );
 
   useEffect(() => {
@@ -1797,6 +1863,52 @@ export function CompraExpedienteEditor({ id }: { id: string | number }) {
             ))}
           </CardContent>
         </Card>
+
+        {documentosSinPrincipal.length ? (
+          <Card>
+            <CardHeader>
+              <CardTitle>Adjuntos sin principal explícito</CardTitle>
+              <p className="text-sm text-muted-foreground">
+                Estos documentos pertenecen al expediente, pero todavía no tienen
+                una asociación explícita con ningún documento principal.
+              </p>
+            </CardHeader>
+
+            <CardContent className="grid gap-3 md:grid-cols-3">
+              {DOCUMENTO_ADJUNTO_OPTIONS.map((item) => {
+                const documentos =
+                  documentosSinPrincipalPorRelacion.get(
+                    item.tipoRelacionSugerida,
+                  ) ?? [];
+
+                if (!documentos.length) return null;
+
+                return (
+                  <div
+                    key={`sin-principal-${item.tipoRelacionSugerida}`}
+                    className="rounded-xl border p-4"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="font-medium">{item.label}</div>
+                      <span className="rounded-full border px-2 py-0.5 text-[11px] text-muted-foreground">
+                        {item.tipoEsperado}
+                      </span>
+                    </div>
+
+                    <DocumentoAdjuntoRelacionResumen
+                      option={item}
+                      documentos={documentos}
+                      onVerValidar={(doc) => abrirDocumentoExistente(doc, item)}
+                      onVerVersiones={(doc) =>
+                        abrirHistorialVersiones(doc, item)
+                      }
+                    />
+                  </div>
+                );
+              })}
+            </CardContent>
+          </Card>
+        ) : null}
       </main>
 
 

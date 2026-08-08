@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { sql } from '@documental/database';
+import type { SqlExecutor } from './sql-executor';
 
 import type {
   ActualizarGrupoFacturaInput,
@@ -9,8 +10,8 @@ import type {
 
 @Injectable()
 export class GrupoFacturaRepository {
-  async crear(input: CrearGrupoFacturaInput): Promise<GrupoFacturaRow> {
-    const rows = await sql`
+  async crear(input: CrearGrupoFacturaInput, executor: SqlExecutor = sql): Promise<GrupoFacturaRow> {
+    const rows = await executor`
       INSERT INTO documentos.grupos_factura (
         documento_operativo_principal_id,
         factura_documento_id,
@@ -43,8 +44,8 @@ export class GrupoFacturaRepository {
     return rows[0] as unknown as GrupoFacturaRow;
   }
 
-  async buscarPorId(id: number): Promise<GrupoFacturaRow | null> {
-    const rows = await sql`
+  async buscarPorId(id: number, executor: SqlExecutor = sql): Promise<GrupoFacturaRow | null> {
+    const rows = await executor`
       SELECT
         id,
         documento_operativo_principal_id AS "documentoOperativoPrincipalId",
@@ -66,8 +67,8 @@ export class GrupoFacturaRepository {
     return (rows[0] as unknown as GrupoFacturaRow | undefined) ?? null;
   }
 
-  async buscarPorFacturaDocumentoId(facturaDocumentoId: number): Promise<GrupoFacturaRow | null> {
-    const rows = await sql`
+  async buscarPorFacturaDocumentoId(facturaDocumentoId: number, executor: SqlExecutor = sql): Promise<GrupoFacturaRow | null> {
+    const rows = await executor`
       SELECT
         id,
         documento_operativo_principal_id AS "documentoOperativoPrincipalId",
@@ -91,8 +92,9 @@ export class GrupoFacturaRepository {
 
   async buscarVigentePorFacturaDocumentoId(
     facturaDocumentoId: number,
+    executor: SqlExecutor = sql,
   ): Promise<GrupoFacturaRow | null> {
-    const rows = await sql`
+    const rows = await executor`
       SELECT
         id,
         documento_operativo_principal_id AS "documentoOperativoPrincipalId",
@@ -118,8 +120,9 @@ export class GrupoFacturaRepository {
 
   async listarHistoricosPorFacturaDocumentoId(
     facturaDocumentoId: number,
+    executor: SqlExecutor = sql,
   ): Promise<number[]> {
-    const rows = await sql`
+    const rows = await executor`
       SELECT id
       FROM documentos.grupos_factura
       WHERE factura_documento_id = ${facturaDocumentoId}::bigint
@@ -130,8 +133,8 @@ export class GrupoFacturaRepository {
     return rows.map((row: any) => Number(row.id));
   }
 
-  async listarPorDocumentoOperativoPrincipal(documentoOperativoPrincipalId: number): Promise<GrupoFacturaRow[]> {
-    const rows = await sql`
+  async listarPorDocumentoOperativoPrincipal(documentoOperativoPrincipalId: number, executor: SqlExecutor = sql): Promise<GrupoFacturaRow[]> {
+    const rows = await executor`
       SELECT
         id,
         documento_operativo_principal_id AS "documentoOperativoPrincipalId",
@@ -153,8 +156,8 @@ export class GrupoFacturaRepository {
     return rows as unknown as GrupoFacturaRow[];
   }
 
-  async actualizar(input: ActualizarGrupoFacturaInput): Promise<GrupoFacturaRow | null> {
-    const rows = await sql`
+  async actualizar(input: ActualizarGrupoFacturaInput, executor: SqlExecutor = sql): Promise<GrupoFacturaRow | null> {
+    const rows = await executor`
       UPDATE documentos.grupos_factura
       SET
         estado = COALESCE(${input.estado ?? null}::text, estado),
@@ -180,8 +183,8 @@ export class GrupoFacturaRepository {
     return (rows[0] as unknown as GrupoFacturaRow | undefined) ?? null;
   }
 
-  async anular(params: { id: number; usuarioId?: number | null; motivo?: string | null }): Promise<GrupoFacturaRow | null> {
-    const rows = await sql`
+  async anular(params: { id: number; usuarioId?: number | null; motivo?: string | null }, executor: SqlExecutor = sql): Promise<GrupoFacturaRow | null> {
+    const rows = await executor`
       UPDATE documentos.grupos_factura
       SET
         estado = 'anulado',

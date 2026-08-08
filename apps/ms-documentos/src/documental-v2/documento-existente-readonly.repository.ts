@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { sql } from '@documental/database';
+import type { SqlExecutor } from './sql-executor';
 import type { DocumentoCorrespondenciaSnapshot } from './finanzas/correspondencia-pago-factura.adapter';
 
 export type DocumentoExistenteV2 = {
@@ -42,12 +43,13 @@ function mapDocumento(row: any): DocumentoExistenteV2 {
 export class DocumentoExistenteReadonlyRepository {
   async buscarSnapshot(
     documentoId: number,
+    executor: SqlExecutor = sql,
   ): Promise<DocumentoCorrespondenciaSnapshot | null> {
-    return this.buscarPorId(documentoId);
+    return this.buscarPorId(documentoId, executor);
   }
 
-  async buscarPorId(documentoId: number): Promise<DocumentoExistenteV2 | null> {
-    const rows = await sql<any[]>`
+  async buscarPorId(documentoId: number, executor: SqlExecutor = sql): Promise<DocumentoExistenteV2 | null> {
+    const rows = await executor<any[]>`
       SELECT
         d.id,
         d.cliente_abreviatura,
@@ -80,12 +82,14 @@ export class DocumentoExistenteReadonlyRepository {
     q?: string;
     estado?: string;
     limit?: number;
-  }): Promise<Array<DocumentoExistenteV2 & { yaEsPrincipalV2: boolean }>> {
+  },
+    executor: SqlExecutor = sql,
+  ): Promise<Array<DocumentoExistenteV2 & { yaEsPrincipalV2: boolean }>> {
     const q = input.q?.trim();
     const estado = input.estado?.trim() || 'confirmado';
     const limit = Math.min(Math.max(input.limit ?? 20, 1), 50);
 
-    const rows = await sql<any[]>`
+    const rows = await executor<any[]>`
       SELECT
         d.id,
         d.cliente_abreviatura,
@@ -134,13 +138,15 @@ export class DocumentoExistenteReadonlyRepository {
     texto?: string;
     pagina?: number;
     limite?: number;
-  }): Promise<Array<DocumentoExistenteV2 & { yaTieneGrupoFacturaV2: boolean }>> {
+  },
+    executor: SqlExecutor = sql,
+  ): Promise<Array<DocumentoExistenteV2 & { yaTieneGrupoFacturaV2: boolean }>> {
     const texto = input.texto?.trim();
     const pagina = Math.max(input.pagina ?? 1, 1);
     const limite = Math.min(Math.max(input.limite ?? 20, 1), 50);
     const offset = (pagina - 1) * limite;
 
-    const rows = await sql<any[]>`
+    const rows = await executor<any[]>`
       SELECT
         d.id,
         d.cliente_abreviatura,
@@ -193,14 +199,16 @@ export class DocumentoExistenteReadonlyRepository {
     texto?: string | null;
     pagina?: number;
     limite?: number;
-  }): Promise<Array<DocumentoExistenteV2 & { yaAsociadoGrupoV2: boolean }>> {
+  },
+    executor: SqlExecutor = sql,
+  ): Promise<Array<DocumentoExistenteV2 & { yaAsociadoGrupoV2: boolean }>> {
     const tipoFiltro = input.tipoDocumental?.trim().toUpperCase() || null;
     const texto = input.texto?.trim();
     const pagina = Math.max(input.pagina ?? 1, 1);
     const limite = Math.min(Math.max(input.limite ?? 20, 1), 50);
     const offset = (pagina - 1) * limite;
 
-    const rows = await sql<any[]>`
+    const rows = await executor<any[]>`
       SELECT
         d.id,
         d.cliente_abreviatura,

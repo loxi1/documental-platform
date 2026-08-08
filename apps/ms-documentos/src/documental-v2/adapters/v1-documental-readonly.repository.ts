@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { sql } from '@documental/database';
+import type { SqlExecutor } from '../sql-executor';
 
 import type {
   V1DocumentoExpedienteRow,
@@ -11,8 +12,9 @@ import type {
 export class V1DocumentalReadOnlyRepository {
   async obtenerExpedienteConDocumentos(
     expedienteId: number,
+    executor: SqlExecutor = sql,
   ): Promise<V1ExpedienteConDocumentos | null> {
-    const expedienteRows = await sql`
+    const expedienteRows = await executor`
       SELECT
         e.id,
         e.empresa_codigo AS "empresaCodigo",
@@ -34,7 +36,7 @@ export class V1DocumentalReadOnlyRepository {
       return null;
     }
 
-    const documentosRows = await sql`
+    const documentosRows = await executor`
       SELECT
         ed.expediente_id AS "expedienteId",
         ed.documento_id AS "documentoId",

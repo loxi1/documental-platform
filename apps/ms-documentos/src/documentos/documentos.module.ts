@@ -1,6 +1,8 @@
 import { Module } from '@nestjs/common';
 
 import { DocumentoEventosModule } from '../documento-eventos/documento-eventos.module';
+import { DocumentalV2Module } from '../documental-v2/documental-v2.module';
+import { OrquestarConfirmacionDocumentalV2UseCase } from '../documental-v2/use-cases/orquestar-confirmacion-documental-v2.usecase';
 import { CARGA_SEGURA_STORAGE } from './carga-segura/carga-segura.constants';
 import { CargaSeguraCompensation } from './carga-segura/carga-segura.compensation';
 import { CargaSeguraPersistence } from './carga-segura/carga-segura.persistence';
@@ -15,11 +17,12 @@ import { DocumentosService } from './documentos.service';
 import { DocumentosUploadService } from './documentos-upload.service';
 
 @Module({
-  imports: [DocumentoEventosModule],
+  imports: [DocumentoEventosModule, DocumentalV2Module],
   controllers: [DocumentosController, CargaSeguraController],
   providers: [
     DocumentosService,
     DocumentosRepository,
+    OrquestarConfirmacionDocumentalV2UseCase,
     DocumentosPreviewService,
     DocumentosUploadService,
     CargaSeguraRepository,

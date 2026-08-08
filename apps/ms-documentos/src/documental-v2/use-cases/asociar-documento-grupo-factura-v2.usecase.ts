@@ -34,6 +34,7 @@ import type {
   EvaluacionCorrespondenciaPagoFactura,
 } from '../finanzas/correspondencia-pago-factura.types';
 import { EvaluarCorrespondenciaPagoFacturaUseCase } from '../finanzas/evaluar-correspondencia-pago-factura.usecase';
+import type { SqlExecutor } from '../sql-executor';
 
 const TIPOS_RELACION_POR_TIPO_DOCUMENTAL: Record<string, string> = {
   GUIA_REMISION: 'adjunto_guia',
@@ -151,9 +152,9 @@ export class AsociarDocumentoGrupoFacturaV2UseCase {
     pagina?: number | null;
     limite?: number | null;
     usuario?: ContextoAutenticadoV2;
-  }): Promise<DocumentoCandidatoGrupoFacturaV2[]> {
+  }, executor?: SqlExecutor): Promise<DocumentoCandidatoGrupoFacturaV2[]> {
     const grupoFacturaId = normalizarId(input.grupoFacturaId, 'grupoFacturaId');
-    const contexto = await this.obtenerContextoGrupo(grupoFacturaId, input.usuario);
+    const contexto = await this.obtenerContextoGrupo(grupoFacturaId, input.usuario, executor);
     const tipoDocumental = input.tipoDocumental?.trim().toUpperCase() || null;
 
     if (tipoDocumental && !TIPOS_DOCUMENTALES_PERMITIDOS.includes(tipoDocumental)) {
@@ -173,7 +174,7 @@ export class AsociarDocumentoGrupoFacturaV2UseCase {
       texto: input.texto ?? null,
       pagina: input.pagina ?? undefined,
       limite: input.limite ?? undefined,
-    });
+    }, executor);
 
     return candidatos.map((documento) => ({
       documentoId: documento.id,
@@ -190,15 +191,18 @@ export class AsociarDocumentoGrupoFacturaV2UseCase {
     }));
   }
 
-  async execute(input: AsociarDocumentoGrupoFacturaV2Input): Promise<AsociarDocumentoGrupoFacturaV2Result> {
+  async execute(
+    input: AsociarDocumentoGrupoFacturaV2Input,
+    executor?: SqlExecutor,
+  ): Promise<AsociarDocumentoGrupoFacturaV2Result> {
     const grupoFacturaId = normalizarId(input.grupoFacturaId, 'grupoFacturaId');
     const documentoId = normalizarId(input.documentoId, 'documentoId');
     const tipoRelacion = normalizarTexto(input.tipoRelacion);
 
-    const contexto = await this.obtenerContextoGrupo(grupoFacturaId, input.usuario);
+    const contexto = await this.obtenerContextoGrupo(grupoFacturaId, input.usuario, executor);
     this.validarTipoRelacionPermitido(tipoRelacion);
 
-    const documento = await this.documentos.buscarPorId(documentoId);
+    const documento = await this.documentos.buscarPorId(documentoId, executor);
     if (!documento) {
       throw new NotFoundException(crearError('Documento no encontrado', 'DOCUMENTO_NO_ENCONTRADO'));
     }
@@ -206,7 +210,7 @@ export class AsociarDocumentoGrupoFacturaV2UseCase {
     this.validarDocumentoAutorizado(documento, contexto.contenedor);
     this.validarDocumentoActivo(documento);
 
-    const existenteActivoDocumento = await this.grupoFacturaDocumentos.buscarActivoPorDocumentoId(documentoId);
+    const existenteActivoDocumento = await this.grupoFacturaDocumentos.buscarActivoPorDocumentoId(documentoId, executor);
     if (existenteActivoDocumento) {
       const mismoGrupo = Number(existenteActivoDocumento.grupoFacturaId) === grupoFacturaId;
       const mismaRelacion = existenteActivoDocumento.tipoRelacion === tipoRelacion;
@@ -265,7 +269,7 @@ export class AsociarDocumentoGrupoFacturaV2UseCase {
       evaluacionCorrespondencia = await this.evaluarCorrespondencia.execute({
         facturaDocumentoId: Number(contexto.grupo.facturaDocumentoId),
         pagoDocumentoId: documentoId,
-      });
+      }, executor);
 
       const requiereDecision =
         evaluacionCorrespondencia.requiereDecisionHumana ||
@@ -319,7 +323,7 @@ export class AsociarDocumentoGrupoFacturaV2UseCase {
             asociacionCreada: false,
             entidadId: `${grupoFacturaId}:${documentoId}`,
             usuario: input.usuario,
-          });
+          }, executor);
 
           return {
             documentoGrupoFactura: null,
@@ -346,6 +350,7 @@ export class AsociarDocumentoGrupoFacturaV2UseCase {
     const documentosHistoricosIds =
       await this.grupoFacturaDocumentos.listarHistoricosPorDocumentoId(
         documentoId,
+        executor,
       );
 
     const metadata = this.buildMetadataCreacion({
@@ -367,13 +372,14 @@ export class AsociarDocumentoGrupoFacturaV2UseCase {
         estado: 'activo',
         metadata,
         creadoPor: input.usuario?.id ?? null,
-      });
+      }, executor);
     } catch (error: any) {
       if (error?.code !== '23505') throw error;
 
       const recuperado =
         await this.grupoFacturaDocumentos.buscarActivoPorDocumentoId(
           documentoId,
+          executor,
         );
 
       if (
@@ -411,7 +417,7 @@ export class AsociarDocumentoGrupoFacturaV2UseCase {
         id: Number(creadoInicial.id),
         metadata: metadataFinal,
         actualizadoPor: input.usuario?.id ?? null,
-      })) ?? creadoInicial;
+      }, executor)) ?? creadoInicial;
 
     await this.auditoria.registrarCreacion({
       accion: 'DOCUMENTO_GRUPO_FACTURA_ASOCIADO',
@@ -434,7 +440,7 @@ export class AsociarDocumentoGrupoFacturaV2UseCase {
         empresaCodigo: contexto.contenedor.empresaCodigo,
         estado: creado.estado,
       },
-    });
+    }, executor);
 
     if (evaluacionCorrespondencia && decisionCorrespondencia) {
       await this.registrarAuditoriaCorrespondencia({
@@ -445,7 +451,7 @@ export class AsociarDocumentoGrupoFacturaV2UseCase {
         asociacionCreada: true,
         entidadId: creado.id,
         usuario: input.usuario,
-      });
+      }, executor);
     }
 
     return {
@@ -470,7 +476,7 @@ export class AsociarDocumentoGrupoFacturaV2UseCase {
     asociacionCreada: boolean;
     entidadId: string | number;
     usuario?: ContextoAutenticadoV2;
-  }): Promise<void> {
+  }, executor?: SqlExecutor): Promise<void> {
     const auditoriaDecision = construirAuditoriaDecision(
       input.evaluacion,
       input.decision,
@@ -508,25 +514,29 @@ export class AsociarDocumentoGrupoFacturaV2UseCase {
         asociacionCreada: input.asociacionCreada,
         documentoId: input.documentoId,
       },
-    });
+    }, executor);
   }
 
-  private async obtenerContextoGrupo(grupoFacturaId: number, usuario?: ContextoAutenticadoV2) {
-    const grupo = await this.gruposFactura.buscarPorId(grupoFacturaId);
+  private async obtenerContextoGrupo(
+    grupoFacturaId: number,
+    usuario?: ContextoAutenticadoV2,
+    executor?: SqlExecutor,
+  ) {
+    const grupo = await this.gruposFactura.buscarPorId(grupoFacturaId, executor);
     if (!grupo) {
       throw new NotFoundException(crearError('Grupo de Factura no encontrado', 'GRUPO_FACTURA_NO_ENCONTRADO'));
     }
 
     this.validarGrupoActivo(grupo);
 
-    const principal = await this.principales.buscarPorId(Number(grupo.documentoOperativoPrincipalId));
+    const principal = await this.principales.buscarPorId(Number(grupo.documentoOperativoPrincipalId), executor);
     if (!principal) {
       throw new NotFoundException(
         crearError('Documento Operativo Principal del Grupo no encontrado', 'GRUPO_FACTURA_NO_PERSISTIDO'),
       );
     }
 
-    const contenedor = await this.contenedores.buscarPorId(Number(principal.contenedorOperativoId));
+    const contenedor = await this.contenedores.buscarPorId(Number(principal.contenedorOperativoId), executor);
     if (!contenedor) {
       throw new NotFoundException(crearError('Contexto operativo del Grupo no encontrado', 'GRUPO_FACTURA_NO_PERSISTIDO'));
     }

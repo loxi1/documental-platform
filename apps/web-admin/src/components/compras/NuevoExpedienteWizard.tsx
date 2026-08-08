@@ -154,7 +154,6 @@ function prevalidacionMessage(resultado: CargaGuiadaPrevalidacionResponse) {
   const accion = String(resultado.accionSugerida ?? "");
   const motivo = String(resultado.motivo ?? "");
   const duplicado = resultado.duplicados?.[0];
-  const principal = resultado.principalActivo;
 
   if (accion === "abrir_existente" || resultado.duplicadoArchivo || motivo.includes("DUPLICADO")) {
     return [
@@ -163,30 +162,6 @@ function prevalidacionMessage(resultado: CargaGuiadaPrevalidacionResponse) {
       duplicado?.archivoId ? `Archivo existente: ${duplicado.archivoId}.` : null,
       duplicado?.expedienteId ? `Centro de costo vinculado: ${duplicado.expedienteId}.` : null,
       "No se volvió a subir a R2.",
-    ].filter(Boolean).join("\n");
-  }
-
-  if (accion === "bloquear" && motivo === "PRINCIPAL_ACTIVO_EXISTENTE") {
-    const tipoPrincipal = String(
-      principal?.tipoDocumental ?? resultado.tipoEsperado ?? "",
-    ).toUpperCase();
-
-    const etiquetaPrincipal =
-      tipoPrincipal === "OC"
-        ? "Orden de Compra"
-        : tipoPrincipal === "OS"
-          ? "Orden de Servicio"
-          : tipoPrincipal === "FACTURA"
-            ? "Factura"
-            : "documento";
-
-    return [
-      `Este expediente ya contiene una ${etiquetaPrincipal} principal activa.`,
-      principal?.numero
-        ? `${etiquetaPrincipal} actual: ${String(principal.numero)}.`
-        : null,
-      "El nuevo documento debe registrarse como una operación independiente antes de asociar facturas, guías u otros documentos.",
-      "No se reemplazará automáticamente el documento existente.",
     ].filter(Boolean).join("\n");
   }
 
@@ -953,7 +928,7 @@ export function NuevoExpedienteWizard() {
               <div>
                 <p className="text-xs uppercase text-muted-foreground">Siguiente paso</p>
                 <p className="text-muted-foreground">
-                  Carga el PDF principal aquí. Al confirmar OCR, se validará como candidato a principal. Si ya existe un principal activo, el backend bloqueará el reemplazo silencioso.
+                  Carga el PDF principal aquí. Al confirmar OCR, se validará como un principal independiente. Si el documento ya existe, el backend aplicará las reglas de duplicado real.
                 </p>
               </div>
             </CardContent>
@@ -1083,7 +1058,7 @@ export function NuevoExpedienteWizard() {
               <UploadCloud className="mx-auto h-8 w-8 text-muted-foreground" />
               <p className="mt-2 font-medium">Selecciona el archivo principal</p>
               <p className="mt-1 text-sm text-muted-foreground">
-                Se prevalidará antes de subir. No se reemplazará un principal activo sin flujo explícito.
+                Se prevalidará antes de subir. Pueden coexistir varios principales distintos dentro del mismo contexto.
               </p>
               <input
                 ref={fileInputRef}

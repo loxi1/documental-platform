@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { sql } from '@documental/database';
+import type { SqlExecutor } from './sql-executor';
 
 import type {
   ActualizarContenedorOperativoInput,
@@ -10,8 +11,8 @@ import type {
 
 @Injectable()
 export class ContenedorOperativoRepository {
-  async crear(input: CrearContenedorOperativoInput): Promise<ContenedorOperativoRow> {
-    const rows = await sql`
+  async crear(input: CrearContenedorOperativoInput, executor: SqlExecutor = sql): Promise<ContenedorOperativoRow> {
+    const rows = await executor`
       INSERT INTO documentos.contenedores_operativos (
         empresa_codigo,
         cliente_destino_id,
@@ -68,8 +69,8 @@ export class ContenedorOperativoRepository {
     return rows[0] as unknown as ContenedorOperativoRow;
   }
 
-  async crearSiNoExistePorClave(input: CrearContenedorOperativoInput): Promise<ContenedorOperativoRow | null> {
-    const rows = await sql`
+  async crearSiNoExistePorClave(input: CrearContenedorOperativoInput, executor: SqlExecutor = sql): Promise<ContenedorOperativoRow | null> {
+    const rows = await executor`
       INSERT INTO documentos.contenedores_operativos (
         empresa_codigo,
         cliente_destino_id,
@@ -127,8 +128,8 @@ export class ContenedorOperativoRepository {
     return (rows[0] as unknown as ContenedorOperativoRow | undefined) ?? null;
   }
 
-  async buscarPorId(id: number): Promise<ContenedorOperativoRow | null> {
-    const rows = await sql`
+  async buscarPorId(id: number, executor: SqlExecutor = sql): Promise<ContenedorOperativoRow | null> {
+    const rows = await executor`
       SELECT
         id,
         empresa_codigo AS "empresaCodigo",
@@ -162,8 +163,10 @@ export class ContenedorOperativoRepository {
     empresaCodigo: string;
     tipoContexto: string;
     codigo: string;
-  }): Promise<ContenedorOperativoRow | null> {
-    const rows = await sql`
+  },
+    executor: SqlExecutor = sql,
+  ): Promise<ContenedorOperativoRow | null> {
+    const rows = await executor`
       SELECT
         id,
         empresa_codigo AS "empresaCodigo",
@@ -199,8 +202,10 @@ export class ContenedorOperativoRepository {
     empresaCodigo: string;
     clienteDestinoId: number;
     expedienteV1Id: number;
-  }): Promise<ContenedorOperativoRow | null> {
-    const rows = await sql`
+  },
+    executor: SqlExecutor = sql,
+  ): Promise<ContenedorOperativoRow | null> {
+    const rows = await executor`
       SELECT
         id,
         empresa_codigo AS "empresaCodigo",
@@ -239,8 +244,10 @@ export class ContenedorOperativoRepository {
     empresaCodigo: string;
     clienteDestinoId: number;
     expedienteV1Id: number;
-  }): Promise<number[]> {
-    const rows = await sql`
+  },
+    executor: SqlExecutor = sql,
+  ): Promise<number[]> {
+    const rows = await executor`
       SELECT id
       FROM documentos.contenedores_operativos
       WHERE empresa_codigo = ${params.empresaCodigo}::text
@@ -254,7 +261,7 @@ export class ContenedorOperativoRepository {
     return rows.map((row: any) => Number(row.id));
   }
 
-  async listar(filtro: BuscarContenedoresOperativosFiltro = {}): Promise<{
+  async listar(filtro: BuscarContenedoresOperativosFiltro = {}, executor: SqlExecutor = sql): Promise<{
     items: ContenedorOperativoRow[];
     total: number;
     limit: number;
@@ -265,7 +272,7 @@ export class ContenedorOperativoRepository {
     const q = filtro.q?.trim() || null;
     const like = q ? `%${q}%` : null;
 
-    const rows = await sql`
+    const rows = await executor`
       SELECT
         id,
         empresa_codigo AS "empresaCodigo",
@@ -306,7 +313,7 @@ export class ContenedorOperativoRepository {
       OFFSET ${offset}
     `;
 
-    const countRows = await sql`
+    const countRows = await executor`
       SELECT COUNT(*)::int AS total
       FROM documentos.contenedores_operativos
       WHERE (${filtro.empresaCodigo ?? null}::text IS NULL OR empresa_codigo = ${filtro.empresaCodigo ?? null}::text)
@@ -332,8 +339,8 @@ export class ContenedorOperativoRepository {
     };
   }
 
-  async actualizar(input: ActualizarContenedorOperativoInput): Promise<ContenedorOperativoRow | null> {
-    const rows = await sql`
+  async actualizar(input: ActualizarContenedorOperativoInput, executor: SqlExecutor = sql): Promise<ContenedorOperativoRow | null> {
+    const rows = await executor`
       UPDATE documentos.contenedores_operativos
       SET
         nombre = COALESCE(${input.nombre ?? null}::text, nombre),
@@ -372,8 +379,8 @@ export class ContenedorOperativoRepository {
     return (rows[0] as unknown as ContenedorOperativoRow | undefined) ?? null;
   }
 
-  async anular(params: { id: number; usuarioId?: number | null; motivo?: string | null }): Promise<ContenedorOperativoRow | null> {
-    const rows = await sql`
+  async anular(params: { id: number; usuarioId?: number | null; motivo?: string | null }, executor: SqlExecutor = sql): Promise<ContenedorOperativoRow | null> {
+    const rows = await executor`
       UPDATE documentos.contenedores_operativos
       SET
         estado = 'anulado',

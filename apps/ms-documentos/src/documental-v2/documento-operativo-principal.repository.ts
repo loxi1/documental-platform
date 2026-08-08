@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { sql } from '@documental/database';
+import type { SqlExecutor } from './sql-executor';
 
 import type {
   ActualizarDocumentoOperativoPrincipalInput,
@@ -9,8 +10,8 @@ import type {
 
 @Injectable()
 export class DocumentoOperativoPrincipalRepository {
-  async crear(input: CrearDocumentoOperativoPrincipalInput): Promise<DocumentoOperativoPrincipalRow> {
-    const rows = await sql`
+  async crear(input: CrearDocumentoOperativoPrincipalInput, executor: SqlExecutor = sql): Promise<DocumentoOperativoPrincipalRow> {
+    const rows = await executor`
       INSERT INTO documentos.documentos_operativos_principales (
         contenedor_operativo_id,
         documento_id,
@@ -49,8 +50,8 @@ export class DocumentoOperativoPrincipalRepository {
     return rows[0] as unknown as DocumentoOperativoPrincipalRow;
   }
 
-  async buscarPorId(id: number): Promise<DocumentoOperativoPrincipalRow | null> {
-    const rows = await sql`
+  async buscarPorId(id: number, executor: SqlExecutor = sql): Promise<DocumentoOperativoPrincipalRow | null> {
+    const rows = await executor`
       SELECT
         id,
         contenedor_operativo_id AS "contenedorOperativoId",
@@ -74,8 +75,8 @@ export class DocumentoOperativoPrincipalRepository {
     return (rows[0] as unknown as DocumentoOperativoPrincipalRow | undefined) ?? null;
   }
 
-  async buscarPorDocumentoId(documentoId: number): Promise<DocumentoOperativoPrincipalRow | null> {
-    const rows = await sql`
+  async buscarPorDocumentoId(documentoId: number, executor: SqlExecutor = sql): Promise<DocumentoOperativoPrincipalRow | null> {
+    const rows = await executor`
       SELECT
         id,
         contenedor_operativo_id AS "contenedorOperativoId",
@@ -101,8 +102,9 @@ export class DocumentoOperativoPrincipalRepository {
 
   async buscarActivoPorDocumentoId(
     documentoId: number,
+    executor: SqlExecutor = sql,
   ): Promise<DocumentoOperativoPrincipalRow | null> {
-    const rows = await sql`
+    const rows = await executor`
       SELECT
         id,
         contenedor_operativo_id AS "contenedorOperativoId",
@@ -128,8 +130,8 @@ export class DocumentoOperativoPrincipalRepository {
     return (rows[0] as unknown as DocumentoOperativoPrincipalRow | undefined) ?? null;
   }
 
-  async listarHistoricosPorDocumentoId(documentoId: number): Promise<number[]> {
-    const rows = await sql`
+  async listarHistoricosPorDocumentoId(documentoId: number, executor: SqlExecutor = sql): Promise<number[]> {
+    const rows = await executor`
       SELECT id
       FROM documentos.documentos_operativos_principales
       WHERE documento_id = ${documentoId}::bigint
@@ -140,8 +142,8 @@ export class DocumentoOperativoPrincipalRepository {
     return rows.map((row: any) => Number(row.id));
   }
 
-  async listarPorContenedor(contenedorOperativoId: number): Promise<DocumentoOperativoPrincipalRow[]> {
-    const rows = await sql`
+  async listarPorContenedor(contenedorOperativoId: number, executor: SqlExecutor = sql): Promise<DocumentoOperativoPrincipalRow[]> {
+    const rows = await executor`
       SELECT
         id,
         contenedor_operativo_id AS "contenedorOperativoId",
@@ -165,8 +167,8 @@ export class DocumentoOperativoPrincipalRepository {
     return rows as unknown as DocumentoOperativoPrincipalRow[];
   }
 
-  async actualizar(input: ActualizarDocumentoOperativoPrincipalInput): Promise<DocumentoOperativoPrincipalRow | null> {
-    const rows = await sql`
+  async actualizar(input: ActualizarDocumentoOperativoPrincipalInput, executor: SqlExecutor = sql): Promise<DocumentoOperativoPrincipalRow | null> {
+    const rows = await executor`
       UPDATE documentos.documentos_operativos_principales
       SET
         tipo_principal = COALESCE(${input.tipoPrincipal ?? null}::text, tipo_principal),
@@ -198,8 +200,9 @@ export class DocumentoOperativoPrincipalRepository {
 
   async listarActivosPorContenedorOperativoId(
     contenedorOperativoId: number,
+    executor: SqlExecutor = sql,
   ): Promise<DocumentoOperativoPrincipalRow[]> {
-    const rows = await sql`
+    const rows = await executor`
       SELECT
         id,
         contenedor_operativo_id AS "contenedorOperativoId",
@@ -224,8 +227,8 @@ export class DocumentoOperativoPrincipalRepository {
     return rows as unknown as DocumentoOperativoPrincipalRow[];
   }
 
-  async anular(params: { id: number; usuarioId?: number | null; motivo?: string | null }): Promise<DocumentoOperativoPrincipalRow | null> {
-    const rows = await sql`
+  async anular(params: { id: number; usuarioId?: number | null; motivo?: string | null }, executor: SqlExecutor = sql): Promise<DocumentoOperativoPrincipalRow | null> {
+    const rows = await executor`
       UPDATE documentos.documentos_operativos_principales
       SET
         estado = 'anulado',

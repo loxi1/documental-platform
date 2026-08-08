@@ -185,6 +185,7 @@ describe('AsociarDocumentoGrupoFacturaV2UseCase - correspondencia financiera', (
           asociacionCreada: true,
         }),
       }),
+      undefined,
     );
   });
 
@@ -226,6 +227,7 @@ describe('AsociarDocumentoGrupoFacturaV2UseCase - correspondencia financiera', (
           asociacionCreada: false,
         }),
       }),
+      undefined,
     );
   });
 
@@ -289,6 +291,7 @@ describe('AsociarDocumentoGrupoFacturaV2UseCase - correspondencia financiera', (
           asociacionCreada: true,
         }),
       }),
+      undefined,
     );
   });
 
@@ -301,10 +304,13 @@ describe('AsociarDocumentoGrupoFacturaV2UseCase - correspondencia financiera', (
       ConflictException,
     );
 
-    expect(ctx.evaluarCorrespondencia.execute).toHaveBeenCalledWith({
-      facturaDocumentoId: 26,
-      pagoDocumentoId: 29,
-    });
+    expect(ctx.evaluarCorrespondencia.execute).toHaveBeenCalledWith(
+      {
+        facturaDocumentoId: 26,
+        pagoDocumentoId: 29,
+      },
+      undefined,
+    );
     expect(ctx.grupoFacturaDocumentos.crear).not.toHaveBeenCalled();
   });
 

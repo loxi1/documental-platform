@@ -5,8 +5,9 @@ import { DocumentoExistenteReadonlyRepository, DocumentoExistenteV2 } from '../d
 import { DocumentoOperativoPrincipalRepository } from '../documento-operativo-principal.repository';
 import type { DocumentoOperativoPrincipalRow } from '../documental-v2.types';
 import { AuditoriaOperativaV2Repository } from '../auditoria-operativa-v2.repository';
+import type { SqlExecutor } from '../sql-executor';
 
-const TIPOS_PRINCIPALES_PERMITIDOS = new Set(['OC']);
+const TIPOS_PRINCIPALES_PERMITIDOS = new Set(['OC', 'OS']);
 
 export type AsociarDocumentoPrincipalV2Input = {
   contenedorOperativoId: number;
@@ -63,6 +64,7 @@ function tipoDocumentalLabel(tipoDocumental: string | null | undefined): string 
 
   const labels: Record<string, string> = {
     OC: 'Orden de compra',
+    OS: 'Orden de servicio',
   };
 
   return labels[tipoDocumental] ?? tipoDocumental;
@@ -81,10 +83,13 @@ export class AsociarDocumentoPrincipalV2UseCase {
     private readonly auditoria: AuditoriaOperativaV2Repository,
   ) {}
 
-  async execute(input: AsociarDocumentoPrincipalV2Input): Promise<AsociarDocumentoPrincipalV2Result> {
+  async execute(
+    input: AsociarDocumentoPrincipalV2Input,
+    executor?: SqlExecutor,
+  ): Promise<AsociarDocumentoPrincipalV2Result> {
     const tipoPrincipal = normalizarTipoPrincipal(input.tipoPrincipal);
 
-    const contenedor = await this.contenedores.buscarPorId(input.contenedorOperativoId);
+    const contenedor = await this.contenedores.buscarPorId(input.contenedorOperativoId, executor);
     if (!contenedor) {
       throw new NotFoundException(
         crearError('Contexto operativo no encontrado', 'CONTEXTO_OPERATIVO_NO_ENCONTRADO'),
@@ -110,7 +115,7 @@ export class AsociarDocumentoPrincipalV2UseCase {
       );
     }
 
-    const documento = await this.documentos.buscarPorId(input.documentoId);
+    const documento = await this.documentos.buscarPorId(input.documentoId, executor);
     if (!documento) {
       throw new NotFoundException(crearError('Documento no encontrado', 'DOCUMENTO_NO_ENCONTRADO'));
     }
@@ -121,7 +126,7 @@ export class AsociarDocumentoPrincipalV2UseCase {
       );
     }
 
-    const existente = await this.principales.buscarActivoPorDocumentoId(input.documentoId);
+    const existente = await this.principales.buscarActivoPorDocumentoId(input.documentoId, executor);
 
     if (existente) {
       if (
@@ -153,7 +158,7 @@ export class AsociarDocumentoPrincipalV2UseCase {
     }
 
     const principalesHistoricosIds =
-      await this.principales.listarHistoricosPorDocumentoId(input.documentoId);
+      await this.principales.listarHistoricosPorDocumentoId(input.documentoId, executor);
 
     let creado: DocumentoOperativoPrincipalRow;
     try {
@@ -179,12 +184,13 @@ export class AsociarDocumentoPrincipalV2UseCase {
           },
         },
         creadoPor: input.usuario?.id ?? null,
-      });
+      }, executor);
     } catch (error: any) {
       if (error?.code !== '23505') throw error;
 
       const recuperado = await this.principales.buscarActivoPorDocumentoId(
         input.documentoId,
+        executor,
       );
 
       if (
@@ -229,7 +235,7 @@ export class AsociarDocumentoPrincipalV2UseCase {
         tipoContexto: contenedor.tipoContexto,
         codigo: contenedor.codigo,
       },
-    });
+    }, executor);
 
     return {
       documentoOperativoPrincipal: this.enriquecerVista(creado, documento),

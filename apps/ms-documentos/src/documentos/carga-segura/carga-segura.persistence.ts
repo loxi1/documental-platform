@@ -142,52 +142,6 @@ export class CargaSeguraPersistence {
           );
         }
 
-        const tipoRelacion = String(
-          input.command.tipoRelacion ?? '',
-        ).trim().toLowerCase();
-
-        if (
-          input.command.esPrincipal &&
-          tipoRelacion.startsWith('principal_')
-        ) {
-          const principalRows = await tx`
-            SELECT
-              ed.documento_id,
-              ed.tipo_relacion,
-              d.tipo_documental,
-              d.serie,
-              d.numero
-            FROM documentos.expediente_documentos ed
-            JOIN documentos.documentos d
-              ON d.id = ed.documento_id
-            WHERE ed.expediente_id = ${expedienteId}::bigint
-              AND ed.es_principal = true
-              AND ed.tipo_relacion = ${tipoRelacion}::text
-              AND COALESCE(d.estado, '') <> 'anulado'
-            ORDER BY ed.orden ASC, ed.creado_en ASC
-            LIMIT 1
-          `;
-
-          const principalActivo = principalRows[0] as QueryRow | undefined;
-
-          if (principalActivo) {
-            throw new CargaSeguraError(
-              'PRINCIPAL_ACTIVO_EXISTENTE',
-              'El expediente ya tiene un documento principal activo para esta relación.',
-              {
-                expedienteId,
-                tipoRelacion,
-                documentoPrincipalId: Number(
-                  principalActivo.documento_id,
-                ),
-                tipoDocumental:
-                  principalActivo.tipo_documental ?? null,
-                serie: principalActivo.serie ?? null,
-                numero: principalActivo.numero ?? null,
-              },
-            );
-          }
-        }
       }
 
       const fecha = input.fecha ?? new Date();

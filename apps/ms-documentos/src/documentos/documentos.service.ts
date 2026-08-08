@@ -5,6 +5,7 @@ import { firstValueFrom } from 'rxjs';
 import { NatsSubjects } from '@documental/shared';
 import { NATS_CLIENT } from '../nats/nats-client.provider';
 import { DocumentoEventosService } from '../documento-eventos/documento-eventos.service';
+import { OrquestarConfirmacionDocumentalV2UseCase } from '../documental-v2/use-cases/orquestar-confirmacion-documental-v2.usecase';
 
 import {
   DocumentosFilters,
@@ -15,6 +16,7 @@ import {
 export class DocumentosService {
   constructor(
     private readonly repo: DocumentosRepository,
+    private readonly orquestarConfirmacionV2: OrquestarConfirmacionDocumentalV2UseCase,
     private readonly documentoEventos: DocumentoEventosService,
     @Inject(NATS_CLIENT)
     private readonly nats: ClientProxy,
@@ -261,16 +263,23 @@ export class DocumentosService {
     id: number,
     input: {
       expedienteId: number;
+      documentoBaseId?: number;
+      grupoFacturaId?: number | null;
       tipoRelacion?: string;
       esPrincipal?: boolean;
       orden?: number;
       metadata?: Record<string, any>;
       observacion?: string;
+      decisionCorrespondencia?: {
+        accion: 'ACEPTAR' | 'OBSERVAR' | 'AUTORIZAR_EXCEPCION';
+        motivo?: string | null;
+      };
     },
     audit?: {
       usuarioId?: number | null;
       requestId?: string | null;
       correlationId?: string | null;
+      tienePermisoAutorizarExcepcion?: boolean;
     },
   ) {
     if (!input?.expedienteId) {
@@ -278,10 +287,10 @@ export class DocumentosService {
     }
 
     try {
-      const confirmado = await this.repo.confirmarOcrResultadoConExpediente(
+      const confirmado = await this.orquestarConfirmacionV2.execute(
         id,
         input,
-        audit?.usuarioId ?? undefined,
+        audit,
       );
 
       if (!confirmado) {

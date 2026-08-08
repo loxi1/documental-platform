@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { sql } from '@documental/database';
+import type { SqlExecutor } from './sql-executor';
 
 type JsonRecord = Record<string, unknown>;
 
@@ -34,7 +35,7 @@ export interface RegistrarAuditoriaOperativaV2Input {
  */
 @Injectable()
 export class AuditoriaOperativaV2Repository {
-  async registrarCreacion(input: RegistrarAuditoriaOperativaV2Input): Promise<void> {
+  async registrarCreacion(input: RegistrarAuditoriaOperativaV2Input, executor: SqlExecutor = sql): Promise<void> {
     const contexto = normalizarContexto(input.usuario);
     const despues = limpiarJson({
       ...(input.despues ?? {}),
@@ -44,7 +45,7 @@ export class AuditoriaOperativaV2Repository {
       origen: contexto.origen ?? 'api-gateway',
     });
 
-    await sql`
+    await executor`
       INSERT INTO core.auditoria_eventos (
         workspace_id,
         session_context_id,
@@ -80,6 +81,7 @@ export class AuditoriaOperativaV2Repository {
   }
   async registrarDecisionCorrespondencia(
     input: RegistrarAuditoriaOperativaV2Input,
+    executor: SqlExecutor = sql,
   ): Promise<void> {
     const contexto = normalizarContexto(input.usuario);
     const despues = limpiarJson({
@@ -92,7 +94,7 @@ export class AuditoriaOperativaV2Repository {
       origen: contexto.origen ?? 'api-gateway',
     });
 
-    await sql`
+    await executor`
       INSERT INTO core.auditoria_eventos (
         workspace_id,
         session_context_id,
@@ -128,7 +130,7 @@ export class AuditoriaOperativaV2Repository {
   }
 
   async registrarAnulacionConEjecutor(
-    executor: any,
+    executor: SqlExecutor,
     input: RegistrarAuditoriaOperativaV2Input,
   ): Promise<void> {
     const contexto = normalizarContexto(input.usuario);

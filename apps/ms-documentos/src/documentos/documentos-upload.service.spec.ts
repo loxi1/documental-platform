@@ -7,7 +7,7 @@ jest.mock('@documental/database', () => ({
 import { sql } from '@documental/database';
 import { DocumentosUploadService } from './documentos-upload.service';
 
-describe('DocumentosUploadService - principal activo por relación', () => {
+describe('DocumentosUploadService - múltiples principales por relación', () => {
   const sqlMock = sql as unknown as jest.Mock;
 
   const file = {
@@ -33,7 +33,7 @@ describe('DocumentosUploadService - principal activo por relación', () => {
     return new DocumentosUploadService({} as any, {} as any);
   }
 
-  it('bloquea una segunda principal_oc en el mismo expediente', async () => {
+  it('permite una segunda principal_oc distinta en el mismo expediente', async () => {
     sqlMock
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([
@@ -57,8 +57,8 @@ describe('DocumentosUploadService - principal activo por relación', () => {
 
     const result = await service().prevalidarCarga(file as any, baseBody as any);
 
-    expect(result.accionSugerida).toBe('bloquear');
-    expect(result.motivo).toBe('PRINCIPAL_ACTIVO_EXISTENTE');
+    expect(result.accionSugerida).toBe('cargar_nuevo');
+    expect(result.motivo).toBeNull();
     expect(result.principalActivo).toEqual(
       expect.objectContaining({
         documentoId: 35,

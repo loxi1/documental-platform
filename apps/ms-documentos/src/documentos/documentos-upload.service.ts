@@ -158,12 +158,6 @@ export class DocumentosUploadService {
       motivo = 'DOCUMENTO_YA_VINCULADO_A_OTRO_EXPEDIENTE';    } else if (documentoExistente?.id && expedienteId) {
       accionSugerida = 'vincular_existente';
       motivo = 'MISMA_CLAVE_DOCUMENTAL';
-    } else if (
-      relacionPrincipalSolicitada &&
-      expedienteInfo?.principalActivo
-    ) {
-      accionSugerida = 'bloquear';
-      motivo = 'PRINCIPAL_ACTIVO_EXISTENTE';
     }
 
     return {

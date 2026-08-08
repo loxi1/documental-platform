@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { sql } from '@documental/database';
+import type { SqlExecutor } from '../documental-v2/sql-executor';
 
 export type DocumentosFilters = {
   cliente?: string;
@@ -509,6 +510,7 @@ export class DocumentosRepository {
     input: {
       expedienteId: number;
       documentoBaseId?: number;
+      grupoFacturaId?: number | null;
       tipoRelacion?: string;
       esPrincipal?: boolean;
       orden?: number;
@@ -517,7 +519,31 @@ export class DocumentosRepository {
     },
     usuarioId?: number,
   ) {
-    return sql.begin(async (tx) => {
+    return sql.begin((tx) =>
+      this.confirmarOcrResultadoConExpedienteConExecutor(
+        tx,
+        id,
+        input,
+        usuarioId,
+      ),
+    );
+  }
+
+  async confirmarOcrResultadoConExpedienteConExecutor(
+    tx: SqlExecutor,
+    id: number,
+    input: {
+      expedienteId: number;
+      documentoBaseId?: number;
+      grupoFacturaId?: number | null;
+      tipoRelacion?: string;
+      esPrincipal?: boolean;
+      orden?: number;
+      metadata?: Record<string, any>;
+      observacion?: string;
+    },
+    usuarioId?: number,
+  ) {
       const ocrRows = await tx`
         SELECT *
         FROM documentos.ocr_resultados
@@ -970,10 +996,10 @@ export class DocumentosRepository {
         vinculo,
         tipoDocumental,
         tipoRelacion,
+        documentoBaseId: documentoBaseIdFinal,
         claveDocumental,
         estado: 'confirmado',
       };
-    });
   }
 
 

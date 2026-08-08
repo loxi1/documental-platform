@@ -7,10 +7,12 @@ import {
 } from './correspondencia-pago-factura.adapter';
 import { evaluarCorrespondenciaPagoFactura } from './correspondencia-pago-factura.evaluator';
 import { EvaluacionCorrespondenciaPagoFactura } from './correspondencia-pago-factura.types';
+import type { SqlExecutor } from '../sql-executor';
 
 export abstract class CorrespondenciaDocumentoReadonlyPort {
   abstract buscarSnapshot(
     documentoId: number,
+    executor?: SqlExecutor,
   ): Promise<DocumentoCorrespondenciaSnapshot | null>;
 }
 
@@ -23,9 +25,10 @@ export class EvaluarCorrespondenciaPagoFacturaUseCase {
   async execute(input: {
     facturaDocumentoId: number;
     pagoDocumentoId?: number | null;
-  }): Promise<EvaluacionCorrespondenciaPagoFactura> {
+  }, executor?: SqlExecutor): Promise<EvaluacionCorrespondenciaPagoFactura> {
     const factura = await this.documentos.buscarSnapshot(
       input.facturaDocumentoId,
+      executor,
     );
 
     if (!factura) {
@@ -49,7 +52,7 @@ export class EvaluarCorrespondenciaPagoFacturaUseCase {
       );
     }
 
-    const pago = await this.documentos.buscarSnapshot(input.pagoDocumentoId);
+    const pago = await this.documentos.buscarSnapshot(input.pagoDocumentoId, executor);
 
     if (!pago) {
       throw new NotFoundException({

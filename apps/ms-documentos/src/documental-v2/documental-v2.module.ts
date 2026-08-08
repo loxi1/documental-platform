@@ -80,6 +80,11 @@ import {
     TrazabilidadV2Repository,
     TrazabilidadV2ProjectionMapper,
     ConsultarTrazabilidadV2UseCase,
+    DocumentoExistenteReadonlyRepository,
+    MaterializarContextoOperativoV2UseCase,
+    AsociarDocumentoPrincipalV2UseCase,
+    AsociarGrupoFacturaV2UseCase,
+    AsociarDocumentoGrupoFacturaV2UseCase,
   ],
 })
 export class DocumentalV2Module {}

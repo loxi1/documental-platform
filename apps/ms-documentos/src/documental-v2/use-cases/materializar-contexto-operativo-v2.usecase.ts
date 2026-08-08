@@ -10,6 +10,7 @@ import { V1DocumentalReadOnlyRepository } from '../adapters/v1-documental-readon
 import { AuditoriaOperativaV2Repository } from '../auditoria-operativa-v2.repository';
 import { ContenedorOperativoRepository } from '../contenedor-operativo.repository';
 import type { ContenedorOperativoRow, JsonObject } from '../documental-v2.types';
+import type { SqlExecutor } from '../sql-executor';
 
 const TIPO_CONTEXTO_EXPEDIENTE_V1 = 'expediente_v1';
 
@@ -94,6 +95,7 @@ export class MaterializarContextoOperativoV2UseCase {
 
   async execute(
     input: MaterializarContextoOperativoV2Input,
+    executor?: SqlExecutor,
   ): Promise<MaterializarContextoOperativoV2Result> {
     const expedienteId = normalizarId(input.expedienteId, 'expedienteId');
     const empresaContexto = normalizarEmpresa(input.usuario?.empresaCodigo);
@@ -109,7 +111,7 @@ export class MaterializarContextoOperativoV2UseCase {
       );
     }
 
-    const expedienteConDocumentos = await this.expedientesV1.obtenerExpedienteConDocumentos(expedienteId);
+    const expedienteConDocumentos = await this.expedientesV1.obtenerExpedienteConDocumentos(expedienteId, executor);
     const expediente = expedienteConDocumentos?.expediente ?? null;
 
     if (!expediente) {
@@ -183,6 +185,7 @@ export class MaterializarContextoOperativoV2UseCase {
 
     const existente = await this.contenedores.buscarExpedienteV1Activo(
       identidadExpedienteV1,
+      executor,
     );
 
     if (existente) {
@@ -206,11 +209,12 @@ export class MaterializarContextoOperativoV2UseCase {
         accion: 'MATERIALIZAR_CONTEXTO_OPERATIVO',
       },
       creadoPor: input.usuario?.id ?? null,
-    });
+    }, executor);
 
     if (!creado) {
       const recuperado = await this.contenedores.buscarExpedienteV1Activo(
         identidadExpedienteV1,
+        executor,
       );
 
       if (!recuperado) {
@@ -229,6 +233,7 @@ export class MaterializarContextoOperativoV2UseCase {
     const contenedoresHistoricosIds =
       await this.contenedores.listarHistoricosExpedienteV1(
         identidadExpedienteV1,
+        executor,
       );
 
     await this.auditoria.registrarCreacion({
@@ -249,7 +254,7 @@ export class MaterializarContextoOperativoV2UseCase {
         tipoContexto: creado.tipoContexto,
         codigo: creado.codigo,
       },
-    });
+    }, executor);
 
     return this.responderCreado(expedienteId, creado);
   }

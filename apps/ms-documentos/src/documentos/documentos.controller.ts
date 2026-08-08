@@ -150,15 +150,23 @@ export class DocumentosController {
     @Param('id', ParseIntPipe) id: number,
     @Body() body: {
       expedienteId: number;
+      documentoBaseId?: number;
+      grupoFacturaId?: number | null;
       tipoRelacion?: string;
       esPrincipal?: boolean;
       orden?: number;
       metadata?: Record<string, any>;
       observacion?: string;
+      decisionCorrespondencia?: {
+        accion: 'ACEPTAR' | 'OBSERVAR' | 'AUTORIZAR_EXCEPCION';
+        motivo?: string | null;
+      };
     },
     @Headers('x-user-id') userId?: string,
     @Headers('x-request-id') requestId?: string,
     @Headers('x-correlation-id') correlationId?: string,
+    @Headers('x-finanzas-correspondencia-autorizar-excepcion')
+    autorizarExcepcion?: string,
   ) {
     const usuarioId = Number(userId ?? NaN);
 
@@ -166,6 +174,8 @@ export class DocumentosController {
       usuarioId: Number.isFinite(usuarioId) && usuarioId > 0 ? usuarioId : null,
       requestId: requestId?.trim() || null,
       correlationId: correlationId?.trim() || requestId?.trim() || null,
+      tienePermisoAutorizarExcepcion:
+        String(autorizarExcepcion ?? '').trim().toLowerCase() === 'true',
     });
   }
 
