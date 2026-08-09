@@ -11,7 +11,6 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { AlmacenDocumentoPrincipalOperativoCard } from "@/components/almacen/AlmacenDocumentoPrincipalOperativoCard";
 import { AlmacenGrupoFacturaOperativoPanel } from "@/components/almacen/AlmacenGrupoFacturaOperativoPanel";
 import { OcrProcessingDialog, type OcrProcessingStep } from "@/components/ocr/OcrProcessingDialog";
 import { OcrValidationModal, type OcrValidationFormState } from "@/components/ocr/OcrValidationModal";
@@ -33,6 +32,7 @@ import { getWorkspaceDocumentalV2 } from "@/services/documental-v2-workspace";
 import {
   getGrupoDocumentoPrincipalDocumentoId,
   getGrupoFacturaDocumentoId,
+  getGrupoFacturaLabel,
   getGrupoFacturaPersistidoId,
   getGruposFactura,
 } from "@/components/documental-v2/workspace-v2-utils";
@@ -572,6 +572,108 @@ function DocumentosExistentes({
   );
 }
 
+
+function msiiEditorRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function msiiEditorText(value: unknown) {
+  if (value === null || value === undefined) return "";
+  const normalized = String(value).trim();
+  return normalized && normalized !== "null" && normalized !== "undefined" ? normalized : "";
+}
+
+function msiiEditorTipo(value: unknown) {
+  return msiiEditorText(value)
+    .replace(/^PRINCIPAL_/i, "")
+    .replace(/^ADJUNTO_/i, "")
+    .replaceAll("_", " ")
+    .toUpperCase();
+}
+
+function msiiEditorDocumentoLabel(record: Record<string, unknown> | null, fallback: string) {
+  if (!record) return fallback;
+
+  const tipo = msiiEditorTipo(
+    record.tipoDocumental ??
+      record.tipo_documental ??
+      record.tipoDocumento ??
+      record.tipo_documento ??
+      record.tipoRelacion ??
+      record.tipo_relacion,
+  );
+  const serie = msiiEditorText(record.serie ?? record.serieDocumento ?? record.serie_documento);
+  const numero = msiiEditorText(record.numero ?? record.numeroDocumento ?? record.numero_documento);
+
+  if (!tipo && !serie && !numero) return fallback;
+
+  const correlativo = [serie, numero].filter(Boolean).join("-");
+  return [tipo || fallback, correlativo].filter(Boolean).join(" ");
+}
+
+
+
+function msiiEditorRecordId(value: unknown) {
+  const record = msiiEditorRecord(value);
+  if (!record) return "";
+
+  return (
+    msiiEditorText(record.id) ||
+    msiiEditorText(record.documentoId) ||
+    msiiEditorText(record.documento_id) ||
+    msiiEditorText(record.documentoPrincipalId) ||
+    msiiEditorText(record.documento_principal_id)
+  );
+}
+
+function msiiEditorFindRecordById(source: unknown, targetId: unknown): Record<string, unknown> | null {
+  const expected = msiiEditorText(targetId);
+  if (!expected) return null;
+
+  if (Array.isArray(source)) {
+    for (const item of source) {
+      const found = msiiEditorFindRecordById(item, expected);
+      if (found) return found;
+    }
+    return null;
+  }
+
+  const record = msiiEditorRecord(source);
+  if (!record) return null;
+
+  if (msiiEditorRecordId(record) === expected) return record;
+
+  for (const value of Object.values(record)) {
+    if (!value || typeof value !== "object") continue;
+    const found = msiiEditorFindRecordById(value, expected);
+    if (found) return found;
+  }
+
+  return null;
+}
+
+function msiiEditorPrincipalGrupoLabel(source: unknown, documentoBaseId: unknown) {
+  const documentoId = msiiEditorText(documentoBaseId);
+  const principal = msiiEditorFindRecordById(source, documentoId);
+
+  if (!documentoId) return "OC/OS asociado";
+  if (!principal) return `OC/OS documento ${documentoId}`;
+
+  return msiiEditorDocumentoLabel(principal, `OC/OS documento ${documentoId}`);
+}
+
+function msiiEditorFacturaGrupoLabel(source: unknown, facturaDocumentoId: unknown, fallback: string) {
+  const facturaId = msiiEditorText(facturaDocumentoId);
+  const factura = msiiEditorFindRecordById(source, facturaId);
+
+  if (!facturaId) return fallback;
+  if (!factura) return fallback;
+
+  return msiiEditorDocumentoLabel(factura, fallback);
+}
+
 export function AlmacenExpedienteEditor({ id }: { id: string | number }) {
   const queryClient = useQueryClient();
   const searchParams = useSearchParams();
@@ -637,19 +739,18 @@ export function AlmacenExpedienteEditor({ id }: { id: string | number }) {
     documentoBaseId !== null &&
     facturaDocumentoId !== null;
   const contextoV2Mensaje = workspaceQuery.isLoading
-    ? "Validando el Grupo Factura seleccionado..."
+    ? "Validando el grupo documental seleccionado..."
     : workspaceQuery.isError
-      ? "No se pudo consultar Workspace V2. Regrese a Almacén y vuelva a abrir la operación desde el grupo correspondiente."
+      ? "No se pudo consultar la trazabilidad documental. Regrese a Almacén y vuelva a abrir la operación desde el grupo correspondiente."
       : grupoFacturaId === null
-        ? "Falta un grupoFacturaId válido. Regrese a Almacén y vuelva a abrir la operación desde el grupo correspondiente."
+        ? "Falta seleccionar una factura para recepción. Regrese a Almacén y vuelva a abrir la operación desde el grupo correspondiente."
         : !grupoFacturaSeleccionado
-          ? "El Grupo Factura indicado no pertenece al expediente abierto."
+          ? "El grupo documental indicado no pertenece al expediente abierto."
           : documentoBaseId === null
-            ? "No se pudo resolver el documento principal del Grupo Factura."
+            ? "No se pudo resolver la OC/OS asociada a esta recepción."
             : facturaDocumentoId === null
-              ? "No se pudo resolver la factura fundadora del Grupo Factura."
+              ? "No se pudo resolver la factura asociada a esta recepción."
               : null;
-
   function requireContextoV2() {
     if (
       !contextoV2Listo ||
@@ -659,7 +760,7 @@ export function AlmacenExpedienteEditor({ id }: { id: string | number }) {
     ) {
       throw new Error(
         contextoV2Mensaje ??
-          "No se pudo determinar de forma segura el Grupo Factura y el documento principal.",
+          "No se pudo determinar de forma segura la factura y la OC/OS asociada.",
       );
     }
 
@@ -676,6 +777,15 @@ export function AlmacenExpedienteEditor({ id }: { id: string | number }) {
   });
 
   const documentos = documentosQuery.data ?? [];
+
+
+const principalGrupoSeleccionado = grupoFacturaSeleccionado
+    ? msiiEditorPrincipalGrupoLabel([workspaceQuery.data, documentos], documentoBaseId)
+    : null;
+
+  const facturaGrupoSeleccionado = grupoFacturaSeleccionado
+    ? msiiEditorFacturaGrupoLabel([workspaceQuery.data, documentos], facturaDocumentoId, getGrupoFacturaLabel(grupoFacturaSeleccionado))
+    : null;
   const documentosPorRelacion = useMemo(() => getDocumentosPorRelacion(documentos), [documentos]);
   const principal = useMemo(() => pickPrincipal(documentos), [documentos]);
 
@@ -835,7 +945,7 @@ export function AlmacenExpedienteEditor({ id }: { id: string | number }) {
     if (!contextoV2Listo) {
       setMensajeValidacion(
         contextoV2Mensaje ??
-          "No se pudo determinar de forma segura el Grupo Factura y el documento principal. Regrese a Almacén y vuelva a abrir la operación desde el grupo correspondiente.",
+          "No se pudo determinar de forma segura la factura y la OC/OS asociada. Regrese a Almacén y vuelva a abrir la operación desde el grupo correspondiente.",
       );
       return;
     }
@@ -1075,22 +1185,39 @@ export function AlmacenExpedienteEditor({ id }: { id: string | number }) {
             {contextoV2Mensaje}
           </div>
         ) : (
-          <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
-            <Badge variant="outline">Grupo Factura {grupoFacturaId}</Badge>
-            <Badge variant="outline">Principal documento {documentoBaseId}</Badge>
-            <Badge variant="outline">Factura documento {facturaDocumentoId}</Badge>
+          <div className="rounded-xl border bg-muted/10 px-4 py-3">
+            <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
+              <div>
+                <p className="text-xs font-medium uppercase text-muted-foreground">Recepción seleccionada</p>
+                <p className="text-sm font-semibold">{principalGrupoSeleccionado ?? "OC/OS asociado"}</p>
+                <p className="text-xs text-muted-foreground">
+                  Factura asociada: {facturaGrupoSeleccionado ?? "Factura asociada"}
+                </p>
+              </div>
+              <Badge variant="secondary">Listo para adjuntar Guía/NI</Badge>
+            </div>
+            <span className="sr-only">
+              grupoFacturaId {grupoFacturaId} · documentoBaseId {documentoBaseId} · facturaDocumentoId {facturaDocumentoId}
+            </span>
           </div>
         )}
 
         <section className="grid gap-4 lg:grid-cols-3">
           <div className="lg:col-span-2">
-            <AlmacenDocumentoPrincipalOperativoCard
-              expedienteId={id}
-              fallbackTitle={principal ? getDocumentoSummary(principal).title : null}
-              fallbackDescription={principal ? getDocumentoSummary(principal).providerLine : null}
-              fallbackActive={Boolean(principal)}
-              emptyMessage="Este contexto no tiene documento principal activo. Almacén no puede adjuntar documentos."
-            />
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle>OC / OS de esta recepción</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                <p className="text-lg font-semibold">{principalGrupoSeleccionado ?? "OC/OS asociado"}</p>
+                <p className="text-sm text-muted-foreground">
+                  {facturaGrupoSeleccionado ? `Factura asociada: ${facturaGrupoSeleccionado}` : "Factura asociada disponible desde el grupo seleccionado."}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Esta cabecera corresponde al grupo elegido para adjuntar Guía o Nota de ingreso.
+                </p>
+              </CardContent>
+            </Card>
           </div>
 
           <Card>
@@ -1117,14 +1244,14 @@ export function AlmacenExpedienteEditor({ id }: { id: string | number }) {
 
         <Card className="border-dashed bg-muted/20">
           <CardHeader className="pb-2">
-            <CardTitle>Carga guiada legacy de Almacén</CardTitle>
+            <CardTitle>Carga auxiliar de Almacén</CardTitle>
             <p className="text-sm text-muted-foreground">
-              Uso operativo auxiliar / diagnóstico. La asociación documental definitiva se realiza desde el grupo documental persistido superior mediante “Agregar Guía/NI”. No reemplaza el flujo V2.
+              Uso auxiliar para revisión. Para adjuntar Guía o Nota de ingreso, use la recepción seleccionada desde la factura correspondiente.
             </p>
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-800 dark:text-amber-200">
-              Flujo legacy auxiliar. Para recepción documental vigente usa el grupo persistido de arriba y la acción “Agregar Guía/NI”.
+              Para la recepción vigente, seleccione la factura correspondiente y use “Adjuntar Guía/NI”.
             </div>
             <div className="grid gap-3 md:grid-cols-3">
               {DOCUMENTO_ALMACEN_ADJUNTO_OPTIONS.map((item) => {

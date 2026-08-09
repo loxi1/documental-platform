@@ -162,10 +162,23 @@ function hasDocument(expediente: Expediente, aliases: string[]) {
   });
 }
 
+
+function principalCount(expediente: Expediente) {
+  const documentosPrincipales = listField<ExpedienteDocumento>(expediente, "documentosPrincipales");
+  const documentoPrincipal = field<ExpedienteDocumento | null>(expediente, "documentoPrincipal");
+
+  if (documentosPrincipales.length > 0) return documentosPrincipales.length;
+  return documentoPrincipal ? 1 : 0;
+}
+
 function principalLabel(expediente: Expediente) {
+  const totalPrincipales = principalCount(expediente);
+
+  if (totalPrincipales > 1) return `${totalPrincipales} OC/OS asociadas`;
+
   const principal = getPrincipal(expediente);
 
-  if (!principal) return "Sin principal";
+  if (!principal) return "Sin OC/OS";
 
   const doc = principal as unknown as Record<string, unknown>;
   const tipo = text(
@@ -185,6 +198,12 @@ function principalLabel(expediente: Expediente) {
 }
 
 function principalDescription(expediente: Expediente) {
+  const totalPrincipales = principalCount(expediente);
+
+  if (totalPrincipales > 1) {
+    return "Seleccione el grupo/factura para ver la OC u OS correspondiente.";
+  }
+
   const principal = getPrincipal(expediente);
   if (!principal) return "—";
 
@@ -490,7 +509,7 @@ export function AlmacenBandeja() {
         <div>
           <h1 className="text-2xl font-bold">Almacén</h1>
           <p className="text-sm text-muted-foreground">
-            Bandeja operativa de recepción. Almacén consulta OC/OS y factura, y adjunta Guía o Nota de ingreso solo cuando exista Grupo de Factura V2 persistido.
+            Bandeja operativa de recepción. Almacén consulta OC/OS y factura, y adjunta Guía o Nota de ingreso desde la factura correspondiente.
           </p>
         </div>
       </div>
@@ -547,7 +566,7 @@ export function AlmacenBandeja() {
 
           {searchMode ? (
             <p className="text-xs text-muted-foreground">
-              Búsqueda global activa: {rows.length} expediente(s) con principal. La búsqueda se mantiene limitada a la empresa del workspace activo.
+              Búsqueda activa: {rows.length} expediente(s) con OC/OS o factura. La búsqueda se mantiene limitada a la empresa del workspace activo.
             </p>
           ) : null}
           {searchError ? <p className="text-xs text-red-600">{searchError}</p> : null}
@@ -558,7 +577,7 @@ export function AlmacenBandeja() {
           ) : null}
           {!searchMode && rows.length > 0 && rows.some((expediente) => !getPrincipal(expediente)) ? (
             <p className="text-xs text-amber-700">
-              Esta página contiene expedientes sin documento principal disponible para Almacén. Se muestran para no ocultar la paginación general; use la búsqueda para ubicar un caso documental específico.
+              Esta página contiene expedientes sin OC/OS visible para Almacén. Se muestran para no ocultar la paginación general; use la búsqueda para ubicar un caso documental específico.
             </p>
           ) : null}
         </CardHeader>
@@ -573,7 +592,7 @@ export function AlmacenBandeja() {
             ) : null}
           </div>
           <p className="text-sm text-muted-foreground">
-            Las acciones de recepción se habilitan en el detalle cuando Workspace V2 expone grupoFacturaId real.
+            Las acciones de recepción se habilitan en el detalle de la factura correspondiente.
           </p>
         </CardHeader>
 
@@ -586,8 +605,8 @@ export function AlmacenBandeja() {
                 <EmptyTitle>Sin expedientes para almacén</EmptyTitle>
                 <EmptyDescription>
                   {searchMode
-                    ? "No se encontraron expedientes con principal para esa búsqueda."
-                    : "La página consultada no contiene expedientes con principal disponible. Use la paginación o búsqueda para continuar."}
+                    ? "No se encontraron expedientes con OC/OS o factura para esa búsqueda."
+                    : "La página consultada no contiene expedientes disponibles para recepción. Use la paginación o búsqueda para continuar."}
                 </EmptyDescription>
               </EmptyHeader>
               </Empty>
@@ -609,7 +628,7 @@ export function AlmacenBandeja() {
                   <thead>
                     <tr className="border-b text-left text-muted-foreground">
                       <th className="py-2">Expediente</th>
-                      <th>Documento principal</th>
+                      <th>OC/OS asociadas</th>
                       <th>Documentos</th>
                       <th>Estado almacén</th>
                       <th className="text-right">Acciones</th>
