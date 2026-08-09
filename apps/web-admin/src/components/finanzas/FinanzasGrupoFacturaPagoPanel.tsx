@@ -72,6 +72,99 @@ function getTransferenciaDocumento(grupo: WorkspaceV2GrupoFactura) {
   return getAdjuntosGrupo(grupo).find(isTransferenciaDocumento) ?? null;
 }
 
+function msiiRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" ? (value as Record<string, unknown>) : null;
+}
+
+function msiiText(value: unknown) {
+  if (value === null || value === undefined || value === "") return "";
+  return String(value).trim();
+}
+
+function msiiRecordId(value: unknown) {
+  const record = msiiRecord(value);
+  if (!record) return "";
+
+  return (
+    msiiText(record.id) ||
+    msiiText(record.documentoId) ||
+    msiiText(record.documento_id) ||
+    msiiText(record.documentoPrincipalId) ||
+    msiiText(record.documento_principal_id)
+  );
+}
+
+function msiiFindRecordById(source: unknown, targetId: unknown): Record<string, unknown> | null {
+  const expected = msiiText(targetId);
+  if (!expected) return null;
+
+  if (Array.isArray(source)) {
+    for (const item of source) {
+      const found = msiiFindRecordById(item, expected);
+      if (found) return found;
+    }
+    return null;
+  }
+
+  const record = msiiRecord(source);
+  if (!record) return null;
+
+  if (msiiRecordId(record) === expected) return record;
+
+  for (const value of Object.values(record)) {
+    if (!value || typeof value !== "object") continue;
+    const found = msiiFindRecordById(value, expected);
+    if (found) return found;
+  }
+
+  return null;
+}
+
+function msiiDocumentoLabel(source: unknown, fallback: string) {
+  const record = msiiRecord(source);
+  if (!record) return fallback;
+
+  const tipo = msiiText(
+    record.tipoDocumental ??
+      record.tipo_documental ??
+      record.tipo ??
+      record.tipoDocumento ??
+      record.tipo_documento,
+  )
+    .replace("PRINCIPAL_", "")
+    .replace("ADJUNTO_", "")
+    .replaceAll("_", " ")
+    .toUpperCase();
+
+  const serie = msiiText(record.serie ?? record.serieDocumento ?? record.serie_documento);
+  const numero = msiiText(record.numero ?? record.numeroDocumento ?? record.numero_documento);
+  const numeroCompleto = [serie, numero].filter(Boolean).join("-");
+
+  if (tipo && numeroCompleto) return `${tipo} ${numeroCompleto}`;
+  if (numeroCompleto) return numeroCompleto;
+  return fallback;
+}
+
+function msiiPrincipalGrupoLabel(source: unknown, documentoBaseId: unknown) {
+  const documentoId = msiiText(documentoBaseId);
+  const principal = msiiFindRecordById(source, documentoId);
+
+  if (!documentoId) return "OC/OS asociado";
+  if (!principal) return `OC/OS documento ${documentoId}`;
+
+  return msiiDocumentoLabel(principal, `OC/OS documento ${documentoId}`);
+}
+
+function msiiFacturaGrupoLabel(source: unknown, facturaDocumentoId: unknown, fallback: string) {
+  const facturaId = msiiText(facturaDocumentoId);
+  const factura = msiiFindRecordById(source, facturaId);
+
+  if (!facturaId) return fallback;
+  if (!factura) return fallback;
+
+  return msiiDocumentoLabel(factura, fallback);
+}
+
 function asBool(value: unknown) {
   return value === true || String(value).trim().toLowerCase() === "true";
 }
@@ -166,7 +259,7 @@ function EvaluacionCorrespondenciaPago({
   if (isLoading) {
     return (
       <div className="rounded-lg border border-dashed p-3 text-xs text-muted-foreground">
-        Consultando correspondencia factura–sustento...
+        Revisando factura y sustento de pago...
       </div>
     );
   }
@@ -200,13 +293,26 @@ function EvaluacionCorrespondenciaPago({
   return (
     <div className="space-y-3 rounded-lg border bg-muted/10 p-3 text-xs">
       <div className="flex flex-wrap items-center gap-2">
-        <Badge variant="outline">Estado general: {getEstadoGeneral(evaluacion)}</Badge>
-        {requiereDecisionHumana ? <Badge variant="secondary">Evaluación automática requiere decisión humana</Badge> : null}
+        <Badge variant="outline">Estado del pago: {getEstadoGeneral(evaluacion)}</Badge>
+        {requiereDecisionHumana ? <Badge variant="secondary">Revisión humana requerida</Badge> : null}
         {permiteAsociacionOrdinaria === false ? (
-          <Badge variant="destructive">Sin decisión humana, asociación ordinaria bloqueada</Badge>
+          <Badge variant="destructive">Debe decidirse antes de asociar</Badge>
         ) : null}
         {permiteAsociacionOrdinaria === true ? <Badge variant="outline">Asociación ordinaria permitida</Badge> : null}
       </div>
+
+      {requiereDecisionHumana ? (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200">
+          <p className="font-medium">Siguiente paso: decisión humana</p>
+          <p className="mt-1 text-muted-foreground dark:text-amber-200/80">
+            Revise la factura y la transferencia. Luego elija aceptar la asociación u observarla.
+          </p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <Badge variant="secondary">Aceptar asociación</Badge>
+            <Badge variant="outline">Observar</Badge>
+          </div>
+        </div>
+      ) : null}
 
       <div className="overflow-x-auto">
         <table className="w-full min-w-[520px] text-left text-xs">
@@ -255,12 +361,14 @@ function EstadoPagoBadge({ label, active }: { label: string; active: boolean }) 
 }
 
 function GrupoPagoCard({
+  workspace,
   grupo,
   expedienteId,
   editable,
   canAssociateGroupDocument,
   onRefresh,
 }: {
+  workspace: unknown;
   grupo: WorkspaceV2GrupoFactura;
   expedienteId: string | number;
   editable: boolean;
@@ -273,6 +381,8 @@ function GrupoPagoCard({
   const pagoDocumento = getTransferenciaDocumento(grupo);
   const pagoDocumentoId = pagoDocumento ? getWorkspaceDocumentoId(pagoDocumento) : null;
   const sustentoPago = Boolean(pagoDocumentoId);
+  const principalOperativo = msiiPrincipalGrupoLabel(workspace, principalDocumentoId);
+  const facturaOperativa = msiiFacturaGrupoLabel(workspace, facturaDocumentoId, getGrupoFacturaLabel(grupo));
   const correspondenciaQuery = useQuery({
     queryKey: ["finanzas-correspondencia-pago-factura", facturaDocumentoId, pagoDocumentoId],
     enabled: Boolean(facturaDocumentoId && pagoDocumentoId),
@@ -281,7 +391,6 @@ function GrupoPagoCard({
       pagoDocumentoId: pagoDocumentoId as string | number,
     }),
   });
-  const detraccion = hasAdjunto(grupo, ["DETRACCION", "DETRACCIÓN", "ADJUNTO_DETRACCION", "PAGO_DETRACCION"]);
   const recepcionConEvidencia = hasAdjunto(grupo, [
     "GUIA_REMISION",
     "GUIA",
@@ -298,9 +407,12 @@ function GrupoPagoCard({
         <div className="min-w-0 space-y-3">
           <div className="flex flex-wrap items-center gap-2">
             <CreditCard className="h-4 w-4 text-muted-foreground" />
-            <h3 className="font-semibold">{getGrupoFacturaLabel(grupo)}</h3>
-            <Badge variant="secondary">Pendiente de evaluación financiera</Badge>
-            {grupoFacturaId ? <Badge variant="outline">grupoFacturaId {String(grupoFacturaId)}</Badge> : null}
+            <h3 className="font-semibold">{facturaOperativa}</h3>
+            <Badge variant="secondary">Pago en revisión</Badge>
+            <Badge variant="outline">OC/OS: {principalOperativo}</Badge>
+            <span className="sr-only">
+              grupoFacturaId {String(grupoFacturaId ?? "")} documentoBaseId {String(principalDocumentoId ?? "")} facturaDocumentoId {String(facturaDocumentoId ?? "")}
+            </span>
           </div>
 
           <dl className="grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
@@ -323,10 +435,9 @@ function GrupoPagoCard({
           </dl>
 
           <div className="flex flex-wrap gap-2 text-xs">
-            {principalDocumentoId ? <Badge variant="outline">Principal documento {String(principalDocumentoId)}</Badge> : null}
-            {facturaDocumentoId ? <Badge variant="outline">Factura documento {String(facturaDocumentoId)}</Badge> : null}
+            <Badge variant="outline">Factura seleccionada</Badge>
+            <Badge variant="outline">Principal del grupo seleccionado</Badge>
             <Badge variant="outline">Estado documental {textValue(entityVista<Record<string, unknown>>(grupo).estadoRevisionLabel ?? entityVista<Record<string, unknown>>(grupo).estado_revision_label ?? entityVista<Record<string, unknown>>(grupo).estado, "Sin estado")}</Badge>
-            <Badge variant="outline">Persistencia persistido</Badge>
           </div>
 
           <div className="space-y-1 pt-1">
@@ -334,7 +445,6 @@ function GrupoPagoCard({
               <EstadoPagoBadge label="Factura" active />
               <EstadoPagoBadge label="Recepción" active={recepcionConEvidencia} />
               <EstadoPagoBadge label="Sustento de pago" active={sustentoPago} />
-              <EstadoPagoBadge label="Detracción" active={detraccion} />
             </div>
             {!recepcionConEvidencia ? (
               <p className="text-xs text-muted-foreground">
@@ -359,7 +469,7 @@ function GrupoPagoCard({
           <Button asChild variant="outline" size="sm">
             <Link href={`/workspace/expedientes-v1/${expedienteId}`}>
               <Link2 className="h-4 w-4" />
-              Ver Workspace
+              Ver trazabilidad completa
             </Link>
           </Button>
           {editable ? (
@@ -393,7 +503,7 @@ export function FinanzasGrupoFacturaPagoPanel({ id, editable = false }: { id: st
     return (
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle>Grupos documentales para pago</CardTitle>
+          <CardTitle>Pagos por factura</CardTitle>
         </CardHeader>
         <CardContent>
           <Skeleton className="h-28 w-full" />
@@ -406,11 +516,11 @@ export function FinanzasGrupoFacturaPagoPanel({ id, editable = false }: { id: st
     return (
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle>Grupos documentales para pago</CardTitle>
+          <CardTitle>Pagos por factura</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
-            No se pudo cargar el Workspace V2. Finanzas no debe operar pagos sin grupoFacturaId persistido.
+            No se pudo cargar la información operativa de pago. Finanzas debe esperar la organización documental del grupo.
           </div>
         </CardContent>
       </Card>
@@ -426,14 +536,14 @@ export function FinanzasGrupoFacturaPagoPanel({ id, editable = false }: { id: st
       <CardHeader className="pb-2">
         <div className="flex flex-wrap items-start justify-between gap-2">
           <div>
-            <CardTitle>Grupos documentales para pago</CardTitle>
+            <CardTitle>Pagos por factura</CardTitle>
             <p className="mt-1 text-sm text-muted-foreground">
-              Vista de Finanzas sobre el mismo núcleo documental V2. Solo permite pagos cuando existe grupoFacturaId persistido.
+              Vista operativa para revisar factura, sustento de pago y decisión humana cuando corresponda.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
             <Badge variant="outline">{getContextoEmpresaCodigo(contexto) || "Empresa"}</Badge>
-            <Badge variant="outline">{gruposPersistidos.length} grupo(s) persistido(s)</Badge>
+            <Badge variant="outline">{gruposPersistidos.length} factura(s) en revisión</Badge>
           </div>
         </div>
       </CardHeader>
@@ -443,6 +553,7 @@ export function FinanzasGrupoFacturaPagoPanel({ id, editable = false }: { id: st
             <GrupoPagoCard
               key={String(getGrupoFacturaPersistidoId(grupo) ?? index)}
               grupo={grupo}
+              workspace={workspace}
               expedienteId={id}
               editable={editable}
               canAssociateGroupDocument={capabilities.canAssociateGroupDocument}
@@ -451,7 +562,7 @@ export function FinanzasGrupoFacturaPagoPanel({ id, editable = false }: { id: st
           ))
         ) : (
           <div className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
-            No hay grupos de factura persistidos. Finanzas debe esperar la organización documental de Compras.
+            No hay facturas organizadas para revisión de pago. Finanzas debe esperar la organización documental de Compras.
           </div>
         )}
       </CardContent>

@@ -7,7 +7,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { FinanzasDocumentoPrincipalOperativoCard } from "@/components/finanzas/FinanzasDocumentoPrincipalOperativoCard";
 import { FinanzasGrupoFacturaPagoPanel } from "@/components/finanzas/FinanzasGrupoFacturaPagoPanel";
 import { useExpediente } from "@/hooks/useExpedientes";
 import type { Expediente, ExpedienteDocumento } from "@/types/expediente";
@@ -172,7 +171,6 @@ export function FinanzasExpedienteView({ id }: { id: string | number }) {
   const expediente = expedienteQuery.data;
   const documentos = getAllDocuments(expediente);
   const transferencia = hasDocument(documentos, ["PAGO_TRANSFERENCIA", "TRANSFERENCIA", "ADJUNTO_TRANSFERENCIA"]);
-  const detraccion = hasDocument(documentos, ["PAGO_DETRACCION", "DETRACCION", "DETRACCIÓN", "ADJUNTO_DETRACCION"]);
 
   if (expedienteQuery.isLoading) {
     return (
@@ -198,7 +196,7 @@ export function FinanzasExpedienteView({ id }: { id: string | number }) {
             </Link>
           </Button>
           <div className="flex flex-wrap items-center gap-2">
-            <h1 className="text-2xl font-bold">Finanzas</h1>
+            <h1 className="text-2xl font-bold">Finanzas operativa</h1>
             <span className="rounded-full border px-2 py-0.5 text-xs font-medium">{getCodigo(expediente)}</span>
             <span className="rounded-full border px-2 py-0.5 text-xs text-muted-foreground">{getEmpresa(expediente)}</span>
             <span className="rounded-full border px-2 py-0.5 text-xs text-muted-foreground"> {getDescripcion(expediente)}</span>
@@ -214,19 +212,17 @@ export function FinanzasExpedienteView({ id }: { id: string | number }) {
         </Button>
       </div>
 
-      <section className="grid gap-3 lg:grid-cols-[1.5fr_1fr]">
-        <FinanzasDocumentoPrincipalOperativoCard id={id} />
-
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle>Control finanzas</CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-wrap gap-2">
-            <EstadoDocBadge label="Transferencia" active={transferencia} />
-            <EstadoDocBadge label="Detracción" active={detraccion} />
-          </CardContent>
-        </Card>
-      </section>
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle>Control de pago</CardTitle>
+          <p className="text-sm text-muted-foreground">
+            La cabecera operativa se toma de la factura y del OC/OS del grupo seleccionado, no del principal global del expediente.
+          </p>
+        </CardHeader>
+        <CardContent className="flex flex-wrap gap-2">
+          <EstadoDocBadge label="Transferencia" active={transferencia} />
+        </CardContent>
+      </Card>
 
       <FinanzasGrupoFacturaPagoPanel id={id} />
 
