@@ -785,6 +785,13 @@ export function OcrValidationModal({
   ]);
 
   const esFactura = tipoProveedor === "FACTURA";
+  const proveedorEstadoVisible =
+    readOnly &&
+    proveedorEstado === "SIN_CONSULTAR" &&
+    /^\d{11}$/.test(form.rucEmisor.trim() || form.rucProveedor.trim()) &&
+    Boolean((form.razonSocial || form.proveedor).trim())
+      ? "RESUELTO"
+      : proveedorEstado;
 
   if (!open) return null;
 
@@ -1006,7 +1013,7 @@ export function OcrValidationModal({
                         )}
                     </div>
                     <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
-                      Estado: {proveedorEstado === "RESUELTO" ? "Resuelto" : proveedorEstado === "BUSCANDO" ? "Buscando…" : proveedorEstado === "NO_ENCONTRADO" ? "No encontrado en catálogo" : proveedorEstado === "ERROR_CONSULTA" ? "Error de consulta" : "Pendiente"}
+                      Estado: {proveedorEstadoVisible === "RESUELTO" ? "Resuelto" : proveedorEstadoVisible === "BUSCANDO" ? "Buscando…" : proveedorEstadoVisible === "NO_ENCONTRADO" ? "No encontrado en catálogo" : proveedorEstadoVisible === "ERROR_CONSULTA" ? "Error de consulta" : "Pendiente"}
                       {proveedorOrigen ? ` · Origen: ${proveedorOrigen}` : ""}
                     </p>
                   </div>
