@@ -1678,7 +1678,7 @@ export function CompraExpedienteEditor({ id }: { id: string | number }) {
 
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle>Seleccionar documento principal</CardTitle>
+            <CardTitle>Seleccionar OC / OS de trabajo</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             {documentosPrincipales.length === 0 ? (
@@ -1718,7 +1718,7 @@ export function CompraExpedienteEditor({ id }: { id: string | number }) {
                         {getDocumentoPrincipalLabel(doc)}
                       </div>
                       <div className="mt-1 text-xs text-muted-foreground">
-                        Documento ID: {documentoId ?? "sin ID"}
+                        Define el contexto de factura y documentos asociados.
                       </div>
                       <div className="mt-2 text-xs font-medium">
                         {seleccionado
@@ -1733,7 +1733,7 @@ export function CompraExpedienteEditor({ id }: { id: string | number }) {
 
             {seleccionPrincipalRequerida ? (
               <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-                Selecciona la orden de compra a la que corresponde este documento.
+                Selecciona la OC/OS con la que vas a trabajar.
               </div>
             ) : null}
           </CardContent>
@@ -1742,10 +1742,10 @@ export function CompraExpedienteEditor({ id }: { id: string | number }) {
         <Card>
           <CardHeader className="pb-2">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <CardTitle>Documento principal</CardTitle>
+              <CardTitle>OC / OS seleccionado</CardTitle>
               {principalActual ? (
                 <span className="rounded-full border bg-primary/5 px-2.5 py-1 text-xs font-medium text-primary">
-                  Principal activo: {principalActual.option.label}
+                  Trabajando con: {getDocumentoPrincipalLabel(principalActual.doc)}
                 </span>
               ) : null}
             </div>
@@ -1770,9 +1770,6 @@ export function CompraExpedienteEditor({ id }: { id: string | number }) {
                       <div className="font-medium">{item.label}</div>
                     </div>
                     <div className="flex shrink-0 flex-col items-end gap-1">
-                      <span className="rounded-full border px-2 py-0.5 text-[11px] text-muted-foreground">
-                        {item.tipoEsperado}
-                      </span>
                       {principalActivo ? (
                         <span className="rounded-full border border-primary bg-primary px-2 py-0.5 text-[10px] font-medium text-primary-foreground">
                           Principal activo
@@ -1824,18 +1821,18 @@ export function CompraExpedienteEditor({ id }: { id: string | number }) {
 
         <Card>
           <CardHeader>
-            <CardTitle>Adjuntos de Compras</CardTitle>
+            <div>
+              <CardTitle>Documentos de Compras</CardTitle>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Adjunta factura, guía, nota de ingreso u otros sustentos habilitados para Compras.
+              </p>
+            </div>
           </CardHeader>
           <CardContent className="grid gap-3 md:grid-cols-3">
             {DOCUMENTO_ADJUNTO_OPTIONS.map((item) => (
               <div key={item.tipoRelacionSugerida} className="rounded-xl border p-4">
                 <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <div className="font-medium">{item.label}</div>
-                  </div>
-                  <span className="rounded-full border px-2 py-0.5 text-[11px] text-muted-foreground">
-                    {item.tipoEsperado}
-                  </span>
+                  <div className="font-medium">{item.label}</div>
                 </div>
 
                 <DocumentoAdjuntoRelacionResumen
