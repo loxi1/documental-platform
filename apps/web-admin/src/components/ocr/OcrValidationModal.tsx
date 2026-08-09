@@ -713,10 +713,17 @@ export function OcrValidationModal({
     (formularioContexto === "ALMACEN" || formularioContexto === "FINANZAS") &&
     tipoDocumentalBloqueado;
   const ocultarExpedienteVinculado = false;
-  const esFactura = normalizeTipoParaUi(form.tipoDocumental) === "FACTURA";
+  const tipoProveedor = normalizeTipoParaUi(form.tipoDocumental);
+  const resuelveProveedorPorRuc = [
+    "OC",
+    "OS",
+    "FACTURA",
+    "GUIA",
+    "RECIBO_HONORARIO",
+  ].includes(String(tipoProveedor));
 
   useEffect(() => {
-    if (!open || readOnly || !esFactura) return;
+    if (!open || readOnly || !resuelveProveedorPorRuc) return;
 
     const ruc = form.rucEmisor.trim() || form.rucProveedor.trim();
     if (!/^\d{11}$/.test(ruc)) {
@@ -769,7 +776,15 @@ export function OcrValidationModal({
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [open, readOnly, esFactura, form.rucEmisor, form.rucProveedor]);
+  }, [
+    open,
+    readOnly,
+    resuelveProveedorPorRuc,
+    form.rucEmisor,
+    form.rucProveedor,
+  ]);
+
+  const esFactura = tipoProveedor === "FACTURA";
 
   if (!open) return null;
 

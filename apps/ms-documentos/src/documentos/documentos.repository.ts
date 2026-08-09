@@ -154,9 +154,10 @@ export class DocumentosRepository {
   }
 
   async getProveedores(search?: string, limit = 20, offset = 0) {
-    const term = search ? `%${search}%` : null;
+    const searchValue = String(search ?? '').trim();
+    const term = searchValue ? `%${searchValue}%` : null;
 
-    const data = await sql`
+    let data = await sql`
       SELECT
         id,
         ruc,
@@ -173,6 +174,48 @@ export class DocumentosRepository {
       OFFSET ${offset}
     `;
 
+    if (
+      data.length === 0 &&
+      /^\d{11}$/.test(searchValue)
+    ) {
+      const proveedorExterno = await this.fetchProveedorRucExterno(searchValue);
+
+      if (proveedorExterno?.razon_social) {
+        const rows = await sql`
+          INSERT INTO core.proveedores (
+            ruc,
+            razon_social,
+            direccion,
+            tipo_persona,
+            creado_en,
+            actualizado_en
+          )
+          VALUES (
+            ${proveedorExterno.ruc},
+            ${proveedorExterno.razon_social},
+            ${proveedorExterno.direccion},
+            ${proveedorExterno.tipo_persona},
+            now(),
+            now()
+          )
+          ON CONFLICT (ruc)
+          DO UPDATE SET
+            razon_social = EXCLUDED.razon_social,
+            direccion = COALESCE(EXCLUDED.direccion, core.proveedores.direccion),
+            tipo_persona = EXCLUDED.tipo_persona,
+            actualizado_en = now()
+          RETURNING
+            id,
+            ruc,
+            razon_social,
+            direccion,
+            tipo_persona
+        `;
+
+        data = rows;
+      }
+    }
+
     const [countRow] = await sql`
       SELECT COUNT(*)::int AS total
       FROM core.proveedores
@@ -183,11 +226,130 @@ export class DocumentosRepository {
     `;
 
     return {
-      total: countRow.total,
+      total: data.length === 1 && /^\d{11}$/.test(searchValue)
+        ? 1
+        : countRow.total,
       limit,
       offset,
       data,
     };
+  }
+
+  private async fetchProveedorRucExterno(ruc: string): Promise<{
+    ruc: string;
+    razon_social: string;
+    direccion: string | null;
+    tipo_persona: string;
+  } | null> {
+    if (!/^\d{11}$/.test(ruc)) {
+      return null;
+    }
+
+    const token = String(process.env.APISPERU_TOKEN ?? '').trim();
+    if (!token) {
+      return null;
+    }
+
+    const baseUrl = String(
+      process.env.APISPERU_RUC_BASE_URL ??
+        'https://dniruc.apisperu.com/api/v1/ruc',
+    ).replace(/\/+$/, '');
+
+    const timeoutRaw = Number(process.env.APISPERU_TIMEOUT_MS ?? 15000);
+    const timeoutMs =
+      Number.isFinite(timeoutRaw) && timeoutRaw > 0
+        ? timeoutRaw
+        : 15000;
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+      const url = new URL(`${baseUrl}/${encodeURIComponent(ruc)}`);
+      url.searchParams.set('token', token);
+
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          Accept: 'application/json',
+        },
+        signal: controller.signal,
+      });
+
+      if (!response.ok) {
+        return null;
+      }
+
+      const data: any = await response.json();
+
+      if (!data || data.success === false) {
+        return null;
+      }
+
+      const razonSocial = this.normalizeProveedorText(
+        data.razonSocial ??
+          data.razon_social ??
+          data.nombre ??
+          data.nombre_o_razon_social,
+      );
+
+      if (!razonSocial) {
+        return null;
+      }
+
+      const rucRespuesta = String(
+        data.ruc ??
+          data.numeroDocumento ??
+          data.numero_documento ??
+          ruc,
+      ).trim();
+
+      if (rucRespuesta !== ruc) {
+        return null;
+      }
+
+      const direccion = this.normalizeProveedorText(
+        data.direccion ??
+          data.direccionFiscal ??
+          data.direccion_fiscal,
+      );
+
+      return {
+        ruc,
+        razon_social: razonSocial,
+        direccion,
+        tipo_persona: this.tipoPersonaDesdeRuc(ruc),
+      };
+    } catch {
+      return null;
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  private normalizeProveedorText(value: any): string | null {
+    const text = this.cleanText(value);
+    if (!text) {
+      return null;
+    }
+
+    return text
+      .normalize('NFKC')
+      .replace(/\\s+/g, ' ')
+      .trim()
+      .toUpperCase();
+  }
+
+  private tipoPersonaDesdeRuc(ruc: string): string {
+    if (ruc.startsWith('10')) {
+      return 'NATURAL';
+    }
+
+    if (ruc.startsWith('20')) {
+      return 'JURIDICA';
+    }
+
+    return 'OTRO';
   }
 
   async findArchivoById(archivoId: number) {
@@ -603,7 +765,7 @@ export class DocumentosRepository {
         WHERE ed.expediente_id = ${input.expedienteId}::bigint
           AND ed.es_principal = true
           AND COALESCE(d.estado, '') <> 'anulado'
-        ORDER BY ed.orden ASC, ed.vinculado_en ASC, d.id ASC
+        ORDER BY ed.orden ASC, ed.creado_en ASC, d.id ASC
       `;
 
       const documentoBaseIdFinal = this.resolverDocumentoBaseConfirmacion(
