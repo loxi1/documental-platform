@@ -23,6 +23,7 @@ export default async function RevisionContableVerPage({
       expedienteId={resolvedParams.id}
       anio={firstParam(resolvedSearchParams.anio)}
       mes={firstParam(resolvedSearchParams.mes)}
+      facturaDocumentoId={firstParam(resolvedSearchParams.facturaDocumentoId)}
     />
   );
 }

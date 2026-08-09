@@ -37,6 +37,100 @@ function hasAdjunto(grupo: WorkspaceV2GrupoFactura, aliases: string[]) {
   });
 }
 
+function msiiRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function msiiText(value: unknown) {
+  if (value === null || value === undefined) return "";
+  const normalized = String(value).trim();
+  return normalized && normalized !== "null" && normalized !== "undefined"
+    ? normalized
+    : "";
+}
+
+function msiiTipoOperativo(value: unknown) {
+  return msiiText(value)
+    .replace(/^PRINCIPAL_/i, "")
+    .replace(/^ADJUNTO_/i, "")
+    .replaceAll("_", " ")
+    .trim()
+    .toUpperCase();
+}
+
+function msiiRecordId(value: unknown) {
+  const record = msiiRecord(value);
+  if (!record) return "";
+
+  return (
+    msiiText(record.id) ||
+    msiiText(record.documentoId) ||
+    msiiText(record.documento_id)
+  );
+}
+
+function msiiDocumentoLabel(source: unknown, fallback: string) {
+  const record = msiiRecord(source);
+  if (!record) return fallback;
+
+  const tipo = msiiTipoOperativo(
+    record.tipoDocumental ??
+      record.tipo_documental ??
+      record.tipo ??
+      record.tipoDocumento ??
+      record.tipo_documento,
+  );
+  const serie = msiiText(
+    record.serie ?? record.serieDocumento ?? record.serie_documento,
+  );
+  const numero = msiiText(
+    record.numero ?? record.numeroDocumento ?? record.numero_documento,
+  );
+  const numeroCompleto = [serie, numero].filter(Boolean).join("-");
+
+  if (tipo && numeroCompleto) return `${tipo} ${numeroCompleto}`;
+  if (numeroCompleto) return numeroCompleto;
+  return fallback;
+}
+
+function msiiFindRecordById(source: unknown, targetId: unknown): Record<string, unknown> | null {
+  const expected = msiiText(targetId);
+  if (!expected) return null;
+
+  if (Array.isArray(source)) {
+    for (const item of source) {
+      const found = msiiFindRecordById(item, expected);
+      if (found) return found;
+    }
+    return null;
+  }
+
+  const record = msiiRecord(source);
+  if (!record) return null;
+
+  if (msiiRecordId(record) == expected) return record;
+
+  for (const value of Object.values(record)) {
+    if (!value || typeof value !== "object") continue;
+    const found = msiiFindRecordById(value, expected);
+    if (found) return found;
+  }
+
+  return null;
+}
+
+function msiiPrincipalGrupoLabel(source: unknown, documentoBaseId: unknown) {
+  const documentoId = msiiText(documentoBaseId);
+  const principal = msiiFindRecordById(source, documentoId);
+
+  if (!documentoId) return "OC/OS asociado";
+  if (!principal) return `OC/OS documento ${documentoId}`;
+
+  return msiiDocumentoLabel(principal, `OC/OS documento ${documentoId}`);
+}
+
 function EstadoContableBadge({ label, active }: { label: string; active: boolean }) {
   return (
     <Badge variant={active ? "secondary" : "outline"} className={active ? "gap-1" : "gap-1 text-muted-foreground"}>
@@ -46,10 +140,19 @@ function EstadoContableBadge({ label, active }: { label: string; active: boolean
   );
 }
 
-function GrupoRevisionCard({ grupo, expedienteId }: { grupo: WorkspaceV2GrupoFactura; expedienteId: string | number }) {
+function GrupoRevisionCard({
+  workspace,
+  grupo,
+  expedienteId,
+}: {
+  workspace: unknown;
+  grupo: WorkspaceV2GrupoFactura;
+  expedienteId: string | number;
+}) {
   const grupoFacturaId = getGrupoFacturaPersistidoId(grupo);
   const principalDocumentoId = getGrupoDocumentoPrincipalDocumentoId(grupo);
   const facturaDocumentoId = getGrupoFacturaDocumentoId(grupo);
+  const principalOperativo = msiiPrincipalGrupoLabel(workspace, principalDocumentoId);
   const guia = hasAdjunto(grupo, ["GUIA_REMISION", "GUIA", "GUÍA", "ADJUNTO_GUIA"]);
   const notaIngreso = hasAdjunto(grupo, ["NOTA_INGRESO", "NOTA INGRESO", "ADJUNTO_NOTA_INGRESO"]);
   const transferencia = hasAdjunto(grupo, ["TRANSFERENCIA", "ADJUNTO_TRANSFERENCIA", "PAGO_TRANSFERENCIA"]);
@@ -65,7 +168,10 @@ function GrupoRevisionCard({ grupo, expedienteId }: { grupo: WorkspaceV2GrupoFac
             <h3 className="font-semibold">{getGrupoFacturaLabel(grupo)}</h3>
             <Badge variant="secondary">Grupo documental persistido</Badge>
             <Badge variant="outline">Solo lectura</Badge>
-            {grupoFacturaId ? <Badge variant="outline">grupoFacturaId {String(grupoFacturaId)}</Badge> : null}
+            <Badge variant="outline">OC / OS: {principalOperativo}</Badge>
+            <span className="sr-only">
+              grupoFacturaId {String(grupoFacturaId ?? "")} · principalDocumentoId {String(principalDocumentoId ?? "")} · facturaDocumentoId {String(facturaDocumentoId ?? "")}
+            </span>
           </div>
 
           <dl className="grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
@@ -88,10 +194,10 @@ function GrupoRevisionCard({ grupo, expedienteId }: { grupo: WorkspaceV2GrupoFac
           </dl>
 
           <div className="flex flex-wrap gap-2 text-xs">
-            {principalDocumentoId ? <Badge variant="outline">Principal documento {String(principalDocumentoId)}</Badge> : null}
-            {facturaDocumentoId ? <Badge variant="outline">Factura documento {String(facturaDocumentoId)}</Badge> : null}
-            <Badge variant="outline">Estado documental {textValue(entityVista<Record<string, unknown>>(grupo).estadoRevisionLabel ?? entityVista<Record<string, unknown>>(grupo).estado_revision_label ?? entityVista<Record<string, unknown>>(grupo).estado, "Sin estado")}</Badge>
-            <Badge variant="outline">Persistencia persistido</Badge>
+            <Badge variant="outline">
+              Estado documental {textValue(entityVista<Record<string, unknown>>(grupo).estadoRevisionLabel ?? entityVista<Record<string, unknown>>(grupo).estado_revision_label ?? entityVista<Record<string, unknown>>(grupo).estado, "Sin estado")}
+            </Badge>
+            <Badge variant="outline">Grupo persistido</Badge>
           </div>
 
           <div className="space-y-1 pt-1">
@@ -125,7 +231,13 @@ function GrupoRevisionCard({ grupo, expedienteId }: { grupo: WorkspaceV2GrupoFac
   );
 }
 
-export function ContabilidadGrupoFacturaSoloLecturaPanel({ id }: { id: string | number }) {
+export function ContabilidadGrupoFacturaSoloLecturaPanel({
+  id,
+  facturaDocumentoId,
+}: {
+  id: string | number;
+  facturaDocumentoId?: string | null;
+}) {
   const workspaceQuery = useQuery({
     queryKey: ["contabilidad-v2-grupos-revision", String(id)],
     queryFn: () => getWorkspaceDocumentalV2(id),
@@ -161,7 +273,23 @@ export function ContabilidadGrupoFacturaSoloLecturaPanel({ id }: { id: string | 
   }
 
   const workspace = workspaceQuery.data;
-  const gruposPersistidos = getGruposFactura(workspace).filter((grupo) => Boolean(getGrupoFacturaPersistidoId(grupo)));
+  const gruposPersistidos = getGruposFactura(workspace).filter((grupo) =>
+    Boolean(getGrupoFacturaPersistidoId(grupo)),
+  );
+  const grupoSeleccionado = facturaDocumentoId
+    ? gruposPersistidos.find(
+        (grupo) =>
+          String(getGrupoFacturaDocumentoId(grupo) ?? "") ===
+          String(facturaDocumentoId),
+      ) ?? null
+    : null;
+  const gruposVisibles = facturaDocumentoId
+    ? grupoSeleccionado
+      ? [grupoSeleccionado]
+      : []
+    : gruposPersistidos;
+  const grupoSolicitadoNoLocalizado =
+    Boolean(facturaDocumentoId) && !grupoSeleccionado;
   const contexto = getContexto(workspace);
 
   return (
@@ -176,15 +304,25 @@ export function ContabilidadGrupoFacturaSoloLecturaPanel({ id }: { id: string | 
           </div>
           <div className="flex flex-wrap gap-2">
             <Badge variant="outline">{getContextoEmpresaCodigo(contexto) || "Empresa"}</Badge>
-            <Badge variant="outline">{gruposPersistidos.length} grupo(s) persistido(s)</Badge>
+            <Badge variant="outline">{gruposVisibles.length} grupo(s) en vista</Badge>
           </div>
         </div>
       </CardHeader>
       <CardContent className="space-y-3">
-        {gruposPersistidos.length ? (
-          gruposPersistidos.map((grupo, index) => (
+        {grupoSolicitadoNoLocalizado ? (
+          <div className="rounded-xl border border-dashed p-4 text-sm">
+            <p className="font-medium">
+              No se pudo localizar el grupo documental de esta factura.
+            </p>
+            <p className="mt-1 text-muted-foreground">
+              Vuelve a la bandeja o usa “Ver Workspace” para revisar el expediente completo.
+            </p>
+          </div>
+        ) : gruposVisibles.length ? (
+          gruposVisibles.map((grupo, index) => (
             <GrupoRevisionCard
               key={String(getGrupoFacturaPersistidoId(grupo) ?? index)}
+              workspace={workspace}
               grupo={grupo}
               expedienteId={id}
             />

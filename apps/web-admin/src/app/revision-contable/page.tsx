@@ -260,12 +260,17 @@ function buildDetalleRevisionHref(
   empresa: string,
   anio: string | number,
   mes: string | number,
+  facturaDocumentoId?: string | number | null,
 ) {
   const params = new URLSearchParams({
     empresa: String(empresa),
     anio: String(anio),
     mes: String(mes),
   });
+
+  if (facturaDocumentoId !== null && facturaDocumentoId !== undefined) {
+    params.set("facturaDocumentoId", String(facturaDocumentoId));
+  }
 
   return `/revision-contable/${expedienteId}/ver?${params.toString()}`;
 }
@@ -681,6 +686,7 @@ export default function RevisionContablePage() {
                           params.empresa,
                           params.anio,
                           params.mes,
+                          docId,
                         )
                       : null;
 
@@ -745,7 +751,7 @@ export default function RevisionContablePage() {
                             <Button asChild size="sm" variant="outline">
                               <Link href={detalleRevisionHref}>
                                 <Eye className="mr-1 h-4 w-4" />
-                                Ver expediente documental
+                                Ver grupo documental
                               </Link>
                             </Button>
                           ) : null}

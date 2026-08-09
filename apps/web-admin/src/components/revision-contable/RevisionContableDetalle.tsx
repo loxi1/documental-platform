@@ -28,7 +28,6 @@ import {
   EmptyTitle,
 } from "@/components/ui/empty";
 import { DocumentoPreviewModal } from "@/components/revision-contable/DocumentoPreviewModal";
-import { ContabilidadDocumentoPrincipalOperativoCard } from "@/components/revision-contable/ContabilidadDocumentoPrincipalOperativoCard";
 import { ContabilidadGrupoFacturaSoloLecturaPanel } from "@/components/revision-contable/ContabilidadGrupoFacturaSoloLecturaPanel";
 import { getContexto } from "@/lib/auth-storage";
 import {
@@ -43,6 +42,7 @@ type Props = {
   expedienteId: string | number;
   anio?: string | null;
   mes?: string | null;
+  facturaDocumentoId?: string | null;
 };
 
 
@@ -364,7 +364,12 @@ function AlertasExpediente({
   return null;
 }
 
-export function RevisionContableDetalle({ expedienteId, anio, mes }: Props) {
+export function RevisionContableDetalle({
+  expedienteId,
+  anio,
+  mes,
+  facturaDocumentoId,
+}: Props) {
   const [documentoSeleccionado, setDocumentoSeleccionado] =
     useState<ExpedienteDocumento | null>(null);
   const contexto = getContexto();
@@ -460,9 +465,11 @@ export function RevisionContableDetalle({ expedienteId, anio, mes }: Props) {
         </Badge>
       </div>
 
-      <section className="grid gap-4 lg:grid-cols-2">
-        <ContabilidadDocumentoPrincipalOperativoCard id={expedienteId} />
-        <ContabilidadGrupoFacturaSoloLecturaPanel id={expedienteId} />
+      <section>
+        <ContabilidadGrupoFacturaSoloLecturaPanel
+          id={expedienteId}
+          facturaDocumentoId={facturaDocumentoId}
+        />
       </section>
 
       <div className="rounded-xl border border-dashed bg-muted/20 p-3 text-sm text-muted-foreground">
