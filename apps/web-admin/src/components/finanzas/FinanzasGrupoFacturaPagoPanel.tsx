@@ -12,6 +12,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useWorkspaceV2Capabilities } from "@/hooks/useWorkspaceV2Capabilities";
 import {
   evaluarCorrespondenciaPagoFactura,
+  getDocumentosCandidatosGrupoFacturaV2,
   getWorkspaceDocumentalV2,
   type FinanzasCorrespondenciaEvaluacion,
 } from "@/services/documental-v2-workspace";
@@ -242,11 +243,13 @@ function EvaluacionCorrespondenciaPago({
   isLoading,
   isError,
   evaluacion,
+  asociacionYaResuelta,
 }: {
   hasSustento: boolean;
   isLoading: boolean;
   isError: boolean;
   evaluacion?: FinanzasCorrespondenciaEvaluacion;
+  asociacionYaResuelta: boolean;
 }) {
   if (!hasSustento) {
     return (
@@ -293,15 +296,33 @@ function EvaluacionCorrespondenciaPago({
   return (
     <div className="space-y-3 rounded-lg border bg-muted/10 p-3 text-xs">
       <div className="flex flex-wrap items-center gap-2">
-        <Badge variant="outline">Estado del pago: {getEstadoGeneral(evaluacion)}</Badge>
-        {requiereDecisionHumana ? <Badge variant="secondary">Revisión humana requerida</Badge> : null}
-        {permiteAsociacionOrdinaria === false ? (
+        <Badge variant="outline">
+          Evaluación técnica: {getEstadoGeneral(evaluacion)}
+        </Badge>
+        {asociacionYaResuelta ? (
+          <Badge variant="secondary">Asociación ya resuelta</Badge>
+        ) : null}
+        {!asociacionYaResuelta && requiereDecisionHumana ? (
+          <Badge variant="secondary">Revisión humana requerida</Badge>
+        ) : null}
+        {!asociacionYaResuelta && permiteAsociacionOrdinaria === false ? (
           <Badge variant="destructive">Debe decidirse antes de asociar</Badge>
         ) : null}
-        {permiteAsociacionOrdinaria === true ? <Badge variant="outline">Asociación ordinaria permitida</Badge> : null}
+        {!asociacionYaResuelta && permiteAsociacionOrdinaria === true ? (
+          <Badge variant="outline">Asociación ordinaria permitida</Badge>
+        ) : null}
       </div>
 
-      {requiereDecisionHumana ? (
+      {asociacionYaResuelta ? (
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-emerald-900 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-200">
+          <p className="font-medium">Asociación</p>
+          <p className="mt-1">
+            Ya resuelta para este sustento de pago en el grupo seleccionado.
+          </p>
+        </div>
+      ) : null}
+
+      {!asociacionYaResuelta && requiereDecisionHumana ? (
         <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200">
           <p className="font-medium">Siguiente paso: decisión humana</p>
           <p className="mt-1 text-muted-foreground dark:text-amber-200/80">
@@ -391,6 +412,34 @@ function GrupoPagoCard({
       pagoDocumentoId: pagoDocumentoId as string | number,
     }),
   });
+
+  const candidatosGrupoQuery = useQuery({
+    queryKey: [
+      "finanzas-candidatos-grupo-pago-actual",
+      grupoFacturaId,
+      pagoDocumentoId,
+    ],
+    enabled: Boolean(grupoFacturaId && pagoDocumentoId),
+    queryFn: () =>
+      getDocumentosCandidatosGrupoFacturaV2({
+        grupoFacturaId: grupoFacturaId as string | number,
+        tipoDocumental: "TRANSFERENCIA",
+        pagina: 1,
+        limite: 20,
+      }),
+  });
+
+  const candidatoPagoExacto =
+    candidatosGrupoQuery.data?.find(
+      (candidato) => String(candidato.documentoId) === String(pagoDocumentoId),
+    ) ?? null;
+
+  // GUARD 1:
+  // La consulta es paginada. Ausencia del candidato NO demuestra "no asociado".
+  // Solo una coincidencia exacta con yaAsociadoGrupoV2=true resuelve el estado.
+  const pagoYaAsociadoGrupoActivo =
+    candidatoPagoExacto?.yaAsociadoGrupoV2 === true;
+
   const recepcionConEvidencia = hasAdjunto(grupo, [
     "GUIA_REMISION",
     "GUIA",
@@ -461,6 +510,7 @@ function GrupoPagoCard({
               isLoading={correspondenciaQuery.isLoading || correspondenciaQuery.isFetching}
               isError={correspondenciaQuery.isError}
               evaluacion={correspondenciaQuery.data}
+              asociacionYaResuelta={pagoYaAsociadoGrupoActivo}
             />
           </div>
         </div>
@@ -477,7 +527,12 @@ function GrupoPagoCard({
               grupoFacturaId={grupoFacturaId}
               modo="finanzas"
               authorized={canAssociateGroupDocument}
-              onAssociated={onRefresh}
+              onAssociated={async () => {
+                await Promise.all([
+                  Promise.resolve(onRefresh()),
+                  candidatosGrupoQuery.refetch(),
+                ]);
+              }}
             />
           ) : (
             <Button asChild size="sm">
