@@ -36,6 +36,10 @@ type ExpedienteDocumento360 = {
   expedienteId?: string | number;
   documento_id?: number | string;
   documentoId?: number | string;
+  documento_base_id?: number | string | null;
+  documentoBaseId?: number | string | null;
+  documento_principal_id?: number | string | null;
+  documentoPrincipalId?: number | string | null;
   tipo_relacion?: string | null;
   tipoRelacion?: string | null;
   es_principal?: boolean | null;
@@ -147,13 +151,11 @@ function normalize(value: unknown) {
 }
 
 function isPrincipal(doc: ExpedienteDocumento360) {
-  return Boolean(
-    doc.es_principal ||
-    doc.esPrincipal ||
-    String(doc.tipo_relacion ?? doc.tipoRelacion ?? "").startsWith(
-      "principal_",
-    ),
-  );
+  return [doc.es_principal, doc.esPrincipal].some((value) => {
+    if (value === true) return true;
+    const normalized = String(value ?? "").trim().toLowerCase();
+    return normalized === "true" || normalized === "t" || normalized === "1";
+  });
 }
 
 function isCompraAdjunto(doc: ExpedienteDocumento360) {
@@ -196,6 +198,52 @@ function nestedMetadata(doc?: ExpedienteDocumento360) {
 
 function getDocumentoId(doc?: ExpedienteDocumento360 | null) {
   return doc?.documento_id ?? doc?.documentoId;
+}
+
+function normalizeDocumentoId(value: unknown): number | null {
+  if (value === null || value === undefined || value === "") return null;
+  const normalized = Number(value);
+  return Number.isInteger(normalized) && normalized > 0 ? normalized : null;
+}
+
+function getDocumentoBaseId(doc?: ExpedienteDocumento360 | null): number | null {
+  if (!doc) return null;
+
+  const record = doc as unknown as Record<string, unknown>;
+  const metadata = metadataRecord(doc);
+  const ocr = parseMaybeJson(metadata.ocr);
+  const ocrMetadata = parseMaybeJson(ocr?.metadata);
+  const contextoCarga = parseMaybeJson(ocr?.contextoCarga);
+  const contextoValidacion = parseMaybeJson(ocr?.contextoValidacion);
+  const audit = Array.isArray(ocr?.audit) ? ocr.audit : [];
+  const ultimoAudit = audit.length
+    ? parseMaybeJson(audit[audit.length - 1])
+    : null;
+  const cambios = parseMaybeJson(ultimoAudit?.cambios);
+  const cambiosMetadata = parseMaybeJson(cambios?.metadata);
+  const cambiosContextoValidacion = parseMaybeJson(
+    cambios?.contextoValidacion,
+  );
+
+  const candidatos = [
+    record.documentoBaseId,
+    record.documento_base_id,
+    record.documentoPrincipalId,
+    record.documento_principal_id,
+    metadata.documentoBaseId,
+    ocrMetadata?.documentoBaseId,
+    contextoCarga?.documentoBaseId,
+    contextoValidacion?.documentoBaseId,
+    cambiosMetadata?.documentoBaseId,
+    cambiosContextoValidacion?.documentoBaseId,
+  ];
+
+  for (const candidato of candidatos) {
+    const documentoId = normalizeDocumentoId(candidato);
+    if (documentoId !== null) return documentoId;
+  }
+
+  return null;
 }
 
 function getArchivoId(doc?: ExpedienteDocumento360 | null) {
@@ -414,24 +462,57 @@ export default function CompraExpedienteVerPage() {
     ? (documentosQuery.data as ExpedienteDocumento360[])
     : ((resumen?.documentos ?? []) as ExpedienteDocumento360[]);
 
-  const principal = useMemo(() => {
-    const principales = documentos.filter(isPrincipal);
-    return (
-      principales[0] ??
-      documentos.find((doc) => doc.es_principal || doc.esPrincipal) ??
-      documentos.find((doc) =>
-        String(doc.tipo_relacion ?? doc.tipoRelacion ?? "").startsWith(
-          "principal_",
-        ),
-      ) ??
-      null
-    );
-  }, [documentos]);
+  const documentosPrincipales = useMemo(
+    () =>
+      documentos.filter(isPrincipal).filter((doc) => {
+        const tipo = normalize(doc.tipo_documental ?? doc.tipoDocumental);
+        return tipo === "OC" || tipo === "OS";
+      }),
+    [documentos],
+  );
 
-  const adjuntosCompras = useMemo(
+  const principalIdParam = normalizeDocumentoId(
+    searchParams.get("principalId"),
+  );
+
+  const principalPorParametro = useMemo(
+    () =>
+      documentosPrincipales.find(
+        (doc) =>
+          normalizeDocumentoId(getDocumentoId(doc)) === principalIdParam,
+      ) ?? null,
+    [documentosPrincipales, principalIdParam],
+  );
+
+  const principal =
+    principalPorParametro ??
+    (documentosPrincipales.length === 1 ? documentosPrincipales[0] : null);
+
+  const seleccionPrincipalRequerida =
+    documentosPrincipales.length > 1 && !principalPorParametro;
+
+  const adjuntosComprasGlobales = useMemo(
     () => documentos.filter(isCompraAdjunto),
     [documentos],
   );
+
+  const adjuntosCompras = useMemo(() => {
+    const principalId = normalizeDocumentoId(getDocumentoId(principal));
+
+    if (principalId !== null) {
+      return adjuntosComprasGlobales.filter(
+        (doc) => getDocumentoBaseId(doc) === principalId,
+      );
+    }
+
+    if (documentosPrincipales.length === 0) {
+      return adjuntosComprasGlobales.filter(
+        (doc) => getDocumentoBaseId(doc) === null,
+      );
+    }
+
+    return [];
+  }, [adjuntosComprasGlobales, documentosPrincipales.length, principal]);
   const alertas = getArray<Alerta360>(alertasQuery.data, "alertas");
   const principalInfo = documentoResumen(principal);
   const cargando =
@@ -445,6 +526,12 @@ export default function CompraExpedienteVerPage() {
     expediente?.descripcion,
     "Sin descripción registrada",
   );
+
+  function principalHref(documentoId: string | number) {
+    const nextParams = new URLSearchParams(searchParams.toString());
+    nextParams.set("principalId", String(documentoId));
+    return `/compras/${id}/ver?${nextParams.toString()}`;
+  }
 
   function abrirPreview(doc: ExpedienteDocumento360 | null) {
     setPreviewDocumento(toPreviewDocumento(doc));
@@ -499,6 +586,69 @@ export default function CompraExpedienteVerPage() {
       {resumenQuery.isError ? (
         <section className="rounded-2xl border border-red-200 bg-red-50 p-5 text-sm text-red-700 shadow-sm dark:border-red-900 dark:bg-red-950/40 dark:text-red-200">
           No se pudo cargar el expediente.
+        </section>
+      ) : null}
+
+      {documentosPrincipales.length > 1 ? (
+        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">
+              Principal de trabajo
+            </p>
+            <h2 className="mt-2 text-xl font-bold text-slate-950 dark:text-slate-100">
+              Selecciona OC / OS de trabajo
+            </h2>
+            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+              Define qué documento principal y qué adjuntos asociados deseas consultar.
+            </p>
+          </div>
+
+          <div className="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+            {documentosPrincipales.map((doc) => {
+              const documentoId = getDocumentoId(doc);
+              const info = documentoResumen(doc);
+              const tipo = texto(
+                doc.tipo_documental ?? doc.tipoDocumental,
+                "Documento",
+              );
+              const seleccionado =
+                normalizeDocumentoId(documentoId) ===
+                normalizeDocumentoId(getDocumentoId(principal));
+
+              if (!documentoId) return null;
+
+              return (
+                <Button
+                  key={String(documentoId)}
+                  asChild
+                  variant={seleccionado ? "default" : "outline"}
+                  className="h-auto min-h-16 justify-start whitespace-normal px-4 py-3 text-left"
+                >
+                  <Link href={principalHref(documentoId)}>
+                    <span>
+                      <span className="block font-semibold">
+                        {tipo}
+                        {info.numero !== undefined && info.numero !== null
+                          ? ` ${info.numero}`
+                          : ""}
+                      </span>
+                      <span className="mt-1 block text-xs opacity-80">
+                        {seleccionado
+                          ? "Principal seleccionado"
+                          : "Seleccionar"}
+                      </span>
+                    </span>
+                  </Link>
+                </Button>
+              );
+            })}
+          </div>
+
+          {seleccionPrincipalRequerida ? (
+            <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
+              Este expediente tiene más de una OC / OS principal. Selecciona el documento de trabajo para consultar sus adjuntos sin mezclar otros principales.
+            </div>
+          ) : null}
         </section>
       ) : null}
 
@@ -574,7 +724,9 @@ export default function CompraExpedienteVerPage() {
             </>
           ) : (
             <p className="mt-4 text-sm text-slate-400">
-              No hay documento principal vinculado.
+              {seleccionPrincipalRequerida
+                ? "Selecciona una OC / OS de trabajo para consultar su información y documentos asociados."
+                : "No hay documento principal vinculado."}
             </p>
           )}
         </section>
@@ -602,7 +754,9 @@ export default function CompraExpedienteVerPage() {
               Adjuntos
             </p>
             <h2 className="mt-2 text-xl font-bold text-slate-950 dark:text-slate-100">
-              Documentos adjuntos
+              {documentosPrincipales.length === 0
+                ? "Documentos sin principal"
+                : "Documentos adjuntos"}
             </h2>
           </div>
           <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300">
