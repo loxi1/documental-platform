@@ -117,20 +117,23 @@ function getPrincipal(expediente: Expediente): ExpedienteDocumento | null {
 
   if (documentoPrincipal) return documentoPrincipal;
 
-  const documentosPrincipales = field<ExpedienteDocumento[]>(
+  const documentosPrincipales = listField<ExpedienteDocumento>(
     expediente,
     "documentosPrincipales",
   );
-  const documentos = field<ExpedienteDocumento[]>(expediente, "documentos");
-  const documentosAdjuntos = field<ExpedienteDocumento[]>(
+  const documentos = listField<ExpedienteDocumento>(
+    expediente,
+    "documentos",
+  );
+  const documentosAdjuntos = listField<ExpedienteDocumento>(
     expediente,
     "documentosAdjuntos",
   );
 
   return (
-    documentosPrincipales?.[0] ??
-    documentos?.find((documento) => Boolean(field(documento, "esPrincipal"))) ??
-    documentosAdjuntos?.find((documento) =>
+    documentosPrincipales[0] ??
+    documentos.find((documento) => Boolean(field(documento, "esPrincipal"))) ??
+    documentosAdjuntos.find((documento) =>
       Boolean(field(documento, "esPrincipal")),
     ) ??
     null
