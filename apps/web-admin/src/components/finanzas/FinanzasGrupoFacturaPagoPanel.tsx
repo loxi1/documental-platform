@@ -388,6 +388,7 @@ function GrupoPagoCard({
   editable,
   canAssociateGroupDocument,
   onRefresh,
+  onAdjuntarTransferencia,
 }: {
   workspace: unknown;
   grupo: WorkspaceV2GrupoFactura;
@@ -395,6 +396,7 @@ function GrupoPagoCard({
   editable: boolean;
   canAssociateGroupDocument: boolean;
   onRefresh: () => Promise<unknown> | unknown;
+  onAdjuntarTransferencia?: (grupoFacturaId: string | number) => void;
 }) {
   const grupoFacturaId = getGrupoFacturaPersistidoId(grupo);
   const principalDocumentoId = getGrupoDocumentoPrincipalDocumentoId(grupo);
@@ -523,20 +525,31 @@ function GrupoPagoCard({
             </Link>
           </Button>
           {editable ? (
-            <AsociarDocumentoGrupoFacturaPanel
-              grupoFacturaId={grupoFacturaId}
-              modo="finanzas"
-              authorized={canAssociateGroupDocument}
-              onAssociated={async () => {
-                await Promise.all([
-                  Promise.resolve(onRefresh()),
-                  candidatosGrupoQuery.refetch(),
-                ]);
-              }}
-            />
+            <>
+              {grupoFacturaId && onAdjuntarTransferencia ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={() => onAdjuntarTransferencia(grupoFacturaId)}
+                >
+                  Adjuntar sustento de pago
+                </Button>
+              ) : null}
+              <AsociarDocumentoGrupoFacturaPanel
+                grupoFacturaId={grupoFacturaId}
+                modo="finanzas"
+                authorized={canAssociateGroupDocument}
+                onAssociated={async () => {
+                  await Promise.all([
+                    Promise.resolve(onRefresh()),
+                    candidatosGrupoQuery.refetch(),
+                  ]);
+                }}
+              />
+            </>
           ) : (
             <Button asChild size="sm">
-              <Link href={`/finanzas/${expedienteId}/editar`}>Adjuntar sustento de pago</Link>
+              <Link href={`/finanzas/${expedienteId}/editar?grupoFacturaId=${grupoFacturaId}`}>Adjuntar sustento de pago</Link>
             </Button>
           )}
         </div>
@@ -545,7 +558,15 @@ function GrupoPagoCard({
   );
 }
 
-export function FinanzasGrupoFacturaPagoPanel({ id, editable = false }: { id: string | number; editable?: boolean }) {
+export function FinanzasGrupoFacturaPagoPanel({
+  id,
+  editable = false,
+  onAdjuntarTransferencia,
+}: {
+  id: string | number;
+  editable?: boolean;
+  onAdjuntarTransferencia?: (grupoFacturaId: string | number) => void;
+}) {
   const capabilities = useWorkspaceV2Capabilities();
 
   const workspaceQuery = useQuery({
@@ -613,6 +634,7 @@ export function FinanzasGrupoFacturaPagoPanel({ id, editable = false }: { id: st
               editable={editable}
               canAssociateGroupDocument={capabilities.canAssociateGroupDocument}
               onRefresh={() => workspaceQuery.refetch()}
+              onAdjuntarTransferencia={onAdjuntarTransferencia}
             />
           ))
         ) : (

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowLeft, FilePlus2 } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -204,12 +204,6 @@ export function FinanzasExpedienteView({ id }: { id: string | number }) {
           
         </div>
 
-        <Button asChild>
-          <Link href={`/finanzas/${id}/editar?accion=adjuntar`}>
-            <FilePlus2 className="h-4 w-4" />
-            Adjuntar documento de pago
-          </Link>
-        </Button>
       </div>
 
       <Card>

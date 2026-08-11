@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Eye, FilePlus2, Search, X } from "lucide-react";
+import { Eye, Search, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
@@ -265,11 +265,6 @@ function ActionsCell({ expediente }: { expediente: Expediente }) {
       <Button asChild size="icon" variant="outline" title="Ver expediente">
         <Link href={`/finanzas/${expediente.id}/ver`} aria-label="Ver expediente">
           <Eye className="h-4 w-4" />
-        </Link>
-      </Button>
-      <Button asChild size="icon" variant="outline" title="Adjuntar pago">
-        <Link href={`/finanzas/${expediente.id}/editar?accion=adjuntar`} aria-label="Adjuntar pago">
-          <FilePlus2 className="h-4 w-4" />
         </Link>
       </Button>
     </div>

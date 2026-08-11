@@ -667,6 +667,20 @@ export function FinanzasExpedienteEditor({ id }: { id: string | number }) {
   const searchParams = useSearchParams();
   const { data: expediente, isLoading, error } = useExpediente(id);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const decisionHumanaRef = useRef<HTMLDivElement | null>(null);
+  const expedienteContextoOcrRef = useRef<{
+    id: string | number;
+    codigo: string;
+    descripcion: string;
+    empresa: string;
+    rucComprador: string;
+  }>({
+    id,
+    codigo: "",
+    descripcion: "",
+    empresa: "",
+    rucComprador: "",
+  });
   const [modalAbierto, setModalAbierto] = useState(false);
   const [resultadoModal, setResultadoModal] =
     useState<ProcesarOcrResultado | null>(null);
@@ -705,6 +719,23 @@ export function FinanzasExpedienteEditor({ id }: { id: string | number }) {
     comprobante: "",
     observacion: "",
   });
+
+  useEffect(() => {
+    if (!decisionCorrespondenciaRequerida) return;
+
+    const frame = window.requestAnimationFrame(() => {
+      const node = decisionHumanaRef.current;
+      if (!node) return;
+
+      node.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
+      node.focus({ preventScroll: true });
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [decisionCorrespondenciaRequerida]);
 
   const grupoFacturaId = positiveInteger(searchParams.get("grupoFacturaId"));
   const ocrResultadoIdRecuperar = positiveInteger(
@@ -970,6 +1001,7 @@ export function FinanzasExpedienteEditor({ id }: { id: string | number }) {
           accion.tipoEsperado as CargaGuiadaPayloadPreview["tipoEsperado"],
         expedienteId: id,
         documentoBaseId: contextoV2.documentoBaseId,
+        grupoFacturaId: contextoV2.grupoFacturaId,
         tipoRelacionSugerida:
           accion.tipoRelacionSugerida as CargaGuiadaPayloadPreview["tipoRelacionSugerida"],
         canalIngreso: "FINANZAS_EDITAR_UPLOAD",
@@ -1045,6 +1077,31 @@ export function FinanzasExpedienteEditor({ id }: { id: string | number }) {
     fileInputRef.current?.click();
   }
 
+  function iniciarAdjuntarTransferencia(grupoSolicitado: string | number) {
+    const contextoV2 = requireContextoV2();
+    const grupoSolicitadoId = positiveInteger(grupoSolicitado);
+
+    if (grupoSolicitadoId !== contextoV2.grupoFacturaId) {
+      throw new Error(
+        "La Factura seleccionada no coincide con el contexto documental abierto.",
+      );
+    }
+
+    const transferencia = DOCUMENTO_FINANZAS_ADJUNTO_OPTIONS.find(
+      (item) =>
+        String(item.tipoEsperado).toUpperCase() === "TRANSFERENCIA" ||
+        String(item.tipoRelacionSugerida).toLowerCase() === "adjunto_transferencia",
+    );
+
+    if (!transferencia) {
+      throw new Error(
+        "No se encontró la opción TRANSFERENCIA configurada para Finanzas.",
+      );
+    }
+
+    iniciarSeleccionArchivo(transferencia);
+  }
+
   function onArchivoSeleccionado(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0] ?? null;
     event.target.value = "";
@@ -1078,6 +1135,13 @@ export function FinanzasExpedienteEditor({ id }: { id: string | number }) {
   );
   const descripcion = text((expediente as any).descripcion, "");
   const rucComprador = getRucComprador(expediente, empresa);
+
+  expedienteContextoOcrRef.current.id = id;
+  expedienteContextoOcrRef.current.codigo = codigo;
+  expedienteContextoOcrRef.current.descripcion = descripcion;
+  expedienteContextoOcrRef.current.empresa = empresa;
+  expedienteContextoOcrRef.current.rucComprador = rucComprador;
+
   const procesando = cargaRealMutation.isPending;
   const archivoIdModal =
     getArchivoId(resultadoModal as Record<string, unknown> | null) ?? undefined;
@@ -1128,6 +1192,31 @@ export function FinanzasExpedienteEditor({ id }: { id: string | number }) {
     setMensajeValidacion(
       `Cambios OCR guardados para ${accionActual?.label ?? "documento"}.`,
     );
+  }
+
+  function preservarFormularioCorregidoParaDecision(
+    metadataCorregida: Record<string, unknown>,
+  ) {
+    setResultadoModal((current) => {
+      if (!current) return current;
+
+      const raw = current as unknown as Record<string, unknown>;
+      const metadataActual =
+        raw.metadata &&
+        typeof raw.metadata === "object" &&
+        !Array.isArray(raw.metadata)
+          ? (raw.metadata as Record<string, unknown>)
+          : {};
+
+      return {
+        ...raw,
+        ...metadataCorregida,
+        metadata: {
+          ...metadataActual,
+          ...metadataCorregida,
+        },
+      } as unknown as ProcesarOcrResultado;
+    });
   }
 
   async function confirmarOcrFinal(form: OcrValidationFormState) {
@@ -1201,10 +1290,15 @@ export function FinanzasExpedienteEditor({ id }: { id: string | number }) {
         error instanceof OcrApiError &&
         error.code === "DECISION_CORRESPONDENCIA_REQUERIDA"
       ) {
+        preservarFormularioCorregidoParaDecision(
+          metadata as Record<string, unknown>,
+        );
         setDecisionCorrespondenciaRequerida(true);
         setMensajeValidacion(
           "La transferencia requiere una decisión humana de correspondencia antes de asociarse al grupo.",
         );
+        setModalAbierto(false);
+        return;
       }
       throw error;
     }
@@ -1367,7 +1461,11 @@ export function FinanzasExpedienteEditor({ id }: { id: string | number }) {
         </div>
 
         {decisionCorrespondenciaRequerida ? (
-          <div className="mb-4 rounded-xl border p-4">
+          <div
+            ref={decisionHumanaRef}
+            tabIndex={-1}
+            className="mb-4 rounded-xl border p-4"
+          >
             <p className="font-medium">
               Esta transferencia requiere una decisión humana de correspondencia.
             </p>
@@ -1467,7 +1565,11 @@ export function FinanzasExpedienteEditor({ id }: { id: string | number }) {
           </Card>
         </section>
 
-        <FinanzasGrupoFacturaPagoPanel id={id} editable />
+        <FinanzasGrupoFacturaPagoPanel
+          id={id}
+          editable
+          onAdjuntarTransferencia={iniciarAdjuntarTransferencia}
+        />
 
         <Card className="border-dashed bg-muted/20">
           <CardHeader className="pb-2">
@@ -1778,13 +1880,7 @@ export function FinanzasExpedienteEditor({ id }: { id: string | number }) {
         open={modalAbierto}
         resultado={resultadoModal}
         fallbackArchivoId={archivoIdModal}
-        expedienteContexto={{
-          id,
-          codigo,
-          descripcion,
-          empresa,
-          rucComprador,
-        }}
+        expedienteContexto={expedienteContextoOcrRef.current}
         onClose={() => setModalAbierto(false)}
         onSave={guardarCambiosOcr}
         onConfirm={confirmarOcrFinal}
