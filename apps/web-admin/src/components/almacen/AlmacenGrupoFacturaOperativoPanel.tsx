@@ -5,7 +5,6 @@ import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Boxes, FileCheck2, Link2 } from "lucide-react";
 
-import { AsociarDocumentoGrupoFacturaPanel } from "@/components/documental-v2/AsociarDocumentoGrupoFacturaPanel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -256,11 +255,16 @@ export function AlmacenGrupoFacturaOperativoPanel({
                       </Link>
                     </Button>
                     {modo === "editar" ? (
-                      <AsociarDocumentoGrupoFacturaPanel
-                        grupoFacturaId={grupoFacturaId}
-                        modo="almacen"
-                        onAssociated={() => workspaceQuery.refetch()}
-                      />
+                      <Button asChild size="sm">
+                        <Link
+                          href={`/almacen/${expedienteId}/editar?grupoFacturaId=${String(
+                            grupoFacturaId,
+                          )}#adjuntar-guia-ni`}
+                        >
+                          <FileCheck2 className="h-4 w-4" />
+                          Agregar Guía/NI
+                        </Link>
+                      </Button>
                     ) : (
                       <Button asChild size="sm">
                         <Link href={`/almacen/${expedienteId}/editar?grupoFacturaId=${String(grupoFacturaId)}`}>
