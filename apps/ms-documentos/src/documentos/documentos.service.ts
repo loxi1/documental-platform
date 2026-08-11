@@ -193,14 +193,26 @@ export class DocumentosService {
     return result;
   }
 
-  findOcrResultados(filters: {
+  async findOcrResultados(filters: {
     estado?: string;
     cliente?: string;
     limit?: number;
     offset?: number;
     soloNoVinculados?: boolean;
+    grupoFacturaId?: number;
   }) {
-    return this.repo.findOcrResultados(filters);
+    const rows = await this.repo.findOcrResultados(filters);
+
+    return rows.map((row: any) => {
+      const { grupo_factura_id: grupoFacturaIdRaw, ...rest } = row;
+      return {
+        ...rest,
+        grupoFacturaId:
+          grupoFacturaIdRaw === null || grupoFacturaIdRaw === undefined
+            ? null
+            : Number(grupoFacturaIdRaw),
+      };
+    });
   }
 
   async findOcrResultadoById(id: number) {
@@ -210,7 +222,14 @@ export class DocumentosService {
       throw new NotFoundException(`Resultado OCR ${id} no encontrado`);
     }
 
-    return result;
+    const { grupo_factura_id: grupoFacturaIdRaw, ...rest } = result as Record<string, any>;
+    return {
+      ...rest,
+      grupoFacturaId:
+        grupoFacturaIdRaw === null || grupoFacturaIdRaw === undefined
+          ? null
+          : Number(grupoFacturaIdRaw),
+    };
   }
 
   async confirmarOcrResultado(id: number, usuarioId?: number) {

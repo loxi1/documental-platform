@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { sql } from '@documental/database';
 import { DocumentoEventosService } from '../documento-eventos/documento-eventos.service';
+import { WorkspaceDocumentalV2UseCase } from '../documental-v2/use-cases/workspace-documental-v2.usecase';
 import { createHash, randomUUID } from 'node:crypto';
 import path from 'node:path';
 
@@ -19,6 +20,8 @@ type UploadedFileLike = {
 type CargaGuiadaBody = {
   documentoId?: string | number | null;
   expedienteId?: string | number | null;
+  documentoBaseId?: string | number | null;
+  grupoFacturaId?: string | number | null;
   clienteAbreviatura?: string;
   areaOrigen?: string;
   tipoEsperado?: string;
@@ -49,6 +52,15 @@ function toOptionalNumber(value: unknown) {
   if (value === null || value === undefined || value === '') return null;
   const numberValue = Number(value);
   return Number.isFinite(numberValue) ? numberValue : null;
+}
+
+function toOptionalPositiveInteger(value: unknown, field: string) {
+  if (value === null || value === undefined || value === '') return null;
+  const normalized = Number(value);
+  if (!Number.isInteger(normalized) || normalized <= 0) {
+    throw new BadRequestException(`${field} debe ser un entero positivo`);
+  }
+  return normalized;
 }
 
 function sanitizeFilename(filename: string) {
@@ -83,6 +95,7 @@ export class DocumentosUploadService {
   constructor(
     private readonly config: ConfigService,
     private readonly documentoEventos: DocumentoEventosService,
+    private readonly workspaceV2: WorkspaceDocumentalV2UseCase,
   ) {}
 
   async prevalidarCarga(file: UploadedFileLike | undefined, body: CargaGuiadaBody) {
@@ -101,6 +114,11 @@ export class DocumentosUploadService {
     const tipoRelacionSugerida = firstNonEmpty(body.tipoRelacionSugerida) ?? null;
     const expedienteId = toOptionalNumber(body.expedienteId);
     const documentoIdPayload = toOptionalNumber(body.documentoId);
+    const documentoBaseId = toOptionalPositiveInteger(body.documentoBaseId, 'documentoBaseId');
+    const grupoFacturaId = toOptionalPositiveInteger(body.grupoFacturaId, 'grupoFacturaId');
+    if (grupoFacturaId !== null) {
+      await this.validarGrupoFacturaContextual({ expedienteId, documentoBaseId, grupoFacturaId });
+    }
     const claveDocumental = firstNonEmpty(body.claveDocumental) ?? null;
     const codigoExpedientePayload = firstNonEmpty(body.codigoExpediente) ?? null;
 
@@ -212,6 +230,11 @@ export class DocumentosUploadService {
     const observacion = firstNonEmpty(body.observacion) ?? null;
     const expedienteId = toOptionalNumber(body.expedienteId);
     const documentoIdPayload = toOptionalNumber(body.documentoId);
+    const documentoBaseId = toOptionalPositiveInteger(body.documentoBaseId, 'documentoBaseId');
+    const grupoFacturaId = toOptionalPositiveInteger(body.grupoFacturaId, 'grupoFacturaId');
+    if (grupoFacturaId !== null) {
+      await this.validarGrupoFacturaContextual({ expedienteId, documentoBaseId, grupoFacturaId });
+    }
 
     const now = new Date();
     const year = now.getFullYear();
@@ -334,6 +357,7 @@ export class DocumentosUploadService {
           contentType,
           size: file.size ?? file.buffer.length,
           expedienteId,
+          grupoFacturaId,
           clienteAbreviatura,
           tipoEsperado,
           tipoRelacionSugerida,
@@ -386,6 +410,7 @@ export class DocumentosUploadService {
     return {
       archivoId,
       documentoId,
+      grupoFacturaId,
       filename: originalFilename,
       contentType,
       storageProvider: 'r2',
@@ -399,6 +424,53 @@ export class DocumentosUploadService {
         documentoId: item.documento_id,
       })),
     };
+  }
+
+  private async validarGrupoFacturaContextual(params: {
+    expedienteId: number | null;
+    documentoBaseId: number | null;
+    grupoFacturaId: number;
+  }) {
+    if (!params.expedienteId) {
+      throw new BadRequestException('expedienteId es obligatorio cuando se envía grupoFacturaId');
+    }
+    if (!params.documentoBaseId) {
+      throw new BadRequestException('documentoBaseId es obligatorio cuando se envía grupoFacturaId');
+    }
+
+    const workspace = await this.workspaceV2.construirDesdeExpedienteV1(params.expedienteId);
+    const grupo = workspace.gruposFactura.find(
+      (item) =>
+        item.estadoPersistencia === 'persistido' &&
+        Number(item.persistido?.id ?? NaN) === params.grupoFacturaId,
+    );
+
+    if (!grupo || String(grupo.persistido?.estado ?? '').trim().toLowerCase() === 'anulado') {
+      throw new ConflictException({
+        code: 'GRUPO_FACTURA_NO_PERTENECE_AL_CONTEXTO',
+        message: 'El Grupo Factura indicado no pertenece al contexto seleccionado o no está activo.',
+        details: { expedienteId: params.expedienteId, grupoFacturaId: params.grupoFacturaId },
+      });
+    }
+
+    const documentoPrincipalGrupoId = Number(
+      grupo.vista?.documentoOperativoPrincipalDocumentoId ?? NaN,
+    );
+    if (documentoPrincipalGrupoId !== params.documentoBaseId) {
+      throw new ConflictException({
+        code: 'GRUPO_FACTURA_NO_PERTENECE_AL_PRINCIPAL',
+        message: 'El Grupo Factura indicado no pertenece al principal operativo seleccionado.',
+        details: {
+          expedienteId: params.expedienteId,
+          documentoBaseId: params.documentoBaseId,
+          grupoFacturaId: params.grupoFacturaId,
+          documentoPrincipalGrupoId:
+            Number.isInteger(documentoPrincipalGrupoId) && documentoPrincipalGrupoId > 0
+              ? documentoPrincipalGrupoId
+              : null,
+        },
+      });
+    }
   }
 
   private async crearDocumentoContenedor(params: {

@@ -542,6 +542,7 @@ export class DocumentosRepository {
     limit?: number;
     offset?: number;
     soloNoVinculados?: boolean;
+    grupoFacturaId?: number;
   }) {
     const limit = filters.limit ?? 20;
     const offset = filters.offset ?? 0;
@@ -559,6 +560,11 @@ export class DocumentosRepository {
         da.nombre_archivo,
         da.storage_provider,
         da.storage_key,
+        CASE
+          WHEN COALESCE(da.metadata->>'grupoFacturaId', '') ~ '^[1-9][0-9]*$'
+            THEN (da.metadata->>'grupoFacturaId')::bigint
+          ELSE NULL
+        END AS grupo_factura_id,
         NULLIF(o.metadata #>> '{vinculoExpediente,expedienteId}', '')::int AS expediente_id,
         COALESCE(d.cliente_abreviatura, d_archivo.cliente_abreviatura) AS cliente_abreviatura
       FROM documentos.ocr_resultados o
@@ -570,6 +576,14 @@ export class DocumentosRepository {
         ON d_archivo.id = da.documento_id
       WHERE (${filters.estado ?? null}::text IS NULL OR o.estado = ${filters.estado ?? null})
         AND (${filters.cliente ?? null}::text IS NULL OR COALESCE(d.cliente_abreviatura, d_archivo.cliente_abreviatura) = ${filters.cliente ?? null})
+        AND (
+          ${filters.grupoFacturaId ?? null}::bigint IS NULL
+          OR CASE
+            WHEN COALESCE(da.metadata->>'grupoFacturaId', '') ~ '^[1-9][0-9]*$'
+              THEN (da.metadata->>'grupoFacturaId')::bigint
+            ELSE NULL
+          END = ${filters.grupoFacturaId ?? null}::bigint
+        )
         AND (
           ${filters.soloNoVinculados ?? false}::boolean = false
           OR o.metadata->'vinculoExpediente' IS NULL
@@ -588,6 +602,11 @@ export class DocumentosRepository {
         da.storage_provider,
         da.storage_key,
         da.ruta_archivo,
+        CASE
+          WHEN COALESCE(da.metadata->>'grupoFacturaId', '') ~ '^[1-9][0-9]*$'
+            THEN (da.metadata->>'grupoFacturaId')::bigint
+          ELSE NULL
+        END AS grupo_factura_id,
         COALESCE(d.cliente_abreviatura, d_archivo.cliente_abreviatura) AS cliente_abreviatura
       FROM documentos.ocr_resultados o
       LEFT JOIN documentos.documentos_archivos da

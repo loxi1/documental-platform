@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Headers, Param, ParseIntPipe, Query, Post, Patch, Put, UploadedFiles, UseInterceptors } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Headers, Param, ParseIntPipe, Query, Post, Patch, Put, UploadedFiles, UseInterceptors } from '@nestjs/common';
 import { ApiOperation, ApiQuery, ApiTags, ApiParam, ApiConsumes } from '@nestjs/swagger';
 import { FileFieldsInterceptor } from '@nestjs/platform-express';
 import { DocumentosService } from './documentos.service'; import { DocumentosPreviewService } from './documentos-preview.service';
@@ -120,14 +120,28 @@ export class DocumentosController {
     @Query('cliente') cliente?: string,
     @Query('limit') limit?: string,
     @Query('offset') offset?: string,
-    @Query('soloNoVinculados') soloNoVinculados?: string
+    @Query('soloNoVinculados') soloNoVinculados?: string,
+    @Query('grupoFacturaId') grupoFacturaId?: string,
   ) {
+    const grupoFacturaIdNumber =
+      grupoFacturaId === undefined || grupoFacturaId === ''
+        ? undefined
+        : Number(grupoFacturaId);
+
+    if (
+      grupoFacturaIdNumber !== undefined &&
+      (!Number.isInteger(grupoFacturaIdNumber) || grupoFacturaIdNumber <= 0)
+    ) {
+      throw new BadRequestException('grupoFacturaId debe ser un entero positivo');
+    }
+
     return this.service.findOcrResultados({
       estado,
       cliente,
       limit: limit ? Number(limit) : 20,
       offset: offset ? Number(offset) : 0,
       soloNoVinculados: soloNoVinculados === 'true',
+      grupoFacturaId: grupoFacturaIdNumber,
     });
   }
 

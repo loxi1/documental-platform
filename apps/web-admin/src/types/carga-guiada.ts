@@ -47,6 +47,7 @@ export interface CargaGuiadaPayloadPreview {
   tipoEsperado: TipoEsperado;
   expedienteId?: string | number | null;
   documentoBaseId?: string | number | null;
+  grupoFacturaId?: number | null;
   tipoRelacionSugerida: TipoRelacionSugerida;
   canalIngreso: "WEB_ADMIN_GUIADO" | "COMPRAS_EDITAR_UPLOAD" | string;
   observacion?: string;
