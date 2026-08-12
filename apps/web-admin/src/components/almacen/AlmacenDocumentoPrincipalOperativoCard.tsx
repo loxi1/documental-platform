@@ -164,8 +164,6 @@ export function AlmacenDocumentoPrincipalOperativoCard({
           <CardTitle>Documento principal</CardTitle>
           <div className="flex flex-wrap gap-2">
             {documentoOperativoPrincipalId ? <Badge variant="secondary">Principal V2 {String(documentoOperativoPrincipalId)}</Badge> : null}
-            {documentoId ? <Badge variant="outline">Documento {String(documentoId)}</Badge> : null}
-            {mostrarV2 ? <Badge variant="outline">{getEstado(documentoV2)}</Badge> : null}
             {!mostrarV2 && fallbackActive ? <Badge variant="outline">Legacy de consulta</Badge> : null}
           </div>
         </div>

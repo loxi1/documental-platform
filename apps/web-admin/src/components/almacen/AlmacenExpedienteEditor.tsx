@@ -744,9 +744,9 @@ function msiiEditorPrincipalGrupoLabel(source: unknown, documentoBaseId: unknown
   const principal = msiiEditorFindRecordById(source, documentoId);
 
   if (!documentoId) return "OC/OS asociado";
-  if (!principal) return `OC/OS documento ${documentoId}`;
+  if (!principal) return "OC/OS asociado";
 
-  return msiiEditorDocumentoLabel(principal, `OC/OS documento ${documentoId}`);
+  return msiiEditorDocumentoLabel(principal, "OC/OS asociado");
 }
 
 function msiiEditorFacturaGrupoLabel(source: unknown, facturaDocumentoId: unknown, fallback: string) {
@@ -1582,60 +1582,10 @@ const principalGrupoSeleccionado = grupoFacturaSeleccionado
             {contextoV2Mensaje}
           </div>
         ) : (
-          <div className="rounded-xl border bg-muted/10 px-4 py-3">
-            <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
-              <div>
-                <p className="text-xs font-medium uppercase text-muted-foreground">Recepción seleccionada</p>
-                <p className="text-sm font-semibold">{principalGrupoSeleccionado ?? "OC/OS asociado"}</p>
-                <p className="text-xs text-muted-foreground">
-                  Factura asociada: {facturaGrupoSeleccionado ?? "Factura asociada"}
-                </p>
-              </div>
-              <Badge variant="secondary">Listo para adjuntar Guía/NI</Badge>
-            </div>
-            <span className="sr-only">
-              grupoFacturaId {grupoFacturaId} · documentoBaseId {documentoBaseId} · facturaDocumentoId {facturaDocumentoId}
-            </span>
-          </div>
+          <span className="sr-only">
+            grupoFacturaId {grupoFacturaId} · documentoBaseId {documentoBaseId} · facturaDocumentoId {facturaDocumentoId}
+          </span>
         )}
-
-        <section className="grid gap-4 lg:grid-cols-3">
-          <div className="lg:col-span-2">
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle>OC / OS de esta recepción</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                <p className="text-lg font-semibold">{principalGrupoSeleccionado ?? "OC/OS asociado"}</p>
-                <p className="text-sm text-muted-foreground">
-                  {facturaGrupoSeleccionado ? `Factura asociada: ${facturaGrupoSeleccionado}` : "Factura asociada disponible desde el grupo seleccionado."}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  Esta cabecera corresponde al grupo elegido para adjuntar Guía o Nota de ingreso.
-                </p>
-              </CardContent>
-            </Card>
-          </div>
-
-          <Card>
-            <CardContent className="grid gap-3 p-4">
-              <div className="grid gap-3 md:grid-cols-2">
-                <div className="space-y-1">
-                  <label className="text-xs font-medium text-muted-foreground">Empresa</label>
-                  <Input value={empresa} readOnly />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-xs font-medium text-muted-foreground">Expediente</label>
-                  <Input value={codigo || "SIN EXPEDIENTE"} readOnly />
-                </div>
-              </div>
-              <div className="space-y-1">
-                <label className="text-xs font-medium text-muted-foreground">Descripción</label>
-                <Input value={descripcion} readOnly />
-              </div>
-            </CardContent>
-          </Card>
-        </section>
 
         <AlmacenGrupoFacturaOperativoPanel expedienteId={id} modo="editar" />
 
@@ -1647,11 +1597,6 @@ const principalGrupoSeleccionado = grupoFacturaSeleccionado
             </p>
           </CardHeader>
           <CardContent className="space-y-3">
-            <div className="rounded-lg border bg-muted/30 p-3 text-sm">
-              <span className="font-medium">Recepción seleccionada:</span>{" "}
-              {principalGrupoSeleccionado ?? "OC/OS asociada"} ·{" "}
-              {facturaGrupoSeleccionado ?? "Factura asociada"}
-            </div>
             {ocrPendientesGrupoQuery.isLoading ? (
               <div className="rounded-lg border bg-muted/20 p-3 text-sm text-muted-foreground">
                 Revisando documentos pendientes de validación para esta Factura...

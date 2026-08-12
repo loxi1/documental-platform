@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, FilePlus2, FileText } from "lucide-react";
+import { ArrowLeft, FileText } from "lucide-react";
 
 import { AlmacenDocumentoPrincipalOperativoCard } from "@/components/almacen/AlmacenDocumentoPrincipalOperativoCard";
 import { AlmacenGrupoFacturaOperativoPanel } from "@/components/almacen/AlmacenGrupoFacturaOperativoPanel";
@@ -314,25 +314,7 @@ export function AlmacenExpedienteView({ id }: { id: string | number }) {
           
         </div>
 
-        {grupoFacturaId ? (
-          <Button asChild>
-            <Link
-              href={`/almacen/${id}/editar?grupoFacturaId=${encodeURIComponent(
-                grupoFacturaId,
-              )}#adjuntar-guia-ni`}
-            >
-              <FilePlus2 className="h-4 w-4" />
-              Adjuntar documento de recepción
-            </Link>
-          </Button>
-        ) : (
-          <Button asChild>
-            <Link href={`/almacen/${id}/editar?accion=adjuntar`}>
-              <FilePlus2 className="h-4 w-4" />
-              Adjuntar documento de recepción
-            </Link>
-          </Button>
-        )}
+
       </div>
 
       <section className="grid gap-3 lg:grid-cols-[1.5fr_1fr]">

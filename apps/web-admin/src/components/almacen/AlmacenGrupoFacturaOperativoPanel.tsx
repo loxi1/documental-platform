@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Boxes, FileCheck2, Link2 } from "lucide-react";
+import { Boxes, FileCheck2 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -49,19 +49,76 @@ function msiiTipoOperativo(value: unknown) {
     .toUpperCase();
 }
 
+function msiiDeepValue(
+  source: unknown,
+  keys: string[],
+  seen = new Set<object>(),
+): string {
+  if (!source || typeof source !== "object") return "";
+
+  const objectSource = source as object;
+  if (seen.has(objectSource)) return "";
+  seen.add(objectSource);
+
+  if (Array.isArray(source)) {
+    for (const item of source) {
+      const value = msiiDeepValue(item, keys, seen);
+      if (value) return value;
+    }
+    return "";
+  }
+
+  const record = source as Record<string, unknown>;
+
+  for (const key of keys) {
+    const value = msiiText(record[key]);
+    if (value) return value;
+  }
+
+  for (const value of Object.values(record)) {
+    if (!value || typeof value !== "object") continue;
+    const nested = msiiDeepValue(value, keys, seen);
+    if (nested) return nested;
+  }
+
+  return "";
+}
+
+function msiiTipoPresentacion(value: unknown) {
+  const tipo = msiiTipoOperativo(value);
+
+  if (tipo === "ORDEN DE SERVICIO" || tipo === "OS") return "OS";
+  if (tipo === "ORDEN DE COMPRA" || tipo === "OC") return "OC";
+  if (tipo === "FACTURA") return "Factura";
+
+  return tipo;
+}
+
 function msiiDocumentoLabel(record: Record<string, unknown> | null, fallback: string) {
   if (!record) return fallback;
 
-  const tipo = msiiTipoOperativo(
-    record.tipoDocumental ??
-      record.tipo_documental ??
-      record.tipoDocumento ??
-      record.tipo_documento ??
-      record.tipoRelacion ??
-      record.tipo_relacion,
+  const tipo = msiiTipoPresentacion(
+    msiiDeepValue(record, [
+      "tipoDocumental",
+      "tipo_documental",
+      "tipoDocumento",
+      "tipo_documento",
+      "tipoRelacion",
+      "tipo_relacion",
+    ]),
   );
-  const serie = msiiText(record.serie ?? record.serieDocumento ?? record.serie_documento);
-  const numero = msiiText(record.numero ?? record.numeroDocumento ?? record.numero_documento);
+
+  const serie = msiiDeepValue(record, [
+    "serie",
+    "serieDocumento",
+    "serie_documento",
+  ]);
+
+  const numero = msiiDeepValue(record, [
+    "numero",
+    "numeroDocumento",
+    "numero_documento",
+  ]);
 
   if (!tipo && !serie && !numero) return fallback;
 
@@ -115,9 +172,9 @@ function msiiPrincipalGrupoLabel(source: unknown, documentoBaseId: unknown) {
   const principal = msiiFindRecordById(source, documentoId);
 
   if (!documentoId) return "OC/OS asociado";
-  if (!principal) return `OC/OS documento ${documentoId}`;
+  if (!principal) return "OC/OS asociado";
 
-  return msiiDocumentoLabel(principal, `OC/OS documento ${documentoId}`);
+  return msiiDocumentoLabel(principal, "OC/OS asociado");
 }
 
 function msiiFacturaGrupoLabel(source: unknown, facturaDocumentoId: unknown, fallback: string) {
@@ -207,10 +264,9 @@ export function AlmacenGrupoFacturaOperativoPanel({
               Consulta OC/OS y factura para adjuntar Guía o Nota de ingreso.
             </p>
           </div>
-          <div className="flex flex-wrap gap-2">
-            <Badge variant="outline">{getContextoEmpresaCodigo(contexto) || "Empresa"}</Badge>
-            <Badge variant="secondary">{gruposVisibles.length} grupo(s) persistido(s)</Badge>
-          </div>
+          <Badge variant="outline">
+            {getContextoEmpresaCodigo(contexto) || "Empresa"}
+          </Badge>
         </div>
       </CardHeader>
       <CardContent className="space-y-3">
@@ -235,11 +291,9 @@ export function AlmacenGrupoFacturaOperativoPanel({
                     <div className="flex flex-wrap items-center gap-2">
                       <Boxes className="h-4 w-4 text-muted-foreground" />
                       <h3 className="font-semibold">{facturaOperativa}</h3>
-                      <Badge variant="secondary">Listo para Almacén</Badge>
-                      <Badge variant="outline">Grupo listo</Badge>
                     </div>
 
-                    <div className="grid gap-2 text-sm text-muted-foreground md:grid-cols-2 xl:grid-cols-5">
+                    <div className="grid gap-2 text-sm text-muted-foreground md:grid-cols-2 xl:grid-cols-4">
                       <div>
                         <span className="block text-xs font-medium uppercase">OC / OS</span>
                         <span className="text-foreground">{principalOperativo}</span>
@@ -256,29 +310,15 @@ export function AlmacenGrupoFacturaOperativoPanel({
                         <span className="block text-xs font-medium uppercase">Fecha</span>
                         <span className="text-foreground">{getGrupoFecha(grupo)}</span>
                       </div>
-                      <div>
-                        <span className="block text-xs font-medium uppercase">Importe</span>
-                        <span className="text-foreground">{getGrupoImporte(grupo)}</span>
-                      </div>
                     </div>
 
-                    <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
-                      <Badge variant="outline">Factura asociada</Badge>
-                      <Badge variant="outline">Recepción habilitada</Badge>
-                      <span className="sr-only">
-                        grupoFacturaId {String(grupoFacturaId)} · principal {textValue(principalDocumentoId, "—")} · factura {textValue(facturaDocumentoId, "—")} · estado {getEstado(grupo)} · persistencia {estadoPersistencia}
-                      </span>
-                    </div>
+                    <span className="sr-only">
+                      grupoFacturaId {String(grupoFacturaId)} · principal {textValue(principalDocumentoId, "—")} · factura {textValue(facturaDocumentoId, "—")} · estado {getEstado(grupo)} · persistencia {estadoPersistencia}
+                    </span>
                   </div>
 
                   <div className="flex shrink-0 flex-wrap gap-2">
-                    <Button asChild variant="outline" size="sm">
-                      <Link href={`/workspace/expedientes-v1/${expedienteId}`}>
-                        <Link2 className="h-4 w-4" />
-                        Ver trazabilidad completa
-                      </Link>
-                    </Button>
-                    {modo === "editar" ? (
+                    {modo === "ver" ? (
                       <Button asChild size="sm">
                         <Link
                           href={`/almacen/${expedienteId}/editar?grupoFacturaId=${String(
@@ -286,17 +326,10 @@ export function AlmacenGrupoFacturaOperativoPanel({
                           )}#adjuntar-guia-ni`}
                         >
                           <FileCheck2 className="h-4 w-4" />
-                          Agregar Guía/NI
+                          Adjuntar Guía / NI
                         </Link>
                       </Button>
-                    ) : (
-                      <Button asChild size="sm">
-                        <Link href={`/almacen/${expedienteId}/editar?grupoFacturaId=${String(grupoFacturaId)}`}>
-                          <FileCheck2 className="h-4 w-4" />
-                          Adjuntar Guía/NI
-                        </Link>
-                      </Button>
-                    )}
+                    ) : null}
                   </div>
                 </div>
               </div>
