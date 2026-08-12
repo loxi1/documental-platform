@@ -1,14 +1,32 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
+import { useSearchParams } from "next/navigation";
+import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { ArrowLeft, Eye, X } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { PreviewDocumento } from "@/components/common/PreviewDocumento";
 import { FinanzasGrupoFacturaPagoPanel } from "@/components/finanzas/FinanzasGrupoFacturaPagoPanel";
 import { useExpediente } from "@/hooks/useExpedientes";
+import { getWorkspaceDocumentalV2 } from "@/services/documental-v2-workspace";
+import {
+  entityVista,
+  getAdjuntosGrupo,
+  getGrupoDocumentoPrincipalDocumentoId,
+  getGrupoFacturaDocumentoId,
+  getGrupoFacturaPersistidoId,
+  getGruposFactura,
+} from "@/components/documental-v2/workspace-v2-utils";
+import type {
+  WorkspaceDocumentalV2,
+  WorkspaceV2Documento,
+  WorkspaceV2GrupoFactura,
+} from "@/types/documental-v2-workspace";
 import type { Expediente, ExpedienteDocumento } from "@/types/expediente";
 
 function text(value: unknown, fallback = "—") {
@@ -71,6 +89,71 @@ function getAllDocuments(expediente?: Expediente | null) {
     seen.add(key);
     return true;
   });
+}
+
+function documentoId(documento?: ExpedienteDocumento | null) {
+  if (!documento) return "";
+  const doc = documento as unknown as Record<string, unknown>;
+  return String(doc.documentoId ?? doc.documento_id ?? doc.id ?? "").trim();
+}
+
+function workspaceDocumentoId(documento: WorkspaceV2Documento) {
+  const vista = entityVista<Record<string, unknown>>(documento);
+  const record = documento as Record<string, unknown>;
+  const value =
+    vista.documentoId ??
+    vista.documento_id ??
+    record.documentoId ??
+    record.documento_id ??
+    vista.id ??
+    record.id;
+
+  if (value === null || value === undefined || value === "") return "";
+  return String(value).trim();
+}
+
+function selectedGrupo(
+  workspace: WorkspaceDocumentalV2,
+  grupoFacturaId: string,
+): WorkspaceV2GrupoFactura | null {
+  if (!grupoFacturaId) return null;
+
+  return (
+    getGruposFactura(workspace).find(
+      (grupo) =>
+        String(getGrupoFacturaPersistidoId(grupo) ?? "") === grupoFacturaId,
+    ) ?? null
+  );
+}
+
+function documentosDelGrupo(
+  expediente: Expediente,
+  grupo: WorkspaceV2GrupoFactura,
+) {
+  const allowed = new Set<string>();
+
+  const facturaDocumentoId = getGrupoFacturaDocumentoId(grupo);
+  const principalDocumentoId =
+    getGrupoDocumentoPrincipalDocumentoId(grupo);
+
+  if (facturaDocumentoId !== null && facturaDocumentoId !== undefined) {
+    allowed.add(String(facturaDocumentoId));
+  }
+
+  if (principalDocumentoId !== null && principalDocumentoId !== undefined) {
+    allowed.add(String(principalDocumentoId));
+  }
+
+  for (const adjunto of getAdjuntosGrupo(grupo)) {
+    const id = workspaceDocumentoId(adjunto);
+    if (id) allowed.add(id);
+  }
+
+  if (!allowed.size) return [];
+
+  return getAllDocuments(expediente).filter((documento) =>
+    allowed.has(documentoId(documento)),
+  );
 }
 
 function getPrincipal(expediente?: Expediente | null): ExpedienteDocumento | null {
@@ -145,20 +228,56 @@ function getDocumentoIdLegacy(documento: ExpedienteDocumento) {
   return String(doc.documentoId ?? doc.documento_id ?? doc.id ?? "");
 }
 
+function getArchivoId(documento?: ExpedienteDocumento | null) {
+  if (!documento) return null;
+
+  const doc = documento as unknown as Record<string, unknown>;
+  const value = doc.archivoId ?? doc.archivo_id;
+
+  if (value === null || value === undefined || value === "") return null;
+
+  return value as number | string;
+}
+
 function legacyBadgeLabel(documento: ExpedienteDocumento) {
   if (getDocumentoIdLegacy(documento) === "21") return "Principal V2 vigente";
   return isPrincipal(documento) ? "Legacy histórico" : "Adjunto legacy";
 }
 
-function DocumentoCard({ documento }: { documento: ExpedienteDocumento }) {
+function DocumentoCard({
+  documento,
+  onPreview,
+}: {
+  documento: ExpedienteDocumento;
+  onPreview: (documento: ExpedienteDocumento) => void;
+}) {
+  const archivoId = getArchivoId(documento);
+
   return (
     <div className="rounded-xl border p-3">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="truncate font-medium">{documentoLabel(documento)}</div>
-          <div className="mt-1 line-clamp-2 text-xs text-muted-foreground">{documentoDescripcion(documento)}</div>
+          <div className="mt-1 line-clamp-2 text-xs text-muted-foreground">
+            {documentoDescripcion(documento)}
+          </div>
         </div>
-        <Badge variant="outline" className="text-muted-foreground">
+
+        {archivoId ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 shrink-0"
+            title="Ver documento"
+            aria-label={`Ver ${documentoLabel(documento)}`}
+            onClick={() => onPreview(documento)}
+          >
+            <Eye className="h-4 w-4" />
+          </Button>
+        ) : null}
+
+        <Badge variant="outline" className="hidden text-muted-foreground">
           {legacyBadgeLabel(documento)}
         </Badge>
       </div>
@@ -167,10 +286,39 @@ function DocumentoCard({ documento }: { documento: ExpedienteDocumento }) {
 }
 
 export function FinanzasExpedienteView({ id }: { id: string | number }) {
+  const searchParams = useSearchParams();
+  const grupoFacturaId = (searchParams.get("grupoFacturaId") ?? "").trim();
+
   const expedienteQuery = useExpediente(id);
+  const workspaceQuery = useQuery({
+    queryKey: ["finanzas-ver-workspace-grupo", String(id), grupoFacturaId],
+    queryFn: () => getWorkspaceDocumentalV2(id),
+    enabled: Boolean(id && grupoFacturaId),
+  });
+
+  const [previewDocumento, setPreviewDocumento] =
+    useState<ExpedienteDocumento | null>(null);
+
   const expediente = expedienteQuery.data;
-  const documentos = getAllDocuments(expediente);
-  const transferencia = hasDocument(documentos, ["PAGO_TRANSFERENCIA", "TRANSFERENCIA", "ADJUNTO_TRANSFERENCIA"]);
+  const workspace = workspaceQuery.data;
+  const grupo =
+    grupoFacturaId && workspace
+      ? selectedGrupo(workspace, grupoFacturaId)
+      : null;
+
+  const documentos =
+    expediente && grupo
+      ? documentosDelGrupo(expediente, grupo)
+      : grupoFacturaId
+        ? []
+        : getAllDocuments(expediente);
+
+  const transferencia = hasDocument(documentos, [
+    "PAGO_TRANSFERENCIA",
+    "TRANSFERENCIA",
+    "ADJUNTO_TRANSFERENCIA",
+  ]);
+  const previewArchivoId = getArchivoId(previewDocumento);
 
   if (expedienteQuery.isLoading) {
     return (
@@ -183,6 +331,41 @@ export function FinanzasExpedienteView({ id }: { id: string | number }) {
 
   if (expedienteQuery.error || !expediente) {
     return <main className="p-6 text-red-600">No se pudo cargar el expediente.</main>;
+  }
+
+  if (grupoFacturaId && workspaceQuery.isLoading) {
+    return (
+      <main className="space-y-4">
+        <Skeleton className="h-8 w-72" />
+        <Skeleton className="h-44 w-full" />
+      </main>
+    );
+  }
+
+  if (
+    grupoFacturaId &&
+    (workspaceQuery.isError || !workspace || !grupo)
+  ) {
+    return (
+      <main className="space-y-4">
+        <Button asChild variant="ghost" size="sm" className="px-0">
+          <Link href="/finanzas">
+            <ArrowLeft className="h-4 w-4" />
+            Volver
+          </Link>
+        </Button>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Contexto de factura no disponible</CardTitle>
+          </CardHeader>
+          <CardContent className="text-sm text-muted-foreground">
+            No se pudo resolver el grupo de factura solicitado para este
+            expediente. No se mostrarán documentos de otros grupos.
+          </CardContent>
+        </Card>
+      </main>
+    );
   }
 
   return (
@@ -206,7 +389,7 @@ export function FinanzasExpedienteView({ id }: { id: string | number }) {
 
       </div>
 
-      <Card>
+      <Card className="hidden">
         <CardHeader className="pb-2">
           <CardTitle>Control de pago</CardTitle>
           <p className="text-sm text-muted-foreground">
@@ -218,23 +401,64 @@ export function FinanzasExpedienteView({ id }: { id: string | number }) {
         </CardContent>
       </Card>
 
-      <FinanzasGrupoFacturaPagoPanel id={id} />
+      <FinanzasGrupoFacturaPagoPanel
+        id={id}
+        grupoFacturaId={grupoFacturaId || null}
+      />
 
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle>Documentos legacy del expediente</CardTitle>
-          <p className="text-sm text-muted-foreground">
-            Uso administrativo / diagnóstico. No reemplaza el Principal V2 vigente ni el grupo documental de pago.
-          </p>
+          <CardTitle>
+            {grupoFacturaId
+              ? "Documentos de la factura"
+              : "Documentos del expediente"}
+          </CardTitle>
         </CardHeader>
-        <CardContent className="hidden grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+        <CardContent className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           {documentos.length ? documentos.map((documento, index) => (
-            <DocumentoCard key={String((documento as any).documentoId ?? (documento as any).documento_id ?? index)} documento={documento} />
+            <DocumentoCard
+              key={String((documento as any).documentoId ?? (documento as any).documento_id ?? index)}
+              documento={documento}
+              onPreview={setPreviewDocumento}
+            />
           )) : (
-            <div className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">No hay documentos vinculados legacy.</div>
+            <div className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">No hay documentos vinculados.</div>
           )}
         </CardContent>
       </Card>
+
+      {previewDocumento && previewArchivoId ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label={`Vista previa de ${documentoLabel(previewDocumento)}`}
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              setPreviewDocumento(null);
+            }
+          }}
+        >
+          <div className="relative w-full max-w-6xl rounded-2xl bg-background p-4 shadow-2xl">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="absolute right-5 top-5 z-10"
+              aria-label="Cerrar vista previa"
+              onClick={() => setPreviewDocumento(null)}
+            >
+              <X className="h-5 w-5" />
+            </Button>
+
+            <PreviewDocumento
+              archivoId={previewArchivoId}
+              title={documentoLabel(previewDocumento)}
+              className="max-h-[80vh]"
+            />
+          </div>
+        </div>
+      ) : null}
     </main>
   );
 }

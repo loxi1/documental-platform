@@ -1,10 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { Eye, Search, X } from "lucide-react";
+import { Eye, Search } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -16,475 +15,524 @@ import {
 } from "@/components/ui/empty";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useExpedientesPage } from "@/hooks/useExpedientes";
+import { useRevisionContable } from "@/hooks/useRevisionContable";
 import { getContexto } from "@/lib/auth-storage";
-import { buscarExpedientes, enriquecerExpedientes } from "@/services/expedientes";
-import type { Expediente, ExpedienteDocumento } from "@/types/expediente";
+import type { RevisionContableItem } from "@/types/revision-contable";
 
-type ExpedientesApiResponse = {
-  total?: number;
-  limit?: number;
-  offset?: number;
-  data?: Expediente[];
-};
+type UnknownRecord = Record<string, unknown>;
 
-const PAGE_SIZE = 8;
+const PAGE_SIZE_OPTIONS = ["25", "50", "100"];
 
-const EMPRESA_LABELS: Record<string, string> = {
-  BBTI: "BBTI - BBTI S.A.C.",
-  BBTEC: "BBTEC - BB TECNOLOGÍA INDUSTRIAL S.A.C.",
-  CIMA: "CIMA - CIMA ENERGY",
-  HUANCA: "HUANCA - HUANCA",
-  TARMA: "TARMA - TARMA",
-  KIMBIRI: "KIMBIRI - KIMBIRI",
-};
+const MESES = [
+  { value: "1", label: "Enero" },
+  { value: "2", label: "Febrero" },
+  { value: "3", label: "Marzo" },
+  { value: "4", label: "Abril" },
+  { value: "5", label: "Mayo" },
+  { value: "6", label: "Junio" },
+  { value: "7", label: "Julio" },
+  { value: "8", label: "Agosto" },
+  { value: "9", label: "Septiembre" },
+  { value: "10", label: "Octubre" },
+  { value: "11", label: "Noviembre" },
+  { value: "12", label: "Diciembre" },
+];
 
-function empresaLabel(value: string) {
-  return EMPRESA_LABELS[value] ?? value;
+function asRecord(value: unknown): UnknownRecord | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  return value as UnknownRecord;
 }
 
+function pick<T>(...values: T[]) {
+  return values.find(
+    (value) => value !== null && value !== undefined && value !== "",
+  );
+}
 
-function normalizeExpedientes(input: unknown): Expediente[] {
-  if (Array.isArray(input)) return input as Expediente[];
+function nestedRecord(
+  parent: UnknownRecord | null,
+  ...keys: string[]
+): UnknownRecord | null {
+  if (!parent) return null;
 
-  if (
-    input &&
-    typeof input === "object" &&
-    "data" in input &&
-    Array.isArray((input as ExpedientesApiResponse).data)
-  ) {
-    return (input as ExpedientesApiResponse).data ?? [];
+  for (const key of keys) {
+    const value = asRecord(parent[key]);
+    if (value) return value;
+  }
+
+  return null;
+}
+
+function nestedValue(parent: UnknownRecord | null, ...keys: string[]) {
+  if (!parent) return undefined;
+
+  for (const key of keys) {
+    const value = parent[key];
+    if (value !== null && value !== undefined && value !== "") return value;
+  }
+
+  return undefined;
+}
+
+function text(value: unknown, fallback = "—") {
+  if (value === null || value === undefined || value === "") return fallback;
+  return String(value);
+}
+
+function normalizeEmpresa(value: string | null | undefined) {
+  return (value ?? "").trim().toUpperCase();
+}
+
+function itemRecord(item: RevisionContableItem) {
+  return item as unknown as UnknownRecord;
+}
+
+function filaFactura(item: RevisionContableItem) {
+  return asRecord(itemRecord(item).filaFactura);
+}
+
+function facturaRecord(item: RevisionContableItem) {
+  return nestedRecord(filaFactura(item), "factura");
+}
+
+function principalRecord(item: RevisionContableItem) {
+  return (
+    nestedRecord(filaFactura(item), "principal") ??
+    asRecord(
+      pick(
+        itemRecord(item).documento_principal,
+        itemRecord(item).documentoprincipal,
+        null,
+      ),
+    )
+  );
+}
+
+function transferenciaRecord(item: RevisionContableItem) {
+  return nestedRecord(filaFactura(item), "transferencia");
+}
+
+function facturaSerie(item: RevisionContableItem) {
+  return text(
+    pick(
+      nestedValue(facturaRecord(item), "serie"),
+      itemRecord(item).serie,
+      null,
+    ),
+  );
+}
+
+function facturaNumero(item: RevisionContableItem) {
+  return text(
+    pick(
+      nestedValue(facturaRecord(item), "numero"),
+      itemRecord(item).numero,
+      null,
+    ),
+  );
+}
+
+function proveedorNombre(item: RevisionContableItem) {
+  return text(
+    pick(
+      nestedValue(
+        facturaRecord(item),
+        "proveedorNombre",
+        "razonSocialEmisor",
+        "razon_social_emisor",
+      ),
+      itemRecord(item).razonSocialEmisor,
+      itemRecord(item).razon_social_emisor,
+      null,
+    ),
+  );
+}
+
+function proveedorRuc(item: RevisionContableItem) {
+  return text(
+    pick(
+      nestedValue(
+        facturaRecord(item),
+        "proveedorRuc",
+        "rucEmisor",
+        "ruc_emisor",
+      ),
+      itemRecord(item).rucEmisor,
+      itemRecord(item).ruc_emisor,
+      null,
+    ),
+  );
+}
+
+function principalTipo(item: RevisionContableItem) {
+  return text(
+    nestedValue(
+      principalRecord(item),
+      "tipo",
+      "tipoDocumental",
+      "tipo_documental",
+    ),
+  ).toUpperCase();
+}
+
+function principalNumero(item: RevisionContableItem) {
+  const principal = principalRecord(item);
+  const serie = text(nestedValue(principal, "serie"), "");
+  const numero = text(nestedValue(principal, "numero"), "");
+
+  if (serie && numero) return `${serie}-${numero}`;
+  return numero || serie || "—";
+}
+
+function fechaEmisionRaw(item: RevisionContableItem) {
+  return pick(
+    nestedValue(facturaRecord(item), "fechaEmision", "fecha_emision"),
+    itemRecord(item).fechaEmision,
+    itemRecord(item).fecha_emision,
+    null,
+  );
+}
+
+function formatDateCompact(value: unknown) {
+  if (!value) return "—";
+
+  const raw = String(value).trim();
+  const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+
+  if (match) {
+    return `${match[3]}/${match[2]}/${match[1].slice(-2)}`;
+  }
+
+  const date = new Date(raw);
+  if (Number.isNaN(date.getTime())) return raw.slice(0, 10);
+
+  return new Intl.DateTimeFormat("es-PE", {
+    year: "2-digit",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date);
+}
+
+function fechaEmision(item: RevisionContableItem) {
+  return formatDateCompact(fechaEmisionRaw(item));
+}
+
+function monedaFactura(item: RevisionContableItem) {
+  return text(
+    pick(
+      nestedValue(facturaRecord(item), "moneda"),
+      itemRecord(item).moneda,
+      "SOLES",
+    ),
+    "SOLES",
+  ).toUpperCase();
+}
+
+function montoFacturaNumber(item: RevisionContableItem) {
+  const raw = pick(
+    nestedValue(facturaRecord(item), "montoTotal", "monto_total"),
+    itemRecord(item).montoTotal,
+    itemRecord(item).monto_total,
+    0,
+  );
+
+  const value = Number(raw ?? 0);
+  return Number.isNaN(value) ? 0 : value;
+}
+
+function montoFactura(item: RevisionContableItem) {
+  const currency =
+    monedaFactura(item).includes("DOLAR") || monedaFactura(item) === "USD"
+      ? "USD"
+      : "PEN";
+
+  return new Intl.NumberFormat("es-PE", {
+    style: "currency",
+    currency,
+    minimumFractionDigits: 2,
+  }).format(montoFacturaNumber(item));
+}
+
+function expedienteId(item: RevisionContableItem) {
+  return pick(
+    nestedValue(filaFactura(item), "expedienteId", "expediente_id"),
+    itemRecord(item).expedienteId,
+    itemRecord(item).expediente_id,
+    null,
+  );
+}
+
+function grupoFacturaId(item: RevisionContableItem) {
+  return pick(
+    nestedValue(filaFactura(item), "grupoFacturaId", "grupo_factura_id"),
+    itemRecord(item).grupoFacturaId,
+    itemRecord(item).grupo_factura_id,
+    null,
+  );
+}
+
+function isFacturaRow(item: RevisionContableItem) {
+  if (facturaRecord(item)) return true;
+
+  const tipo = String(
+    pick(
+      itemRecord(item).tipoDocumental,
+      itemRecord(item).tipo_documental,
+      "",
+    ),
+  ).toUpperCase();
+
+  return tipo === "FACTURA";
+}
+
+function documentosRelacionados(item: RevisionContableItem) {
+  const record = itemRecord(item);
+
+  for (const key of [
+    "documentos",
+    "documentos_relacionados",
+    "documentosrelacionados",
+    "documentos_adjuntos",
+    "documentosadjuntos",
+  ]) {
+    const value = record[key];
+    if (Array.isArray(value)) return value as UnknownRecord[];
   }
 
   return [];
 }
 
-function text(value: unknown, fallback = "") {
-  if (value === null || value === undefined) return fallback;
-  const normalized = String(value).trim();
-  return normalized || fallback;
-}
+function esTransferencia(doc: UnknownRecord) {
+  const tipo = String(
+    pick(doc.tipoDocumental, doc.tipo_documental, ""),
+  ).toUpperCase();
+  const relacion = String(
+    pick(doc.tipoRelacion, doc.tipo_relacion, ""),
+  ).toUpperCase();
 
-function field<T = unknown>(source: unknown, key: string): T | undefined {
-  if (!source || typeof source !== "object") return undefined;
-  return (source as unknown as Record<string, T | undefined>)[key];
-}
-
-function listField<T = unknown>(source: unknown, key: string): T[] {
-  const value = field<unknown>(source, key);
-  return Array.isArray(value) ? (value as T[]) : [];
-}
-
-function getEmpresa(expediente: Expediente) {
-  return text(
-    field(expediente, "empresa_codigo") ?? field(expediente, "empresaCodigo"),
-    "-",
+  return (
+    tipo.includes("TRANSFERENCIA") ||
+    tipo.includes("PAGO_TRANSFERENCIA") ||
+    relacion.includes("ADJUNTO_TRANSFERENCIA")
   );
 }
 
-function getCodigoExpediente(expediente: Expediente) {
-  return text(
-    field(expediente, "codigo_expediente") ?? field(expediente, "codigoExpediente"),
+function tieneSustentoPago(item: RevisionContableItem) {
+  if (transferenciaRecord(item)) return true;
+  return documentosRelacionados(item).some(esTransferencia);
+}
+
+function operacionesTransferencia(item: RevisionContableItem) {
+  const values = new Set<string>();
+
+  const canonical = transferenciaRecord(item);
+  const canonicalNumero = text(
+    nestedValue(canonical, "numeroOperacion", "numero_operacion", "numero"),
     "",
   );
-}
+  if (canonicalNumero) values.add(canonicalNumero);
 
-function getClienteNombre(expediente: Expediente) {
-  return text(
-    field(expediente, "cliente_nombre") ??
-      field(expediente, "clienteNombre") ??
-      field(expediente, "cliente_abreviatura") ??
-      field(expediente, "clienteAbreviatura") ??
-      getEmpresa(expediente),
-    "-",
-  );
-}
-
-function getDescripcion(expediente: Expediente) {
-  return text(field(expediente, "descripcion"), "Pendiente de descripción");
-}
-
-function getEstado(expediente: Expediente) {
-  return text(field(expediente, "estado"), "abierto");
-}
-
-function getPrincipal(expediente: Expediente): ExpedienteDocumento | null {
-  const documentoPrincipal = field(expediente, "documentoPrincipal") as
-    | ExpedienteDocumento
-    | undefined;
-  const documentosPrincipales = field(expediente, "documentosPrincipales");
-  const documentos = field(expediente, "documentos");
-  const documentosLista = field(expediente, "documentosLista");
-  const documentosAdjuntos = field(expediente, "documentosAdjuntos");
-
-  const findPrincipal = (value: unknown) =>
-    Array.isArray(value)
-      ? (value.find((documento) =>
-          Boolean(field(documento, "esPrincipal")),
-        ) as ExpedienteDocumento | undefined)
-      : undefined;
-
-  return (
-    documentoPrincipal ??
-    (Array.isArray(documentosPrincipales)
-      ? (documentosPrincipales[0] as ExpedienteDocumento | undefined)
-      : undefined) ??
-    findPrincipal(documentos) ??
-    findPrincipal(documentosLista) ??
-    findPrincipal(documentosAdjuntos) ??
-    null
-  );
-}
-
-function getAllDocuments(expediente: Expediente) {
-  const documentos = listField<ExpedienteDocumento>(expediente, "documentos");
-  const documentosLista = listField<ExpedienteDocumento>(expediente, "documentosLista");
-  const documentosPrincipales =
-    listField<ExpedienteDocumento>(expediente, "documentosPrincipales");
-  const documentoPrincipal = field<ExpedienteDocumento | null>(
-    expediente,
-    "documentoPrincipal",
-  );
-  const documentosAdjuntos =
-    listField<ExpedienteDocumento>(expediente, "documentosAdjuntos");
-
-  const all = [
-    ...documentos,
-    ...documentosLista,
-    ...documentosPrincipales,
-    ...(documentoPrincipal ? [documentoPrincipal] : []),
-    ...documentosAdjuntos,
-  ];
-
-  const seen = new Set<string>();
-  return all.filter((documento, index) => {
-    const doc = documento as unknown as Record<string, unknown>;
-    const key = String(
-      doc.documentoId ??
-        doc.documento_id ??
-        doc.claveDocumental ??
-        doc.clave_documental ??
-        `${doc.tipoDocumental ?? doc.tipo_documental ?? "DOC"}-${index}`,
+  for (const doc of documentosRelacionados(item)) {
+    if (!esTransferencia(doc)) continue;
+    const numero = text(
+      pick(doc.numeroOperacion, doc.numero_operacion, doc.numero, ""),
+      "",
     );
+    if (numero) values.add(numero);
+  }
 
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
+  return [...values];
 }
 
-function hasDocument(expediente: Expediente, aliases: string[]) {
-  const normalizedAliases = aliases.map((alias) => alias.toUpperCase());
-
-  return getAllDocuments(expediente).some((documento) => {
-    const doc = documento as unknown as Record<string, unknown>;
-    const tipo = String(doc.tipoDocumental ?? doc.tipo_documental ?? "").toUpperCase();
-    const relacion = String(doc.tipoRelacion ?? doc.tipo_relacion ?? "").toUpperCase();
-
-    return normalizedAliases.some(
-      (alias) => tipo.includes(alias) || relacion.includes(alias),
-    );
-  });
+function normalizeSearch(value: unknown) {
+  return String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .replace(/[^a-z0-9]/g, "");
 }
 
-function principalLabel(expediente: Expediente) {
-  const principal = getPrincipal(expediente);
-
-  if (!principal) return "Sin principal";
-
-  const doc = principal as unknown as Record<string, unknown>;
-  const tipo = text(
-    doc.tipoDocumental ?? doc.tipo_documental ?? doc.tipoRelacion ?? doc.tipo_relacion,
-    "DOC",
-  )
-    .replace("PRINCIPAL_", "")
-    .replace("ADJUNTO_", "")
-    .replaceAll("_", " ")
-    .toUpperCase();
-
-  const serie = text(doc.serie);
-  const numero = text(doc.numero);
-  const labelNumero = [serie, numero].filter(Boolean).join("-");
-
-  return labelNumero ? `${tipo} ${labelNumero}` : tipo;
+function searchText(item: RevisionContableItem) {
+  return [
+    facturaSerie(item),
+    facturaNumero(item),
+    principalTipo(item),
+    principalNumero(item),
+    proveedorNombre(item),
+    proveedorRuc(item),
+    ...operacionesTransferencia(item),
+  ]
+    .filter(Boolean)
+    .join(" ");
 }
 
-function principalDescription(expediente: Expediente) {
-  const principal = getPrincipal(expediente);
-  if (!principal) return "—";
+function buildYearOptions() {
+  const current = new Date().getFullYear();
+  const end = Math.max(current, 2026);
 
-  const doc = principal as unknown as Record<string, unknown>;
-  const proveedor = text(
-    doc.razonSocialEmisor ?? doc.razon_social_emisor ?? doc.proveedor ?? doc.razonSocial,
-  );
-  const fecha = text(doc.fechaEmision ?? doc.fecha_emision);
-  const monto = text(doc.montoTotal ?? doc.monto_total);
-
-  return [proveedor, fecha, monto ? `Monto ${monto}` : ""].filter(Boolean).join(" · ") || "—";
-}
-
-function documentCount(expediente: Expediente) {
-  return getAllDocuments(expediente).length;
-}
-
-function AdjuntosBadge({ label, active }: { label: string; active: boolean }) {
-  return (
-    <Badge
-      variant={active ? "secondary" : "outline"}
-      className={active ? "gap-1" : "gap-1 text-muted-foreground"}
-      title={active ? `${label} presente` : `${label} pendiente`}
-    >
-      <span>{active ? "✓" : "—"}</span>
-      {label}
-    </Badge>
+  return Array.from({ length: end - 2026 + 1 }, (_, index) =>
+    String(2026 + index),
   );
 }
 
-function ExpedienteCell({ expediente }: { expediente: Expediente }) {
-  const codigo = getCodigoExpediente(expediente);
-  const descripcion = getDescripcion(expediente);
+function buildMonthOptions(year: string) {
+  const current = new Date();
+  const selectedYear = Number(year);
 
+  if (selectedYear === current.getFullYear()) {
+    return MESES.slice(0, current.getMonth() + 1);
+  }
+
+  return MESES;
+}
+
+function FacturaCell({ item }: { item: RevisionContableItem }) {
   return (
-    <div className="space-y-1">
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="font-mono text-sm font-semibold text-foreground">
-          {codigo || "SIN EXPEDIENTE"}
-        </span>
-        <Badge variant="outline">{getEmpresa(expediente)}</Badge>
-      </div>
-      <div className="line-clamp-2 text-xs text-muted-foreground">
-        {descripcion}
+    <div>
+      <div className="font-medium leading-tight">{facturaSerie(item)}</div>
+      <div className="text-xs leading-tight text-muted-foreground">
+        {facturaNumero(item)}
       </div>
     </div>
   );
 }
 
-function ActionsCell({ expediente }: { expediente: Expediente }) {
+function PrincipalCell({ item }: { item: RevisionContableItem }) {
   return (
-    <div className="flex justify-end gap-1">
-      <Button asChild size="icon" variant="outline" title="Ver expediente">
-        <Link href={`/finanzas/${expediente.id}/ver`} aria-label="Ver expediente">
+    <div>
+      <div className="font-medium leading-tight">{principalTipo(item)}</div>
+      <div className="text-xs leading-tight text-muted-foreground">
+        {principalNumero(item)}
+      </div>
+    </div>
+  );
+}
+
+function ProveedorCell({ item }: { item: RevisionContableItem }) {
+  const nombre = proveedorNombre(item);
+
+  return (
+    <div className="w-[180px] max-w-[180px]">
+      <div className="truncate font-medium" title={nombre}>
+        {nombre}
+      </div>
+      <div className="text-xs text-muted-foreground">{proveedorRuc(item)}</div>
+    </div>
+  );
+}
+
+function ActionsCell({ item }: { item: RevisionContableItem }) {
+  const expId = expedienteId(item);
+  const grupoId = grupoFacturaId(item);
+
+  if (
+    (typeof expId !== "string" && typeof expId !== "number") ||
+    expId === ""
+  ) {
+    return <span className="text-muted-foreground">—</span>;
+  }
+
+  const query = new URLSearchParams();
+  if (typeof grupoId === "string" || typeof grupoId === "number") {
+    query.set("grupoFacturaId", String(grupoId));
+  }
+
+  const suffix = query.toString() ? `?${query.toString()}` : "";
+
+  return (
+    <div className="flex justify-end gap-2">
+      <Button asChild size="sm" variant="outline">
+        <Link href={`/finanzas/${expId}/ver${suffix}`}>
           <Eye className="h-4 w-4" />
+          Ver
         </Link>
       </Button>
-    </div>
-  );
-}
 
-function PaginationControls({
-  page,
-  totalPages,
-  totalRows,
-  pageSize,
-  onPageChange,
-}: {
-  page: number;
-  totalPages: number;
-  totalRows: number;
-  pageSize: number;
-  onPageChange: (page: number) => void;
-}) {
-  if (totalRows === 0) return null;
-
-  const start = (page - 1) * pageSize + 1;
-  const end = Math.min(page * pageSize, totalRows);
-  const pages = Array.from({ length: totalPages }, (_, index) => index + 1);
-  const visiblePages = pages.filter(
-    (item) =>
-      item === 1 ||
-      item === totalPages ||
-      Math.abs(item - page) <= 1,
-  );
-
-  return (
-    <div className="flex flex-col gap-3 border-t pt-4 text-sm text-muted-foreground md:flex-row md:items-center md:justify-between">
-      <div>
-        Mostrando {start} a {end} de {totalRows} resultados
-      </div>
-
-      <div className="flex items-center gap-1">
+      {typeof grupoId === "string" || typeof grupoId === "number" ? (
+        <Button asChild size="sm">
+          <Link
+            href={`/finanzas/${expId}/editar?grupoFacturaId=${encodeURIComponent(
+              String(grupoId),
+            )}`}
+          >
+            + Adjuntar
+          </Link>
+        </Button>
+      ) : (
         <Button
           type="button"
-          variant="outline"
           size="sm"
-          disabled={page <= 1}
-          onClick={() => onPageChange(page - 1)}
+          disabled
+          title="La factura no tiene grupo persistido para adjuntar un sustento"
         >
-          Anterior
+          + Adjuntar
         </Button>
-
-        {visiblePages.map((item, index) => {
-          const previous = visiblePages[index - 1];
-          const showEllipsis = previous !== undefined && item - previous > 1;
-
-          return (
-            <div key={item} className="flex items-center gap-1">
-              {showEllipsis ? <span className="px-2">...</span> : null}
-              <Button
-                type="button"
-                variant={item === page ? "default" : "outline"}
-                size="sm"
-                className="min-w-9"
-                onClick={() => onPageChange(item)}
-              >
-                {item}
-              </Button>
-            </div>
-          );
-        })}
-
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          disabled={page >= totalPages}
-          onClick={() => onPageChange(page + 1)}
-        >
-          Siguiente
-        </Button>
-      </div>
+      )}
     </div>
   );
 }
 
 export function FinanzasBandeja() {
-  const [workspaceEmpresa, setWorkspaceEmpresa] = useState("BBTI");
-  const [empresa, setEmpresa] = useState("BBTI");
-  const [estado, setEstado] = useState("abierto");
+  const contexto = getContexto();
+  const empresa = normalizeEmpresa(contexto?.empresa) || "BBTI";
+  const today = new Date();
+
+  const [anio, setAnio] = useState(String(Math.max(today.getFullYear(), 2026)));
+  const [mes, setMes] = useState(String(today.getMonth() + 1));
   const [search, setSearch] = useState("");
+  const [pageSize, setPageSize] = useState("50");
   const [page, setPage] = useState(1);
-  const [remoteRows, setRemoteRows] = useState<Expediente[]>([]);
-  const [remoteDetailErrors, setRemoteDetailErrors] = useState<Array<number | string>>([]);
-  const [searchMode, setSearchMode] = useState(false);
-  const [isSearching, setIsSearching] = useState(false);
-  const [searchError, setSearchError] = useState<string | null>(null);
+
+  const yearOptions = useMemo(() => buildYearOptions(), []);
+  const monthOptions = useMemo(() => buildMonthOptions(anio), [anio]);
 
   useEffect(() => {
-    const contexto = getContexto();
-    const empresaContexto = contexto?.empresa?.trim() || "BBTI";
-    setWorkspaceEmpresa(empresaContexto);
-    setEmpresa(empresaContexto);
-  }, []);
+    if (!monthOptions.some((option) => option.value === mes)) {
+      setMes(monthOptions.at(-1)?.value ?? "1");
+    }
+  }, [mes, monthOptions]);
 
-  const offset = (page - 1) * PAGE_SIZE;
-  const {
-    data: pageData,
-    isLoading,
-    isFetching,
-    error,
-  } = useExpedientesPage({
-    empresa,
-    estado,
-    limit: PAGE_SIZE,
-    offset,
-  });
+  const params = useMemo(
+    () => ({
+      empresa,
+      anio,
+      mes,
+    }),
+    [empresa, anio, mes],
+  );
 
-  const expedientes = pageData?.data ?? [];
-  const backendTotal = pageData?.total ?? 0;
-  const detailErrors = searchMode
-    ? remoteDetailErrors
-    : pageData?.detailErrors ?? [];
+  const { data, isLoading, isFetching, error, refetch } =
+    useRevisionContable(params);
 
-  const rows = useMemo(() => {
-    const value = search.trim().toLowerCase();
-    const sourceRows = searchMode ? remoteRows : expedientes;
-    const scopedRows = sourceRows.filter((expediente) => getEmpresa(expediente) === empresa);
-    const withPrincipal = scopedRows.filter((expediente) => Boolean(getPrincipal(expediente)));
-    const visibleRows = searchMode
-      ? withPrincipal
-      : withPrincipal.length > 0
-        ? withPrincipal
-        : scopedRows;
+  const rows = useMemo(
+    () => (data?.items ?? []).filter(isFacturaRow),
+    [data?.items],
+  );
 
-    if (searchMode) return withPrincipal;
-    if (!value) return visibleRows;
+  const filteredRows = useMemo(() => {
+    const query = normalizeSearch(search);
+    if (!query) return rows;
 
-    return visibleRows.filter((expediente) =>
-      [
-        getEmpresa(expediente),
-        getClienteNombre(expediente),
-        getCodigoExpediente(expediente),
-        getDescripcion(expediente),
-        principalLabel(expediente),
-        principalDescription(expediente),
-        getEstado(expediente),
-      ]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase()
-        .includes(value),
+    return rows.filter((item) =>
+      normalizeSearch(searchText(item)).includes(query),
     );
-  }, [empresa, expedientes, remoteRows, search, searchMode]);
-
-  async function ejecutarBusqueda() {
-    const value = search.trim();
-
-    if (value.length < 2) {
-      setSearchMode(false);
-      setRemoteRows([]);
-      setRemoteDetailErrors([]);
-      setSearchError(null);
-      return;
-    }
-
-    setIsSearching(true);
-    setSearchError(null);
-
-    try {
-      const results = await buscarExpedientes(value, 50);
-      const enriched = await enriquecerExpedientes(
-        results as unknown as Expediente[],
-      );
-      setRemoteRows(enriched.data);
-      setRemoteDetailErrors(enriched.detailErrors);
-      setSearchMode(true);
-      setPage(1);
-    } catch {
-      setSearchError("No se pudo buscar expedientes o documentos.");
-    } finally {
-      setIsSearching(false);
-    }
-  }
-
-  function limpiarBusqueda() {
-    setSearch("");
-    setRemoteRows([]);
-    setRemoteDetailErrors([]);
-    setSearchMode(false);
-    setSearchError(null);
-    setPage(1);
-  }
-
-  const totalRows = searchMode ? rows.length : backendTotal;
-  const totalPages = Math.max(1, Math.ceil(totalRows / PAGE_SIZE));
-  const currentPage = Math.min(page, totalPages);
-  const paginatedRows = useMemo(() => {
-    if (!searchMode) return rows;
-
-    const start = (currentPage - 1) * PAGE_SIZE;
-    return rows.slice(start, start + PAGE_SIZE);
-  }, [currentPage, rows, searchMode]);
+  }, [rows, search]);
 
   useEffect(() => {
     setPage(1);
-  }, [empresa, estado]);
+  }, [anio, mes, search, pageSize]);
 
-  useEffect(() => {
-    if (!search.trim()) {
-      setSearchMode(false);
-      setRemoteRows([]);
-      setRemoteDetailErrors([]);
-      setSearchError(null);
-    }
-  }, [search]);
+  const numericPageSize = Number(pageSize);
+  const totalPages = Math.max(
+    1,
+    Math.ceil(filteredRows.length / numericPageSize),
+  );
+  const safePage = Math.min(page, totalPages);
+  const start = (safePage - 1) * numericPageSize;
+  const pageRows = filteredRows.slice(start, start + numericPageSize);
 
-  useEffect(() => {
-    if (page > totalPages) {
-      setPage(totalPages);
-    }
-  }, [page, totalPages]);
-
-  if (isLoading && !pageData) {
+  if (isLoading && !data) {
     return (
       <main className="space-y-4">
         <Skeleton className="h-10 w-72" />
@@ -499,178 +547,190 @@ export function FinanzasBandeja() {
     );
   }
 
-  if (error) {
-    return <div className="p-6 text-red-600">Error cargando bandeja de finanzas.</div>;
-  }
-
   return (
     <main className="space-y-4">
-      <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">Finanzas</h1>
-          <p className="text-sm text-muted-foreground">
-            Facturas y grupos documentales listos para consultar o adjuntar sustentos de pago.
-          </p>
-        </div>
+      <div>
+        <h1 className="text-2xl font-bold">Finanzas</h1>
+        <p className="text-sm text-muted-foreground">
+          Bandeja por factura para consultar y adjuntar sustentos de pago.
+        </p>
       </div>
 
       <Card>
-        <CardHeader className="gap-4">
-          <CardTitle>Filtro</CardTitle>
-          <form
-            className="grid gap-2 md:grid-cols-[140px_160px_1fr_auto]"
-            onSubmit={(event) => {
-              event.preventDefault();
-              void ejecutarBusqueda();
-            }}
-          >
-            <div
-              className="flex h-8 items-center rounded-lg border border-dashed border-input bg-muted/40 px-3 text-sm font-medium text-foreground"
-              title="Empresa definida por el workspace activo"
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base">Facturas</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-2 lg:grid-cols-[130px_130px_1fr_auto]">
+            <select
+              className="h-10 rounded-lg border border-input bg-background px-3 text-sm"
+              value={anio}
+              onChange={(event) => setAnio(event.target.value)}
+              aria-label="Año"
             >
-              {empresaLabel(workspaceEmpresa)}
-            </div>
+              {yearOptions.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
 
             <select
-              className="h-8 rounded-lg border border-input bg-background px-2 text-sm"
-              value={estado}
-              onChange={(event) => setEstado(event.target.value)}
-              disabled={searchMode}
+              className="h-10 rounded-lg border border-input bg-background px-3 text-sm"
+              value={mes}
+              onChange={(event) => setMes(event.target.value)}
+              aria-label="Mes"
             >
-              <option value="abierto">Abierto</option>
-              <option value="en_proceso">En proceso</option>
-              <option value="observado">Observado</option>
-              <option value="completo">Completo</option>
-              <option value="cerrado">Cerrado</option>
+              {monthOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
             </select>
 
             <Input
-              placeholder="Buscar OC, expediente, factura, transferencia, detracción, RUC o proveedor..."
+              placeholder="Buscar factura, OC/OS, transferencia, RUC o proveedor..."
               value={search}
               onChange={(event) => setSearch(event.target.value)}
             />
 
-            <div className="flex gap-2">
-              <Button type="submit" size="sm" disabled={isSearching}>
-                <Search className="h-4 w-4" />
-                {isSearching ? "Buscando" : "Buscar"}
-              </Button>
-              {searchMode ? (
-                <Button type="button" size="sm" variant="outline" onClick={limpiarBusqueda}>
-                  <X className="h-4 w-4" />
-                  Limpiar
-                </Button>
-              ) : null}
-            </div>
-          </form>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => refetch()}
+              disabled={isFetching}
+            >
+              <Search className="h-4 w-4" />
+              {isFetching ? "Actualizando" : "Actualizar"}
+            </Button>
+          </div>
 
-          {searchMode ? (
-            <p className="text-xs text-muted-foreground">
-              Búsqueda global activa: {rows.length} expediente(s) con principal. La búsqueda se mantiene limitada a la empresa del workspace activo.
-            </p>
-          ) : null}
-          {searchError ? <p className="text-xs text-red-600">{searchError}</p> : null}
-          {detailErrors.length > 0 ? (
-            <p className="text-xs text-amber-700">
-              {detailErrors.length} expediente(s) no pudieron completar su detalle y fueron excluidos de esta vista.
-            </p>
-          ) : null}
-          {!searchMode && rows.length > 0 && rows.some((expediente) => !getPrincipal(expediente)) ? (
-            <p className="text-xs text-amber-700">
-              Esta página contiene expedientes sin documento principal disponible para Finanzas. Se muestran para no ocultar la paginación general; use la búsqueda para ubicar un caso documental específico.
-            </p>
-          ) : null}
-        </CardHeader>
+          <div className="mt-2 text-xs text-muted-foreground">
+            Empresa: <span className="font-medium text-foreground">{empresa}</span>
+            {" · "}
+            {filteredRows.length} factura
+            {filteredRows.length === 1 ? "" : "s"}
+          </div>
+        </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
+      {error ? (
+        <Card>
+          <CardContent className="py-4 text-sm text-red-600">
+            No se pudo cargar la bandeja de Finanzas desde la fuente común por
+            factura.
+          </CardContent>
+        </Card>
+      ) : null}
+
+      <Card className="overflow-hidden">
+        <CardHeader className="border-b py-3">
           <div className="flex items-center justify-between gap-3">
-            <CardTitle>Bandeja de finanzas</CardTitle>
-            {isFetching ? (
-              <span className="text-xs text-muted-foreground">Actualizando…</span>
-            ) : null}
+            <CardTitle className="text-base">Bandeja de Finanzas</CardTitle>
+            <select
+              className="h-8 rounded-lg border border-input bg-background px-2 text-xs"
+              value={pageSize}
+              onChange={(event) => setPageSize(event.target.value)}
+              aria-label="Registros por página"
+            >
+              {PAGE_SIZE_OPTIONS.map((option) => (
+                <option key={option} value={option}>
+                  {option} por página
+                </option>
+              ))}
+            </select>
           </div>
         </CardHeader>
 
-        <CardContent className="space-y-4">
-          {rows.length === 0 ? (
-            <>
-              <Empty>
+        <CardContent className="p-0">
+          {filteredRows.length === 0 ? (
+            <Empty className="py-10">
               <EmptyHeader>
-                <EmptyMedia variant="icon">📦</EmptyMedia>
-                <EmptyTitle>Sin expedientes para finanzas</EmptyTitle>
+                <EmptyMedia variant="icon">💳</EmptyMedia>
+                <EmptyTitle>Sin facturas para Finanzas</EmptyTitle>
                 <EmptyDescription>
-                  {searchMode
-                    ? "No se encontraron expedientes con principal para esa búsqueda."
-                    : "La página consultada no contiene expedientes con principal disponible. Use la paginación o búsqueda para continuar."}
+                  No se encontraron facturas para el periodo y búsqueda
+                  seleccionados.
                 </EmptyDescription>
               </EmptyHeader>
-              </Empty>
-
-              {!searchMode && totalPages > 1 ? (
-                <PaginationControls
-                  page={currentPage}
-                  totalPages={totalPages}
-                  totalRows={totalRows}
-                  pageSize={PAGE_SIZE}
-                  onPageChange={setPage}
-                />
-              ) : null}
-            </>
+            </Empty>
           ) : (
             <>
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[860px] text-sm">
+                <table className="w-full text-sm">
                   <thead>
-                    <tr className="border-b text-left text-muted-foreground">
-                      <th className="py-2">Expediente</th>
-                      <th>OC / documento principal</th>
-                      <th>Pago documental</th>
-                      <th>Estado documental de pago</th>
-                      <th className="text-right">Acciones</th>
+                    <tr className="border-b bg-muted/40 text-left align-bottom">
+                      <th className="min-w-[105px] px-3 py-2.5">Factura</th>
+                      <th className="min-w-[90px] px-3 py-2.5">OC/OS</th>
+                      <th className="w-[190px] min-w-[165px] max-w-[190px] px-3 py-2.5">
+                        Proveedor
+                      </th>
+                      <th className="min-w-[92px] px-3 py-2.5">
+                        <span className="block leading-tight">Fecha de</span>
+                        <span className="block leading-tight">emisión</span>
+                      </th>
+                      <th className="min-w-[105px] px-3 py-2.5">Importe</th>
+                      <th className="min-w-[82px] px-3 py-2.5 text-center">
+                        Sustento
+                      </th>
+                      <th className="min-w-[170px] px-3 py-2.5 text-right">
+                        Acciones
+                      </th>
                     </tr>
                   </thead>
 
                   <tbody>
-                    {paginatedRows.map((expediente) => {
-                      const tieneTransferencia = hasDocument(expediente, [
-                        "PAGO_TRANSFERENCIA",
-                        "TRANSFERENCIA",
-                        "ADJUNTO_TRANSFERENCIA",
-                      ]);
-                      const tieneDetraccion = hasDocument(expediente, [
-                        "PAGO_DETRACCION",
-                        "DETRACCION",
-                        "DETRACCIÓN",
-                        "ADJUNTO_DETRACCION",
-                      ]);
+                    {pageRows.map((item) => {
+                      const expId = expedienteId(item);
+                      const grupoId = grupoFacturaId(item);
+                      const key = `${String(expId ?? "sin-exp")}-${String(
+                        grupoId ??
+                          `${facturaSerie(item)}-${facturaNumero(item)}`,
+                      )}`;
 
                       return (
-                        <tr key={expediente.id} className="border-b align-top hover:bg-muted/30">
-                          <td className="w-[30%] py-3 pr-4">
-                            <ExpedienteCell expediente={expediente} />
+                        <tr
+                          key={key}
+                          className="border-b align-middle hover:bg-muted/30"
+                        >
+                          <td className="px-3 py-2.5">
+                            <FacturaCell item={item} />
                           </td>
-                          <td className="w-[30%] py-3 pr-4">
-                            <div className="font-medium">{principalLabel(expediente)}</div>
-                            <div className="mt-1 line-clamp-2 text-xs text-muted-foreground">
-                              {principalDescription(expediente)}
-                            </div>
+
+                          <td className="px-3 py-2.5">
+                            <PrincipalCell item={item} />
                           </td>
-                          <td className="w-[22%] py-3 pr-4">
-                            <div className="flex flex-wrap gap-1.5">
-                              <AdjuntosBadge label="Transferencia" active={tieneTransferencia} />
-                              <AdjuntosBadge label="Detracción" active={tieneDetraccion} />
-                            </div>
-                            <div className="mt-2 text-xs text-muted-foreground">
-                              {documentCount(expediente)} documento(s)
-                            </div>
+
+                          <td className="w-[190px] max-w-[190px] px-3 py-2.5">
+                            <ProveedorCell item={item} />
                           </td>
-                          <td className="w-[10%] py-3 pr-4">
-                            <Badge variant="secondary">{getEstado(expediente)}</Badge>
+
+                          <td className="whitespace-nowrap px-3 py-2.5">
+                            {fechaEmision(item)}
                           </td>
-                          <td className="w-[8%] py-3 text-right">
-                            <ActionsCell expediente={expediente} />
+
+                          <td className="whitespace-nowrap px-3 py-2.5 font-medium">
+                            {montoFactura(item)}
+                          </td>
+
+                          <td
+                            className="px-3 py-2.5 text-center text-base font-semibold"
+                            title={
+                              tieneSustentoPago(item)
+                                ? "Existe sustento de pago asociado a la factura"
+                                : "No se registra sustento de pago asociado"
+                            }
+                            aria-label={
+                              tieneSustentoPago(item)
+                                ? "Sustento de pago disponible"
+                                : "Sin sustento de pago"
+                            }
+                          >
+                            {tieneSustentoPago(item) ? "✓" : "—"}
+                          </td>
+
+                          <td className="px-3 py-2.5 text-right">
+                            <ActionsCell item={item} />
                           </td>
                         </tr>
                       );
@@ -679,13 +739,37 @@ export function FinanzasBandeja() {
                 </table>
               </div>
 
-              <PaginationControls
-                page={currentPage}
-                totalPages={totalPages}
-                totalRows={totalRows}
-                pageSize={PAGE_SIZE}
-                onPageChange={setPage}
-              />
+              <div className="flex flex-col gap-2 border-t px-4 py-3 text-sm md:flex-row md:items-center md:justify-between">
+                <div className="text-xs text-muted-foreground">
+                  Mostrando {pageRows.length ? start + 1 : 0}-
+                  {Math.min(start + pageRows.length, filteredRows.length)} de{" "}
+                  {filteredRows.length}
+                </div>
+
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={safePage <= 1}
+                    onClick={() => setPage((value) => Math.max(1, value - 1))}
+                  >
+                    Anterior
+                  </Button>
+
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={safePage >= totalPages}
+                    onClick={() =>
+                      setPage((value) => Math.min(totalPages, value + 1))
+                    }
+                  >
+                    Siguiente
+                  </Button>
+                </div>
+              </div>
             </>
           )}
         </CardContent>

@@ -457,8 +457,9 @@ export class ExpedientesService {
 
   getRevisionContable(filters: {
     empresa: string;
-    anio: number;
-    mes: number;
+    anio?: number;
+    mes?: number;
+    q?: string;
   }) {
     return this.repo.getRevisionContable(filters);
   }

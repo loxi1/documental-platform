@@ -904,8 +904,9 @@ export class ExpedientesRepository {
 
   async getRevisionContable(filters: {
     empresa: string;
-    anio: number;
-    mes: number;
+    anio?: number;
+    mes?: number;
+    q?: string;
   }) {
     /**
      * Regla contable oficial:
@@ -918,10 +919,34 @@ export class ExpedientesRepository {
      * - Una factura histórica sin Grupo V2 permanece visible y devuelve
      *   grupo/principal nulos y documentos relacionados vacíos.
      */
-    const inicioPeriodo = `${filters.anio}-${String(filters.mes).padStart(2, '0')}-01`;
-    const siguienteMes = filters.mes === 12 ? 1 : filters.mes + 1;
-    const siguienteAnio = filters.mes === 12 ? filters.anio + 1 : filters.anio;
-    const finPeriodo = `${siguienteAnio}-${String(siguienteMes).padStart(2, '0')}-01`;
+    const anio = Number(filters.anio);
+    const mes = Number(filters.mes);
+    const tienePeriodo =
+      Number.isInteger(anio) &&
+      Number.isInteger(mes) &&
+      anio > 0 &&
+      mes >= 1 &&
+      mes <= 12;
+
+    const inicioPeriodo = tienePeriodo
+      ? `${anio}-${String(mes).padStart(2, '0')}-01`
+      : null;
+
+    const siguienteMes = tienePeriodo
+      ? (mes === 12 ? 1 : mes + 1)
+      : null;
+
+    const siguienteAnio = tienePeriodo
+      ? (mes === 12 ? anio + 1 : anio)
+      : null;
+
+    const finPeriodo =
+      tienePeriodo && siguienteMes !== null && siguienteAnio !== null
+        ? `${siguienteAnio}-${String(siguienteMes).padStart(2, '0')}-01`
+        : null;
+
+    const q = filters.q?.trim() || null;
+    const like = q ? `%${q}%` : null;
 
     return sql`
       WITH facturas_periodo AS (
@@ -944,8 +969,14 @@ export class ExpedientesRepository {
           ON d.id = ed.documento_id
         WHERE d.tipo_documental = 'FACTURA'
           AND d.estado = 'confirmado'
-          AND d.fecha_emision >= ${inicioPeriodo}::date
-          AND d.fecha_emision < ${finPeriodo}::date
+          AND (
+            ${inicioPeriodo}::date IS NULL
+            OR d.fecha_emision >= ${inicioPeriodo}::date
+          )
+          AND (
+            ${finPeriodo}::date IS NULL
+            OR d.fecha_emision < ${finPeriodo}::date
+          )
       )
       SELECT
         e.id AS expediente_id,
@@ -988,6 +1019,15 @@ export class ExpedientesRepository {
         fp.observacion_contable,
         fp.observacion_contable AS observacioncontable,
 
+        factura_archivo.archivo_id AS factura_archivo_id,
+        factura_archivo.archivo_id AS facturaarchivoid,
+        factura_archivo.nombre_archivo AS factura_nombre_archivo,
+        factura_archivo.nombre_archivo AS facturanombrearchivo,
+        factura_archivo.archivo_estado AS factura_archivo_estado,
+        factura_archivo.archivo_estado AS facturaarchivoestado,
+        factura_archivo.storage_provider AS factura_storage_provider,
+        factura_archivo.storage_provider AS facturastorageprovider,
+
         COUNT(a.id)::int AS alertas_activas,
         COUNT(a.id)::int AS alertasactivas,
 
@@ -1002,6 +1042,13 @@ export class ExpedientesRepository {
         v2.documento_principal_numero,
         v2.documento_principal_numero AS documentoprincipalnumero,
 
+        v2.codigo_centro_costo,
+        v2.codigo_centro_costo AS codigocentrocosto,
+        v2.grupo_factura_estado,
+        v2.grupo_factura_estado AS grupofacturaestado,
+        v2.grupo_factura_metadata -> 'revisionContable' AS revision_contable,
+        v2.grupo_factura_metadata -> 'revisionContable' AS revisioncontable,
+
         principal.documento_principal,
         principal.documento_principal AS documentoprincipal,
 
@@ -1009,11 +1056,78 @@ export class ExpedientesRepository {
         COALESCE(docs.documentos, '[]'::jsonb) AS documentos_relacionados,
         COALESCE(docs.documentos, '[]'::jsonb) AS documentosrelacionados,
         COALESCE(docs.documentos, '[]'::jsonb) AS documentos_adjuntos,
-        COALESCE(docs.documentos, '[]'::jsonb) AS documentosadjuntos
+        COALESCE(docs.documentos, '[]'::jsonb) AS documentosadjuntos,
+
+        jsonb_build_object(
+          'expedienteId', e.id,
+          'grupoFacturaId', v2.grupo_factura_id,
+
+          'factura', jsonb_build_object(
+            'documentoId', fp.factura_id,
+            'archivoId', (
+              SELECT da_factura.id
+              FROM documentos.documentos_archivos da_factura
+              WHERE da_factura.documento_id = fp.factura_id
+              ORDER BY
+                da_factura.es_version_actual DESC NULLS LAST,
+                da_factura.version DESC NULLS LAST,
+                da_factura.id DESC
+              LIMIT 1
+            ),
+            'serie', fp.serie,
+            'numero', fp.numero,
+            'fechaEmision', fp.fecha_emision,
+            'moneda', fp.moneda,
+            'montoTotal', fp.monto_total,
+            'proveedorNombre', fp.razon_social_emisor,
+            'proveedorRuc', fp.ruc_emisor
+          ),
+
+          'principal',
+            CASE
+              WHEN v2.documento_principal_id IS NULL THEN NULL
+              ELSE jsonb_build_object(
+                'documentoId', v2.documento_principal_id,
+                'tipo', v2.documento_principal_tipo,
+                'numero', v2.documento_principal_numero
+              )
+            END,
+
+          'centroCosto', jsonb_build_object(
+            'codigo', v2.codigo_centro_costo
+          ),
+
+          'guia', canon.guia,
+          'notaIngreso', canon.nota_ingreso,
+          'transferencia', canon.transferencia,
+          'detraccion', canon.detraccion,
+
+          'periodo', jsonb_build_object(
+            'anio', EXTRACT(YEAR FROM fp.fecha_emision)::int,
+            'mes', EXTRACT(MONTH FROM fp.fecha_emision)::int
+          ),
+
+          'revisionContable', v2.grupo_factura_metadata -> 'revisionContable'
+        ) AS "filaFactura"
 
       FROM facturas_periodo fp
       JOIN documentos.expedientes e
         ON e.id = fp.expediente_id
+
+      LEFT JOIN LATERAL (
+        SELECT
+          da.id AS archivo_id,
+          da.nombre_archivo,
+          da.estado AS archivo_estado,
+          da.storage_provider
+        FROM documentos.documentos_archivos da
+        WHERE da.documento_id = fp.factura_id
+        ORDER BY
+          da.es_version_actual DESC NULLS LAST,
+          da.version DESC NULLS LAST,
+          da.id DESC
+        LIMIT 1
+      ) factura_archivo ON true
 
       LEFT JOIN documentos.documento_alertas a
         ON a.documento_id = fp.factura_id
@@ -1028,10 +1142,13 @@ export class ExpedientesRepository {
       LEFT JOIN LATERAL (
         SELECT
           gf.id AS grupo_factura_id,
+          gf.estado AS grupo_factura_estado,
+          gf.metadata AS grupo_factura_metadata,
           dop.id AS documento_operativo_principal_id,
           dp.id AS documento_principal_id,
           dp.tipo_documental AS documento_principal_tipo,
-          dp.numero AS documento_principal_numero
+          dp.numero AS documento_principal_numero,
+          co.centro_costo_codigo AS codigo_centro_costo
         FROM documentos.grupos_factura gf
         JOIN documentos.documentos_operativos_principales dop
           ON dop.id = gf.documento_operativo_principal_id
@@ -1112,7 +1229,191 @@ export class ExpedientesRepository {
           AND gfd.estado = 'activo'
       ) docs ON true
 
+      /*
+       * Resumen canónico para BANDEJA.
+       *
+       * No impone unicidad al dominio:
+       * - 0 relaciones activas del tipo => null
+       * - 1 relación activa             => identidad documental
+       * - >1 relaciones activas         => null (fail-closed)
+       *
+       * documentos[] conserva el detalle completo.
+       */
+      LEFT JOIN LATERAL (
+        SELECT
+          CASE
+            WHEN COUNT(*) FILTER (
+              WHERE gfd.tipo_relacion = 'adjunto_guia'
+            ) = 1
+            THEN (
+              jsonb_agg(
+                jsonb_build_object(
+                  'documentoId', d2.id,
+                  'archivoId', da2.id,
+                  'serie', d2.serie,
+                  'numero', d2.numero
+                )
+                ORDER BY gfd.creado_en ASC, gfd.id ASC
+              ) FILTER (
+                WHERE gfd.tipo_relacion = 'adjunto_guia'
+              )
+            )->0
+            ELSE NULL
+          END AS guia,
+
+          CASE
+            WHEN COUNT(*) FILTER (
+              WHERE gfd.tipo_relacion = 'adjunto_nota_ingreso'
+            ) = 1
+            THEN (
+              jsonb_agg(
+                jsonb_build_object(
+                  'documentoId', d2.id,
+                  'archivoId', da2.id,
+                  'numero', d2.numero
+                )
+                ORDER BY gfd.creado_en ASC, gfd.id ASC
+              ) FILTER (
+                WHERE gfd.tipo_relacion = 'adjunto_nota_ingreso'
+              )
+            )->0
+            ELSE NULL
+          END AS nota_ingreso,
+
+          CASE
+            WHEN COUNT(*) FILTER (
+              WHERE gfd.tipo_relacion = 'adjunto_transferencia'
+            ) = 1
+            THEN (
+              jsonb_agg(
+                jsonb_build_object(
+                  'documentoId', d2.id,
+                  'archivoId', da2.id,
+
+                  'banco', COALESCE(
+                    d2.metadata ->> 'banco',
+                    d2.metadata #>> '{ocr,metadata,banco}'
+                  ),
+
+                  'numeroOperacion', COALESCE(
+                    d2.metadata ->> 'numeroOperacion',
+                    d2.metadata #>> '{ocr,metadata,numeroOperacion}'
+                  ),
+
+                  'fechaPago', COALESCE(
+                    d2.metadata ->> 'fechaPago',
+                    d2.metadata #>> '{ocr,metadata,fechaPago}'
+                  ),
+
+                  'moneda', COALESCE(
+                    d2.metadata ->> 'moneda',
+                    d2.metadata #>> '{ocr,metadata,moneda}',
+                    d2.moneda
+                  ),
+
+                  'montoTotal', COALESCE(
+                    d2.metadata ->> 'montoTotal',
+                    d2.metadata #>> '{ocr,metadata,montoTotal}',
+                    d2.monto_total::text
+                  )
+                )
+                ORDER BY gfd.creado_en ASC, gfd.id ASC
+              ) FILTER (
+                WHERE gfd.tipo_relacion = 'adjunto_transferencia'
+              )
+            )->0
+            ELSE NULL
+          END AS transferencia,
+
+          CASE
+            WHEN COUNT(*) FILTER (
+              WHERE gfd.tipo_relacion = 'adjunto_detraccion'
+            ) = 1
+            THEN (
+              jsonb_agg(
+                jsonb_build_object(
+                  'documentoId', d2.id,
+                  'archivoId', da2.id,
+
+                  'banco', COALESCE(
+                    d2.metadata ->> 'banco',
+                    d2.metadata #>> '{ocr,metadata,banco}'
+                  ),
+
+                  'numeroOperacion', COALESCE(
+                    d2.metadata ->> 'numeroOperacion',
+                    d2.metadata #>> '{ocr,metadata,numeroOperacion}'
+                  ),
+
+                  'fechaPago', COALESCE(
+                    d2.metadata ->> 'fechaPago',
+                    d2.metadata #>> '{ocr,metadata,fechaPago}'
+                  ),
+
+                  'moneda', COALESCE(
+                    d2.metadata ->> 'moneda',
+                    d2.metadata #>> '{ocr,metadata,moneda}',
+                    d2.moneda
+                  ),
+
+                  'montoTotal', COALESCE(
+                    d2.metadata ->> 'montoTotal',
+                    d2.metadata #>> '{ocr,metadata,montoTotal}',
+                    d2.monto_total::text
+                  )
+                )
+                ORDER BY gfd.creado_en ASC, gfd.id ASC
+              ) FILTER (
+                WHERE gfd.tipo_relacion = 'adjunto_detraccion'
+              )
+            )->0
+            ELSE NULL
+          END AS detraccion
+
+        FROM documentos.grupo_factura_documentos gfd
+        JOIN documentos.documentos d2
+          ON d2.id = gfd.documento_id
+
+        LEFT JOIN LATERAL (
+          SELECT da.*
+          FROM documentos.documentos_archivos da
+          WHERE da.documento_id = d2.id
+          ORDER BY
+            da.es_version_actual DESC NULLS LAST,
+            da.version DESC NULLS LAST,
+            da.id DESC
+          LIMIT 1
+        ) da2 ON true
+
+        WHERE gfd.grupo_factura_id = v2.grupo_factura_id
+          AND gfd.estado = 'activo'
+      ) canon ON true
+
       WHERE e.empresa_codigo = ${filters.empresa}
+        AND (
+          ${like}::text IS NULL
+          OR fp.numero ILIKE ${like}
+          OR fp.serie ILIKE ${like}
+          OR CONCAT_WS('-', fp.serie, fp.numero) ILIKE ${like}
+          OR fp.razon_social_emisor ILIKE ${like}
+          OR fp.ruc_emisor ILIKE ${like}
+          OR v2.documento_principal_numero ILIKE ${like}
+          OR EXISTS (
+            SELECT 1
+            FROM documentos.grupo_factura_documentos gfd_busqueda
+            JOIN documentos.documentos d_busqueda
+              ON d_busqueda.id = gfd_busqueda.documento_id
+            WHERE gfd_busqueda.grupo_factura_id = v2.grupo_factura_id
+              AND gfd_busqueda.estado = 'activo'
+              AND (
+                d_busqueda.numero ILIKE ${like}
+                OR d_busqueda.serie ILIKE ${like}
+                OR CONCAT_WS('-', d_busqueda.serie, d_busqueda.numero) ILIKE ${like}
+                OR d_busqueda.razon_social_emisor ILIKE ${like}
+                OR d_busqueda.ruc_emisor ILIKE ${like}
+              )
+          )
+        )
 
       GROUP BY
         e.id,
@@ -1134,8 +1435,18 @@ export class ExpedientesRepository {
         v2.documento_principal_tipo,
         v2.documento_principal_numero,
         principal.documento_principal,
-        docs.documentos
-
+        docs.documentos,
+        factura_archivo.archivo_id,
+        factura_archivo.nombre_archivo,
+        factura_archivo.archivo_estado,
+        factura_archivo.storage_provider,
+        v2.codigo_centro_costo,
+        v2.grupo_factura_estado,
+        v2.grupo_factura_metadata,
+        canon.guia,
+        canon.nota_ingreso,
+        canon.transferencia,
+        canon.detraccion
       ORDER BY fp.fecha_emision ASC, e.codigo_expediente ASC, e.id ASC
     `;
   }

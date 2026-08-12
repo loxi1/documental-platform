@@ -1051,10 +1051,8 @@ export function OcrValidationModal({
                 </div>
               )}
 
-              <div className="grid gap-3 md:grid-cols-2">
-                <ReadOnlyInfo label="Código expediente" value={form.codigoExpediente || expediente.codigo} />
-                <ReadOnlyInfo label="Clave documental" value={form.claveDocumental} mono />
-              </div>
+              {/* Código de contexto y clave documental se conservan
+                  internamente, pero no forman parte de la validación humana. */}
 
               {!ocultarExpedienteVinculado ? (
               <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900">
@@ -1065,8 +1063,7 @@ export function OcrValidationModal({
                   <div className="mt-2 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                     <div>
                       <p className="text-sm font-semibold text-slate-950 dark:text-slate-100">
-                        #{expediente.id}
-                        {expediente.codigo ? ` · ${expediente.codigo}` : ""}
+                        {expediente.codigo || "Contexto seleccionado"}
                       </p>
                       {expediente.descripcion ? (
                         <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
@@ -1103,14 +1100,8 @@ export function OcrValidationModal({
               {duplicadoDetails ? (
                 <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200">
                   <p className="font-semibold">Este documento ya existe en el expediente.</p>
-                  <div className="mt-2 space-y-1 text-xs">
-                    {duplicadoDetails.claveDocumental ? <p>Clave: {duplicadoDetails.claveDocumental}</p> : null}
-                    {duplicadoDetails.documentoIdExistente ? <p>Documento existente: {duplicadoDetails.documentoIdExistente}</p> : null}
-                    {duplicadoDetails.documentoIdActual ? <p>Documento temporal: {duplicadoDetails.documentoIdActual}</p> : null}
-                    {duplicadoDetails.archivoIdActual ? <p>Archivo nuevo: {duplicadoDetails.archivoIdActual}</p> : null}
-                  </div>
-                  <p className="mt-3 text-xs">
-                    No se creará otro documento lógico. Puedes agregar este archivo como nueva versión del documento existente.
+                  <p className="mt-2 text-xs">
+                    El archivo puede incorporarse como una nueva versión del documento ya registrado.
                   </p>
                   <button
                     type="button"

@@ -1467,10 +1467,10 @@ export function FinanzasExpedienteEditor({ id }: { id: string | number }) {
             className="mb-4 rounded-xl border p-4"
           >
             <p className="font-medium">
-              Esta transferencia requiere una decisión humana de correspondencia.
+              Revise la factura y el sustento de pago antes de confirmar.
             </p>
             <p className="mt-1 text-sm text-muted-foreground">
-              La evaluación automática no puede verificar la correspondencia con la factura del grupo.
+              La validación automática necesita su revisión para completar esta operación.
             </p>
 
             <div className="mt-3 flex flex-wrap gap-2">
@@ -1490,7 +1490,7 @@ export function FinanzasExpedienteEditor({ id }: { id: string | number }) {
                   setModalAbierto(true);
                 }}
               >
-                Aceptar asociación
+                Validar pago
               </Button>
 
               <Button
@@ -1514,7 +1514,7 @@ export function FinanzasExpedienteEditor({ id }: { id: string | number }) {
             </div>
 
             <div className="mt-3">
-              <label className="text-sm font-medium">Motivo</label>
+              <label className="text-sm font-medium">Comentario</label>
               <Input
                 className="mt-1"
                 value={decisionCorrespondencia?.motivo ?? ""}
@@ -1524,7 +1524,7 @@ export function FinanzasExpedienteEditor({ id }: { id: string | number }) {
                     motivo: e.target.value,
                   }))
                 }
-                placeholder="Indica el motivo de la decisión"
+                placeholder="Agrega un comentario si es necesario"
               />
             </div>
           </div>
@@ -1539,7 +1539,7 @@ export function FinanzasExpedienteEditor({ id }: { id: string | number }) {
         <section className="grid gap-4 lg:grid-cols-3">
           <FinanzasDocumentoPrincipalOperativoCard id={id} />
 
-          <Card>
+          <Card className="hidden">
             <CardContent className="grid gap-3 p-4">
               <div className="grid gap-3 md:grid-cols-2">
                 <div className="space-y-1">
@@ -1571,7 +1571,7 @@ export function FinanzasExpedienteEditor({ id }: { id: string | number }) {
           onAdjuntarTransferencia={iniciarAdjuntarTransferencia}
         />
 
-        <Card className="border-dashed bg-muted/20">
+        <Card className="hidden border-dashed bg-muted/20">
           <CardHeader className="pb-2">
             <CardTitle>Carga legacy de Finanzas</CardTitle>
             <p className="text-sm text-muted-foreground">

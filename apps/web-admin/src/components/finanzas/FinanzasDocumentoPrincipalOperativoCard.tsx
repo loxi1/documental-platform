@@ -66,7 +66,7 @@ export function FinanzasDocumentoPrincipalOperativoCard({ id }: { id: string | n
       <CardHeader className="pb-2">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <CardTitle>Documento principal</CardTitle>
-          <div className="flex flex-wrap gap-2">
+          <div className="hidden flex-wrap gap-2">
             {principalV2Id ? <Badge variant="outline">Principal V2 {String(principalV2Id)}</Badge> : null}
             {documentoId ? <Badge variant="outline">Documento {String(documentoId)}</Badge> : null}
             {principal ? <Badge variant="outline">{getEstado(principal)}</Badge> : <Badge variant="outline">Sin principal</Badge>}

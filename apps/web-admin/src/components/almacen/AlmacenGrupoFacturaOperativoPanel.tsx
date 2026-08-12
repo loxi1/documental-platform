@@ -132,9 +132,11 @@ function msiiFacturaGrupoLabel(source: unknown, facturaDocumentoId: unknown, fal
 
 export function AlmacenGrupoFacturaOperativoPanel({
   expedienteId,
+  grupoFacturaId = null,
   modo = "ver",
 }: {
   expedienteId: string | number;
+  grupoFacturaId?: string | number | null;
   modo?: "ver" | "editar";
 }) {
   const workspaceQuery = useQuery({
@@ -149,6 +151,23 @@ export function AlmacenGrupoFacturaOperativoPanel({
   const gruposPersistidos = useMemo(
     () => grupos.filter((grupo) => Boolean(getGrupoFacturaPersistidoId(grupo))),
     [grupos],
+  );
+
+  const grupoSolicitado =
+    grupoFacturaId === null || grupoFacturaId === undefined
+      ? null
+      : String(grupoFacturaId);
+
+  const gruposVisibles = useMemo(
+    () =>
+      grupoSolicitado
+        ? gruposPersistidos.filter(
+            (grupo) =>
+              String(getGrupoFacturaPersistidoId(grupo) ?? "") ===
+              grupoSolicitado,
+          )
+        : gruposPersistidos,
+    [grupoSolicitado, gruposPersistidos],
   );
 
   if (workspaceQuery.isLoading) {
@@ -190,13 +209,18 @@ export function AlmacenGrupoFacturaOperativoPanel({
           </div>
           <div className="flex flex-wrap gap-2">
             <Badge variant="outline">{getContextoEmpresaCodigo(contexto) || "Empresa"}</Badge>
-            <Badge variant="secondary">{gruposPersistidos.length} grupo(s) persistido(s)</Badge>
+            <Badge variant="secondary">{gruposVisibles.length} grupo(s) persistido(s)</Badge>
           </div>
         </div>
       </CardHeader>
       <CardContent className="space-y-3">
-        {gruposPersistidos.length ? (
-          gruposPersistidos.map((grupo, index) => {
+        {grupoSolicitado && !gruposVisibles.length ? (
+          <div className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
+            No se pudo resolver la factura solicitada. No se mostrarán otros
+            grupos del expediente.
+          </div>
+        ) : gruposVisibles.length ? (
+          gruposVisibles.map((grupo, index) => {
             const grupoFacturaId = getGrupoFacturaPersistidoId(grupo);
             const facturaDocumentoId = getGrupoFacturaDocumentoId(grupo) ?? getGrupoFacturaId(grupo);
             const principalDocumentoId = getGrupoDocumentoPrincipalDocumentoId(grupo);

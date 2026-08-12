@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
+import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, FilePlus2, FileText } from "lucide-react";
 
 import { AlmacenDocumentoPrincipalOperativoCard } from "@/components/almacen/AlmacenDocumentoPrincipalOperativoCard";
@@ -10,6 +12,17 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useExpediente } from "@/hooks/useExpedientes";
+import { getWorkspaceDocumentalV2 } from "@/services/documental-v2-workspace";
+import {
+  entityVista,
+  getAdjuntosGrupo,
+  getGrupoFacturaPersistidoId,
+  getGruposFactura,
+} from "@/components/documental-v2/workspace-v2-utils";
+import type {
+  WorkspaceV2Documento,
+  WorkspaceV2GrupoFactura,
+} from "@/types/documental-v2-workspace";
 import type { Expediente, ExpedienteDocumento } from "@/types/expediente";
 
 function text(value: unknown, fallback = "—") {
@@ -131,6 +144,43 @@ function hasDocument(documentos: ExpedienteDocumento[], aliases: string[]) {
   });
 }
 
+function selectedGrupo(
+  workspace: Awaited<ReturnType<typeof getWorkspaceDocumentalV2>>,
+  grupoFacturaId: string,
+): WorkspaceV2GrupoFactura | null {
+  if (!grupoFacturaId) return null;
+
+  return (
+    getGruposFactura(workspace).find(
+      (grupo) =>
+        String(getGrupoFacturaPersistidoId(grupo) ?? "") === grupoFacturaId,
+    ) ?? null
+  );
+}
+
+function grupoHasDocument(
+  grupo: WorkspaceV2GrupoFactura | null,
+  aliases: string[],
+) {
+  if (!grupo) return false;
+
+  const normalizedAliases = aliases.map((alias) => alias.toUpperCase());
+
+  return getAdjuntosGrupo(grupo).some((documento: WorkspaceV2Documento) => {
+    const vista = entityVista<Record<string, unknown>>(documento);
+    const tipo = String(
+      vista.tipoDocumental ?? vista.tipo_documental ?? "",
+    ).toUpperCase();
+    const relacion = String(
+      vista.tipoRelacion ?? vista.tipo_relacion ?? "",
+    ).toUpperCase();
+
+    return normalizedAliases.some(
+      (alias) => tipo.includes(alias) || relacion.includes(alias),
+    );
+  });
+}
+
 function EstadoDocBadge({ label, active }: { label: string; active: boolean }) {
   return (
     <Badge variant={active ? "secondary" : "outline"} className={active ? "gap-1" : "gap-1 text-muted-foreground"}>
@@ -157,14 +207,45 @@ function DocumentoCard({ documento }: { documento: ExpedienteDocumento }) {
 }
 
 export function AlmacenExpedienteView({ id }: { id: string | number }) {
+  const searchParams = useSearchParams();
+  const grupoFacturaId = (searchParams.get("grupoFacturaId") ?? "").trim();
+
   const expedienteQuery = useExpediente(id);
+  const workspaceQuery = useQuery({
+    queryKey: ["almacen-ver-workspace-grupo", String(id), grupoFacturaId],
+    enabled: Boolean(id && grupoFacturaId),
+    queryFn: () => getWorkspaceDocumentalV2(id),
+  });
+
   const expediente = expedienteQuery.data;
+  const workspace = workspaceQuery.data;
+  const grupo =
+    grupoFacturaId && workspace
+      ? selectedGrupo(workspace, grupoFacturaId)
+      : null;
+
   const documentos = getAllDocuments(expediente);
   const principal = getPrincipal(expediente);
-  const adjuntos = documentos.filter((documento) => !isPrincipal(documento));
-  const factura = hasDocument(documentos, ["FACTURA", "ADJUNTO_FACTURA", "PRINCIPAL_FACTURA"]);
-  const guia = hasDocument(documentos, ["GUIA", "GUÍA", "GUIA_REMISION"]);
-  const notaIngreso = hasDocument(documentos, ["NOTA_INGRESO", "NOTA INGRESO"]);
+
+  const factura = grupoFacturaId
+    ? Boolean(grupo)
+    : hasDocument(documentos, [
+        "FACTURA",
+        "ADJUNTO_FACTURA",
+        "PRINCIPAL_FACTURA",
+      ]);
+
+  const guia = grupoFacturaId
+    ? grupoHasDocument(grupo, ["GUIA", "GUÍA", "GUIA_REMISION", "ADJUNTO_GUIA"])
+    : hasDocument(documentos, ["GUIA", "GUÍA", "GUIA_REMISION"]);
+
+  const notaIngreso = grupoFacturaId
+    ? grupoHasDocument(grupo, [
+        "NOTA_INGRESO",
+        "NOTA INGRESO",
+        "ADJUNTO_NOTA_INGRESO",
+      ])
+    : hasDocument(documentos, ["NOTA_INGRESO", "NOTA INGRESO"]);
 
   if (expedienteQuery.isLoading) {
     return (
@@ -177,6 +258,41 @@ export function AlmacenExpedienteView({ id }: { id: string | number }) {
 
   if (expedienteQuery.error || !expediente) {
     return <main className="p-6 text-red-600">No se pudo cargar el expediente.</main>;
+  }
+
+  if (grupoFacturaId && workspaceQuery.isLoading) {
+    return (
+      <main className="space-y-4">
+        <Skeleton className="h-8 w-72" />
+        <Skeleton className="h-44 w-full" />
+      </main>
+    );
+  }
+
+  if (
+    grupoFacturaId &&
+    (workspaceQuery.isError || !workspace || !grupo)
+  ) {
+    return (
+      <main className="space-y-4">
+        <Button asChild variant="ghost" size="sm" className="px-0">
+          <Link href="/almacen">
+            <ArrowLeft className="h-4 w-4" />
+            Volver
+          </Link>
+        </Button>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Contexto de factura no disponible</CardTitle>
+          </CardHeader>
+          <CardContent className="text-sm text-muted-foreground">
+            No se pudo resolver el grupo de factura solicitado para este
+            expediente. No se mostrarán documentos de otros grupos.
+          </CardContent>
+        </Card>
+      </main>
+    );
   }
 
   return (
@@ -198,20 +314,42 @@ export function AlmacenExpedienteView({ id }: { id: string | number }) {
           
         </div>
 
-        <Button asChild>
-          <Link href={`/almacen/${id}/editar?accion=adjuntar`}>
-            <FilePlus2 className="h-4 w-4" />
-            Adjuntar documento de recepción
-          </Link>
-        </Button>
+        {grupoFacturaId ? (
+          <Button asChild>
+            <Link
+              href={`/almacen/${id}/editar?grupoFacturaId=${encodeURIComponent(
+                grupoFacturaId,
+              )}#adjuntar-guia-ni`}
+            >
+              <FilePlus2 className="h-4 w-4" />
+              Adjuntar documento de recepción
+            </Link>
+          </Button>
+        ) : (
+          <Button asChild>
+            <Link href={`/almacen/${id}/editar?accion=adjuntar`}>
+              <FilePlus2 className="h-4 w-4" />
+              Adjuntar documento de recepción
+            </Link>
+          </Button>
+        )}
       </div>
 
       <section className="grid gap-3 lg:grid-cols-[1.5fr_1fr]">
         <AlmacenDocumentoPrincipalOperativoCard
           expedienteId={id}
-          fallbackTitle={principal ? documentoLabel(principal) : null}
-          fallbackDescription={principal ? documentoDescripcion(principal) : null}
-          fallbackActive={Boolean(principal)}
+          grupoFacturaId={grupoFacturaId || null}
+          fallbackTitle={
+            grupoFacturaId ? null : principal ? documentoLabel(principal) : null
+          }
+          fallbackDescription={
+            grupoFacturaId
+              ? null
+              : principal
+                ? documentoDescripcion(principal)
+                : null
+          }
+          fallbackActive={Boolean(!grupoFacturaId && principal)}
         />
 
         <Card>
@@ -226,27 +364,33 @@ export function AlmacenExpedienteView({ id }: { id: string | number }) {
         </Card>
       </section>
 
-      <AlmacenGrupoFacturaOperativoPanel expedienteId={id} modo="ver" />
+      <AlmacenGrupoFacturaOperativoPanel
+        expedienteId={id}
+        grupoFacturaId={grupoFacturaId || null}
+        modo="ver"
+      />
 
-      <Card>
-        <details>
-          <summary className="cursor-pointer list-none px-6 py-4">
-            <div className="flex flex-col gap-1">
-              <CardTitle>Documentos legacy del expediente</CardTitle>
-              <p className="text-sm text-muted-foreground">
-                Uso administrativo / diagnóstico. No reemplaza el Principal V2 vigente ni el grupo documental de recepción.
-              </p>
-            </div>
-          </summary>
-          <CardContent className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-            {documentos.length ? documentos.map((documento, index) => (
-              <DocumentoCard key={String((documento as any).documentoId ?? (documento as any).documento_id ?? index)} documento={documento} />
-            )) : (
-              <div className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">No hay documentos vinculados.</div>
-            )}
-          </CardContent>
-        </details>
-      </Card>
+      {!grupoFacturaId ? (
+        <Card>
+          <details>
+            <summary className="cursor-pointer list-none px-6 py-4">
+              <div className="flex flex-col gap-1">
+                <CardTitle>Documentos legacy del expediente</CardTitle>
+                <p className="text-sm text-muted-foreground">
+                  Uso administrativo / diagnóstico. No reemplaza el Principal V2 vigente ni el grupo documental de recepción.
+                </p>
+              </div>
+            </summary>
+            <CardContent className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {documentos.length ? documentos.map((documento, index) => (
+                <DocumentoCard key={String((documento as any).documentoId ?? (documento as any).documento_id ?? index)} documento={documento} />
+              )) : (
+                <div className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">No hay documentos vinculados.</div>
+              )}
+            </CardContent>
+          </details>
+        </Card>
+      ) : null}
     </main>
   );
 }

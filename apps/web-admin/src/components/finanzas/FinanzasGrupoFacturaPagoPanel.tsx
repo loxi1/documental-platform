@@ -1,11 +1,14 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { CreditCard, Link2 } from "lucide-react";
+import { CreditCard, Eye, Link2, X } from "lucide-react";
 
 import { AsociarDocumentoGrupoFacturaPanel } from "@/components/documental-v2/AsociarDocumentoGrupoFacturaPanel";
+import { PreviewDocumento } from "@/components/common/PreviewDocumento";
 import { Badge } from "@/components/ui/badge";
+import { getDocumentoArchivos } from "@/services/documentos";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -297,39 +300,39 @@ function EvaluacionCorrespondenciaPago({
     <div className="space-y-3 rounded-lg border bg-muted/10 p-3 text-xs">
       <div className="flex flex-wrap items-center gap-2">
         <Badge variant="outline">
-          Evaluación técnica: {getEstadoGeneral(evaluacion)}
+          Estado de validación: {getEstadoGeneral(evaluacion)}
         </Badge>
         {asociacionYaResuelta ? (
-          <Badge variant="secondary">Asociación ya resuelta</Badge>
+          <Badge variant="secondary">Validación registrada</Badge>
         ) : null}
         {!asociacionYaResuelta && requiereDecisionHumana ? (
-          <Badge variant="secondary">Revisión humana requerida</Badge>
+          <Badge variant="secondary">Revisión requerida</Badge>
         ) : null}
         {!asociacionYaResuelta && permiteAsociacionOrdinaria === false ? (
-          <Badge variant="destructive">Debe decidirse antes de asociar</Badge>
+          <Badge variant="destructive">Requiere validación</Badge>
         ) : null}
         {!asociacionYaResuelta && permiteAsociacionOrdinaria === true ? (
-          <Badge variant="outline">Asociación ordinaria permitida</Badge>
+          <Badge variant="outline">Validación disponible</Badge>
         ) : null}
       </div>
 
       {asociacionYaResuelta ? (
         <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-emerald-900 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-200">
-          <p className="font-medium">Asociación</p>
+          <p className="font-medium">Validación</p>
           <p className="mt-1">
-            Ya resuelta para este sustento de pago en el grupo seleccionado.
+            Este sustento de pago ya tiene una decisión registrada para la factura seleccionada.
           </p>
         </div>
       ) : null}
 
       {!asociacionYaResuelta && requiereDecisionHumana ? (
         <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200">
-          <p className="font-medium">Siguiente paso: decisión humana</p>
+          <p className="font-medium">Siguiente paso: validar sustento</p>
           <p className="mt-1 text-muted-foreground dark:text-amber-200/80">
-            Revise la factura y la transferencia. Luego elija aceptar la asociación u observarla.
+            Revise la factura y el sustento de pago antes de confirmar.
           </p>
           <div className="mt-2 flex flex-wrap gap-2">
-            <Badge variant="secondary">Aceptar asociación</Badge>
+            <Badge variant="secondary">Validar pago</Badge>
             <Badge variant="outline">Observar</Badge>
           </div>
         </div>
@@ -398,12 +401,33 @@ function GrupoPagoCard({
   onRefresh: () => Promise<unknown> | unknown;
   onAdjuntarTransferencia?: (grupoFacturaId: string | number) => void;
 }) {
+  const [previewPagoAbierto, setPreviewPagoAbierto] = useState(false);
+
   const grupoFacturaId = getGrupoFacturaPersistidoId(grupo);
   const principalDocumentoId = getGrupoDocumentoPrincipalDocumentoId(grupo);
   const facturaDocumentoId = getGrupoFacturaDocumentoId(grupo);
   const pagoDocumento = getTransferenciaDocumento(grupo);
   const pagoDocumentoId = pagoDocumento ? getWorkspaceDocumentoId(pagoDocumento) : null;
   const sustentoPago = Boolean(pagoDocumentoId);
+
+  const pagoArchivosQuery = useQuery({
+    queryKey: ["finanzas-pago-archivos", pagoDocumentoId],
+    enabled: Boolean(pagoDocumentoId),
+    queryFn: () =>
+      getDocumentoArchivos(pagoDocumentoId as string | number),
+  });
+
+  const pagoArchivos =
+    pagoArchivosQuery.data?.data ??
+    pagoArchivosQuery.data?.archivos ??
+    [];
+
+  const pagoArchivoActual =
+    pagoArchivos.find((archivo) => archivo.es_version_actual === true) ??
+    (pagoArchivos.length === 1 ? pagoArchivos[0] : null);
+
+  const pagoArchivoId = pagoArchivoActual?.id ?? null;
+
   const principalOperativo = msiiPrincipalGrupoLabel(workspace, principalDocumentoId);
   const facturaOperativa = msiiFacturaGrupoLabel(workspace, facturaDocumentoId, getGrupoFacturaLabel(grupo));
   const correspondenciaQuery = useQuery({
@@ -485,7 +509,7 @@ function GrupoPagoCard({
             </div>
           </dl>
 
-          <div className="flex flex-wrap gap-2 text-xs">
+          <div className="hidden flex-wrap gap-2 text-xs">
             <Badge variant="outline">Factura seleccionada</Badge>
             <Badge variant="outline">Principal del grupo seleccionado</Badge>
             <Badge variant="outline">Estado documental {textValue(entityVista<Record<string, unknown>>(grupo).estadoRevisionLabel ?? entityVista<Record<string, unknown>>(grupo).estado_revision_label ?? entityVista<Record<string, unknown>>(grupo).estado, "Sin estado")}</Badge>
@@ -494,66 +518,82 @@ function GrupoPagoCard({
           <div className="space-y-1 pt-1">
             <div className="flex flex-wrap gap-2">
               <EstadoPagoBadge label="Factura" active />
-              <EstadoPagoBadge label="Recepción" active={recepcionConEvidencia} />
               <EstadoPagoBadge label="Sustento de pago" active={sustentoPago} />
             </div>
-            {!recepcionConEvidencia ? (
-              <p className="text-xs text-muted-foreground">
-                Recepción sin evidencia asociada en el grupo. Finanzas no infiere recepción completa solo por existir factura o grupo persistido.
-              </p>
-            ) : null}
+            {!recepcionConEvidencia ? null : null}
             {sustentoPago ? (
               <p className="text-xs text-muted-foreground">
-                Sustento de pago presente. Finanzas no infiere factura pagada, conciliada, liquidada ni saldo cero sin validación de correspondencia.
+                Sustento de pago registrado.
               </p>
             ) : null}
-            <EvaluacionCorrespondenciaPago
-              hasSustento={sustentoPago}
-              isLoading={correspondenciaQuery.isLoading || correspondenciaQuery.isFetching}
-              isError={correspondenciaQuery.isError}
-              evaluacion={correspondenciaQuery.data}
-              asociacionYaResuelta={pagoYaAsociadoGrupoActivo}
-            />
+            <div className="hidden">
+              <EvaluacionCorrespondenciaPago
+                hasSustento={sustentoPago}
+                isLoading={correspondenciaQuery.isLoading || correspondenciaQuery.isFetching}
+                isError={correspondenciaQuery.isError}
+                evaluacion={correspondenciaQuery.data}
+                asociacionYaResuelta={pagoYaAsociadoGrupoActivo}
+              />
+            </div>
           </div>
         </div>
 
         <div className="flex shrink-0 flex-wrap gap-2">
-          <Button asChild variant="outline" size="sm">
-            <Link href={`/workspace/expedientes-v1/${expedienteId}`}>
-              <Link2 className="h-4 w-4" />
-              Ver trazabilidad completa
-            </Link>
-          </Button>
-          {editable ? (
-            <>
-              {grupoFacturaId && onAdjuntarTransferencia ? (
-                <Button
-                  type="button"
-                  size="sm"
-                  onClick={() => onAdjuntarTransferencia(grupoFacturaId)}
-                >
-                  Adjuntar sustento de pago
-                </Button>
-              ) : null}
-              <AsociarDocumentoGrupoFacturaPanel
-                grupoFacturaId={grupoFacturaId}
-                modo="finanzas"
-                authorized={canAssociateGroupDocument}
-                onAssociated={async () => {
-                  await Promise.all([
-                    Promise.resolve(onRefresh()),
-                    candidatosGrupoQuery.refetch(),
-                  ]);
-                }}
-              />
-            </>
-          ) : (
-            <Button asChild size="sm">
-              <Link href={`/finanzas/${expedienteId}/editar?grupoFacturaId=${grupoFacturaId}`}>Adjuntar sustento de pago</Link>
+          {editable && sustentoPago && pagoArchivoId ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setPreviewPagoAbierto(true)}
+            >
+              <Eye className="mr-1.5 h-4 w-4" />
+              Ver pago
             </Button>
-          )}
+          ) : null}
+
+          {editable && grupoFacturaId && onAdjuntarTransferencia ? (
+            <Button
+              type="button"
+              size="sm"
+              onClick={() => onAdjuntarTransferencia(grupoFacturaId)}
+            >
+              Adjuntar sustento de pago
+            </Button>
+          ) : null}
         </div>
       </div>
+
+      {previewPagoAbierto && pagoArchivoId ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Vista previa del sustento de pago"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              setPreviewPagoAbierto(false);
+            }
+          }}
+        >
+          <div className="relative w-full max-w-6xl rounded-2xl bg-background p-4 pt-12 shadow-2xl">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="absolute right-3 top-2 z-20"
+              aria-label="Cerrar vista previa"
+              onClick={() => setPreviewPagoAbierto(false)}
+            >
+              <X className="h-5 w-5" />
+            </Button>
+
+            <PreviewDocumento
+              archivoId={pagoArchivoId}
+              title="Sustento de pago"
+            />
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -561,10 +601,12 @@ function GrupoPagoCard({
 export function FinanzasGrupoFacturaPagoPanel({
   id,
   editable = false,
+  grupoFacturaId = null,
   onAdjuntarTransferencia,
 }: {
   id: string | number;
   editable?: boolean;
+  grupoFacturaId?: string | number | null;
   onAdjuntarTransferencia?: (grupoFacturaId: string | number) => void;
 }) {
   const capabilities = useWorkspaceV2Capabilities();
@@ -604,7 +646,23 @@ export function FinanzasGrupoFacturaPagoPanel({
   }
 
   const workspace = workspaceQuery.data;
-  const gruposPersistidos = getGruposFactura(workspace).filter((grupo) => Boolean(getGrupoFacturaPersistidoId(grupo)));
+  const gruposPersistidos = getGruposFactura(workspace).filter((grupo) =>
+    Boolean(getGrupoFacturaPersistidoId(grupo)),
+  );
+
+  const grupoSolicitado =
+    grupoFacturaId === null || grupoFacturaId === undefined
+      ? null
+      : String(grupoFacturaId);
+
+  const gruposVisibles = grupoSolicitado
+    ? gruposPersistidos.filter(
+        (grupo) =>
+          String(getGrupoFacturaPersistidoId(grupo) ?? "") ===
+          grupoSolicitado,
+      )
+    : gruposPersistidos;
+
   const contexto = getContexto(workspace);
 
   return (
@@ -619,13 +677,20 @@ export function FinanzasGrupoFacturaPagoPanel({
           </div>
           <div className="flex flex-wrap gap-2">
             <Badge variant="outline">{getContextoEmpresaCodigo(contexto) || "Empresa"}</Badge>
-            <Badge variant="outline">{gruposPersistidos.length} factura(s) en revisión</Badge>
+            <Badge variant="outline">
+              {gruposVisibles.length} factura(s) en revisión
+            </Badge>
           </div>
         </div>
       </CardHeader>
       <CardContent className="space-y-3">
-        {gruposPersistidos.length ? (
-          gruposPersistidos.map((grupo, index) => (
+        {grupoSolicitado && !gruposVisibles.length ? (
+          <div className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
+            No se pudo resolver la factura solicitada. No se mostrarán otros
+            grupos del expediente.
+          </div>
+        ) : gruposVisibles.length ? (
+          gruposVisibles.map((grupo, index) => (
             <GrupoPagoCard
               key={String(getGrupoFacturaPersistidoId(grupo) ?? index)}
               grupo={grupo}
