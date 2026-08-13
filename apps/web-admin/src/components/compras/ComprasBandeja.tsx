@@ -57,21 +57,21 @@ function LoadingRows() {
 export function ComprasBandeja() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const [empresa, setEmpresa] = useState("BBTI");
+  const [empresa, setEmpresa] = useState("");
   const [search, setSearch] = useState("");
   const [q, setQ] = useState("");
   const [page, setPage] = useState(0);
 
   useEffect(() => {
     const contexto = getContexto();
-    setEmpresa(contexto?.empresa?.trim() || "BBTI");
+    setEmpresa(contexto?.empresa?.trim() ?? "");
   }, []);
 
   const offset = page * PAGE_SIZE;
   const bandeja = useQuery({
     queryKey: ["compras-bandeja-ocos", empresa, q, PAGE_SIZE, offset],
     queryFn: () => obtenerBandejaCompras({ empresa, q, limit: PAGE_SIZE, offset }),
-    enabled: Boolean(q.trim()),
+    enabled: Boolean(empresa.trim() && q.trim()),
   });
 
   const rows = bandeja.data?.data ?? [];

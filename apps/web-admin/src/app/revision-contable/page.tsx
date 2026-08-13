@@ -65,10 +65,6 @@ function normalizeEmpresa(value: string | null | undefined) {
   return (value ?? "").trim().toUpperCase();
 }
 
-function empresaLabel(value: string) {
-  return value || "Workspace sin empresa activa";
-}
-
 function getBrowserQueryParam(key: string) {
   if (typeof window === "undefined") return null;
   return new URLSearchParams(window.location.search).get(key);
@@ -91,10 +87,6 @@ function buildMonthOptions(year: string) {
   }
 
   return MESES;
-}
-
-function monthLabel(month: string | number | undefined) {
-  return MESES.find((item) => item.value === String(month))?.label ?? "—";
 }
 
 function formatDateCompact(value: unknown) {
@@ -658,12 +650,6 @@ export default function RevisionContablePage() {
     setPage(1);
   }, [anio, mes, busqueda, pageSize]);
 
-  const totalFacturas = items.length;
-  const totalMonto = items.reduce(
-    (sum, item) => sum + montoFacturaNumber(item),
-    0,
-  );
-
   const numericPageSize = Number(pageSize);
   const totalPages = Math.max(
     1,
@@ -675,102 +661,12 @@ export default function RevisionContablePage() {
 
   return (
     <main className="space-y-3">
-      <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">Revisión documental</h1>
-          <p className="text-sm text-muted-foreground">
-            Bandeja contable por factura. El periodo corresponde a la fecha de
-            emisión de la factura.
-          </p>
-        </div>
-
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={() => refetch()}
-          disabled={isFetching}
-        >
-          <RefreshCcw className="mr-1 h-4 w-4" />
-          Actualizar
-        </Button>
+      <div>
+        <h1 className="text-2xl font-bold">Revisión documental</h1>
+        <p className="text-sm text-muted-foreground">
+          Revisión contable de facturas por periodo de emisión.
+        </p>
       </div>
-
-      <Card>
-        <CardContent className="p-3">
-          <div className="grid items-center gap-2 lg:grid-cols-[minmax(330px,1.35fr)_minmax(170px,0.55fr)_minmax(220px,0.75fr)_132px]">
-            <div className="grid grid-cols-[74px_minmax(0,1fr)] items-center gap-2">
-              <span className="text-xs font-medium text-muted-foreground">
-                Empresa del workspace
-              </span>
-              <div
-                className="flex h-9 items-center rounded-lg border border-dashed border-input bg-muted/40 px-3 text-sm font-medium text-foreground"
-                title="Empresa definida por el workspace activo"
-              >
-                {empresaLabel(empresa)}
-              </div>
-            </div>
-
-            <div className="grid grid-cols-[42px_minmax(0,1fr)] items-center gap-2">
-              <span className="text-xs font-medium text-muted-foreground">
-                Año
-              </span>
-              <Select value={anio} onValueChange={setAnio}>
-                <SelectTrigger className="h-9 w-full">
-                  <SelectValue placeholder="Año" />
-                </SelectTrigger>
-                <SelectContent>
-                  {yearOptions.map((option) => (
-                    <SelectItem key={option} value={option}>
-                      {option}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="grid grid-cols-[38px_minmax(0,1fr)] items-center gap-2">
-              <span className="text-xs font-medium text-muted-foreground">
-                Mes
-              </span>
-              <Select value={mes} onValueChange={setMes}>
-                <SelectTrigger className="h-9 w-full">
-                  <SelectValue placeholder="Mes" />
-                </SelectTrigger>
-                <SelectContent>
-                  {monthOptions.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <Button
-              className="h-9 w-full"
-              type="button"
-              onClick={() => refetch()}
-              disabled={isFetching}
-            >
-              <Search className="mr-1 h-4 w-4" />
-              Consultar
-            </Button>
-          </div>
-
-          <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-            <span className="font-medium text-foreground">
-              {monthLabel(mes)} {anio}
-            </span>
-            <span>·</span>
-            <span>
-              {totalFacturas} factura{totalFacturas === 1 ? "" : "s"}
-            </span>
-            <span>·</span>
-            <span>{formatMoney(totalMonto)}</span>
-          </div>
-        </CardContent>
-      </Card>
 
       {error ? (
         <Card>
@@ -781,39 +677,97 @@ export default function RevisionContablePage() {
         </Card>
       ) : null}
 
-      <Card>
-        <CardContent className="p-3">
-          <div className="grid gap-2 lg:grid-cols-[1fr_150px]">
-            <Input
-              value={busqueda}
-              onChange={(event) => setBusqueda(event.target.value)}
-              placeholder="Buscar factura, OC/OS, proveedor, RUC, guía, nota de ingreso o pago..."
-            />
-
-            <Select value={pageSize} onValueChange={setPageSize}>
-              <SelectTrigger className="h-10 w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {PAGE_SIZE_OPTIONS.map((option) => (
-                  <SelectItem key={option} value={option}>
-                    {option} por página
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </CardContent>
-      </Card>
-
       <Card className="overflow-hidden">
         <CardContent className="p-0">
-          <div className="flex items-center justify-between border-b px-4 py-3">
-            <div className="flex items-center gap-2 font-semibold">
-              <FileText className="h-5 w-5" />
-              Facturas del periodo contable
+          <div className="border-b px-4 py-3">
+            <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
+              <div>
+                <div className="flex items-center gap-2 font-semibold">
+                  <FileText className="h-5 w-5" />
+                  Facturas del periodo
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Revisión contable por fecha de emisión de la factura.
+                </p>
+              </div>
+
+              <div className="flex flex-wrap items-end gap-2">
+                <label className="grid gap-1 text-xs text-muted-foreground">
+                  <span>Año</span>
+                  <Select value={anio} onValueChange={setAnio}>
+                    <SelectTrigger className="h-9 min-w-[110px]">
+                      <SelectValue placeholder="Año" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {yearOptions.map((option) => (
+                        <SelectItem key={option} value={option}>
+                          {option}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </label>
+
+                <label className="grid gap-1 text-xs text-muted-foreground">
+                  <span>Mes</span>
+                  <Select value={mes} onValueChange={setMes}>
+                    <SelectTrigger className="h-9 min-w-[160px]">
+                      <SelectValue placeholder="Mes" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {monthOptions.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </label>
+
+                <Button
+                  className="h-9"
+                  type="button"
+                  onClick={() => refetch()}
+                  disabled={isFetching}
+                >
+                  <Search className="mr-1 h-4 w-4" />
+                  Consultar
+                </Button>
+              </div>
             </div>
-            <div className="text-xs text-muted-foreground">
+
+            <div className="mt-3 grid gap-2 lg:grid-cols-[minmax(320px,1fr)_auto_150px]">
+              <Input
+                value={busqueda}
+                onChange={(event) => setBusqueda(event.target.value)}
+                placeholder="Buscar factura, OC/OS, proveedor, RUC, guía, nota de ingreso o pago..."
+              />
+
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => refetch()}
+                disabled={isFetching}
+              >
+                <RefreshCcw className="mr-1 h-4 w-4" />
+                Actualizar
+              </Button>
+
+              <Select value={pageSize} onValueChange={setPageSize}>
+                <SelectTrigger className="h-10 w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {PAGE_SIZE_OPTIONS.map((option) => (
+                    <SelectItem key={option} value={option}>
+                      {option} por página
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="mt-2 text-xs text-muted-foreground">
               Mostrando {pageItems.length ? start + 1 : 0}-
               {Math.min(start + pageItems.length, filteredItems.length)} de{" "}
               {filteredItems.length}
@@ -1072,8 +1026,7 @@ export default function RevisionContablePage() {
                     </EmptyMedia>
                     <EmptyTitle>Sin facturas para este periodo</EmptyTitle>
                     <EmptyDescription>
-                      No se encontraron facturas por fecha de emisión para el
-                      workspace activo, año y mes seleccionados.
+                      No se encontraron facturas con los criterios seleccionados.
                     </EmptyDescription>
                   </EmptyHeader>
                 </Empty>

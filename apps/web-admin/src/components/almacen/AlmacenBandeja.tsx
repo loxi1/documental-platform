@@ -23,21 +23,6 @@ type UnknownRecord = Record<string, unknown>;
 
 const PAGE_SIZE_OPTIONS = ["25", "50", "100"];
 
-const MESES = [
-  { value: "1", label: "Enero" },
-  { value: "2", label: "Febrero" },
-  { value: "3", label: "Marzo" },
-  { value: "4", label: "Abril" },
-  { value: "5", label: "Mayo" },
-  { value: "6", label: "Junio" },
-  { value: "7", label: "Julio" },
-  { value: "8", label: "Agosto" },
-  { value: "9", label: "Septiembre" },
-  { value: "10", label: "Octubre" },
-  { value: "11", label: "Noviembre" },
-  { value: "12", label: "Diciembre" },
-];
-
 function asRecord(value: unknown): UnknownRecord | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   return value as UnknownRecord;
@@ -293,26 +278,6 @@ function searchText(item: RevisionContableItem) {
     .join(" ");
 }
 
-function buildYearOptions() {
-  const current = new Date().getFullYear();
-  const end = Math.max(current, 2026);
-
-  return Array.from({ length: end - 2026 + 1 }, (_, index) =>
-    String(2026 + index),
-  );
-}
-
-function buildMonthOptions(year: string) {
-  const current = new Date();
-  const selectedYear = Number(year);
-
-  if (selectedYear === current.getFullYear()) {
-    return MESES.slice(0, current.getMonth() + 1);
-  }
-
-  return MESES;
-}
-
 function FacturaCell({ item }: { item: RevisionContableItem }) {
   return (
     <div>
@@ -428,35 +393,24 @@ function ActionsCell({ item }: { item: RevisionContableItem }) {
 
 export function AlmacenBandeja() {
   const contexto = getContexto();
-  const empresa = normalizeEmpresa(contexto?.empresa) || "BBTI";
-  const today = new Date();
-
-  const [anio, setAnio] = useState(String(Math.max(today.getFullYear(), 2026)));
-  const [mes, setMes] = useState(String(today.getMonth() + 1));
+  const empresa = normalizeEmpresa(contexto?.empresa);
   const [search, setSearch] = useState("");
   const [pageSize, setPageSize] = useState("50");
   const [page, setPage] = useState(1);
 
-  const yearOptions = useMemo(() => buildYearOptions(), []);
-  const monthOptions = useMemo(() => buildMonthOptions(anio), [anio]);
-
-  useEffect(() => {
-    if (!monthOptions.some((option) => option.value === mes)) {
-      setMes(monthOptions.at(-1)?.value ?? "1");
-    }
-  }, [mes, monthOptions]);
-
   const params = useMemo(
     () => ({
       empresa,
-      anio,
-      mes,
+      q: search.trim() || undefined,
     }),
-    [empresa, anio, mes],
+    [empresa, search],
   );
 
+  const hasSearch = Boolean(search.trim());
+  const queryEnabled = Boolean(empresa.trim() && hasSearch);
+
   const { data, isLoading, isFetching, error, refetch } =
-    useRevisionContable(params);
+    useRevisionContable(params, queryEnabled);
 
   const rows = useMemo(
     () => (data?.items ?? []).filter(isFacturaRow),
@@ -474,7 +428,7 @@ export function AlmacenBandeja() {
 
   useEffect(() => {
     setPage(1);
-  }, [anio, mes, search, pageSize]);
+  }, [search, pageSize]);
 
   const numericPageSize = Number(pageSize);
   const totalPages = Math.max(
@@ -509,64 +463,6 @@ export function AlmacenBandeja() {
         </p>
       </div>
 
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base">Facturas</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid gap-2 lg:grid-cols-[130px_130px_1fr_auto]">
-            <select
-              className="h-10 rounded-lg border border-input bg-background px-3 text-sm"
-              value={anio}
-              onChange={(event) => setAnio(event.target.value)}
-              aria-label="Año"
-            >
-              {yearOptions.map((option) => (
-                <option key={option} value={option}>
-                  {option}
-                </option>
-              ))}
-            </select>
-
-            <select
-              className="h-10 rounded-lg border border-input bg-background px-3 text-sm"
-              value={mes}
-              onChange={(event) => setMes(event.target.value)}
-              aria-label="Mes"
-            >
-              {monthOptions.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-
-            <Input
-              placeholder="Buscar factura, OC/OS, guía, NI, RUC o proveedor..."
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-            />
-
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => refetch()}
-              disabled={isFetching}
-            >
-              <Search className="h-4 w-4" />
-              {isFetching ? "Actualizando" : "Actualizar"}
-            </Button>
-          </div>
-
-          <div className="mt-2 text-xs text-muted-foreground">
-            Empresa: <span className="font-medium text-foreground">{empresa}</span>
-            {" · "}
-            {filteredRows.length} factura
-            {filteredRows.length === 1 ? "" : "s"}
-          </div>
-        </CardContent>
-      </Card>
-
       {error ? (
         <Card>
           <CardContent className="py-4 text-sm text-red-600">
@@ -578,20 +474,34 @@ export function AlmacenBandeja() {
 
       <Card className="overflow-hidden">
         <CardHeader className="border-b py-3">
-          <div className="flex items-center justify-between gap-3">
-            <CardTitle className="text-base">Bandeja de Almacén</CardTitle>
-            <select
-              className="h-8 rounded-lg border border-input bg-background px-2 text-xs"
-              value={pageSize}
-              onChange={(event) => setPageSize(event.target.value)}
-              aria-label="Registros por página"
-            >
-              {PAGE_SIZE_OPTIONS.map((option) => (
-                <option key={option} value={option}>
-                  {option} por página
-                </option>
-              ))}
-            </select>
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <CardTitle className="text-base">Bandeja de Almacén</CardTitle>
+              <div className="mt-1 text-xs text-muted-foreground">
+                Empresa: <span className="font-medium text-foreground">{empresa}</span>
+                {" · "}
+                {filteredRows.length} factura
+                {filteredRows.length === 1 ? "" : "s"}
+              </div>
+            </div>
+
+            <div className="grid w-full gap-2 sm:grid-cols-[minmax(360px,430px)_auto] lg:w-auto">
+              <Input
+                placeholder="Buscar factura, OC/OS, proveedor, RUC, guía o NI..."
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+              />
+
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => refetch()}
+                disabled={!queryEnabled || isFetching}
+              >
+                <Search className="h-4 w-4" />
+                {isFetching ? "Actualizando" : "Actualizar"}
+              </Button>
+            </div>
           </div>
         </CardHeader>
 
@@ -600,10 +510,13 @@ export function AlmacenBandeja() {
             <Empty className="py-10">
               <EmptyHeader>
                 <EmptyMedia variant="icon">📦</EmptyMedia>
-                <EmptyTitle>Sin facturas para Almacén</EmptyTitle>
+                <EmptyTitle>
+                  {hasSearch ? "Sin facturas para Almacén" : "Buscar facturas para Almacén"}
+                </EmptyTitle>
                 <EmptyDescription>
-                  No se encontraron facturas para el periodo y búsqueda
-                  seleccionados.
+                  {hasSearch
+                    ? "No se encontraron facturas para la búsqueda realizada."
+                    : "Ingrese factura, OC/OS, proveedor, RUC, guía o NI para consultar."}
                 </EmptyDescription>
               </EmptyHeader>
             </Empty>
@@ -695,6 +608,22 @@ export function AlmacenBandeja() {
                 </div>
 
                 <div className="flex gap-2">
+            <div className="mr-auto flex items-center gap-2 text-xs text-muted-foreground">
+              <span>Tamaño</span>
+              <select
+                className="h-8 rounded-lg border border-input bg-background px-2 text-xs"
+                value={pageSize}
+                onChange={(event) => setPageSize(event.target.value)}
+                aria-label="Registros por página"
+              >
+                {PAGE_SIZE_OPTIONS.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </select>
+            </div>
+
                   <Button
                     type="button"
                     size="sm"

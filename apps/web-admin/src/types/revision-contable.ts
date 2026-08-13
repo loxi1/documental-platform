@@ -1,7 +1,8 @@
 export interface RevisionContableParams {
   empresa: string;
-  anio: number | string;
-  mes: number | string;
+  anio?: number | string;
+  mes?: number | string;
+  q?: string;
 }
 
 export interface RevisionContablePeriodo {
