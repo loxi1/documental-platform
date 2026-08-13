@@ -9,33 +9,14 @@ import { AdjuntosList } from "./AdjuntosList";
 import { ContextoOperativoCard } from "./ContextoOperativoCard";
 import { DocumentoOperativoPrincipalCard } from "./DocumentoOperativoPrincipalCard";
 import { GrupoFacturaCard } from "./GrupoFacturaCard";
-import { HistorialActividadV2 } from "./HistorialActividadV2";
-import { WorkspaceAlertas } from "./WorkspaceAlertas";
 import {
+  getAdjuntosGrupo,
   getAdjuntosNoClasificados,
-  getAlertas,
   getContexto,
+  getDocumentoId,
   getDocumentoPrincipal,
   getGruposFactura,
 } from "./workspace-v2-utils";
-
-function getContenedorOperativoId(workspace: WorkspaceDocumentalV2Type, contexto: unknown) {
-  const contextoRecord = (contexto ?? {}) as Record<string, unknown>;
-  const workspaceRecord = (workspace ?? {}) as Record<string, unknown>;
-
-  const candidates = [
-    contextoRecord.contenedorOperativoId,
-    contextoRecord.contenedor_operativo_id,
-    contextoRecord.id,
-    workspaceRecord.contenedorOperativoId,
-    workspaceRecord.contenedor_operativo_id,
-  ];
-
-  return candidates.find((value) => value !== undefined && value !== null && `${value}`.trim() !== "") as
-    | string
-    | number
-    | undefined;
-}
 
 export function WorkspaceDocumentalV2({
   workspace,
@@ -48,19 +29,24 @@ export function WorkspaceDocumentalV2({
   const principal = getDocumentoPrincipal(workspace);
   const gruposFactura = getGruposFactura(workspace);
   const adjuntosNoClasificados = getAdjuntosNoClasificados(workspace);
-  const alertas = getAlertas(workspace);
-  const contenedorOperativoId = getContenedorOperativoId(workspace, contexto);
+
+  const documentosAsociadosIds = new Set(
+    gruposFactura
+      .flatMap((grupo) => getAdjuntosGrupo(grupo))
+      .map((documento) => String(getDocumentoId(documento) ?? "").trim())
+      .filter(Boolean),
+  );
+
+  const adjuntosPendientes = adjuntosNoClasificados.filter((documento) => {
+    const documentoId = String(getDocumentoId(documento) ?? "").trim();
+    return !documentoId || !documentosAsociadosIds.has(documentoId);
+  });
+
   const capabilities = useWorkspaceV2Capabilities();
 
   return (
-    <div className="space-y-4">
-      {capabilities.isReadOnly ? (
-        <div className="rounded-lg border bg-muted/20 px-4 py-3 text-sm text-muted-foreground">
-          Workspace en modo solo lectura. Las acciones operativas no están disponibles para este contexto de sesión.
-        </div>
-      ) : null}
-
-      <ContextoOperativoCard contexto={contexto} />
+    <div className="grid gap-4 lg:grid-cols-2">
+<ContextoOperativoCard contexto={contexto} />
       <DocumentoOperativoPrincipalCard
         documento={principal}
         contexto={contexto}
@@ -76,9 +62,9 @@ export function WorkspaceDocumentalV2({
               <Layers3 className="h-4 w-4" />
             </div>
             <div>
-              <CardTitle>Grupos de Factura</CardTitle>
+              <CardTitle>Facturas</CardTitle>
               <p className="text-sm text-muted-foreground">
-                Cada tarjeta representa un Grupo de Factura devuelto por el Workspace V2.
+                Cada factura muestra sus documentos asociados.
               </p>
             </div>
           </div>
@@ -100,29 +86,25 @@ export function WorkspaceDocumentalV2({
             </div>
           ) : (
             <div className="rounded-lg border border-dashed bg-muted/20 p-4 text-sm text-muted-foreground">
-              El Workspace no devolvió grupos de factura para este contexto.
+              No hay facturas disponibles para este contexto.
             </div>
           )}
         </CardContent>
       </Card>
 
-      {adjuntosNoClasificados.length ? (
+      {adjuntosPendientes.length ? (
         <Card>
           <CardHeader className="border-b">
-            <CardTitle>Documentos pendientes de clasificación</CardTitle>
+            <CardTitle>Documentos sin asociar</CardTitle>
             <p className="text-sm text-muted-foreground">
-              Documentos devueltos por el Workspace sin asociación a un Grupo de Factura. No se clasifican desde frontend.
+              Documentos que todavía no pertenecen a ninguna factura.
             </p>
           </CardHeader>
           <CardContent>
-            <AdjuntosList documentos={adjuntosNoClasificados} />
+            <AdjuntosList documentos={adjuntosPendientes} />
           </CardContent>
         </Card>
       ) : null}
-
-      <HistorialActividadV2 contenedorOperativoId={contenedorOperativoId} />
-
-      <WorkspaceAlertas alertas={alertas} />
-    </div>
+</div>
   );
 }
