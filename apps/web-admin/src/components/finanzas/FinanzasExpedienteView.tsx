@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PreviewDocumento } from "@/components/common/PreviewDocumento";
+import { FinanzasDocumentoPrincipalOperativoCard } from "@/components/finanzas/FinanzasDocumentoPrincipalOperativoCard";
 import { FinanzasGrupoFacturaPagoPanel } from "@/components/finanzas/FinanzasGrupoFacturaPagoPanel";
 import { useExpediente } from "@/hooks/useExpedientes";
 import { getWorkspaceDocumentalV2 } from "@/services/documental-v2-workspace";
@@ -370,23 +371,17 @@ export function FinanzasExpedienteView({ id }: { id: string | number }) {
 
   return (
     <main className="space-y-4">
-      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <div>
-          <Button asChild variant="ghost" size="sm" className="mb-1 px-0">
-            <Link href="/finanzas">
-              <ArrowLeft className="h-4 w-4" />
-              Volver
-            </Link>
-          </Button>
-          <div className="flex flex-wrap items-center gap-2">
-            <h1 className="text-2xl font-bold">Finanzas operativa</h1>
-            <span className="rounded-full border px-2 py-0.5 text-xs font-medium">{getCodigo(expediente)}</span>
-            <span className="rounded-full border px-2 py-0.5 text-xs text-muted-foreground">{getEmpresa(expediente)}</span>
-            <span className="rounded-full border px-2 py-0.5 text-xs text-muted-foreground"> {getDescripcion(expediente)}</span>
-          </div>
-          
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <h1 className="text-2xl font-bold">Finanzas</h1>
+          <span className="rounded-full border px-2 py-0.5 text-xs font-medium">{getCodigo(expediente)}</span>
+          <span className="rounded-full border px-2 py-0.5 text-xs text-muted-foreground">{getEmpresa(expediente)}</span>
+          <span className="rounded-full border px-2 py-0.5 text-xs text-muted-foreground">{getDescripcion(expediente)}</span>
         </div>
 
+        <Button asChild variant="outline" size="sm" className="h-8 shrink-0 px-3">
+          <Link href="/finanzas">Volver</Link>
+        </Button>
       </div>
 
       <Card className="hidden">
@@ -401,12 +396,29 @@ export function FinanzasExpedienteView({ id }: { id: string | number }) {
         </CardContent>
       </Card>
 
+      <FinanzasDocumentoPrincipalOperativoCard
+        id={id}
+        onVer={(principalDocumentoId) => {
+          const documentoPrincipal = getAllDocuments(expediente).find(
+            (documento) =>
+              documentoId(documento) === String(principalDocumentoId),
+          );
+
+          if (documentoPrincipal) {
+            setPreviewDocumento(documentoPrincipal);
+          }
+        }}
+      />
+
       <FinanzasGrupoFacturaPagoPanel
         id={id}
         grupoFacturaId={grupoFacturaId || null}
+        documentos={
+          getAllDocuments(expediente) as unknown as Array<Record<string, unknown>>
+        }
       />
 
-      <Card>
+      <Card className="hidden">
         <CardHeader className="pb-2">
           <CardTitle>
             {grupoFacturaId

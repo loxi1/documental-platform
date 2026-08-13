@@ -4,25 +4,28 @@ import { useQuery } from "@tanstack/react-query";
 import { FileText } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getWorkspaceDocumentalV2 } from "@/services/documental-v2-workspace";
 import {
   documentoLabel,
-  getDocumentoArchivo,
   getDocumentoId,
-  getDocumentoOperativoPrincipalPersistidoId,
   getDocumentoPrincipal,
   getDocumentoTipo,
-  getEstado,
   getFechaDocumento,
   getMontoDocumento,
-  getNumeroDocumento,
   getProveedor,
   getRucProveedor,
 } from "@/components/documental-v2/workspace-v2-utils";
 
-export function FinanzasDocumentoPrincipalOperativoCard({ id }: { id: string | number }) {
+export function FinanzasDocumentoPrincipalOperativoCard({
+  id,
+  onVer,
+}: {
+  id: string | number;
+  onVer?: (documentoId: string | number) => void;
+}) {
   const workspaceQuery = useQuery({
     queryKey: ["finanzas-v2-principal", String(id)],
     queryFn: () => getWorkspaceDocumentalV2(id),
@@ -31,7 +34,7 @@ export function FinanzasDocumentoPrincipalOperativoCard({ id }: { id: string | n
 
   if (workspaceQuery.isLoading) {
     return (
-      <Card className="lg:col-span-2">
+      <Card className="w-full lg:col-span-3">
         <CardHeader className="pb-2">
           <CardTitle>Documento principal</CardTitle>
         </CardHeader>
@@ -44,7 +47,7 @@ export function FinanzasDocumentoPrincipalOperativoCard({ id }: { id: string | n
 
   if (workspaceQuery.isError || !workspaceQuery.data) {
     return (
-      <Card className="lg:col-span-2">
+      <Card className="w-full lg:col-span-3">
         <CardHeader className="pb-2">
           <CardTitle>Documento principal</CardTitle>
         </CardHeader>
@@ -58,59 +61,58 @@ export function FinanzasDocumentoPrincipalOperativoCard({ id }: { id: string | n
   }
 
   const principal = getDocumentoPrincipal(workspaceQuery.data);
-  const principalV2Id = getDocumentoOperativoPrincipalPersistidoId(principal);
-  const documentoId = getDocumentoId(principal);
+  const principalDocumentoId = principal
+    ? String(getDocumentoId(principal) ?? "").trim()
+    : "";
 
   return (
-    <Card className="lg:col-span-2">
+    <Card className="w-full lg:col-span-3">
       <CardHeader className="pb-2">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <CardTitle>Documento principal</CardTitle>
-          <div className="hidden flex-wrap gap-2">
-            {principalV2Id ? <Badge variant="outline">Principal V2 {String(principalV2Id)}</Badge> : null}
-            {documentoId ? <Badge variant="outline">Documento {String(documentoId)}</Badge> : null}
-            {principal ? <Badge variant="outline">{getEstado(principal)}</Badge> : <Badge variant="outline">Sin principal</Badge>}
-          </div>
-        </div>
+        <CardTitle>Documento principal</CardTitle>
       </CardHeader>
       <CardContent>
         {principal ? (
-          <div className="rounded-xl border bg-muted/30 p-4">
+          <div className="rounded-xl border bg-muted/30 p-3">
             <div className="flex items-start gap-3">
-              <FileText className="mt-0.5 h-5 w-5 text-muted-foreground" />
+              <FileText className="mt-0.5 h-5 w-5 shrink-0 text-muted-foreground" />
+
               <div className="min-w-0 flex-1 space-y-3">
-                <div>
+                <div className="flex flex-wrap items-center justify-between gap-3">
                   <div className="text-lg font-semibold">{documentoLabel(principal)}</div>
-                  <div className="mt-1 text-sm text-muted-foreground">
-                    {getProveedor(principal)} · {getFechaDocumento(principal)} · Monto {getMontoDocumento(principal)}
+                  <div className="flex shrink-0 items-center gap-2">
+                    <Badge variant="outline">{getDocumentoTipo(principal)}</Badge>
+                    {onVer && principalDocumentoId ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-8 px-3"
+                        onClick={() => onVer(principalDocumentoId)}
+                      >
+                        Ver
+                      </Button>
+                    ) : null}
                   </div>
                 </div>
 
-                <dl className="grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
-                  <div>
-                    <dt className="text-xs font-medium uppercase text-muted-foreground">Tipo</dt>
-                    <dd className="mt-1 font-medium">{getDocumentoTipo(principal)}</dd>
-                  </div>
-                  <div>
-                    <dt className="text-xs font-medium uppercase text-muted-foreground">Número</dt>
-                    <dd className="mt-1 font-medium">{getNumeroDocumento(principal)}</dd>
-                  </div>
-                  <div>
+                <dl className="grid gap-x-6 gap-y-3 text-sm sm:grid-cols-[minmax(0,1.8fr)_minmax(120px,0.7fr)_minmax(120px,0.7fr)]">
+                  <div className="min-w-0">
                     <dt className="text-xs font-medium uppercase text-muted-foreground">Proveedor</dt>
                     <dd className="mt-1 font-medium">{getProveedor(principal)}</dd>
-                    <dd className="text-xs text-muted-foreground">RUC: {getRucProveedor(principal)}</dd>
+                    <dd className="text-xs text-muted-foreground">RUC {getRucProveedor(principal)}</dd>
                   </div>
+
                   <div>
-                    <dt className="text-xs font-medium uppercase text-muted-foreground">Fecha / monto</dt>
+                    <dt className="text-xs font-medium uppercase text-muted-foreground">Fecha</dt>
                     <dd className="mt-1 font-medium">{getFechaDocumento(principal)}</dd>
-                    <dd className="text-xs text-muted-foreground">{getMontoDocumento(principal)}</dd>
+                  </div>
+
+                  <div>
+                    <dt className="text-xs font-medium uppercase text-muted-foreground">Monto</dt>
+                    <dd className="mt-1 font-medium">{getMontoDocumento(principal)}</dd>
                   </div>
                 </dl>
 
-                <div>
-                  <div className="text-xs font-medium uppercase text-muted-foreground">Archivo</div>
-                  <div className="mt-1 text-sm font-medium">{getDocumentoArchivo(principal)}</div>
-                </div>
               </div>
             </div>
           </div>

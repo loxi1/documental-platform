@@ -1313,6 +1313,9 @@ export function FinanzasExpedienteEditor({ id }: { id: string | number }) {
     queryClient.invalidateQueries({
       queryKey: ["expediente-documentos", String(id)],
     });
+    await queryClient.invalidateQueries({
+      queryKey: ["finanzas-v2-grupos-pago", String(id)],
+    });
   }
 
   async function agregarDuplicadoComoVersion(details: {
@@ -1433,14 +1436,8 @@ export function FinanzasExpedienteEditor({ id }: { id: string | number }) {
       />
 
       <main className="space-y-4">
-        <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
-          <div>
-            <Button asChild variant="ghost" size="sm" className="mb-1 px-0">
-              <Link href="/finanzas">
-                <ArrowLeft className="h-4 w-4" />
-                Volver
-              </Link>
-            </Button>
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <h1 className="text-2xl font-bold">Finanzas</h1>
               <span className="rounded-full border px-2 py-0.5 text-xs font-medium">
@@ -1458,6 +1455,10 @@ export function FinanzasExpedienteEditor({ id }: { id: string | number }) {
               ) : null}
             </div>
           </div>
+
+          <Button asChild variant="outline" size="sm" className="h-8 shrink-0 px-3">
+            <Link href="/finanzas">Volver</Link>
+          </Button>
         </div>
 
         {decisionCorrespondenciaRequerida ? (
@@ -1537,7 +1538,32 @@ export function FinanzasExpedienteEditor({ id }: { id: string | number }) {
         ) : null}
 
         <section className="grid gap-4 lg:grid-cols-3">
-          <FinanzasDocumentoPrincipalOperativoCard id={id} />
+          <FinanzasDocumentoPrincipalOperativoCard
+            id={id}
+            onVer={(principalDocumentoId) => {
+              const documentoPrincipal = documentos.find((documento) => {
+                const documentoId = positiveInteger(
+                  (documento as Record<string, unknown>).documento_id ??
+                    (documento as Record<string, unknown>).documentoId ??
+                    (documento as Record<string, unknown>).id,
+                );
+
+                return (
+                  documentoId !== null &&
+                  documentoId === positiveInteger(principalDocumentoId)
+                );
+              });
+
+              if (!documentoPrincipal) {
+                setMensajeValidacion(
+                  "No se encontró el archivo del documento principal para visualizar.",
+                );
+                return;
+              }
+
+              void abrirPagoModal(documentoPrincipal, "ver");
+            }}
+          />
 
           <Card className="hidden">
             <CardContent className="grid gap-3 p-4">
@@ -1568,6 +1594,8 @@ export function FinanzasExpedienteEditor({ id }: { id: string | number }) {
         <FinanzasGrupoFacturaPagoPanel
           id={id}
           editable
+          grupoFacturaId={grupoFacturaId}
+          documentos={documentos}
           onAdjuntarTransferencia={iniciarAdjuntarTransferencia}
         />
 

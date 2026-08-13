@@ -389,6 +389,7 @@ function GrupoPagoCard({
   grupo,
   expedienteId,
   editable,
+  documentos,
   canAssociateGroupDocument,
   onRefresh,
   onAdjuntarTransferencia,
@@ -397,11 +398,13 @@ function GrupoPagoCard({
   grupo: WorkspaceV2GrupoFactura;
   expedienteId: string | number;
   editable: boolean;
+  documentos: Array<Record<string, unknown>>;
   canAssociateGroupDocument: boolean;
   onRefresh: () => Promise<unknown> | unknown;
   onAdjuntarTransferencia?: (grupoFacturaId: string | number) => void;
 }) {
   const [previewPagoAbierto, setPreviewPagoAbierto] = useState(false);
+  const [previewFacturaAbierto, setPreviewFacturaAbierto] = useState(false);
 
   const grupoFacturaId = getGrupoFacturaPersistidoId(grupo);
   const principalDocumentoId = getGrupoDocumentoPrincipalDocumentoId(grupo);
@@ -409,6 +412,107 @@ function GrupoPagoCard({
   const pagoDocumento = getTransferenciaDocumento(grupo);
   const pagoDocumentoId = pagoDocumento ? getWorkspaceDocumentoId(pagoDocumento) : null;
   const sustentoPago = Boolean(pagoDocumentoId);
+  const pagoVista = pagoDocumento
+    ? entityVista<Record<string, unknown>>(pagoDocumento)
+    : null;
+
+  const pagoDocumentoPersistido =
+    documentos.find((documento) => {
+      const documentoId =
+        documento.documento_id ??
+        documento.documentoId ??
+        documento.id;
+
+      return (
+        pagoDocumentoId !== null &&
+        pagoDocumentoId !== undefined &&
+        String(documentoId ?? "") === String(pagoDocumentoId)
+      );
+    }) ?? null;
+
+  const pagoMetadata =
+    pagoDocumentoPersistido?.metadata &&
+    typeof pagoDocumentoPersistido.metadata === "object" &&
+    !Array.isArray(pagoDocumentoPersistido.metadata)
+      ? (pagoDocumentoPersistido.metadata as Record<string, unknown>)
+      : null;
+
+  const pagoMetadataOcr =
+    pagoMetadata?.ocr &&
+    typeof pagoMetadata.ocr === "object" &&
+    !Array.isArray(pagoMetadata.ocr)
+      ? (pagoMetadata.ocr as Record<string, unknown>)
+      : null;
+
+  const pagoMetadataConfirmada =
+    pagoMetadataOcr?.metadata &&
+    typeof pagoMetadataOcr.metadata === "object" &&
+    !Array.isArray(pagoMetadataOcr.metadata)
+      ? (pagoMetadataOcr.metadata as Record<string, unknown>)
+      : pagoMetadata;
+
+  const pagoNumeroOperacion = textValue(
+    pagoMetadataConfirmada?.numeroOperacion ??
+      pagoMetadataConfirmada?.numero ??
+      pagoDocumentoPersistido?.numero,
+    "",
+  );
+
+  const pagoBanco = textValue(pagoMetadataConfirmada?.banco, "");
+
+  const pagoFechaRaw = textValue(
+    pagoMetadataConfirmada?.fechaPago ??
+      pagoMetadataConfirmada?.fechaEmision ??
+      pagoDocumentoPersistido?.fecha_emision ??
+      pagoDocumentoPersistido?.fechaEmision,
+    "",
+  );
+
+  const pagoMontoRaw = textValue(
+    pagoMetadataConfirmada?.montoTotal ??
+      pagoDocumentoPersistido?.monto_total ??
+      pagoDocumentoPersistido?.montoTotal,
+    "",
+  );
+
+  const pagoMoneda = textValue(
+    pagoMetadataConfirmada?.moneda ?? pagoDocumentoPersistido?.moneda,
+    "",
+  );
+
+  const pagoFecha = /^\d{4}-\d{2}-\d{2}$/.test(pagoFechaRaw)
+    ? pagoFechaRaw.split("-").reverse().join("/")
+    : pagoFechaRaw;
+
+  const pagoMontoNumero = Number(pagoMontoRaw.replace(/,/g, ""));
+  const pagoMonto =
+    pagoMontoRaw && Number.isFinite(pagoMontoNumero)
+      ? new Intl.NumberFormat("es-PE", {
+          style: "currency",
+          currency:
+            pagoMoneda.toUpperCase() === "SOLES"
+              ? "PEN"
+              : pagoMoneda || "PEN",
+        }).format(pagoMontoNumero)
+      : pagoMontoRaw;
+
+  const facturaArchivosQuery = useQuery({
+    queryKey: ["finanzas-factura-archivos", facturaDocumentoId],
+    enabled: Boolean(facturaDocumentoId),
+    queryFn: () =>
+      getDocumentoArchivos(facturaDocumentoId as string | number),
+  });
+
+  const facturaArchivos =
+    facturaArchivosQuery.data?.data ??
+    facturaArchivosQuery.data?.archivos ??
+    [];
+
+  const facturaArchivoActual =
+    facturaArchivos.find((archivo) => archivo.es_version_actual === true) ??
+    (facturaArchivos.length === 1 ? facturaArchivos[0] : null);
+
+  const facturaArchivoId = facturaArchivoActual?.id ?? null;
 
   const pagoArchivosQuery = useQuery({
     queryKey: ["finanzas-pago-archivos", pagoDocumentoId],
@@ -478,13 +582,29 @@ function GrupoPagoCard({
 
   return (
     <div className="rounded-xl border p-4">
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-        <div className="min-w-0 space-y-3">
+      <div className="grid gap-4 lg:grid-cols-2 lg:items-start">
+        <div className="min-w-0 space-y-3 lg:pr-5">
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+            Factura
+          </p>
           <div className="flex flex-wrap items-center gap-2">
             <CreditCard className="h-4 w-4 text-muted-foreground" />
             <h3 className="font-semibold">{facturaOperativa}</h3>
-            <Badge variant="secondary">Pago en revisión</Badge>
+
             <Badge variant="outline">OC/OS: {principalOperativo}</Badge>
+
+            {facturaArchivoId ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-7 px-2.5"
+                onClick={() => setPreviewFacturaAbierto(true)}
+              >
+                <Eye className="mr-1.5 h-3.5 w-3.5" />
+                Ver
+              </Button>
+            ) : null}
             <span className="sr-only">
               grupoFacturaId {String(grupoFacturaId ?? "")} documentoBaseId {String(principalDocumentoId ?? "")} facturaDocumentoId {String(facturaDocumentoId ?? "")}
             </span>
@@ -515,7 +635,7 @@ function GrupoPagoCard({
             <Badge variant="outline">Estado documental {textValue(entityVista<Record<string, unknown>>(grupo).estadoRevisionLabel ?? entityVista<Record<string, unknown>>(grupo).estado_revision_label ?? entityVista<Record<string, unknown>>(grupo).estado, "Sin estado")}</Badge>
           </div>
 
-          <div className="space-y-1 pt-1">
+          <div className="hidden space-y-1 pt-1" aria-hidden="true">
             <div className="flex flex-wrap gap-2">
               <EstadoPagoBadge label="Factura" active />
               <EstadoPagoBadge label="Sustento de pago" active={sustentoPago} />
@@ -538,8 +658,40 @@ function GrupoPagoCard({
           </div>
         </div>
 
-        <div className="flex shrink-0 flex-wrap gap-2">
-          {editable && sustentoPago && pagoArchivoId ? (
+        <div className="flex min-w-0 flex-col items-start gap-3 border-t pt-4 lg:border-l lg:border-t-0 lg:pl-5 lg:pt-0">
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+            Sustento de pago
+          </p>
+
+          {sustentoPago ? (
+            <div className="min-w-0 space-y-1">
+              <p className="font-semibold">
+                {textValue(
+                  pagoVista?.tipoDocumental ?? pagoVista?.tipo_documental,
+                  "Sustento de pago",
+                )}
+              </p>
+
+              {pagoBanco || pagoNumeroOperacion ? (
+                <p className="text-sm text-muted-foreground">
+                  {[pagoBanco, pagoNumeroOperacion ? `Op. ${pagoNumeroOperacion}` : ""]
+                    .filter(Boolean)
+                    .join(" · ")}
+                </p>
+              ) : null}
+
+              {pagoFecha || pagoMonto ? (
+                <p className="text-sm text-muted-foreground">
+                  {[pagoFecha, pagoMonto].filter(Boolean).join(" · ")}
+                </p>
+              ) : null}
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              Sin sustento vinculado
+            </p>
+          )}
+          {sustentoPago && pagoArchivoId ? (
             <Button
               type="button"
               variant="outline"
@@ -547,11 +699,11 @@ function GrupoPagoCard({
               onClick={() => setPreviewPagoAbierto(true)}
             >
               <Eye className="mr-1.5 h-4 w-4" />
-              Ver pago
+              Ver
             </Button>
           ) : null}
 
-          {editable && grupoFacturaId && onAdjuntarTransferencia ? (
+          {editable && !sustentoPago && grupoFacturaId && onAdjuntarTransferencia ? (
             <Button
               type="button"
               size="sm"
@@ -562,6 +714,38 @@ function GrupoPagoCard({
           ) : null}
         </div>
       </div>
+
+      {previewFacturaAbierto && facturaArchivoId ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Vista previa de la factura"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              setPreviewFacturaAbierto(false);
+            }
+          }}
+        >
+          <div className="relative w-full max-w-6xl rounded-2xl bg-background p-4 pt-12 shadow-2xl">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="absolute right-3 top-2 z-20"
+              aria-label="Cerrar vista previa de la factura"
+              onClick={() => setPreviewFacturaAbierto(false)}
+            >
+              <X className="h-5 w-5" />
+            </Button>
+
+            <PreviewDocumento
+              archivoId={facturaArchivoId}
+              title={facturaOperativa}
+            />
+          </div>
+        </div>
+      ) : null}
 
       {previewPagoAbierto && pagoArchivoId ? (
         <div
@@ -602,11 +786,13 @@ export function FinanzasGrupoFacturaPagoPanel({
   id,
   editable = false,
   grupoFacturaId = null,
+  documentos = [],
   onAdjuntarTransferencia,
 }: {
   id: string | number;
   editable?: boolean;
   grupoFacturaId?: string | number | null;
+  documentos?: Array<Record<string, unknown>>;
   onAdjuntarTransferencia?: (grupoFacturaId: string | number) => void;
 }) {
   const capabilities = useWorkspaceV2Capabilities();
@@ -663,25 +849,13 @@ export function FinanzasGrupoFacturaPagoPanel({
       )
     : gruposPersistidos;
 
-  const contexto = getContexto(workspace);
-
   return (
     <Card>
       <CardHeader className="pb-2">
-        <div className="flex flex-wrap items-start justify-between gap-2">
-          <div>
-            <CardTitle>Pagos por factura</CardTitle>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Vista operativa para revisar factura, sustento de pago y decisión humana cuando corresponda.
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Badge variant="outline">{getContextoEmpresaCodigo(contexto) || "Empresa"}</Badge>
-            <Badge variant="outline">
-              {gruposVisibles.length} factura(s) en revisión
-            </Badge>
-          </div>
-        </div>
+        <CardTitle>Pagos por factura</CardTitle>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Vincula y consulta los sustentos de pago asociados a cada factura.
+        </p>
       </CardHeader>
       <CardContent className="space-y-3">
         {grupoSolicitado && !gruposVisibles.length ? (
@@ -697,6 +871,7 @@ export function FinanzasGrupoFacturaPagoPanel({
               workspace={workspace}
               expedienteId={id}
               editable={editable}
+              documentos={documentos}
               canAssociateGroupDocument={capabilities.canAssociateGroupDocument}
               onRefresh={() => workspaceQuery.refetch()}
               onAdjuntarTransferencia={onAdjuntarTransferencia}
