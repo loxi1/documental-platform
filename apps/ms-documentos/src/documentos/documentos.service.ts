@@ -11,6 +11,7 @@ import {
   DocumentosFilters,
   DocumentosRepository,
 } from './documentos.repository';
+import { limpiarCamposLegacyOcr as normalizarCamposLegacyOcr } from './ocr-metadata-normalizer';
 
 @Injectable()
 export class DocumentosService {
@@ -755,27 +756,7 @@ export class DocumentosService {
     };
   }
   private limpiarCamposLegacyOcr<T>(value: T): T {
-    const legacyKeys = new Set([
-      'tipoCodigoExpediente',
-      'codigoOp',
-      'codigoCentroCosto',
-      'proveedorRuc',
-      'compradorRuc',
-    ]);
-
-    if (Array.isArray(value)) {
-      return value.map((item) => this.limpiarCamposLegacyOcr(item)) as T;
-    }
-
-    if (value && typeof value === 'object') {
-      return Object.fromEntries(
-        Object.entries(value as Record<string, unknown>)
-          .filter(([key]) => !legacyKeys.has(key))
-          .map(([key, item]) => [key, this.limpiarCamposLegacyOcr(item)]),
-      ) as T;
-    }
-
-    return value;
+    return normalizarCamposLegacyOcr(value);
   }
 
 }
