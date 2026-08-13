@@ -34,6 +34,7 @@ export const workspaceRouteRules: RouteAccessRule[] = [
   { prefix: "/carga-guiada", label: "Carga guiada", menuKey: "documentos" },
   { prefix: "/ocr-resultados", label: "OCR Resultados", menuKey: "documentos" },
   { prefix: "/documentos", label: "Documentos", menuKey: "documentos" },
+  { prefix: "/revision-contable/expedientes", label: "Centro de costo", menuKey: "compras" },
   { prefix: "/revision-contable", label: "Revisión contable", menuKey: "revision_contable" },
   { prefix: "/alertas", label: "Alertas", menuKey: "alertas" },
 ].sort((a, b) => b.prefix.length - a.prefix.length);

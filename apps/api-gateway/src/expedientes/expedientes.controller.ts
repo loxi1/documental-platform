@@ -70,9 +70,13 @@ export class ExpedientesGatewayController {
   private assertMantenimientoExpedientesAccess(payload: any) {
     const perfil = this.getPerfilFromContext(payload);
 
-    if (perfil !== 'admin' && perfil !== 'contabilidad') {
+    if (
+      perfil !== 'admin' &&
+      perfil !== 'contabilidad' &&
+      perfil !== 'compras'
+    ) {
       throw new ForbiddenException(
-        'Solo administración o contabilidad puede acceder al mantenimiento de expedientes',
+        'Solo administración, compras o contabilidad puede acceder al mantenimiento de centros de costo',
       );
     }
 
