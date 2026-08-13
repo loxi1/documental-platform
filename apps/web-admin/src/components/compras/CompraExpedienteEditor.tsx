@@ -1897,7 +1897,7 @@ export function CompraExpedienteEditor({ id }: { id: string | number }) {
                       type="button"
                       variant="outline"
                       className="w-full"
-                      disabled={procesando || !principalSeleccionado}
+                      disabled={true}
                       onClick={() => iniciarSeleccionArchivo(guiaOption, "adjunto")}
                     >
                       <FilePlus2 className="h-4 w-4" />
@@ -1932,7 +1932,7 @@ export function CompraExpedienteEditor({ id }: { id: string | number }) {
                       type="button"
                       variant="outline"
                       className="w-full"
-                      disabled={procesando || !principalSeleccionado}
+                      disabled={true}
                       onClick={() => iniciarSeleccionArchivo(otrosOptions[0], "adjunto")}
                     >
                       <FilePlus2 className="h-4 w-4" />
