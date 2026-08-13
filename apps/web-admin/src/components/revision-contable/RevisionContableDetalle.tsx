@@ -28,6 +28,7 @@ import {
   EmptyTitle,
 } from "@/components/ui/empty";
 import { DocumentoPreviewModal } from "@/components/revision-contable/DocumentoPreviewModal";
+import { ContabilidadDocumentoPrincipalOperativoCard } from "@/components/revision-contable/ContabilidadDocumentoPrincipalOperativoCard";
 import { ContabilidadGrupoFacturaSoloLecturaPanel } from "@/components/revision-contable/ContabilidadGrupoFacturaSoloLecturaPanel";
 import { getContexto } from "@/lib/auth-storage";
 import {
@@ -446,37 +447,70 @@ export function RevisionContableDetalle({
 
   return (
     <main className="space-y-4">
-      <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <Button asChild className="mb-3" size="sm" variant="ghost">
-            <Link href={backHref}>
-              <ArrowLeft className="mr-1 h-4 w-4" />
-              Volver a bandeja documental
-            </Link>
-          </Button>
-          <h1 className="text-2xl font-bold">Revisión documental del contexto operativo</h1>
+          <div className="flex flex-wrap items-center gap-2">
+            <h1 className="text-2xl font-bold">Revisión contable</h1>
+            <Badge variant="secondary">Solo lectura</Badge>
+          </div>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {getExpedienteCodigo(expediente)} · {getExpedienteEmpresa(expediente, workspaceEmpresa)} · {periodo}
+          </p>
           <p className="text-sm text-muted-foreground">
-            Vista de solo lectura para verificar evidencia documental.
+            {asText(expediente.descripcion, "Sin descripción")}
           </p>
         </div>
 
-        <Badge variant="secondary" className="w-fit">
-          Solo lectura
-        </Badge>
+        <Button asChild variant="outline" size="sm" className="h-8 shrink-0 px-3">
+          <Link href={backHref}>Volver</Link>
+        </Button>
       </div>
+
+      <section>
+        <ContabilidadDocumentoPrincipalOperativoCard
+          id={expedienteId}
+          onVer={(documentoId) => {
+            const documentoPrincipal = documentos.find(
+              (documento) =>
+                String(
+                  pickDocumento(documento, ["documentoId", "documento_id", "id"]) ?? "",
+                ) === String(documentoId),
+            );
+
+            if (documentoPrincipal) {
+              setDocumentoSeleccionado(documentoPrincipal);
+            }
+          }}
+        />
+      </section>
 
       <section>
         <ContabilidadGrupoFacturaSoloLecturaPanel
           id={expedienteId}
           facturaDocumentoId={facturaDocumentoId}
+          documentos={
+            documentos as unknown as Array<Record<string, unknown>>
+          }
+          onVer={(documentoId) => {
+            const documento = documentos.find(
+              (item) =>
+                String(
+                  pickDocumento(item, ["documentoId", "documento_id", "id"]) ?? "",
+                ) === String(documentoId),
+            );
+
+            if (documento) {
+              setDocumentoSeleccionado(documento);
+            }
+          }}
         />
       </section>
 
-      <div className="rounded-xl border border-dashed bg-muted/20 p-3 text-sm text-muted-foreground">
-        Vista legacy de revisión. Uso auxiliar / diagnóstico. No reemplaza el Principal V2 vigente ni el grupo documental persistido.
+      <div className="hidden" aria-hidden="true">
+        Vista técnica auxiliar.
       </div>
 
-      <section className="grid gap-4 lg:grid-cols-2">
+      <section className="hidden" aria-hidden="true">
         <Card className="h-full">
           <CardHeader className="border-b">
             <CardTitle className="flex items-center gap-2">
@@ -511,11 +545,11 @@ export function RevisionContableDetalle({
         />
       </section>
 
-      <Card>
+      <Card className="hidden" aria-hidden="true">
         <CardHeader className="border-b">
           <CardTitle className="flex items-center gap-2">
             <CalendarDays className="h-5 w-5" />
-            Documentos legacy del expediente
+            Información técnica
           </CardTitle>
         </CardHeader>
         <CardContent className="p-4">
