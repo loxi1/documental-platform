@@ -4,14 +4,24 @@ import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Eye, History, Loader2, TriangleAlert } from "lucide-react";
+import { Eye, History, Loader2 } from "lucide-react";
 
 import { DocumentoPreviewModal } from "@/components/revision-contable/DocumentoPreviewModal";
+import {
+  entityVista,
+  getAdjuntosGrupo,
+  getGrupoDocumentoPrincipalDocumentoId,
+  getGrupoFacturaDocumentoId,
+  getGrupoFacturaLabel,
+  getGrupoFacturaPersistidoId,
+  getGruposFactura,
+} from "@/components/documental-v2/workspace-v2-utils";
+import { getWorkspaceDocumentalV2 } from "@/services/documental-v2-workspace";
+import type { WorkspaceV2GrupoFactura } from "@/types/documental-v2-workspace";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
 import {
-  getExpedienteAlertas,
   getExpedienteDocumentos,
   getExpedienteResumen,
 } from "@/services/expedientes";
@@ -72,17 +82,6 @@ type ExpedienteDocumento360 = {
   metadata?: (Record<string, unknown> & OcrMetadata360) | string | null;
 };
 
-type Alerta360 = {
-  id?: string | number;
-  titulo?: string | null;
-  tipo?: string | null;
-  prioridad?: string | null;
-  estado?: string | null;
-  mensaje?: string | null;
-  descripcion?: string | null;
-  creado_en?: string | null;
-  creadoEn?: string | null;
-};
 
 function texto(value: unknown, fallback = "—") {
   if (value === null || value === undefined || value === "") return fallback;
@@ -334,6 +333,83 @@ function documentoResumen(doc?: ExpedienteDocumento360 | null) {
   return { numero, fechaEmision, proveedor, ruc, docMoneda, monto };
 }
 
+
+function DocumentoLecturaCard({
+  documento,
+  titulo,
+  onPreview,
+  onVersiones,
+}: {
+  documento: ExpedienteDocumento360;
+  titulo?: string;
+  onPreview: (doc: ExpedienteDocumento360) => void;
+  onVersiones: (doc: ExpedienteDocumento360) => void;
+}) {
+  const info = documentoResumen(documento);
+  const tipo = texto(
+    documento.tipo_documental ?? documento.tipoDocumental,
+    "Documento",
+  );
+  const numero = texto(info.numero, "Sin número");
+  const proveedor = texto(info.proveedor, "");
+  const ruc = texto(info.ruc, "");
+  const monto = moneda(info.monto, texto(info.docMoneda, ""));
+  const fechaTexto = fecha(
+    info.fechaEmision ?? documento.creado_en ?? documento.creadoEn,
+  );
+  const tituloVisible =
+    titulo ??
+    (normalize(tipo) === "FACTURA" ? numero : `${tipo} ${numero}`.trim());
+
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="font-semibold text-slate-950 dark:text-slate-100">
+            {tituloVisible}
+          </p>
+          {proveedor ? (
+            <p
+              className="mt-1 line-clamp-2 break-words text-sm text-slate-500 dark:text-slate-400"
+              title={proveedor}
+            >
+              {proveedor}
+            </p>
+          ) : null}
+          {ruc ? (
+            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+              RUC {ruc}
+            </p>
+          ) : null}
+          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+            {[monto !== "—" ? monto : "", fechaTexto !== "—" ? fechaTexto : ""]
+              .filter(Boolean)
+              .join(" · ")}
+          </p>
+        </div>
+        <StatusBadge value={documento.estado} />
+      </div>
+
+      <div className="mt-4 flex flex-wrap gap-2">
+        <Button type="button" size="sm" variant="outline" onClick={() => onPreview(documento)}>
+          <Eye className="mr-2 h-4 w-4" />
+          Ver
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          onClick={() => onVersiones(documento)}
+          disabled={!getDocumentoId(documento)}
+        >
+          <History className="mr-2 h-4 w-4" />
+          Versiones
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 function VersionesModal({
   documento,
   open,
@@ -450,9 +526,9 @@ export default function CompraExpedienteVerPage() {
     enabled: Boolean(id),
   });
 
-  const alertasQuery = useQuery({
-    queryKey: ["expediente-alertas", id],
-    queryFn: () => getExpedienteAlertas(id),
+  const workspaceQuery = useQuery({
+    queryKey: ["compras-workspace-v2", id],
+    queryFn: () => getWorkspaceDocumentalV2(id),
     enabled: Boolean(id),
   });
 
@@ -491,6 +567,38 @@ export default function CompraExpedienteVerPage() {
   const seleccionPrincipalRequerida =
     documentosPrincipales.length > 1 && !principalPorParametro;
 
+  const principalDocumentoId = normalizeDocumentoId(getDocumentoId(principal));
+
+  const gruposFacturaPrincipal = useMemo(() => {
+    if (!workspaceQuery.data || principalDocumentoId === null) return [];
+
+    return getGruposFactura(workspaceQuery.data).filter(
+      (grupo) =>
+        normalizeDocumentoId(getGrupoDocumentoPrincipalDocumentoId(grupo)) ===
+        principalDocumentoId,
+    );
+  }, [principalDocumentoId, workspaceQuery.data]);
+
+  function documentosGrupo(grupo: WorkspaceV2GrupoFactura) {
+    const ids = new Set<number>();
+
+    const facturaId = normalizeDocumentoId(getGrupoFacturaDocumentoId(grupo));
+    if (facturaId !== null) ids.add(facturaId);
+
+    for (const adjunto of getAdjuntosGrupo(grupo)) {
+      const vista = entityVista<Record<string, unknown>>(adjunto);
+      const adjuntoId = normalizeDocumentoId(
+        vista.documentoId ?? vista.documento_id ?? vista.id,
+      );
+      if (adjuntoId !== null) ids.add(adjuntoId);
+    }
+
+    return documentos.filter((doc) => {
+      const idDoc = normalizeDocumentoId(getDocumentoId(doc));
+      return idDoc !== null && ids.has(idDoc);
+    });
+  }
+
   const adjuntosComprasGlobales = useMemo(
     () => documentos.filter(isCompraAdjunto),
     [documentos],
@@ -513,12 +621,11 @@ export default function CompraExpedienteVerPage() {
 
     return [];
   }, [adjuntosComprasGlobales, documentosPrincipales.length, principal]);
-  const alertas = getArray<Alerta360>(alertasQuery.data, "alertas");
   const principalInfo = documentoResumen(principal);
   const cargando =
     resumenQuery.isLoading ||
     documentosQuery.isLoading ||
-    alertasQuery.isLoading;
+    workspaceQuery.isLoading;
   const codigoExpediente = texto(
     expediente?.codigo_expediente ?? expediente?.codigoExpediente ?? id,
   );
@@ -542,6 +649,7 @@ export default function CompraExpedienteVerPage() {
     const archivoId =
       archivo.id ?? archivoRecord.archivo_id ?? archivoRecord.archivoId;
 
+    setVersionesDocumento(null);
     setPreviewDocumento({
       ...(toPreviewDocumento(versionesDocumento) as unknown as Record<
         string,
@@ -563,16 +671,19 @@ export default function CompraExpedienteVerPage() {
           <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">
             Compras
           </p>
-          <h1 className="mt-2 text-3xl font-bold tracking-tight text-slate-950 dark:text-slate-50">
-            Expediente {codigoExpediente}
+          <h1 className="mt-2 text-2xl font-bold tracking-tight text-slate-950 dark:text-slate-50">
+            {principal
+              ? `${texto(principal.tipo_documental ?? principal.tipoDocumental, "OC/OS")} ${
+                  texto(principalInfo.numero, "")
+                }`.trim()
+              : "Compras"}
           </h1>
           <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-            Consulta simple del documento principal, adjuntos de compras y
-            alertas.
+            Contexto {codigoExpediente} · {descripcion}
           </p>
         </div>
 
-        <Button asChild variant="outline">
+        <Button asChild variant="outline" size="sm" className="h-8 px-3">
           <Link href={returnTo}>Volver</Link>
         </Button>
       </header>
@@ -652,224 +763,140 @@ export default function CompraExpedienteVerPage() {
         </section>
       ) : null}
 
-      <div className="grid gap-4 xl:grid-cols-[2fr_1fr]">
-        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-          <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">
-                Documento principal
-              </p>
-              <h2 className="mt-2 text-xl font-bold text-slate-950 dark:text-slate-100">
-                {texto(
-                  principal?.tipo_documental ?? principal?.tipoDocumental,
-                  "Documento",
-                )}
-                {principalInfo.numero !== undefined &&
-                principalInfo.numero !== null
-                  ? ` ${principalInfo.numero}`
-                  : ""}
+      <section className="rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <div className="grid lg:grid-cols-[minmax(0,0.36fr)_minmax(0,0.64fr)]">
+          <div className="p-5 lg:border-r lg:border-slate-200 dark:lg:border-slate-800">
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+              Centro de costo
+            </p>
+            <div className="mt-3 space-y-1">
+              <h2 className="text-xl font-bold text-slate-950 dark:text-slate-100">
+                {codigoExpediente}
               </h2>
-            </div>
-            {principal ? (
-              <RelationBadge
-                value={principal.tipo_relacion ?? principal.tipoRelacion}
-              />
-            ) : null}
-          </div>
-
-          {principal ? (
-            <>
-              <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                <DetailItem
-                  label="Tipo"
-                  value={principal.tipo_documental ?? principal.tipoDocumental}
-                />
-                <DetailItem label="Número" value={principalInfo.numero} />
-                <DetailItem
-                  label="Fecha"
-                  value={fecha(principalInfo.fechaEmision)}
-                />
-                <DetailItem label="Proveedor" value={principalInfo.proveedor} />
-                <DetailItem label="RUC" value={principalInfo.ruc} />
-                <DetailItem
-                  label="Monto"
-                  value={moneda(
-                    principalInfo.monto,
-                    texto(principalInfo.docMoneda, ""),
-                  )}
-                />
-              </div>
-
-              <div className="mt-5 flex flex-wrap gap-2">
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  onClick={() => abrirPreview(principal)}
-                >
-                  <Eye className="mr-2 h-4 w-4" />
-                  Ver
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  onClick={() => setVersionesDocumento(principal)}
-                  disabled={!getDocumentoId(principal)}
-                >
-                  <History className="mr-2 h-4 w-4" />
-                  Ver versiones
-                </Button>
-              </div>
-            </>
-          ) : (
-            <p className="mt-4 text-sm text-slate-400">
-              {seleccionPrincipalRequerida
-                ? "Selecciona una OC / OS de trabajo para consultar su información y documentos asociados."
-                : "No hay documento principal vinculado."}
-            </p>
-          )}
-        </section>
-
-        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-          <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">
-            Expediente
-          </p>
-          <h2 className="mt-2 text-2xl font-bold text-slate-950 dark:text-slate-100">
-            {codigoExpediente}
-          </h2>
-          <p className="mt-2 text-sm font-medium uppercase text-slate-500 dark:text-slate-400">
-            {descripcion}
-          </p>
-          <div className="mt-5">
-            <DetailItem label="Estado" value={expediente?.estado} />
-          </div>
-        </section>
-      </div>
-
-      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-        <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">
-              Adjuntos
-            </p>
-            <h2 className="mt-2 text-xl font-bold text-slate-950 dark:text-slate-100">
-              {documentosPrincipales.length === 0
-                ? "Documentos sin principal"
-                : "Documentos adjuntos"}
-            </h2>
-          </div>
-          <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300">
-            {adjuntosCompras.length} adjunto(s)
-          </span>
-        </div>
-
-        <div className="mt-5 grid gap-4 lg:grid-cols-3">
-          {adjuntosCompras.map((doc, index) => {
-            const info = documentoResumen(doc);
-            return (
-              <article
-                key={String(getDocumentoId(doc) ?? getArchivoId(doc) ?? index)}
-                className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-950"
+              <p
+                className="line-clamp-2 break-words text-sm text-slate-500 dark:text-slate-400"
+                title={descripcion}
               >
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="text-xs font-semibold uppercase text-slate-400">
-                      {texto(
-                        doc.tipo_documental ?? doc.tipoDocumental,
-                        "Adjunto",
-                      )}
-                    </p>
-                    <p className="mt-2 text-base font-bold text-slate-950 dark:text-slate-100">
-                      {texto(info.numero, "Sin número")}
-                    </p>
-                  </div>
-                  <StatusBadge value={doc.estado} />
-                </div>
-
-                <div className="mt-4 grid gap-2 text-sm">
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="text-slate-400">Relación</span>
-                    <RelationBadge
-                      value={doc.tipo_relacion ?? doc.tipoRelacion}
-                    />
-                  </div>
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="text-slate-400">Fecha</span>
-                    <span className="font-semibold text-slate-700 dark:text-slate-200">
-                      {fecha(
-                        info.fechaEmision ?? doc.creado_en ?? doc.creadoEn,
-                      )}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="mt-5 flex flex-wrap gap-2">
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    onClick={() => abrirPreview(doc)}
-                  >
-                    <Eye className="mr-2 h-4 w-4" />
-                    Ver
-                  </Button>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    onClick={() => setVersionesDocumento(doc)}
-                    disabled={!getDocumentoId(doc)}
-                  >
-                    <History className="mr-2 h-4 w-4" />
-                    Ver versiones
-                  </Button>
-                </div>
-              </article>
-            );
-          })}
-
-          {!adjuntosCompras.length ? (
-            <div className="rounded-2xl border border-dashed border-slate-200 p-6 text-sm text-slate-400 dark:border-slate-800 lg:col-span-3">
-              No hay factura o guía vinculada para compras.
+                {descripcion}
+              </p>
             </div>
-          ) : null}
+          </div>
+
+          <div className="border-t border-slate-200 p-5 dark:border-slate-800 lg:border-t-0">
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+              Documento principal
+            </p>
+
+            <div className="mt-3">
+              {principal ? (
+                <DocumentoLecturaCard
+                  documento={principal}
+                  onPreview={abrirPreview}
+                  onVersiones={setVersionesDocumento}
+                />
+              ) : (
+                <div className="rounded-xl border border-dashed border-slate-200 p-5 text-sm text-slate-400 dark:border-slate-800">
+                  {seleccionPrincipalRequerida
+                    ? "Selecciona una OC / OS de trabajo para consultar sus documentos."
+                    : "No hay documento principal vinculado."}
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       </section>
 
       <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-        <div className="flex items-center gap-2">
-          <TriangleAlert className="h-4 w-4 text-slate-500" />
-          <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
-            Alertas
-          </h2>
-        </div>
-        <div className="mt-4 space-y-3">
-          {alertas.map((alerta, index) => (
-            <div
-              key={alerta.id ?? index}
-              className="rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-950"
-            >
-              <div className="flex items-start justify-between gap-3">
-                <p className="font-semibold text-slate-900 dark:text-slate-100">
-                  {texto(alerta.titulo ?? alerta.tipo ?? "Alerta")}
-                </p>
-                <StatusBadge value={alerta.prioridad ?? alerta.estado} />
-              </div>
-              <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-                {texto(alerta.mensaje ?? alerta.descripcion)}
-              </p>
-              <p className="mt-2 text-xs text-slate-400">
-                {fecha(alerta.creado_en ?? alerta.creadoEn)}
-              </p>
+        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+          Documentos de compra
+        </p>
+
+        {workspaceQuery.isError ? (
+          <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
+            No se pudo resolver la agrupación documental de las facturas.
+          </div>
+        ) : null}
+
+        <div className="mt-5 grid gap-4 lg:grid-cols-3">
+          <div className="min-w-0 rounded-xl border border-slate-200 p-4 dark:border-slate-800">
+            <div className="flex items-center justify-between gap-2">
+              <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-700 dark:text-slate-200">
+                Facturas
+              </h3>
+              <span className="text-xs text-slate-400">
+                {gruposFacturaPrincipal.length} factura
+                {gruposFacturaPrincipal.length === 1 ? "" : "s"}
+              </span>
             </div>
-          ))}
-          {!alertas.length ? (
-            <p className="rounded-xl border border-dashed p-6 text-center text-sm text-slate-400">
-              No hay alertas activas.
-            </p>
-          ) : null}
+
+            <div className="mt-4 space-y-3">
+              {gruposFacturaPrincipal.map((grupo) => {
+                const facturaId = normalizeDocumentoId(
+                  getGrupoFacturaDocumentoId(grupo),
+                );
+                const docs = documentosGrupo(grupo);
+                const factura =
+                  docs.find(
+                    (doc) =>
+                      normalizeDocumentoId(getDocumentoId(doc)) === facturaId,
+                  ) ??
+                  docs.find(
+                    (doc) =>
+                      normalize(doc.tipo_documental ?? doc.tipoDocumental) ===
+                      "FACTURA",
+                  );
+
+                if (!factura) return null;
+
+                return (
+                  <DocumentoLecturaCard
+                    key={String(
+                      getGrupoFacturaPersistidoId(grupo) ??
+                        getDocumentoId(factura),
+                    )}
+                    documento={factura}
+                    titulo={getGrupoFacturaLabel(grupo).replace(
+                      /^Factura\s*/i,
+                      "",
+                    )}
+                    onPreview={abrirPreview}
+                    onVersiones={setVersionesDocumento}
+                  />
+                );
+              })}
+
+              {!workspaceQuery.isError &&
+              principal &&
+              !gruposFacturaPrincipal.length ? (
+                <div className="rounded-xl border border-dashed border-slate-200 p-5 text-sm text-slate-400 dark:border-slate-800">
+                  Aún no se han adjuntado facturas.
+                </div>
+              ) : null}
+            </div>
+          </div>
+
+          <div className="min-w-0 rounded-xl border border-slate-200 p-4 dark:border-slate-800">
+            <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-700 dark:text-slate-200">
+              Guía
+            </h3>
+            <div className="mt-4 rounded-xl border border-dashed border-slate-200 p-5 text-sm text-slate-400 dark:border-slate-800">
+              Aún no se ha adjuntado una guía.
+            </div>
+          </div>
+
+          <div className="min-w-0 rounded-xl border border-slate-200 p-4 dark:border-slate-800">
+            <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-700 dark:text-slate-200">
+              Otros sustentos
+            </h3>
+            <div className="mt-4 rounded-xl border border-dashed border-slate-200 p-5 text-sm text-slate-400 dark:border-slate-800">
+              Aún no se han adjuntado otros documentos.
+            </div>
+          </div>
         </div>
+
+        <span className="sr-only">
+          Adjuntos legacy del principal: {adjuntosCompras.length}
+        </span>
       </section>
 
       <DocumentoPreviewModal

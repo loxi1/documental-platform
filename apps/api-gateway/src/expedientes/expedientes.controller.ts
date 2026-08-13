@@ -690,6 +690,25 @@ export class ExpedientesGatewayController {
     });
   }
 
+  @ApiOperation({ summary: 'Bandeja de compras OC/OS vía API Gateway' })
+  @Get('bandeja-compras')
+  async getBandejaCompras(
+    @Headers('authorization') authorization: string | undefined,
+    @Headers(REQUEST_ID_HEADER) requestId: string | undefined,
+    @Query() query: Record<string, string>,
+  ) {
+    const contexto = await this.validateAuthorization(authorization);
+    const scopedQuery = this.buildWorkspaceScopedQuery(query, contexto);
+
+    return this.proxy({
+      method: 'GET',
+      path: '/expedientes/bandeja-compras',
+      authorization,
+      requestId,
+      query: scopedQuery,
+    });
+  }
+
   @ApiOperation({ summary: 'Bandeja contable vía API Gateway' })
   @Get('bandeja-contable')
   async getBandejaContable(

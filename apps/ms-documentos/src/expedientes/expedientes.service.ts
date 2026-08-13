@@ -455,6 +455,16 @@ export class ExpedientesService {
     };
   }
 
+  getBandejaComprasOcos(filters: {
+    empresa: string;
+    estado?: string;
+    q?: string;
+    limit?: number;
+    offset?: number;
+  }) {
+    return this.repo.getBandejaComprasOcos(filters);
+  }
+
   getRevisionContable(filters: {
     empresa: string;
     anio?: number;

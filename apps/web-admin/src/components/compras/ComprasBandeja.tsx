@@ -1,661 +1,158 @@
 "use client";
 
+import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
-import { Eye, FilePlus2, Pencil, Plus, Search, X } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { Eye, Plus, Search, X } from "lucide-react";
 import { usePathname, useSearchParams } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  Empty,
-  EmptyDescription,
-  EmptyHeader,
-  EmptyMedia,
-  EmptyTitle,
-} from "@/components/ui/empty";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useExpedientes } from "@/hooks/useExpedientes";
 import { getContexto } from "@/lib/auth-storage";
-import { buscarExpedientes } from "@/services/expedientes";
-import type { Expediente, ExpedienteDocumento } from "@/types/expediente";
-
-type ExpedientesApiResponse = {
-  total?: number;
-  limit?: number;
-  offset?: number;
-  data?: Expediente[];
-};
+import {
+  obtenerBandejaCompras,
+  type BandejaComprasFila,
+} from "@/services/expedientes";
 
 const PAGE_SIZE = 8;
 
-const EMPRESA_LABELS: Record<string, string> = {
-  BBTI: "BBTI - BBTI S.A.C.",
-  BBTEC: "BBTEC - BB TECNOLOGÍA INDUSTRIAL S.A.C.",
-  CIMA: "CIMA - CIMA ENERGY",
-  HUANCA: "HUANCA - HUANCA",
-  TARMA: "TARMA - TARMA",
-  KIMBIRI: "KIMBIRI - KIMBIRI",
-};
-
-function empresaLabel(value: string) {
-  return EMPRESA_LABELS[value] ?? value;
-}
-
-function normalizeExpedientes(input: unknown): Expediente[] {
-  if (Array.isArray(input)) return input as Expediente[];
-
-  if (
-    input &&
-    typeof input === "object" &&
-    "data" in input &&
-    Array.isArray((input as ExpedientesApiResponse).data)
-  ) {
-    return (input as ExpedientesApiResponse).data ?? [];
-  }
-
-  return [];
-}
-
-function text(value: unknown, fallback = "") {
+function text(value: unknown, fallback = "—") {
   if (value === null || value === undefined) return fallback;
   const normalized = String(value).trim();
   return normalized || fallback;
 }
 
-function field<T = unknown>(source: unknown, key: string): T | undefined {
-  if (!source || typeof source !== "object") return undefined;
-  return (source as unknown as Record<string, T | undefined>)[key];
+function principalTipo(fila: BandejaComprasFila) {
+  return text(fila.principal.tipoDocumental ?? fila.principal.tipo, "OC/OS").toUpperCase();
 }
 
-function listField<T = unknown>(source: unknown, key: string): T[] {
-  const value = field<unknown>(source, key);
-  return Array.isArray(value) ? (value as T[]) : [];
+function principalLabel(fila: BandejaComprasFila) {
+  return [principalTipo(fila), text(fila.principal.numero, "")].filter(Boolean).join(" ");
 }
 
-function getEmpresa(expediente: Expediente) {
-  return text(
-    field(expediente, "empresa_codigo") ?? field(expediente, "empresaCodigo"),
-    "-",
-  );
+function proveedorLabel(fila: BandejaComprasFila) {
+  return text(fila.principal.proveedorNombre ?? fila.principal.proveedor);
 }
 
-function getCodigoExpediente(expediente: Expediente) {
-  return text(
-    field(expediente, "codigo_expediente") ??
-      field(expediente, "codigoExpediente"),
-    "",
-  );
+function facturaLabel(factura: BandejaComprasFila["facturas"][number]) {
+  return [text(factura.serie, ""), text(factura.numero, "")].filter(Boolean).join("-") || "Factura";
 }
 
-function getClienteNombre(expediente: Expediente) {
-  return text(
-    field(expediente, "cliente_nombre") ??
-      field(expediente, "clienteNombre") ??
-      field(expediente, "cliente_abreviatura") ??
-      field(expediente, "clienteAbreviatura") ??
-      getEmpresa(expediente),
-    "-",
-  );
-}
-
-function getDescripcion(expediente: Expediente) {
-  return text(field(expediente, "descripcion"), "Pendiente de descripción");
-}
-
-function getEstado(expediente: Expediente) {
-  return text(field(expediente, "estado"), "abierto");
-}
-
-function getPrincipal(expediente: Expediente): ExpedienteDocumento | null {
-  const documentoPrincipal = field<ExpedienteDocumento | null>(
-    expediente,
-    "documentoPrincipal",
-  );
-
-  if (documentoPrincipal) return documentoPrincipal;
-
-  const documentosPrincipales = listField<ExpedienteDocumento>(
-    expediente,
-    "documentosPrincipales",
-  );
-  const documentos = listField<ExpedienteDocumento>(
-    expediente,
-    "documentos",
-  );
-  const documentosAdjuntos = listField<ExpedienteDocumento>(
-    expediente,
-    "documentosAdjuntos",
-  );
-
-  return (
-    documentosPrincipales[0] ??
-    documentos.find((documento) => Boolean(field(documento, "esPrincipal"))) ??
-    documentosAdjuntos.find((documento) =>
-      Boolean(field(documento, "esPrincipal")),
-    ) ??
-    null
-  );
-}
-
-function getAllDocuments(expediente: Expediente) {
-  const documentos = listField<ExpedienteDocumento>(expediente, "documentos");
-  const documentosLista = listField<ExpedienteDocumento>(
-    expediente,
-    "documentosLista",
-  );
-  const documentosPrincipales = listField<ExpedienteDocumento>(
-    expediente,
-    "documentosPrincipales",
-  );
-  const documentoPrincipal = field<ExpedienteDocumento | null>(
-    expediente,
-    "documentoPrincipal",
-  );
-  const documentosAdjuntos = listField<ExpedienteDocumento>(
-    expediente,
-    "documentosAdjuntos",
-  );
-
-  return [
-    ...documentos,
-    ...documentosLista,
-    ...documentosPrincipales,
-    ...(documentoPrincipal ? [documentoPrincipal] : []),
-    ...documentosAdjuntos,
-  ];
-}
-
-function hasDocument(expediente: Expediente, aliases: string[]) {
-  const normalizedAliases = aliases.map((alias) => alias.toUpperCase());
-
-  return getAllDocuments(expediente).some((documento) => {
-    const doc = documento as unknown as Record<string, unknown>;
-    const tipo = String(
-      doc.tipoDocumental ?? doc.tipo_documental ?? "",
-    ).toUpperCase();
-    const relacion = String(
-      doc.tipoRelacion ?? doc.tipo_relacion ?? "",
-    ).toUpperCase();
-
-    return normalizedAliases.some(
-      (alias) => tipo.includes(alias) || relacion.includes(alias),
-    );
-  });
-}
-
-function principalLabel(expediente: Expediente) {
-  const principal = getPrincipal(expediente);
-
-  if (!principal) return "Sin principal";
-
-  const doc = principal as unknown as Record<string, unknown>;
-  const tipo = text(
-    doc.tipoDocumental ??
-      doc.tipo_documental ??
-      doc.tipoRelacion ??
-      doc.tipo_relacion,
-    "DOC",
-  )
-    .replace("PRINCIPAL_", "")
-    .replace("ADJUNTO_", "")
-    .replaceAll("_", " ")
-    .toUpperCase();
-
-  const serie = text(doc.serie);
-  const numero = text(doc.numero);
-  const labelNumero = [serie, numero].filter(Boolean).join("-");
-
-  return labelNumero ? `${tipo} ${labelNumero}` : tipo;
-}
-
-function AdjuntosBadge({ label, active }: { label: string; active: boolean }) {
-  return (
-    <Badge
-      variant={active ? "secondary" : "outline"}
-      className={active ? "gap-1" : "gap-1 text-muted-foreground"}
-      title={active ? `${label} presente` : `${label} pendiente`}
-    >
-      <span>{active ? "✓" : "—"}</span>
-      {label}
-    </Badge>
-  );
-}
-
-function ExpedienteCell({ expediente }: { expediente: Expediente }) {
-  const codigo = getCodigoExpediente(expediente);
-  const descripcion = getDescripcion(expediente);
-
-  return (
-    <div className="space-y-1">
-      <div className="font-mono text-sm font-semibold text-foreground">
-        {codigo || "SIN EXPEDIENTE"}
-      </div>
-      <div className="line-clamp-2 text-xs text-muted-foreground">
-        {descripcion}
-      </div>
-    </div>
-  );
-}
-
-function ActionsCell({ expediente }: { expediente: Expediente }) {
-  const tienePrincipal = Boolean(getPrincipal(expediente));
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
-  const query = searchParams.toString();
-  const returnTo = query ? `${pathname}?${query}` : pathname;
-  const verHref = `/compras/${expediente.id}/ver?returnTo=${encodeURIComponent(returnTo)}`;
-
-  return (
-    <div className="flex justify-end gap-1">
-      <Button asChild size="icon" variant="outline" title="Ver expediente">
-        <Link href={verHref} aria-label="Ver expediente">
-          <Eye className="h-4 w-4" />
-        </Link>
-      </Button>
-      <Button asChild size="icon" variant="outline" title="Editar expediente">
-        <Link
-          href={`/compras/${expediente.id}/editar`}
-          aria-label="Editar expediente"
-        >
-          <Pencil className="h-4 w-4" />
-        </Link>
-      </Button>
-      {tienePrincipal ? (
-        <Button
-          asChild
-          size="icon"
-          variant="outline"
-          title="Adjuntar documento"
-        >
-          <Link
-            href={`/compras/${expediente.id}/editar?accion=adjuntar`}
-            aria-label="Adjuntar documento"
-          >
-            <FilePlus2 className="h-4 w-4" />
-          </Link>
-        </Button>
-      ) : null}
-    </div>
-  );
-}
-
-function PaginationControls({
-  page,
-  totalPages,
-  totalRows,
-  pageSize,
-  onPageChange,
-}: {
-  page: number;
-  totalPages: number;
-  totalRows: number;
-  pageSize: number;
-  onPageChange: (page: number) => void;
-}) {
-  if (totalRows === 0) return null;
-
-  const start = (page - 1) * pageSize + 1;
-  const end = Math.min(page * pageSize, totalRows);
-  const pages = Array.from({ length: totalPages }, (_, index) => index + 1);
-  const visiblePages = pages.filter(
-    (item) => item === 1 || item === totalPages || Math.abs(item - page) <= 1,
-  );
-
-  return (
-    <div className="flex flex-col gap-3 border-t pt-4 text-sm text-muted-foreground md:flex-row md:items-center md:justify-between">
-      <div>
-        Mostrando {start} a {end} de {totalRows} resultados
-      </div>
-
-      <div className="flex items-center gap-1">
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          disabled={page <= 1}
-          onClick={() => onPageChange(page - 1)}
-        >
-          Anterior
-        </Button>
-
-        {visiblePages.map((item, index) => {
-          const previous = visiblePages[index - 1];
-          const showEllipsis = previous !== undefined && item - previous > 1;
-
-          return (
-            <div key={item} className="flex items-center gap-1">
-              {showEllipsis ? <span className="px-2">...</span> : null}
-              <Button
-                type="button"
-                variant={item === page ? "default" : "outline"}
-                size="sm"
-                className="min-w-9"
-                onClick={() => onPageChange(item)}
-              >
-                {item}
-              </Button>
-            </div>
-          );
-        })}
-
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          disabled={page >= totalPages}
-          onClick={() => onPageChange(page + 1)}
-        >
-          Siguiente
-        </Button>
-      </div>
-    </div>
-  );
+function LoadingRows() {
+  return <>{Array.from({ length: 5 }).map((_, i) => (
+    <tr key={i} className="border-b">
+      <td className="py-4 pr-4"><Skeleton className="h-5 w-28" /></td>
+      <td className="py-4 pr-4"><Skeleton className="h-10 w-48" /></td>
+      <td className="py-4 pr-4"><Skeleton className="h-10 w-48" /></td>
+      <td className="py-4 pr-4"><Skeleton className="h-7 w-32" /></td>
+      <td className="py-4 pr-4"><Skeleton className="h-6 w-20" /></td>
+      <td className="py-4 text-right"><Skeleton className="ml-auto h-8 w-20" /></td>
+    </tr>
+  ))}</>;
 }
 
 export function ComprasBandeja() {
-  const [workspaceEmpresa, setWorkspaceEmpresa] = useState("BBTI");
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [empresa, setEmpresa] = useState("BBTI");
-  const [estado, setEstado] = useState("abierto");
   const [search, setSearch] = useState("");
-  const [page, setPage] = useState(1);
-  const [remoteRows, setRemoteRows] = useState<Expediente[]>([]);
-  const [searchMode, setSearchMode] = useState(false);
-  const [isSearching, setIsSearching] = useState(false);
-  const [searchError, setSearchError] = useState<string | null>(null);
+  const [q, setQ] = useState("");
+  const [page, setPage] = useState(0);
 
   useEffect(() => {
     const contexto = getContexto();
-    const empresaContexto = contexto?.empresa?.trim() || "BBTI";
-    setWorkspaceEmpresa(empresaContexto);
-    setEmpresa(empresaContexto);
+    setEmpresa(contexto?.empresa?.trim() || "BBTI");
   }, []);
 
-  const { data, isLoading, error } = useExpedientes({
-    empresa,
-    estado,
-    limit: 50,
-    offset: 0,
+  const offset = page * PAGE_SIZE;
+  const bandeja = useQuery({
+    queryKey: ["compras-bandeja-ocos", empresa, q, PAGE_SIZE, offset],
+    queryFn: () => obtenerBandejaCompras({ empresa, q, limit: PAGE_SIZE, offset }),
+    enabled: Boolean(q.trim()),
   });
 
-  const expedientes = useMemo(() => normalizeExpedientes(data), [data]);
+  const rows = bandeja.data?.data ?? [];
+  const total = Number(bandeja.data?.total ?? 0);
+  const limit = Number(bandeja.data?.limit ?? PAGE_SIZE) || PAGE_SIZE;
+  const apiOffset = Number(bandeja.data?.offset ?? offset);
+  const start = total ? apiOffset + 1 : 0;
+  const end = Math.min(apiOffset + rows.length, total);
 
-  const rows = useMemo(() => {
-    const value = search.trim().toLowerCase();
-
-    if (searchMode) {
-      return remoteRows.filter(
-        (expediente) => getEmpresa(expediente) === empresa,
-      );
-    }
-    if (!value) return expedientes;
-
-    return expedientes.filter((expediente) =>
-      [
-        getEmpresa(expediente),
-        getClienteNombre(expediente),
-        getCodigoExpediente(expediente),
-        getDescripcion(expediente),
-        principalLabel(expediente),
-        getEstado(expediente),
-      ]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase()
-        .includes(value),
-    );
-  }, [empresa, expedientes, remoteRows, search, searchMode]);
-
-  async function ejecutarBusqueda() {
-    const value = search.trim();
-
-    if (value.length < 2) {
-      setSearchMode(false);
-      setRemoteRows([]);
-      setSearchError(null);
-      return;
-    }
-
-    setIsSearching(true);
-    setSearchError(null);
-
-    try {
-      const results = await buscarExpedientes(value, 50);
-      setRemoteRows(results as unknown as Expediente[]);
-      setSearchMode(true);
-      setPage(1);
-    } catch {
-      setSearchError("No se pudo buscar expedientes o documentos.");
-    } finally {
-      setIsSearching(false);
-    }
-  }
-
-  function limpiarBusqueda() {
-    setSearch("");
-    setRemoteRows([]);
-    setSearchMode(false);
-    setSearchError(null);
-    setPage(1);
-  }
-
-  const totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
-  const currentPage = Math.min(page, totalPages);
-  const paginatedRows = useMemo(() => {
-    const start = (currentPage - 1) * PAGE_SIZE;
-    return rows.slice(start, start + PAGE_SIZE);
-  }, [currentPage, rows]);
-
-  useEffect(() => {
-    setPage(1);
-  }, [empresa, estado, search]);
-
-  useEffect(() => {
-    if (!search.trim()) {
-      setSearchMode(false);
-      setRemoteRows([]);
-      setSearchError(null);
-    }
-  }, [search]);
-
-  if (isLoading) {
-    return (
-      <main className="space-y-4">
-        <Skeleton className="h-10 w-72" />
-        <Card>
-          <CardContent className="space-y-3 py-6">
-            <Skeleton className="h-5 w-full" />
-            <Skeleton className="h-5 w-11/12" />
-            <Skeleton className="h-5 w-10/12" />
-          </CardContent>
-        </Card>
-      </main>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="p-6 text-red-600">Error cargando bandeja de compras.</div>
-    );
-  }
+  const returnTo = useMemo(() => pathname, [pathname]);
 
   return (
-    <main className="space-y-4">
-      <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">Compras</h1>
-          <p className="text-sm text-muted-foreground">
-            Bandeja operativa de expedientes, documentos principales y adjuntos.
-          </p>
-        </div>
-
-        <Button asChild>
-          <Link href="/compras/nuevo">
-            <Plus className="h-4 w-4" />
-            Nuevo expediente
-          </Link>
-        </Button>
+    <main className="space-y-5">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-xs font-semibold uppercase tracking-[0.24em] text-muted-foreground">Compras</p>
+        <Button asChild><Link href="/compras/nuevo"><Plus className="mr-2 h-4 w-4" />Agregar OC/OS</Link></Button>
       </div>
 
       <Card>
-        <CardHeader className="gap-4">
-          <CardTitle>Filtro</CardTitle>
-          <form
-            className="grid gap-2 md:grid-cols-[140px_160px_1fr_auto]"
-            onSubmit={(event) => {
-              event.preventDefault();
-              void ejecutarBusqueda();
-            }}
-          >
-            <div
-              className="flex h-8 items-center rounded-lg border border-dashed border-input bg-muted/40 px-3 text-sm font-medium text-foreground"
-              title="Empresa definida por el workspace activo"
-            >
-              {empresaLabel(workspaceEmpresa)}
-            </div>
-
-            <select
-              className="h-8 rounded-lg border border-input bg-background px-2 text-sm"
-              value={estado}
-              onChange={(event) => setEstado(event.target.value)}
-              disabled={searchMode}
-            >
-              <option value="abierto">Abierto</option>
-              <option value="en_proceso">En proceso</option>
-              <option value="observado">Observado</option>
-              <option value="completo">Completo</option>
-              <option value="cerrado">Cerrado</option>
-            </select>
-
-            <Input
-              placeholder="Buscar expediente, factura, guía, OC, RUC o proveedor..."
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-            />
-
-            <div className="flex gap-2">
-              <Button type="submit" size="sm" disabled={isSearching}>
-                <Search className="h-4 w-4" />
-                {isSearching ? "Buscando" : "Buscar"}
-              </Button>
-              {searchMode ? (
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  onClick={limpiarBusqueda}
-                >
-                  <X className="h-4 w-4" />
-                  Limpiar
-                </Button>
-              ) : null}
-            </div>
-          </form>
-
-          {searchMode ? (
-            <p className="text-xs text-muted-foreground">
-              Búsqueda global activa: {rows.length} resultado(s). La búsqueda se
-              mantiene limitada a la empresa del workspace activo.
-            </p>
-          ) : null}
-          {searchError ? (
-            <p className="text-xs text-red-600">{searchError}</p>
-          ) : null}
-        </CardHeader>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Bandeja de compras</CardTitle>
-        </CardHeader>
-
-        <CardContent className="space-y-4">
-          {rows.length === 0 ? (
-            <Empty>
-              <EmptyHeader>
-                <EmptyMedia variant="icon">📄</EmptyMedia>
-                <EmptyTitle>Sin expedientes</EmptyTitle>
-                <EmptyDescription>
-                  {searchMode
-                    ? "No se encontraron expedientes o documentos con esa búsqueda."
-                    : "No se encontraron expedientes con los filtros seleccionados."}
-                </EmptyDescription>
-              </EmptyHeader>
-            </Empty>
-          ) : (
-            <>
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[780px] text-sm">
-                  <thead>
-                    <tr className="border-b text-left text-muted-foreground">
-                      <th className="py-2">Expediente</th>
-                      <th>Documento principal</th>
-                      <th>Adjuntos</th>
-                      <th>Estado</th>
-                      <th className="text-right">Acciones</th>
-                    </tr>
-                  </thead>
-
-                  <tbody>
-                    {paginatedRows.map((expediente) => {
-                      const tieneFactura = hasDocument(expediente, [
-                        "FACTURA",
-                        "ADJUNTO_FACTURA",
-                        "PRINCIPAL_FACTURA",
-                      ]);
-                      const tieneGuia = hasDocument(expediente, [
-                        "GUIA",
-                        "GUÍA",
-                      ]);
-
-                      return (
-                        <tr
-                          key={expediente.id}
-                          className="border-b align-top hover:bg-muted/30"
-                        >
-                          <td className="w-[34%] py-3 pr-4">
-                            <ExpedienteCell expediente={expediente} />
-                          </td>
-                          <td className="w-[26%] py-3 pr-4">
-                            <div className="font-medium">
-                              {principalLabel(expediente)}
-                            </div>
-                          </td>
-                          <td className="w-[18%] py-3 pr-4">
-                            <div className="flex flex-wrap gap-1.5">
-                              <AdjuntosBadge
-                                label="FAC"
-                                active={tieneFactura}
-                              />
-                              <AdjuntosBadge label="GUÍA" active={tieneGuia} />
-                            </div>
-                          </td>
-                          <td className="w-[10%] py-3 pr-4">
-                            <Badge variant="secondary">
-                              {getEstado(expediente)}
-                            </Badge>
-                          </td>
-                          <td className="w-[12%] py-3 text-right">
-                            <ActionsCell expediente={expediente} />
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+        <CardHeader className="space-y-3">
+          <div className="flex items-center justify-between gap-3">
+            <CardTitle className="text-base">Órdenes de compra / servicio</CardTitle>
+            {q.trim() ? <span className="text-xs text-muted-foreground">{bandeja.isLoading ? "Cargando..." : `Mostrando ${start} a ${end} de ${total} resultados`}</span> : null}
+          </div>
+          <div className="grid gap-3 lg:grid-cols-[180px_minmax(0,1fr)_auto]">
+            <div className="space-y-1">
+              <span className="text-xs text-muted-foreground">Empresa</span>
+              <div className="flex h-10 items-center rounded-md border bg-muted/30 px-3 text-sm font-semibold">
+                {empresa}
               </div>
+            </div>
+            <label className="space-y-1">
+              <span className="text-xs text-muted-foreground">Buscar</span>
+              <div className="flex gap-2">
+                <Input value={search} onChange={(e) => setSearch(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { setQ(search.trim()); setPage(0); } }} placeholder="Buscar documento, centro de costo, factura, RUC o proveedor..." />
+                {search || q ? <Button type="button" size="icon" variant="outline" onClick={() => { setSearch(""); setQ(""); setPage(0); }}><X className="h-4 w-4" /></Button> : null}
+              </div>
+            </label>
+            <div className="flex items-end"><Button type="button" onClick={() => { setQ(search.trim()); setPage(0); }}><Search className="mr-2 h-4 w-4" />Buscar</Button></div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {bandeja.isError ? <div className="mb-4 rounded-xl border border-destructive/30 p-4 text-sm text-destructive">No se pudo cargar GET /expedientes/bandeja-compras.</div> : null}
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[980px] text-sm">
+              <thead><tr className="border-b text-left text-xs uppercase tracking-wide text-muted-foreground"><th className="py-2 pr-4">Documento</th><th className="pr-4">Centro de costo</th><th className="pr-4">Proveedor</th><th className="pr-4">Facturas</th><th className="text-right">Acciones</th></tr></thead>
+              <tbody>
+                {bandeja.isLoading ? <LoadingRows /> : null}
+                {!bandeja.isLoading ? rows.map((fila) => {
+                  const params = new URLSearchParams();
+                  params.set("returnTo", returnTo);
+                  params.set("principalId", String(fila.principal.documentoId));
+                  const href = `/compras/${fila.expedienteId}/ver?${params.toString()}`;
+                  const proveedor = text(fila.proveedor?.nombre, "");
+                  const ruc = text(fila.proveedor?.ruc, "");
+                  return <tr key={`${fila.expedienteId}-${fila.principal.documentoId}`} className="border-b align-top hover:bg-muted/30">
+                    <td className="py-3 pr-4 font-semibold">{principalLabel(fila)}</td>
+                    <td className="py-3 pr-4"><div className="font-mono font-semibold">{text(fila.codigoExpediente)}</div><div className="mt-1 max-w-[280px] text-xs text-muted-foreground">{text(fila.descripcion)}</div></td>
+                    <td className="py-3 pr-4"><div className="max-w-[280px] font-medium">{proveedor || "—"}</div>{ruc ? <div className="mt-1 font-mono text-xs text-muted-foreground">RUC {ruc}</div> : null}</td>
+                    <td className="py-3 pr-4">{fila.facturas.length ? <div className="flex max-w-[300px] flex-wrap gap-1.5">{fila.facturas.map((f) => <Badge key={`${f.documentoId}-${f.grupoFacturaId}`} variant="outline">{facturaLabel(f)}</Badge>)}</div> : <span className="text-muted-foreground">—</span>}</td>
 
-              <PaginationControls
-                page={currentPage}
-                totalPages={totalPages}
-                totalRows={rows.length}
-                pageSize={PAGE_SIZE}
-                onPageChange={setPage}
-              />
-            </>
-          )}
+                    <td className="py-3 text-right">
+                      <div className="flex justify-end gap-2">
+                        <Button asChild size="sm" variant="outline">
+                          <Link href={href}><Eye className="mr-2 h-4 w-4" />Ver</Link>
+                        </Button>
+                        <Button asChild size="sm">
+                          <Link href={`/compras/${fila.expedienteId}/editar?principalId=${fila.principal.documentoId}`}>
+                            Adjuntar
+                          </Link>
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>;
+                }) : null}
+              </tbody>
+            </table>
+          </div>
+          {!q.trim() ? <p className="py-8 text-center text-sm text-muted-foreground">Ingrese un criterio de búsqueda para consultar OC/OS.</p> : null}
+          {q.trim() && !bandeja.isLoading && rows.length === 0 ? <p className="py-8 text-center text-sm text-muted-foreground">No se encontraron OC/OS para el criterio ingresado.</p> : null}
+          {q.trim() ? <div className="mt-4 flex items-center justify-between gap-3"><Button type="button" variant="outline" disabled={apiOffset <= 0 || bandeja.isFetching} onClick={() => setPage((v) => Math.max(0, v - 1))}>Anterior</Button><span className="text-xs text-muted-foreground">Offset {apiOffset} · límite {limit}</span><Button type="button" variant="outline" disabled={apiOffset + limit >= total || bandeja.isFetching} onClick={() => setPage((v) => v + 1)}>Siguiente</Button></div> : null}
         </CardContent>
       </Card>
     </main>

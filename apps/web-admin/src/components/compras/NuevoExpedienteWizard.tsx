@@ -64,6 +64,15 @@ type PrevalidacionExistenteUI = {
   documentoId?: string | number | null;
   archivoId?: string | number | null;
   expedienteId?: string | number | null;
+  motivo?: string | null;
+  persistido?: boolean | null;
+  tipoDocumental?: string | null;
+  serie?: string | null;
+  numero?: string | null;
+  codigoExpediente?: string | null;
+  principalDocumentoId?: string | number | null;
+  principalTipoDocumental?: string | null;
+  principalNumero?: string | null;
 };
 
 const OPTIONS: OpcionInicio[] = [
@@ -205,30 +214,44 @@ function getPrevalidacionExistente(resultado: CargaGuiadaPrevalidacionResponse):
   const duplicado = resultado.duplicados?.[0];
   const documentoExistente = resultado.documentoExistente as Record<string, unknown> | null | undefined;
   const principalActivo = resultado.principalActivo as Record<string, unknown> | null | undefined;
+  const raw = resultado as unknown as Record<string, unknown>;
 
   const documentoId =
     toIdValue(duplicado?.documentoId) ??
     toIdValue(documentoExistente?.documentoId) ??
     toIdValue(documentoExistente?.documento_id) ??
     toIdValue(documentoExistente?.id) ??
-    toIdValue(principalActivo?.documentoId) ??
-    toIdValue(principalActivo?.documento_id) ??
     toIdValue(resultado.documentoId);
-
   const archivoId =
-  toIdValue(duplicado?.archivoId) ??
-  toIdValue(documentoExistente?.archivoId) ??
-  toIdValue(documentoExistente?.archivo_id);
-
+    toIdValue(duplicado?.archivoId) ??
+    toIdValue(documentoExistente?.archivoId) ??
+    toIdValue(documentoExistente?.archivo_id) ??
+    toIdValue(resultado.archivoId);
   const expedienteId =
-  toIdValue(duplicado?.expedienteId) ??
-  toIdValue(documentoExistente?.expedienteId) ??
-  toIdValue(documentoExistente?.expediente_id) ??
-  toIdValue(resultado.expedienteId);
+    toIdValue(duplicado?.expedienteId) ??
+    toIdValue(documentoExistente?.expedienteId) ??
+    toIdValue(documentoExistente?.expediente_id) ??
+    toIdValue(resultado.expedienteId);
+  const principalDocumentoId =
+    toIdValue(principalActivo?.documentoId) ??
+    toIdValue(principalActivo?.documento_id);
 
-  if (!documentoId && !archivoId && !expedienteId) return null;
+  if (!documentoId && !archivoId && !expedienteId && !principalDocumentoId) return null;
 
-  return { documentoId, archivoId, expedienteId };
+  return {
+    documentoId,
+    archivoId,
+    expedienteId,
+    motivo: text(resultado.motivo, "") || null,
+    persistido: typeof resultado.persistido === "boolean" ? resultado.persistido : null,
+    tipoDocumental: text(documentoExistente?.tipoDocumental ?? documentoExistente?.tipo_documental, "") || null,
+    serie: text(documentoExistente?.serie, "") || null,
+    numero: text(documentoExistente?.numero, "") || null,
+    codigoExpediente: text(raw.codigoExpedienteSeleccionado ?? raw.codigo_expediente_seleccionado, "") || null,
+    principalDocumentoId,
+    principalTipoDocumental: text(principalActivo?.tipoDocumental ?? principalActivo?.tipo_documental ?? principalActivo?.tipo, "") || null,
+    principalNumero: text(principalActivo?.numero, "") || null,
+  };
 }
 
 function expedienteLabel(expediente: ExpedienteSearchResult) {
@@ -1077,18 +1100,40 @@ export function NuevoExpedienteWizard() {
               <div className="mt-4 space-y-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-300">
                 <p className="whitespace-pre-line">{accionError}</p>
                 {prevalidacionExistente ? (
-                  <div className="flex flex-wrap gap-2">
-                    {prevalidacionExistente.expedienteId ? (
-                      <>
-                        <Button asChild size="sm" variant="outline">
-                          <Link href={`/compras/${prevalidacionExistente.expedienteId}/ver`}>Ver en Compras</Link>
-                        </Button>
-                        <Button asChild size="sm" variant="outline">
-                          <Link href={`/compras/${prevalidacionExistente.expedienteId}/editar`}>Editar en Compras</Link>
-                        </Button>
-                      </>
-                    ) : null}
-                  </div>
+                  prevalidacionExistente.motivo === "MISMA_CLAVE_DOCUMENTAL" ? (
+                    <div className="space-y-3 rounded-lg border border-amber-300 bg-background/70 p-3 text-foreground">
+                      <div>
+                        <p className="font-semibold">
+                          {prevalidacionExistente.tipoDocumental
+                            ? `Este ${prevalidacionExistente.tipoDocumental.toLowerCase()} ya existe`
+                            : "Este documento ya existe"}
+                        </p>
+                        <p className="mt-1 text-sm text-muted-foreground">
+                          {[prevalidacionExistente.tipoDocumental, [prevalidacionExistente.serie, prevalidacionExistente.numero].filter(Boolean).join("-")].filter(Boolean).join(" ")}
+                        </p>
+                        {prevalidacionExistente.codigoExpediente ? <p className="mt-1 text-sm text-muted-foreground">Contexto: {prevalidacionExistente.codigoExpediente}</p> : null}
+                        {prevalidacionExistente.principalTipoDocumental || prevalidacionExistente.principalNumero ? <p className="mt-1 text-sm text-muted-foreground">Documento principal: {[prevalidacionExistente.principalTipoDocumental, prevalidacionExistente.principalNumero].filter(Boolean).join(" ")}</p> : null}
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {prevalidacionExistente.expedienteId ? (
+                          <Button asChild size="sm" variant="outline">
+                            <Link href={prevalidacionExistente.principalDocumentoId ? `/compras/${prevalidacionExistente.expedienteId}/ver?principalId=${encodeURIComponent(String(prevalidacionExistente.principalDocumentoId))}` : `/compras/${prevalidacionExistente.expedienteId}/ver`}>Ver documento existente</Link>
+                          </Button>
+                        ) : null}
+                        <Button type="button" size="sm" variant="outline" disabled={!prevalidacionExistente.documentoId || !prevalidacionExistente.archivoId} title={prevalidacionExistente.documentoId && prevalidacionExistente.archivoId ? undefined : "No hay archivoIdActual contractual disponible en este recorrido."} onClick={() => {
+                          if (!prevalidacionExistente.documentoId || !prevalidacionExistente.archivoId) return;
+                          void agregarDuplicadoComoVersion({ documentoIdExistente: prevalidacionExistente.documentoId, archivoIdActual: prevalidacionExistente.archivoId }).catch((err) => setAccionError(getErrorMessage(err)));
+                        }}>Adjuntar como nueva versión</Button>
+                        <Button type="button" size="sm" variant="outline" onClick={() => { setPrevalidacionExistente(null); setAccionError(null); }}>Corregir datos</Button>
+                        <Button asChild size="sm" variant="ghost"><Link href="/compras">Cancelar</Link></Button>
+                      </div>
+                      {!prevalidacionExistente.archivoId ? <p className="text-xs text-muted-foreground">“Adjuntar como nueva versión” queda diferido porque este recorrido no entregó archivoIdActual. No se buscará ni generará por heurística.</p> : null}
+                    </div>
+                  ) : (
+                    <div className="flex flex-wrap gap-2">
+                      {prevalidacionExistente.expedienteId ? <Button asChild size="sm" variant="outline"><Link href={`/compras/${prevalidacionExistente.expedienteId}/ver`}>Ver en Compras</Link></Button> : null}
+                    </div>
+                  )
                 ) : null}
               </div>
             ) : null}

@@ -135,6 +135,23 @@ export class ExpedientesController {
     return this.service.addDocumento(id, body);
   }
 
+  @Get('bandeja-compras')
+  getBandejaComprasOcos(
+    @Query('empresa') empresa: string,
+    @Query('estado') estado?: string,
+    @Query('q') q?: string,
+    @Query('limit') limit?: string,
+    @Query('offset') offset?: string,
+  ) {
+    return this.service.getBandejaComprasOcos({
+      empresa,
+      estado,
+      q,
+      limit: limit ? Number(limit) : undefined,
+      offset: offset ? Number(offset) : undefined,
+    });
+  }
+
   @Get('bandeja-contable')
   getBandejaContable(
     @Query('empresa') empresa: string,

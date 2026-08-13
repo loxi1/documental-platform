@@ -902,6 +902,221 @@ export class ExpedientesRepository {
     return rows[0] ?? null;
   }
 
+  async getBandejaComprasOcos(filters: {
+    empresa: string;
+    estado?: string;
+    q?: string;
+    limit?: number;
+    offset?: number;
+  }) {
+    /**
+     * Bandeja Compras OC/OS-céntrica:
+     * - Una fila = un documento operativo principal V2 OC/OS.
+     * - La paginación se aplica ANTES de enriquecer con Facturas.
+     * - Factura -> Grupo Factura -> Principal V2 se resuelve por vínculos persistidos.
+     * - Buscar por Factura devuelve la fila de su principal OC/OS.
+     * - No hay inferencias por metadata, tipoRelacion ni posición en arrays.
+     */
+    const empresa = String(filters.empresa ?? '').trim();
+    const estado = String(filters.estado ?? '').trim() || null;
+    const q = String(filters.q ?? '').trim() || null;
+
+    const rawLimit = Number(filters.limit ?? 50);
+    const rawOffset = Number(filters.offset ?? 0);
+    const limit = Number.isInteger(rawLimit)
+      ? Math.min(Math.max(rawLimit, 1), 100)
+      : 50;
+    const offset =
+      Number.isInteger(rawOffset) && rawOffset >= 0 ? rawOffset : 0;
+
+    const like = q ? `%${q}%` : null;
+
+    const facturaMatch = q?.match(/^([A-Za-z0-9]{1,8})[-\s]?([A-Za-z0-9]{1,20})$/);
+    const qFacturaSerie = facturaMatch?.[1]?.toUpperCase() ?? null;
+    const qFacturaNumero = facturaMatch?.[2] ?? null;
+    const qRuc = q && /^\d{11}$/.test(q) ? q : null;
+
+    const totalRows = await sql`
+      SELECT COUNT(*)::int AS total
+      FROM documentos.documentos_operativos_principales dop
+      JOIN documentos.contenedores_operativos co
+        ON co.id = dop.contenedor_operativo_id
+       AND co.estado = 'activo'
+       AND co.tipo_contexto = 'expediente_v1'
+      JOIN documentos.expedientes e
+        ON e.id = co.expediente_v1_id
+       AND e.empresa_codigo = ${empresa}
+      JOIN documentos.documentos dp
+        ON dp.id = dop.documento_id
+       AND dp.tipo_documental IN ('OC', 'OS')
+      WHERE dop.estado = 'activo'
+        AND dop.es_principal_activo = true
+        AND (${estado}::text IS NULL OR e.estado = ${estado})
+        AND (
+          ${q}::text IS NULL
+          OR dp.numero ILIKE ${like}
+          OR e.codigo_expediente ILIKE ${like}
+          OR e.descripcion ILIKE ${like}
+          OR dp.ruc_emisor ILIKE ${like}
+          OR dp.razon_social_emisor ILIKE ${like}
+          OR EXISTS (
+            SELECT 1
+            FROM documentos.grupos_factura gfq
+            JOIN documentos.documentos fq
+              ON fq.id = gfq.factura_documento_id
+             AND fq.tipo_documental = 'FACTURA'
+            WHERE gfq.documento_operativo_principal_id = dop.id
+              AND gfq.estado <> 'anulado'
+              AND (
+                (
+                  ${qFacturaSerie}::text IS NOT NULL
+                  AND UPPER(fq.serie) = ${qFacturaSerie}
+                  AND fq.numero = ${qFacturaNumero}
+                )
+                OR (
+                  ${qRuc}::text IS NOT NULL
+                  AND fq.ruc_emisor = ${qRuc}
+                )
+                OR (
+                  ${qFacturaSerie}::text IS NULL
+                  AND ${qRuc}::text IS NULL
+                  AND (
+                    concat_ws('-', fq.serie, fq.numero) ILIKE ${like}
+                    OR fq.numero ILIKE ${like}
+                    OR fq.ruc_emisor ILIKE ${like}
+                    OR fq.razon_social_emisor ILIKE ${like}
+                  )
+                )
+              )
+          )
+        )
+    `;
+
+    const rows = await sql`
+      WITH principales_pagina AS MATERIALIZED (
+        SELECT
+          dop.id AS documento_operativo_principal_id,
+          dop.documento_id AS principal_documento_id,
+          co.expediente_v1_id AS expediente_id,
+          e.codigo_expediente,
+          e.descripcion,
+          e.estado AS expediente_estado,
+          dp.tipo_documental AS principal_tipo,
+          dp.numero AS principal_numero,
+          dp.razon_social_emisor AS proveedor_nombre,
+          dp.ruc_emisor AS proveedor_ruc
+        FROM documentos.documentos_operativos_principales dop
+        JOIN documentos.contenedores_operativos co
+          ON co.id = dop.contenedor_operativo_id
+         AND co.estado = 'activo'
+         AND co.tipo_contexto = 'expediente_v1'
+        JOIN documentos.expedientes e
+          ON e.id = co.expediente_v1_id
+         AND e.empresa_codigo = ${empresa}
+        JOIN documentos.documentos dp
+          ON dp.id = dop.documento_id
+         AND dp.tipo_documental IN ('OC', 'OS')
+        WHERE dop.estado = 'activo'
+          AND dop.es_principal_activo = true
+          AND (${estado}::text IS NULL OR e.estado = ${estado})
+          AND (
+            ${q}::text IS NULL
+            OR dp.numero ILIKE ${like}
+            OR e.codigo_expediente ILIKE ${like}
+            OR e.descripcion ILIKE ${like}
+            OR dp.ruc_emisor ILIKE ${like}
+            OR dp.razon_social_emisor ILIKE ${like}
+            OR EXISTS (
+              SELECT 1
+              FROM documentos.grupos_factura gfq
+              JOIN documentos.documentos fq
+                ON fq.id = gfq.factura_documento_id
+               AND fq.tipo_documental = 'FACTURA'
+              WHERE gfq.documento_operativo_principal_id = dop.id
+                AND gfq.estado <> 'anulado'
+                AND (
+                  (
+                    ${qFacturaSerie}::text IS NOT NULL
+                    AND UPPER(fq.serie) = ${qFacturaSerie}
+                    AND fq.numero = ${qFacturaNumero}
+                  )
+                  OR (
+                    ${qRuc}::text IS NOT NULL
+                    AND fq.ruc_emisor = ${qRuc}
+                  )
+                  OR (
+                    ${qFacturaSerie}::text IS NULL
+                    AND ${qRuc}::text IS NULL
+                    AND (
+                      concat_ws('-', fq.serie, fq.numero) ILIKE ${like}
+                      OR fq.numero ILIKE ${like}
+                      OR fq.ruc_emisor ILIKE ${like}
+                      OR fq.razon_social_emisor ILIKE ${like}
+                    )
+                  )
+                )
+            )
+          )
+        ORDER BY co.expediente_v1_id DESC, dop.documento_id DESC
+        LIMIT ${limit}
+        OFFSET ${offset}
+      ),
+      facturas_agrupadas AS MATERIALIZED (
+        SELECT
+          gf.documento_operativo_principal_id,
+          jsonb_agg(
+            jsonb_build_object(
+              'documentoId', f.id,
+              'serie', f.serie,
+              'numero', f.numero,
+              'grupoFacturaId', gf.id
+            )
+            ORDER BY gf.id
+          ) AS facturas
+        FROM documentos.grupos_factura gf
+        JOIN principales_pagina pp
+          ON pp.documento_operativo_principal_id =
+             gf.documento_operativo_principal_id
+        JOIN documentos.documentos f
+          ON f.id = gf.factura_documento_id
+         AND f.tipo_documental = 'FACTURA'
+        WHERE gf.estado <> 'anulado'
+        GROUP BY gf.documento_operativo_principal_id
+      )
+      SELECT
+        pp.expediente_id AS "expedienteId",
+        pp.codigo_expediente AS "codigoExpediente",
+        pp.descripcion,
+        pp.expediente_estado AS estado,
+        jsonb_build_object(
+          'documentoId', pp.principal_documento_id,
+          'tipo', pp.principal_tipo,
+          'numero', pp.principal_numero
+        ) AS principal,
+        CASE
+          WHEN pp.proveedor_nombre IS NULL AND pp.proveedor_ruc IS NULL
+            THEN NULL
+          ELSE jsonb_build_object(
+            'nombre', pp.proveedor_nombre,
+            'ruc', pp.proveedor_ruc
+          )
+        END AS proveedor,
+        COALESCE(fa.facturas, '[]'::jsonb) AS facturas
+      FROM principales_pagina pp
+      LEFT JOIN facturas_agrupadas fa
+        ON fa.documento_operativo_principal_id =
+           pp.documento_operativo_principal_id
+      ORDER BY pp.expediente_id DESC, pp.principal_documento_id DESC
+    `;
+
+    return {
+      total: Number(totalRows[0]?.total ?? 0),
+      limit,
+      offset,
+      data: rows,
+    };
+  }
+
   async getRevisionContable(filters: {
     empresa: string;
     anio?: number;

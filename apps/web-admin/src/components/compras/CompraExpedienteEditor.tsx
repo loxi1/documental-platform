@@ -531,6 +531,93 @@ function DocumentoAdjuntoRelacionResumen({
   );
 }
 
+
+function formatMontoHumano(value: unknown, moneda: unknown) {
+  const numero = Number(String(value ?? "").replace(/,/g, ""));
+  if (!Number.isFinite(numero)) return "";
+
+  const codigoMoneda = text(moneda, "").toUpperCase();
+  const prefijo =
+    codigoMoneda === "SOLES" || codigoMoneda === "PEN"
+      ? "S/"
+      : codigoMoneda === "USD" || codigoMoneda === "DOLARES"
+        ? "US$"
+        : codigoMoneda
+          ? `${codigoMoneda} `
+          : "";
+
+  return `${prefijo} ${numero.toLocaleString("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`.trim();
+}
+
+function formatFechaHumana(value: unknown) {
+  const raw = text(value, "");
+  const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  return match ? `${match[3]}/${match[2]}/${match[1]}` : raw;
+}
+
+function DocumentoHumanoCard({
+  doc,
+  option,
+  onVer,
+  onVersiones,
+}: {
+  doc: DocumentoVinculado;
+  option: DocumentoCargaOption;
+  onVer: (doc: DocumentoVinculado) => void;
+  onVersiones: (doc: DocumentoVinculado) => void;
+}) {
+  const visual = getDocumentoVisualState(doc);
+  const summary = getDocumentoSummary(doc, option);
+  const proveedor = pickDocValue(doc, ["razon_social_emisor", "razonSocialEmisor"], "");
+  const ruc = pickDocValue(doc, ["ruc_emisor", "rucEmisor"], "");
+  const monto = formatMontoHumano(doc.monto_total ?? doc.montoTotal, doc.moneda);
+  const fecha = formatFechaHumana(doc.fecha_emision ?? doc.fechaEmision);
+  const detalle = [monto, fecha].filter(Boolean).join(" · ");
+
+  return (
+    <div className="rounded-xl border bg-background p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="font-semibold text-foreground">
+            {option.tipoRelacionSugerida === "adjunto_factura"
+              ? summary.title.replace(/^FACTURA\s*[·-]?\s*/i, "")
+              : summary.title}
+          </div>
+          {proveedor ? (
+            <div
+              className="mt-1 line-clamp-2 break-words text-sm text-muted-foreground"
+              title={proveedor}
+            >
+              {proveedor}
+            </div>
+          ) : null}
+          {ruc ? <div className="mt-1 text-xs text-muted-foreground">RUC {ruc}</div> : null}
+          {detalle ? (
+            <div className="mt-1 text-sm text-muted-foreground">{detalle}</div>
+          ) : summary.details ? (
+            <div className="mt-1 text-sm text-muted-foreground">{summary.details}</div>
+          ) : null}
+        </div>
+        <span className={`shrink-0 rounded-full border px-2.5 py-1 text-xs ${visual.badgeClassName}`}>
+          {visual.label}
+        </span>
+      </div>
+      <div className="mt-4 flex flex-wrap gap-2">
+        <Button type="button" variant="outline" size="sm" onClick={() => onVer(doc)}>
+          {isDocumentoConfirmado(doc) ? "Ver" : "Ver / Validar"}
+        </Button>
+        <Button type="button" variant="outline" size="sm" onClick={() => onVersiones(doc)}>
+          <History className="h-4 w-4" />
+          Versiones
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 type VersionesDocumentoModalState = {
   documentoId: string;
   titulo: string;
@@ -1611,6 +1698,25 @@ export function CompraExpedienteEditor({ id }: { id: string | number }) {
     queryClient.invalidateQueries({ queryKey: ["expediente-documentos", String(id)] });
   }
 
+  const facturaOption =
+    DOCUMENTO_ADJUNTO_OPTIONS.find(
+      (item) => item.tipoRelacionSugerida === "adjunto_factura",
+    ) ?? null;
+  const guiaOption =
+    DOCUMENTO_ADJUNTO_OPTIONS.find(
+      (item) => item.tipoRelacionSugerida === "adjunto_guia",
+    ) ?? null;
+  const otrosOptions = DOCUMENTO_ADJUNTO_OPTIONS.filter(
+    (item) =>
+      item.tipoRelacionSugerida !== "adjunto_factura" &&
+      item.tipoRelacionSugerida !== "adjunto_guia",
+  );
+  const facturas = documentosPorRelacion.get("adjunto_factura") ?? [];
+  const guias = documentosPorRelacion.get("adjunto_guia") ?? [];
+  const otrosDocumentos = otrosOptions.flatMap(
+    (item) => documentosPorRelacion.get(item.tipoRelacionSugerida) ?? [],
+  );
+
   return (
     <>
       <input
@@ -1622,21 +1728,34 @@ export function CompraExpedienteEditor({ id }: { id: string | number }) {
       />
 
       <main className="space-y-4">
-        <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
-          <div>
-            <Button asChild variant="ghost" size="sm" className="mb-1 px-0">
-              <Link href="/compras">
-                <ArrowLeft className="h-4 w-4" />
-                Volver
-              </Link>
-            </Button>
-            <div className="flex flex-wrap items-center gap-2">
-              <h1 className="text-2xl font-bold">Compras</h1>
-              <span className="rounded-full border px-2 py-0.5 text-xs font-medium">{codigo || "SIN EXPEDIENTE"}</span>
-              {empresa ? <span className="rounded-full border px-2 py-0.5 text-xs text-muted-foreground">{empresa}</span> : null}
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.28em] text-muted-foreground">
+              Compras
             </div>
-            {descripcion ? <p className="mt-1 text-sm text-muted-foreground">{descripcion}</p> : null}
+            <h1 className="mt-1 text-2xl font-bold tracking-tight">
+              {principalActual
+                ? `${text(
+                    principalActual.doc.tipo_documental ??
+                      principalActual.doc.tipoDocumental,
+                    "",
+                  )} ${text(
+                    principalActual.doc.numero,
+                    "",
+                  )}`.trim()
+                : "Compra"}
+            </h1>
+            <p
+              className="mt-1 max-w-4xl truncate text-sm text-muted-foreground"
+              title={`Centro ${codigo} · ${descripcionAmigable(expediente)}`}
+            >
+              Centro {codigo} · {descripcionAmigable(expediente)}
+            </p>
           </div>
+
+          <Button asChild variant="outline" size="sm" className="h-8 shrink-0 px-3">
+            <Link href="/compras">Volver</Link>
+          </Button>
         </div>
 
         {mensajeValidacion ? (
@@ -1660,204 +1779,169 @@ export function CompraExpedienteEditor({ id }: { id: string | number }) {
         ) : null}
 
         <Card>
-          <CardContent className="grid gap-3 p-4 md:grid-cols-8">
-            <div className="space-y-1 md:col-span-2">
-              <label className="text-xs font-medium text-muted-foreground">Empresa</label>
-              <Input value={empresa} readOnly />
-            </div>
-            <div className="space-y-1 md:col-span-2">
-              <label className="text-xs font-medium text-muted-foreground">Expediente</label>
-              <Input value={codigo || "SIN EXPEDIENTE"} readOnly />
-            </div>
-            <div className="space-y-1 md:col-span-4">
-              <label className="text-xs font-medium text-muted-foreground">Descripción</label>
-              <Input defaultValue={descripcion} placeholder="Descripción del expediente" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle>Seleccionar OC / OS de trabajo</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {documentosPrincipales.length === 0 ? (
-              <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-                Este expediente no tiene una OC/OS principal activa. No se pueden cargar adjuntos.
-              </div>
-            ) : (
-              <div className="grid gap-2 md:grid-cols-3">
-                {documentosPrincipales.map((doc) => {
-                  const documentoId = getDocumentoId(doc);
-                  const seleccionado =
-                    documentoId === principalIdSeleccionado;
-
-                  return (
-                    <button
-                      key={documentoId ?? getDocumentoPrincipalLabel(doc)}
-                      type="button"
-                      className={`rounded-xl border px-3 py-3 text-left text-sm transition ${
-                        seleccionado
-                          ? "border-primary bg-primary/5 ring-1 ring-primary/20"
-                          : "hover:border-primary/50"
-                      }`}
-                      onClick={() => {
-                        if (!documentoId) return;
-
-                        setMensajeValidacion(null);
-                        setModalAbierto(false);
-                        setResultadoModal(null);
-                        setAccionActual(null);
-                        setProcessingError(null);
-                        router.replace(
-                          `/compras/${id}/editar?principalId=${documentoId}`,
-                        );
-                      }}
-                    >
-                      <div className="font-semibold">
-                        {getDocumentoPrincipalLabel(doc)}
-                      </div>
-                      <div className="mt-1 text-xs text-muted-foreground">
-                        Define el contexto de factura y documentos asociados.
-                      </div>
-                      <div className="mt-2 text-xs font-medium">
-                        {seleccionado
-                          ? "Principal seleccionado"
-                          : "Seleccionar"}
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-
-            {seleccionPrincipalRequerida ? (
-              <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-                Selecciona la OC/OS con la que vas a trabajar.
-              </div>
-            ) : null}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-2">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <CardTitle>OC / OS seleccionado</CardTitle>
-              {principalActual ? (
-                <span className="rounded-full border bg-primary/5 px-2.5 py-1 text-xs font-medium text-primary">
-                  Trabajando con: {getDocumentoPrincipalLabel(principalActual.doc)}
-                </span>
-              ) : null}
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="grid gap-3 md:grid-cols-3">
-              {DOCUMENTO_PRINCIPAL_OPTIONS.map((item) => {
-                const documentosItem = documentosPorRelacion.get(item.tipoRelacionSugerida);
-                const principalActivo = principalActualRelacion === item.tipoRelacionSugerida;
-                const documentosVisibles = principalActivo && principalActual?.doc
-                  ? [principalActual.doc]
-                  : documentosItem;
-                const tieneCandidatosNoActivos = Boolean(documentosItem?.length && !principalActivo);
-
-                return (
-                <div
-                  key={item.tipoRelacionSugerida}
-                  className={`rounded-xl border p-4 transition ${principalActivo ? "border-primary bg-primary/5 shadow-sm ring-1 ring-primary/20" : "bg-background"}`}
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <div className="font-medium">{item.label}</div>
-                    </div>
-                    <div className="flex shrink-0 flex-col items-end gap-1">
-                      {principalActivo ? (
-                        <span className="rounded-full border border-primary bg-primary px-2 py-0.5 text-[10px] font-medium text-primary-foreground">
-                          Principal activo
-                        </span>
-                      ) : tieneCandidatosNoActivos ? (
-                        <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-300">
-                          Candidato no activo
-                        </span>
-                      ) : null}
-                    </div>
+          <CardContent className="p-0">
+            <div className="grid lg:grid-cols-[minmax(0,0.36fr)_minmax(0,0.64fr)]">
+              <section className="p-5 lg:border-r">
+                <div className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                  Centro de costo
+                </div>
+                <div className="mt-3 space-y-1">
+                  <div className="text-lg font-semibold text-foreground">
+                    {codigo || "—"}
                   </div>
-
-                  <DocumentoExistenteResumen
-                    documentos={documentosVisibles}
-                    option={item}
-                    onVerValidar={(doc) => abrirDocumentoExistente(doc, item)}
-                    onVerVersiones={(doc) => abrirHistorialVersiones(doc, item)}
-                    mostrarContenido={principalActivo}
-                  />
-
-                  {principalActivo ? (
-                    <div className="mt-3 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-[11px] text-blue-800 dark:border-blue-900/60 dark:bg-blue-950/30 dark:text-blue-300">
-                      Ya existen documentos principales de este tipo. Puedes cargar otro documento distinto; el backend conservará la validación de duplicados reales.
+                  {descripcion ? (
+                    <div
+                      className="line-clamp-2 break-words text-sm text-muted-foreground"
+                      title={descripcion}
+                    >
+                      {descripcion}
                     </div>
                   ) : null}
-
-                  <Button
-                    className="mt-3 w-full"
-                    variant="outline"
-                    size="sm"
-                    disabled={procesando}
-                    onClick={() => iniciarSeleccionArchivo(item, "principal")}
-                  >
-                    <FilePlus2 className="h-4 w-4" />
-                    {procesando && accionActual?.tipoRelacionSugerida === item.tipoRelacionSugerida
-                      ? "Subiendo/procesando..."
-                      : principalActivo
-                        ? "Cargar otro principal"
-                        : tieneCandidatosNoActivos
-                          ? "Cargar nuevo principal"
-                          : "Cargar como principal"}
-                  </Button>
+                  {empresa ? (
+                    <div className="text-xs font-medium text-muted-foreground">
+                      {empresa}
+                    </div>
+                  ) : null}
                 </div>
-                );
-              })}
+              </section>
+
+              <section className="border-t p-5 lg:border-t-0">
+                <div className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                  Documento principal
+                </div>
+                <div className="mt-3">
+                  {principalActual ? (
+                    <DocumentoHumanoCard
+                      doc={principalActual.doc}
+                      option={principalActual.option}
+                      onVer={(doc) => abrirDocumentoExistente(doc, principalActual.option)}
+                      onVersiones={(doc) => abrirHistorialVersiones(doc, principalActual.option)}
+                    />
+                  ) : (
+                    <div className="rounded-xl border border-dashed px-4 py-6 text-sm text-muted-foreground">
+                      No hay una OC/OS principal activa para este centro de costo.
+                    </div>
+                  )}
+                </div>
+              </section>
             </div>
           </CardContent>
         </Card>
 
         <Card>
-          <CardHeader>
-            <div>
-              <CardTitle>Documentos de Compras</CardTitle>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Adjunta factura, guía, nota de ingreso u otros sustentos habilitados para Compras.
-              </p>
-            </div>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base uppercase tracking-wide">
+              Documentos de compra
+            </CardTitle>
           </CardHeader>
-          <CardContent className="grid gap-3 md:grid-cols-3">
-            {DOCUMENTO_ADJUNTO_OPTIONS.map((item) => (
-              <div key={item.tipoRelacionSugerida} className="rounded-xl border p-4">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="font-medium">{item.label}</div>
+          <CardContent>
+            <div className="grid gap-4 lg:grid-cols-3">
+              <section className="min-w-0 rounded-xl border bg-background p-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="text-sm font-semibold uppercase tracking-wide">Facturas</div>
+                  <span className="text-xs text-muted-foreground">
+                    {facturas.length} factura{facturas.length === 1 ? "" : "s"}
+                  </span>
                 </div>
+                <div className="mt-4 space-y-3">
+                  {facturaOption && facturas.length ? (
+                    facturas.map((doc) => (
+                      <DocumentoHumanoCard
+                        key={String(getDocumentoId(doc) ?? doc.archivo_id ?? doc.archivoId)}
+                        doc={doc}
+                        option={facturaOption}
+                        onVer={(documento) => abrirDocumentoExistente(documento, facturaOption)}
+                        onVersiones={(documento) => abrirHistorialVersiones(documento, facturaOption)}
+                      />
+                    ))
+                  ) : (
+                    <div className="rounded-xl border border-dashed px-4 py-6 text-sm text-muted-foreground">
+                      Aún no se han adjuntado facturas.
+                    </div>
+                  )}
+                  {facturaOption ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="w-full"
+                      disabled={procesando || !principalSeleccionado}
+                      onClick={() => iniciarSeleccionArchivo(facturaOption, "adjunto")}
+                    >
+                      <FilePlus2 className="h-4 w-4" />
+                      {facturas.length ? "Adjuntar otra factura" : "Adjuntar factura"}
+                    </Button>
+                  ) : null}
+                </div>
+              </section>
 
-                <DocumentoAdjuntoRelacionResumen
-                  option={item}
-                  documentos={documentosPorRelacion.get(item.tipoRelacionSugerida)}
-                  onVerValidar={(doc) => abrirDocumentoExistente(doc, item)}
-                  onVerVersiones={(doc) => abrirHistorialVersiones(doc, item)}
-                />
+              <section className="min-w-0 rounded-xl border bg-background p-4">
+                <div className="text-sm font-semibold uppercase tracking-wide">Guía</div>
+                <div className="mt-4 space-y-3">
+                  {guiaOption && guias.length ? (
+                    guias.map((doc) => (
+                      <DocumentoHumanoCard
+                        key={String(getDocumentoId(doc) ?? doc.archivo_id ?? doc.archivoId)}
+                        doc={doc}
+                        option={guiaOption}
+                        onVer={(documento) => abrirDocumentoExistente(documento, guiaOption)}
+                        onVersiones={(documento) => abrirHistorialVersiones(documento, guiaOption)}
+                      />
+                    ))
+                  ) : (
+                    <div className="rounded-xl border border-dashed px-4 py-6 text-sm text-muted-foreground">
+                      Aún no se ha adjuntado una guía.
+                    </div>
+                  )}
+                  {guiaOption ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="w-full"
+                      disabled={procesando || !principalSeleccionado}
+                      onClick={() => iniciarSeleccionArchivo(guiaOption, "adjunto")}
+                    >
+                      <FilePlus2 className="h-4 w-4" />
+                      {guias.length ? "Adjuntar otra guía" : "Adjuntar guía"}
+                    </Button>
+                  ) : null}
+                </div>
+              </section>
 
-                <Button
-                  className="mt-3 w-full"
-                  variant="outline"
-                  size="sm"
-                  disabled={procesando || !principalSeleccionado}
-                  onClick={() => iniciarSeleccionArchivo(item, "adjunto")}
-                >
-                  <FilePlus2 className="h-4 w-4" />
-                  {procesando && accionActual?.tipoRelacionSugerida === item.tipoRelacionSugerida
-                    ? "Subiendo/procesando..."
-                    : documentosPorRelacion.get(item.tipoRelacionSugerida)?.length
-                      ? "Adjuntar otro"
-                      : "Adjuntar"}
-                </Button>
-              </div>
-            ))}
+              <section className="min-w-0 rounded-xl border bg-background p-4">
+                <div className="text-sm font-semibold uppercase tracking-wide">Otros sustentos</div>
+                <div className="mt-4 space-y-3">
+                  {otrosDocumentos.length ? (
+                    otrosOptions.flatMap((option) =>
+                      (documentosPorRelacion.get(option.tipoRelacionSugerida) ?? []).map((doc) => (
+                        <DocumentoHumanoCard
+                          key={String(getDocumentoId(doc) ?? doc.archivo_id ?? doc.archivoId)}
+                          doc={doc}
+                          option={option}
+                          onVer={(documento) => abrirDocumentoExistente(documento, option)}
+                          onVersiones={(documento) => abrirHistorialVersiones(documento, option)}
+                        />
+                      )),
+                    )
+                  ) : (
+                    <div className="rounded-xl border border-dashed px-4 py-6 text-sm text-muted-foreground">
+                      Aún no se han adjuntado otros documentos.
+                    </div>
+                  )}
+                  {otrosOptions.length ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="w-full"
+                      disabled={procesando || !principalSeleccionado}
+                      onClick={() => iniciarSeleccionArchivo(otrosOptions[0], "adjunto")}
+                    >
+                      <FilePlus2 className="h-4 w-4" />
+                      Adjuntar sustento
+                    </Button>
+                  ) : null}
+                </div>
+              </section>
+            </div>
           </CardContent>
         </Card>
 

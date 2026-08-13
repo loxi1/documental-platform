@@ -1328,6 +1328,20 @@ export class DocumentosRepository {
             actualizado_en = now()
           WHERE id = ${documentoAnteriorId}::int
         `;
+
+        // Si el documento anterior quedó sin archivos al absorber esta carga
+        // como versión, ya no debe conservar pertenencia operativa al
+        // expediente. El documento histórico permanece trazable con estado
+        // duplicado_versionado; solo se retira su vínculo operativo.
+        await tx`
+          DELETE FROM documentos.expediente_documentos ed
+          WHERE ed.documento_id = ${documentoAnteriorId}::int
+            AND NOT EXISTS (
+              SELECT 1
+              FROM documentos.documentos_archivos da
+              WHERE da.documento_id = ${documentoAnteriorId}::int
+            )
+        `;
       }
 
       const ocrRows = await tx`
