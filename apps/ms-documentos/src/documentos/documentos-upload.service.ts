@@ -136,18 +136,26 @@ export class DocumentosUploadService {
         ? String(tipoRelacionSugerida).trim().toLowerCase()
         : null;
 
-    const [duplicados, expedienteInfo, documentoExistente] = await Promise.all([
-      this.buscarDuplicadosPorHash({
-        sha256,
-        documentoId: documentoIdPayload,
-        expedienteId,
-      }),
-      expedienteId
-        ? this.obtenerResumenExpediente(
+    const expedienteInfo = expedienteId
+      ? await this.obtenerResumenExpediente(
+          expedienteId,
+          relacionPrincipalSolicitada,
+        )
+      : null;
+
+    const tenantEmpresaCodigo = expedienteInfo?.empresaCodigo
+      ? normalizeUpper(expedienteInfo.empresaCodigo, '')
+      : null;
+
+    const [duplicados, documentoExistente] = await Promise.all([
+      tenantEmpresaCodigo
+        ? this.buscarDuplicadosPorHash({
+            sha256,
+            documentoId: documentoIdPayload,
             expedienteId,
-            relacionPrincipalSolicitada,
-          )
-        : Promise.resolve(null),
+            empresaCodigo: tenantEmpresaCodigo,
+          })
+        : Promise.resolve([]),
       claveDocumental ? this.buscarDocumentoPorClave(claveDocumental) : Promise.resolve(null),
     ]);
 
@@ -245,11 +253,21 @@ export class DocumentosUploadService {
     const contentType = inferContentType(file, originalFilename);
     const sha256 = createHash('sha256').update(file.buffer).digest('hex');
 
-    const duplicadosPrevios = await this.buscarDuplicadosPorHash({
+    const expedienteTenantInfoCarga = expedienteId
+      ? await this.obtenerResumenExpediente(expedienteId)
+      : null;
+    const tenantEmpresaCodigoCarga = expedienteTenantInfoCarga?.empresaCodigo
+      ? normalizeUpper(expedienteTenantInfoCarga.empresaCodigo, '')
+      : null;
+
+    const duplicadosPrevios = tenantEmpresaCodigoCarga
+      ? await this.buscarDuplicadosPorHash({
       sha256,
       documentoId: documentoIdPayload,
       expedienteId,
-    });
+      empresaCodigo: tenantEmpresaCodigoCarga,
+        })
+      : [];
 
     if (duplicadosPrevios.length > 0) {
       throw new ConflictException({
@@ -529,6 +547,7 @@ export class DocumentosUploadService {
     sha256: string;
     documentoId: number | null;
     expedienteId: number | null;
+    empresaCodigo: string;
   }) {
     return sql<DuplicadoRow[]>`
       SELECT
@@ -540,9 +559,12 @@ export class DocumentosUploadService {
         ed.tipo_relacion,
         ed.es_principal
       FROM documentos.documentos_archivos da
+      JOIN documentos.documentos d
+        ON d.id = da.documento_id
       LEFT JOIN documentos.expediente_documentos ed
         ON ed.documento_id = da.documento_id
       WHERE da.hash_sha256 = ${params.sha256}
+        AND UPPER(TRIM(d.cliente_abreviatura)) = ${params.empresaCodigo}
         AND da.estado <> 'duplicado_absorbido'
         AND (
           ${params.documentoId}::bigint IS NULL

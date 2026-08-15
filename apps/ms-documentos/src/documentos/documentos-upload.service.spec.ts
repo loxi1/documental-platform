@@ -25,6 +25,15 @@ describe('DocumentosUploadService - múltiples principales por relación', () =>
     canalIngreso: 'COMPRAS_NUEVO_UPLOAD_PRINCIPAL',
   };
 
+  const expedienteFixture = [
+    {
+      id: 9,
+      codigo_expediente: '020103',
+      empresa_codigo: 'BBTI',
+      cliente_destino_id: 2,
+    },
+  ];
+
   beforeEach(() => {
     jest.clearAllMocks();
   });
@@ -33,18 +42,43 @@ describe('DocumentosUploadService - múltiples principales por relación', () =>
     return new DocumentosUploadService({} as any, {} as any);
   }
 
+  function mockSqlPorConsulta(fixtures: {
+    expediente?: unknown[];
+    principal?: unknown[];
+    duplicados?: unknown[];
+    clave?: unknown[];
+  }) {
+    sqlMock.mockImplementation((strings: TemplateStringsArray | string[]) => {
+      const query = Array.from(strings).join(' ').replace(/\s+/g, ' ').trim();
+
+      if (query.includes('FROM documentos.expedientes')) {
+        return Promise.resolve(fixtures.expediente ?? []);
+      }
+
+      if (query.includes('FROM documentos.documentos_archivos da')) {
+        return Promise.resolve(fixtures.duplicados ?? []);
+      }
+
+      if (query.includes('FROM documentos.expediente_documentos ed')) {
+        return Promise.resolve(fixtures.principal ?? []);
+      }
+
+      if (
+        query.includes('FROM documentos.documentos d') &&
+        query.includes('WHERE d.clave_documental')
+      ) {
+        return Promise.resolve(fixtures.clave ?? []);
+      }
+
+      throw new Error(`SQL no mockeado en documentos-upload.service.spec.ts: ${query}`);
+    });
+  }
+
   it('permite una segunda principal_oc distinta en el mismo expediente', async () => {
-    sqlMock
-      .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([
-        {
-          id: 9,
-          codigo_expediente: '020103',
-          empresa_codigo: 'BBTI',
-          cliente_destino_id: 2,
-        },
-      ])
-      .mockResolvedValueOnce([
+    mockSqlPorConsulta({
+      expediente: expedienteFixture,
+      duplicados: [],
+      principal: [
         {
           documento_id: 35,
           tipo_relacion: 'principal_oc',
@@ -53,7 +87,8 @@ describe('DocumentosUploadService - múltiples principales por relación', () =>
           numero: '008312',
           clave_documental: 'BBTI|OC|008312',
         },
-      ]);
+      ],
+    });
 
     const result = await service().prevalidarCarga(file as any, baseBody as any);
 
@@ -70,17 +105,11 @@ describe('DocumentosUploadService - múltiples principales por relación', () =>
   });
 
   it('permite principal_os cuando solo existe principal_oc', async () => {
-    sqlMock
-      .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([
-        {
-          id: 9,
-          codigo_expediente: '020103',
-          empresa_codigo: 'BBTI',
-          cliente_destino_id: 2,
-        },
-      ])
-      .mockResolvedValueOnce([]);
+    mockSqlPorConsulta({
+      expediente: expedienteFixture,
+      duplicados: [],
+      principal: [],
+    });
 
     const result = await service().prevalidarCarga(file as any, {
       ...baseBody,
@@ -94,8 +123,9 @@ describe('DocumentosUploadService - múltiples principales por relación', () =>
   });
 
   it('mantiene duplicado por hash como prioridad', async () => {
-    sqlMock
-      .mockResolvedValueOnce([
+    mockSqlPorConsulta({
+      expediente: expedienteFixture,
+      duplicados: [
         {
           id: 22,
           documento_id: 38,
@@ -105,23 +135,16 @@ describe('DocumentosUploadService - múltiples principales por relación', () =>
           tipo_relacion: 'principal_oc',
           es_principal: true,
         },
-      ])
-      .mockResolvedValueOnce([
-        {
-          id: 9,
-          codigo_expediente: '020103',
-          empresa_codigo: 'BBTI',
-          cliente_destino_id: 2,
-        },
-      ])
-      .mockResolvedValueOnce([
+      ],
+      principal: [
         {
           documento_id: 35,
           tipo_relacion: 'principal_oc',
           tipo_documental: 'OC',
           numero: '008312',
         },
-      ]);
+      ],
+    });
 
     const result = await service().prevalidarCarga(file as any, baseBody as any);
 

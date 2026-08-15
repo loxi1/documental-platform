@@ -6,7 +6,6 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useSidebar } from "@/context/SidebarContext";
 import {
-  AlertTriangle,
   ClipboardList,
   FilePlus2,
   FileSearch,
@@ -111,12 +110,7 @@ const navGroups: NavGroup[] = [
         icon: <Scale className="h-4 w-4" />,
         menuKey: "revision_contable",
       },
-      {
-        name: "Alertas",
-        path: "/alertas",
-        icon: <AlertTriangle className="h-4 w-4" />,
-        menuKey: "alertas",
-      },
+
     ],
   },
   {

@@ -278,7 +278,32 @@ export class DocumentosGatewayController {
     }
 
     const scope = await this.fetchExpedienteScope(String(expedienteId), requestId);
-    return this.assertEmpresaPermitida(payload, scope.empresa, `expediente ${expedienteId}`);
+    this.assertEmpresaPermitida(payload, scope.empresa, `expediente ${expedienteId}`);
+
+    const clienteDestinoIdContexto = this.getClienteDestinoIdFromContext(payload);
+    const clienteDestinoIdExpediente = this.getClienteDestinoIdFromExpediente(
+      scope.expediente,
+    );
+
+    if (!clienteDestinoIdContexto) {
+      throw new ForbiddenException(
+        'El token no tiene cliente destino de workspace válido',
+      );
+    }
+
+    if (!clienteDestinoIdExpediente) {
+      throw new ForbiddenException(
+        'No se pudo validar el cliente destino del expediente solicitado',
+      );
+    }
+
+    if (clienteDestinoIdExpediente !== clienteDestinoIdContexto) {
+      throw new ForbiddenException(
+        'No tienes permiso para operar expedientes de otro cliente destino',
+      );
+    }
+
+    return scope;
   }
 
   private async assertOcrPermitido(
@@ -632,6 +657,11 @@ export class DocumentosGatewayController {
   ) {
     const contexto = await this.validateAuthorization(authorization);
     this.assertAnyActionPermitida(contexto, ['documentos.subir'], 'prevalidar carga de documentos');
+    await this.assertExpedientePermitido(
+      body?.expedienteId,
+      contexto,
+      requestId,
+    );
     const empresaContexto = this.getEmpresaFromContext(contexto);
 
     if (!empresaContexto) {
@@ -702,6 +732,11 @@ export class DocumentosGatewayController {
   ) {
     const contexto = await this.validateAuthorization(authorization);
     this.assertAnyActionPermitida(contexto, ['documentos.subir'], 'subir documentos');
+    await this.assertExpedientePermitido(
+      body?.expedienteId,
+      contexto,
+      requestId,
+    );
     const empresaContexto = this.getEmpresaFromContext(contexto);
 
     if (!empresaContexto) {
