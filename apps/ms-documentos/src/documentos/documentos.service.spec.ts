@@ -19,6 +19,10 @@ jest.mock('../documento-eventos/documento-eventos.service', () => ({
 
 import { DocumentosService } from './documentos.service';
 
+jest.mock('@documental/database', () => ({
+  sql: jest.fn(),
+}));
+
 describe('DocumentosService - auditoría de confirmación OCR', () => {
   it('persiste usuario y registra los eventos correlacionados', async () => {
     const confirmado = {
@@ -32,10 +36,10 @@ describe('DocumentosService - auditoría de confirmación OCR', () => {
       estado: 'confirmado',
     };
 
-    const repo = {
-      confirmarOcrResultadoConExpediente: jest
-        .fn()
-        .mockResolvedValue(confirmado),
+    const repo = {} as any;
+
+    const orquestarConfirmacionV2 = {
+      execute: jest.fn().mockResolvedValue(confirmado),
     } as any;
 
     const documentoEventos = {
@@ -44,6 +48,7 @@ describe('DocumentosService - auditoría de confirmación OCR', () => {
 
     const service = new DocumentosService(
       repo,
+      orquestarConfirmacionV2,
       documentoEventos,
       {} as any,
     );
@@ -67,10 +72,14 @@ describe('DocumentosService - auditoría de confirmación OCR', () => {
 
     expect(result).toBe(confirmado);
 
-    expect(repo.confirmarOcrResultadoConExpediente).toHaveBeenCalledWith(
+    expect(orquestarConfirmacionV2.execute).toHaveBeenCalledWith(
       2,
       expect.objectContaining({ expedienteId: 117 }),
-      1,
+      expect.objectContaining({
+        usuarioId: 1,
+        requestId,
+        correlationId: requestId,
+      }),
     );
 
     expect(documentoEventos.registrarEvento).toHaveBeenCalledTimes(2);

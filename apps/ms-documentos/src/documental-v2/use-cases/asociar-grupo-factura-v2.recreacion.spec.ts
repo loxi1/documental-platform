@@ -83,6 +83,7 @@ describe('AsociarGrupoFacturaV2UseCase recreación', () => {
           gruposHistoricosIds: [8],
         }),
       }),
+      undefined,
     );
     expect(auditoria.registrarCreacion).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -91,6 +92,7 @@ describe('AsociarGrupoFacturaV2UseCase recreación', () => {
           recreacion: true,
         }),
       }),
+      undefined,
     );
   });
 

@@ -57,6 +57,7 @@ describe('DocumentosController - auditoría de confirmación OCR', () => {
         usuarioId: 1,
         requestId: '98888888-8888-4888-8888-888888888881',
         correlationId: '98888888-8888-4888-8888-888888888881',
+        tienePermisoAutorizarExcepcion: false,
       },
     );
   });
@@ -83,6 +84,7 @@ describe('DocumentosController - auditoría de confirmación OCR', () => {
         usuarioId: null,
         requestId: 'request-prueba',
         correlationId: 'request-prueba',
+        tienePermisoAutorizarExcepcion: false,
       },
     );
   });
