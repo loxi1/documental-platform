@@ -255,6 +255,7 @@ export type BandejaComprasQuery = {
   q?: string;
   limit?: number;
   offset?: number;
+  incluirPendientesValidacion?: boolean;
 };
 
 export type BandejaComprasFactura = {
