@@ -312,7 +312,10 @@ function DocumentoAsociadoFila({
   label: string;
   documento: WorkspaceV2Documento | null;
   documentoPersistido?: Record<string, unknown> | null;
-  onVer?: (documentoId: string | number) => void;
+  onVer?: (
+    documentoId: string | number,
+    documentoLogico?: Record<string, unknown>,
+  ) => void;
 }) {
   if (!documento && !documentoPersistido) {
     return (
@@ -392,6 +395,136 @@ function DocumentoAsociadoFila({
 }
 
 
+
+type ContabilidadFacturaLogicaGrupo = {
+  documentoId: string | number;
+  tipoDocumental: "FACTURA";
+  serie?: string;
+  numero?: string;
+  fechaEmision?: string;
+  rucEmisor?: string;
+  razonSocialEmisor?: string;
+  montoTotal?: number;
+  moneda?: string;
+  estado?: string;
+};
+
+function normalizarFechaGrupoParaModal(value: unknown) {
+  const text = String(value ?? "").trim();
+  if (!text || text === "-") return undefined;
+
+  const iso = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
+
+  const pe = text.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (pe) return `${pe[3]}-${pe[2]}-${pe[1]}`;
+
+  return text;
+}
+
+function normalizarFacturaLabelGrupo(label: unknown) {
+  const original = String(label ?? "").trim();
+  if (!original || original === "Factura no informada") {
+    return { serie: undefined, numero: undefined };
+  }
+
+  const text = original.replace(/^factura\s+/i, "").trim();
+
+  const match = text.match(/^([^-\s]+)\s*-\s*(.+)$/);
+  if (match) {
+    return {
+      serie: match[1].trim() || undefined,
+      numero: match[2].trim() || undefined,
+    };
+  }
+
+  const parts = text.split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) {
+    return {
+      serie: parts[0],
+      numero: parts.slice(1).join(" "),
+    };
+  }
+
+  return { serie: undefined, numero: text || undefined };
+}
+
+function normalizarImporteGrupo(value: unknown) {
+  const text = String(value ?? "").trim();
+  const upper = text.toUpperCase();
+
+  const moneda =
+    upper.includes("USD") || upper.includes("US$") || upper.includes("$")
+      ? "USD"
+      : upper.includes("PEN") || upper.includes("S/") || upper.includes("S/.")
+        ? "PEN"
+        : undefined;
+
+  const numericText = text
+    .replace(/[^0-9,.-]/g, "")
+    .replace(/,(?=\d{3}(?:\D|$))/g, "")
+    .replace(",", ".");
+
+  const monto = Number(numericText);
+
+  return {
+    moneda,
+    montoTotal: Number.isFinite(monto) ? monto : undefined,
+  };
+}
+
+function buildFacturaLogicaDesdeGrupo(
+  grupo: WorkspaceV2GrupoFactura,
+  facturaDocumentoId: string | number,
+  facturaDocumento: Record<string, unknown> | null,
+): ContabilidadFacturaLogicaGrupo {
+  const facturaVista = entityVista<Record<string, unknown>>(facturaDocumento);
+  const grupoVista = entityVista<Record<string, unknown>>(grupo);
+  const label = normalizarFacturaLabelGrupo(getGrupoFacturaLabel(grupo));
+  const importe = normalizarImporteGrupo(getGrupoImporte(grupo));
+  const serieExplicita = String(
+    facturaVista.serie ??
+      grupoVista.serie ??
+      "",
+  ).trim();
+  const numeroExplicito = String(
+    facturaVista.numero ??
+      grupoVista.numero ??
+      "",
+  ).trim();
+
+  return {
+    documentoId: facturaDocumentoId,
+    tipoDocumental: "FACTURA",
+    serie: serieExplicita || label.serie,
+    numero: numeroExplicito || label.numero,
+    fechaEmision: normalizarFechaGrupoParaModal(getGrupoFecha(grupo)),
+    rucEmisor: String(getGrupoRucProveedor(grupo) ?? "").trim() || undefined,
+    razonSocialEmisor:
+      String(getGrupoProveedor(grupo) ?? "").trim() || undefined,
+    montoTotal: importe.montoTotal,
+    moneda:
+      importe.moneda ??
+      (
+        String(
+          facturaVista.moneda ??
+            grupoVista.moneda ??
+            "",
+        ).trim() ||
+        undefined
+      ),
+    estado:
+      String(
+        facturaVista.estado ??
+          grupoVista.estadoRevisionLabel ??
+          grupoVista.estado_revision_label ??
+          grupoVista.estado ??
+          "",
+      ).trim() ||
+      undefined,
+  };
+}
+
 function GrupoRevisionCard({
   workspace,
   grupo,
@@ -403,13 +536,23 @@ function GrupoRevisionCard({
   grupo: WorkspaceV2GrupoFactura;
   expedienteId: string | number;
   documentos: Array<Record<string, unknown>>;
-  onVer?: (documentoId: string | number) => void;
+  onVer?: (
+    documentoId: string | number,
+    documentoLogico?: Record<string, unknown>,
+  ) => void;
 }) {
   const grupoFacturaId = getGrupoFacturaPersistidoId(grupo);
   const principalDocumentoId = getGrupoDocumentoPrincipalDocumentoId(grupo);
   const facturaDocumentoId = getGrupoFacturaDocumentoId(grupo);
   const principalOperativo = msiiPrincipalGrupoLabel(workspace, principalDocumentoId);
   const facturaDocumento = msiiFindRecordById(workspace, facturaDocumentoId);
+  const facturaLogicaGrupo = facturaDocumentoId
+    ? buildFacturaLogicaDesdeGrupo(
+        grupo,
+        facturaDocumentoId,
+        facturaDocumento,
+      )
+    : null;
   const guiaDocumento = findAdjunto(grupo, ["GUIA_REMISION", "GUIA", "GUÍA", "ADJUNTO_GUIA"]);
   const notaIngresoDocumento = findAdjunto(grupo, ["NOTA_INGRESO", "NOTA INGRESO", "ADJUNTO_NOTA_INGRESO"]);
   const transferenciaDocumento = findAdjunto(grupo, ["TRANSFERENCIA", "ADJUNTO_TRANSFERENCIA", "PAGO_TRANSFERENCIA"]);
@@ -461,7 +604,7 @@ function GrupoRevisionCard({
                   variant="outline"
                   size="sm"
                   className="h-7 px-2.5"
-                  onClick={() => onVer(facturaDocumentoId)}
+                  onClick={() => onVer(facturaDocumentoId, facturaLogicaGrupo ?? undefined)}
                 >
                   <Eye className="mr-1.5 h-3.5 w-3.5" />
                   Ver
@@ -575,7 +718,10 @@ export function ContabilidadGrupoFacturaSoloLecturaPanel({
   id: string | number;
   facturaDocumentoId?: string | null;
   documentos?: Array<Record<string, unknown>>;
-  onVer?: (documentoId: string | number) => void;
+  onVer?: (
+    documentoId: string | number,
+    documentoLogico?: Record<string, unknown>,
+  ) => void;
 }) {
   const workspaceQuery = useQuery({
     queryKey: ["contabilidad-v2-grupos-revision", String(id)],

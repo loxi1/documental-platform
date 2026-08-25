@@ -1,5 +1,7 @@
 "use client";
 
+import { PagoGrupoResumenCell } from "@/components/finanzas/PagoGrupoResumenCell";
+
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { Eye, FileText, RefreshCcw, Search, X } from "lucide-react";
@@ -361,12 +363,15 @@ function principalNumero(item: RevisionContableItem) {
 function centroCostoCodigo(item: RevisionContableItem) {
   const fila = filaFactura(item);
   const centro = nestedRecord(fila, "centroCosto", "centro_costo");
+  const itemValue = itemRecord(item);
 
   return asText(
     pick(
       nestedValue(centro, "codigo", "centroCostoCodigo", "centro_costo_codigo"),
-      itemRecord(item).codigoCentroCosto,
-      itemRecord(item).codigo_centro_costo,
+      itemValue.codigoCentroCosto,
+      itemValue.codigo_centro_costo,
+      itemValue.codigoExpediente,
+      itemValue.codigo_expediente,
       null,
     ),
     "—",
@@ -838,23 +843,14 @@ export default function RevisionContablePage() {
                       item,
                       "notaIngreso",
                     );
-                    const transferenciaDoc = documentoCompacto(
-                      item,
-                      "transferencia",
-                    );
-
                     const guia = guiaIdentidad(item);
                     const notaIngreso = notaIngresoIdentidad(item);
-                    const banco = pagoBanco(item);
-                    const operacion = pagoOperacion(item);
-                    const pagoExiste = Boolean(banco || operacion);
 
                     const facturaArchivo = facturaArchivoId(item);
                     const principalArchivo = principalArchivoId(item);
                     const guiaArchivo = documentoArchivoId(guiaDoc);
                     const notaIngresoArchivo =
                       documentoArchivoId(notaIngresoDoc);
-                    const pagoArchivo = documentoArchivoId(transferenciaDoc);
 
                     const facturaTitle = `Factura ${[
                       facturaSerie(item),
@@ -871,10 +867,6 @@ export default function RevisionContablePage() {
                     const notaIngresoTitle = notaIngreso
                       ? `Nota de ingreso ${notaIngreso}`
                       : "Nota de ingreso";
-
-                    const pagoTitle = operacion
-                      ? `Pago ${banco ? `${banco} · ` : ""}${operacion}`
-                      : "Pago";
 
                     const openPreview = (
                       archivoId: string | number,
@@ -966,17 +958,7 @@ export default function RevisionContablePage() {
                         </td>
 
                         <td className="px-3 py-2.5">
-                          {pagoExiste ? (
-                            <DocumentoPreviewCell
-                              archivoId={pagoArchivo}
-                              line1={banco || "Pago"}
-                              line2={operacion || null}
-                              title={pagoTitle}
-                              onPreview={openPreview}
-                            />
-                          ) : (
-                            <span className="text-muted-foreground">—</span>
-                          )}
+                          <PagoGrupoResumenCell grupoFacturaId={grupoId} />
                         </td>
 
                         <td className="whitespace-nowrap px-3 py-2.5">

@@ -89,6 +89,38 @@ export async function getDocumentosCandidatosGrupoFacturaV2(params: GetDocumento
   return unwrapData<DocumentoGrupoFacturaCandidatoV2[]>(data, []);
 }
 
+export type GrupoFacturaDocumentoVinculoV2 = {
+  grupoFacturaId?: string | number | null;
+  grupo_factura_id?: string | number | null;
+  documentoId?: string | number | null;
+  documento_id?: string | number | null;
+  tipoRelacion?: string | null;
+  tipo_relacion?: string | null;
+  estado?: string | null;
+  metadata?: Record<string, unknown> | null;
+  [key: string]: unknown;
+};
+
+export async function getGrupoFacturaDocumentosV2(
+  grupoFacturaId: string | number,
+): Promise<GrupoFacturaDocumentoVinculoV2[]> {
+  const { data } = await api.get<
+    ApiEnvelope<GrupoFacturaDocumentoVinculoV2[]> | GrupoFacturaDocumentoVinculoV2[]
+  >(`/documental-v2/grupos-factura/${grupoFacturaId}/documentos`);
+
+  return unwrapData<GrupoFacturaDocumentoVinculoV2[]>(data, []);
+}
+
+export async function getDocumentoDetalleV2(
+  documentoId: string | number,
+): Promise<Record<string, unknown> | null> {
+  const { data } = await api.get<
+    ApiEnvelope<Record<string, unknown>> | Record<string, unknown>
+  >(`/documentos/${documentoId}`);
+
+  return unwrapData<Record<string, unknown> | null>(data, null);
+}
+
 export async function asociarDocumentoGrupoFacturaV2(payload: AsociarDocumentoGrupoFacturaV2Request) {
   const { data } = await api.post<
     ApiEnvelope<AsociarDocumentoGrupoFacturaV2Result> | AsociarDocumentoGrupoFacturaV2Result

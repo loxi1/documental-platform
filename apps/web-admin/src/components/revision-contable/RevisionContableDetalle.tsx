@@ -373,6 +373,8 @@ export function RevisionContableDetalle({
 }: Props) {
   const [documentoSeleccionado, setDocumentoSeleccionado] =
     useState<ExpedienteDocumento | null>(null);
+  const [documentoLogicoSeleccionado, setDocumentoLogicoSeleccionado] =
+    useState<ExpedienteDocumento | null>(null);
   const contexto = getContexto();
   const workspaceEmpresa = asText(contexto?.empresa, "-");
 
@@ -392,6 +394,37 @@ export function RevisionContableDetalle({
       (expediente as unknown as Record<string, unknown> | undefined)?.documentos,
     );
   }, [documentosQuery.data, expediente]);
+  function abrirDocumentoPreview(documentoFisico: ExpedienteDocumento) {
+    const documentoId = String(
+      pickDocumento(documentoFisico, ["documentoId", "documento_id", "id"]) ?? "",
+    ).trim();
+
+    if (!documentoId) return;
+
+    const documentoLogico =
+      documentos.find(
+        (documento) =>
+          String(
+            pickDocumento(documento, ["documentoId", "documento_id", "id"]) ?? "",
+          ) === documentoId,
+      ) ?? null;
+
+    if (!documentoLogico) return;
+
+    setDocumentoLogicoSeleccionado(documentoLogico);
+    setDocumentoSeleccionado(documentoFisico);
+  }
+
+  function abrirDocumentoPreviewConLogico(
+    documentoFisico: ExpedienteDocumento,
+    documentoLogico: Record<string, unknown>,
+  ) {
+    setDocumentoLogicoSeleccionado(
+      documentoLogico as unknown as ExpedienteDocumento,
+    );
+    setDocumentoSeleccionado(documentoFisico);
+  }
+
   const alertas = useMemo(
     () => normalizeAlertas(alertasQuery.data),
     [alertasQuery.data],
@@ -469,6 +502,8 @@ export function RevisionContableDetalle({
       <section>
         <ContabilidadDocumentoPrincipalOperativoCard
           id={expedienteId}
+          facturaDocumentoId={facturaDocumentoId}
+          documentos={documentos as unknown as Array<Record<string, unknown>>}
           onVer={(documentoId) => {
             const documentoPrincipal = documentos.find(
               (documento) =>
@@ -478,7 +513,7 @@ export function RevisionContableDetalle({
             );
 
             if (documentoPrincipal) {
-              setDocumentoSeleccionado(documentoPrincipal);
+              abrirDocumentoPreview(documentoPrincipal);
             }
           }}
         />
@@ -491,17 +526,25 @@ export function RevisionContableDetalle({
           documentos={
             documentos as unknown as Array<Record<string, unknown>>
           }
-          onVer={(documentoId) => {
-            const documento = documentos.find(
+          onVer={(documentoId, documentoLogicoGrupo) => {
+            const documentoFisico = documentos.find(
               (item) =>
                 String(
                   pickDocumento(item, ["documentoId", "documento_id", "id"]) ?? "",
                 ) === String(documentoId),
             );
 
-            if (documento) {
-              setDocumentoSeleccionado(documento);
+            if (!documentoFisico) return;
+
+            if (documentoLogicoGrupo) {
+              abrirDocumentoPreviewConLogico(
+                documentoFisico,
+                documentoLogicoGrupo,
+              );
+              return;
             }
+
+            abrirDocumentoPreview(documentoFisico);
           }}
         />
       </section>
@@ -584,8 +627,13 @@ export function RevisionContableDetalle({
 
       <DocumentoPreviewModal
         documento={documentoSeleccionado}
+        documentoLogico={documentoLogicoSeleccionado}
+        ocultarClaveDocumental
         open={Boolean(documentoSeleccionado)}
-        onClose={() => setDocumentoSeleccionado(null)}
+        onClose={() => {
+          setDocumentoSeleccionado(null);
+          setDocumentoLogicoSeleccionado(null);
+        }}
       />
     </main>
   );
