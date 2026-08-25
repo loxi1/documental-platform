@@ -1,5 +1,7 @@
 "use client";
 
+import { PagoGrupoResumenCell } from "@/components/finanzas/PagoGrupoResumenCell";
+
 import Link from "next/link";
 import { Eye, Search } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -167,6 +169,29 @@ function principalNumero(item: RevisionContableItem) {
 
   if (serie && numero) return `${serie}-${numero}`;
   return numero || serie || "—";
+}
+
+function centroCostoCodigo(item: RevisionContableItem) {
+  const fila = filaFactura(item);
+  const centro = nestedRecord(fila, "centroCosto", "centro_costo");
+  const record = itemRecord(item);
+
+  return text(
+    pick(
+      nestedValue(
+        centro,
+        "codigo",
+        "centroCostoCodigo",
+        "centro_costo_codigo",
+      ),
+      record.codigoCentroCosto,
+      record.codigo_centro_costo,
+      record.codigoExpediente,
+      record.codigo_expediente,
+      null,
+    ),
+    "",
+  );
 }
 
 function fechaEmisionRaw(item: RevisionContableItem) {
@@ -344,6 +369,7 @@ function searchText(item: RevisionContableItem) {
     facturaNumero(item),
     principalTipo(item),
     principalNumero(item),
+    centroCostoCodigo(item),
     proveedorNombre(item),
     proveedorRuc(item),
     ...operacionesTransferencia(item),
@@ -442,19 +468,34 @@ export function FinanzasBandeja() {
   const contexto = getContexto();
   const empresa = normalizeEmpresa(contexto?.empresa);
   const [search, setSearch] = useState("");
+  const [soloPendientesFinanzas, setSoloPendientesFinanzas] = useState(false);
   const [pageSize, setPageSize] = useState("50");
   const [page, setPage] = useState(1);
 
-  const params = useMemo(
-    () => ({
-      empresa,
-      q: search.trim() || undefined,
-    }),
-    [empresa, search],
-  );
+  const normalizedSearch = search.trim();
+  const hasSearch = normalizedSearch.length >= 3;
+  const hasOperationalQuery = hasSearch || soloPendientesFinanzas;
 
-  const hasSearch = Boolean(search.trim());
-  const queryEnabled = Boolean(empresa.trim() && hasSearch);
+  const params = useMemo(
+    () => {
+      const numericPageSize = Number(pageSize);
+      return {
+        q: hasSearch ? normalizedSearch : undefined,
+        limit: hasOperationalQuery ? numericPageSize + 1 : undefined,
+        offset: hasOperationalQuery ? (page - 1) * numericPageSize : undefined,
+        soloPendientesFinanzas: soloPendientesFinanzas || undefined,
+      };
+    },
+    [
+      hasOperationalQuery,
+      hasSearch,
+      normalizedSearch,
+      page,
+      pageSize,
+      soloPendientesFinanzas,
+    ],
+  );
+  const queryEnabled = Boolean(empresa.trim() && hasOperationalQuery);
 
   const { data, isLoading, isFetching, error, refetch } =
     useRevisionContable(params, queryEnabled);
@@ -465,44 +506,27 @@ export function FinanzasBandeja() {
   );
 
   const filteredRows = useMemo(() => {
-    const query = normalizeSearch(search);
-    if (!query) return rows;
+    if (!hasSearch) return rows;
+    const query = normalizeSearch(normalizedSearch);
 
     return rows.filter((item) =>
       normalizeSearch(searchText(item)).includes(query),
     );
-  }, [rows, search]);
+  }, [hasSearch, normalizedSearch, rows]);
 
   useEffect(() => {
     setPage(1);
-  }, [search, pageSize]);
+  }, [search, pageSize, soloPendientesFinanzas]);
 
   const numericPageSize = Number(pageSize);
-  const totalPages = Math.max(
-    1,
-    Math.ceil(filteredRows.length / numericPageSize),
-  );
-  const safePage = Math.min(page, totalPages);
+  const hasNextPage = filteredRows.length > numericPageSize;
+  const safePage = page;
   const start = (safePage - 1) * numericPageSize;
-  const pageRows = filteredRows.slice(start, start + numericPageSize);
-
-  if (isLoading && !data) {
-    return (
-      <main className="space-y-4">
-        <Skeleton className="h-10 w-72" />
-        <Card>
-          <CardContent className="space-y-3 py-6">
-            <Skeleton className="h-5 w-full" />
-            <Skeleton className="h-5 w-11/12" />
-            <Skeleton className="h-5 w-10/12" />
-          </CardContent>
-        </Card>
-      </main>
-    );
-  }
+  const totalPages = hasNextPage ? page + 1 : page;
+  const pageRows = filteredRows.slice(0, numericPageSize);
 
   return (
-    <main className="space-y-4">
+    <main className="space-y-4" data-msii-layout="MSII_GRID_FIRST_FINANZAS_01_V2">
       <div>
         <h1 className="text-2xl font-bold">Finanzas</h1>
         <p className="text-sm text-muted-foreground">
@@ -524,30 +548,44 @@ export function FinanzasBandeja() {
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div>
               <CardTitle className="text-base">Bandeja de Finanzas</CardTitle>
-              <div className="mt-1 text-xs text-muted-foreground">
-                Empresa: <span className="font-medium text-foreground">{empresa}</span>
-                {" · "}
-                {filteredRows.length} factura
-                {filteredRows.length === 1 ? "" : "s"}
-              </div>
             </div>
 
-            <div className="grid w-full gap-2 sm:grid-cols-[minmax(360px,430px)_auto] lg:w-auto">
-              <Input
-                placeholder="Buscar factura, OC/OS, proveedor o RUC..."
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-              />
+            <div className="flex w-full flex-col gap-2 lg:w-auto lg:min-w-[820px]">
+              <div className="flex w-full flex-col gap-2 lg:flex-row lg:items-center">
+                <Input
+                  className="lg:min-w-[420px] lg:flex-1"
+                  placeholder="Buscar factura, OC/OS, centro de costo, proveedor o RUC..."
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                />
 
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => refetch()}
-                disabled={!queryEnabled || isFetching}
-              >
-                <Search className="h-4 w-4" />
-                {isFetching ? "Actualizando" : "Actualizar"}
-              </Button>
+                <label className="flex shrink-0 items-center gap-2 whitespace-nowrap text-sm">
+                  <input
+                    type="checkbox"
+                    checked={soloPendientesFinanzas}
+                    title="Mostrar solo facturas con una decisión financiera pendiente"
+                    onChange={(event) => setSoloPendientesFinanzas(event.target.checked)}
+                  />
+                  Pendientes de observación
+                </label>
+
+                <Button
+                  className="shrink-0"
+                  type="button"
+                  variant="outline"
+                  onClick={() => refetch()}
+                  disabled={!queryEnabled || isFetching}
+                >
+                  <Search className="h-4 w-4" />
+                  {isFetching ? "Actualizando" : "Actualizar"}
+                </Button>
+              </div>
+
+              {search.trim().length > 0 && search.trim().length < 3 ? (
+                <p className="text-xs text-muted-foreground">
+                  Ingrese al menos 3 caracteres para buscar.
+                </p>
+              ) : null}
             </div>
           </div>
         </CardHeader>
@@ -563,7 +601,7 @@ export function FinanzasBandeja() {
                 <EmptyDescription>
                   {hasSearch
                     ? "No se encontraron facturas para la búsqueda realizada."
-                    : "Ingrese factura, OC/OS, proveedor o RUC para consultar."}
+                    : "Ingrese factura, OC/OS, centro de costo, proveedor o RUC para consultar."}
                 </EmptyDescription>
               </EmptyHeader>
             </Empty>
@@ -575,6 +613,10 @@ export function FinanzasBandeja() {
                     <tr className="border-b bg-muted/40 text-left align-bottom">
                       <th className="min-w-[105px] px-3 py-2.5">Factura</th>
                       <th className="min-w-[90px] px-3 py-2.5">OC/OS</th>
+                      <th className="min-w-[110px] px-3 py-2.5">
+                        <span className="block leading-tight">Centro de</span>
+                        <span className="block leading-tight">costo</span>
+                      </th>
                       <th className="w-[190px] min-w-[165px] max-w-[190px] px-3 py-2.5">
                         Proveedor
                       </th>
@@ -614,6 +656,10 @@ export function FinanzasBandeja() {
                             <PrincipalCell item={item} />
                           </td>
 
+                          <td className="whitespace-nowrap px-3 py-2.5 font-medium">
+                            {centroCostoCodigo(item) || "—"}
+                          </td>
+
                           <td className="w-[190px] max-w-[190px] px-3 py-2.5">
                             <ProveedorCell item={item} />
                           </td>
@@ -626,20 +672,8 @@ export function FinanzasBandeja() {
                             {montoFactura(item)}
                           </td>
 
-                          <td
-                            className="px-3 py-2.5 text-center text-base font-semibold"
-                            title={
-                              tieneSustentoPago(item)
-                                ? "Existe sustento de pago asociado a la factura"
-                                : "No se registra sustento de pago asociado"
-                            }
-                            aria-label={
-                              tieneSustentoPago(item)
-                                ? "Sustento de pago disponible"
-                                : "Sin sustento de pago"
-                            }
-                          >
-                            {tieneSustentoPago(item) ? "✓" : "—"}
+                          <td className="px-3 py-2.5">
+                            <PagoGrupoResumenCell grupoFacturaId={grupoId} />
                           </td>
 
                           <td className="px-3 py-2.5 text-right">
@@ -655,8 +689,7 @@ export function FinanzasBandeja() {
               <div className="flex flex-col gap-2 border-t px-4 py-3 text-sm md:flex-row md:items-center md:justify-between">
                 <div className="text-xs text-muted-foreground">
                   Mostrando {pageRows.length ? start + 1 : 0}-
-                  {Math.min(start + pageRows.length, filteredRows.length)} de{" "}
-                  {filteredRows.length}
+                  {start + pageRows.length}
                 </div>
 
                 <div className="flex gap-2">
@@ -685,6 +718,10 @@ export function FinanzasBandeja() {
                   >
                     Anterior
                   </Button>
+
+                  <div className="flex h-8 min-w-[76px] items-center justify-center rounded-lg border border-input bg-background px-3 text-sm font-medium text-foreground">
+                    Página {safePage}
+                  </div>
 
                   <Button
                     type="button"

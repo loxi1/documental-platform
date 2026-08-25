@@ -396,25 +396,26 @@ export function FinanzasExpedienteView({ id }: { id: string | number }) {
         </CardContent>
       </Card>
 
-      <FinanzasDocumentoPrincipalOperativoCard
-        id={id}
-        onVer={(principalDocumentoId) => {
-          const documentoPrincipal = getAllDocuments(expediente).find(
-            (documento) =>
-              documentoId(documento) === String(principalDocumentoId),
-          );
-
-          if (documentoPrincipal) {
-            setPreviewDocumento(documentoPrincipal);
-          }
-        }}
-      />
-
       <FinanzasGrupoFacturaPagoPanel
         id={id}
         grupoFacturaId={grupoFacturaId || null}
         documentos={
           getAllDocuments(expediente) as unknown as Array<Record<string, unknown>>
+        }
+        principalSlot={
+          <FinanzasDocumentoPrincipalOperativoCard
+            id={id}
+            onVer={(principalDocumentoId) => {
+              const documentoPrincipal = getAllDocuments(expediente).find(
+                (documento) =>
+                  documentoId(documento) === String(principalDocumentoId),
+              );
+
+              if (documentoPrincipal) {
+                setPreviewDocumento(documentoPrincipal);
+              }
+            }}
+          />
         }
       />
 
