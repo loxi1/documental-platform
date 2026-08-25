@@ -173,6 +173,29 @@ function principalNumero(item: RevisionContableItem) {
   return numero || serie || "—";
 }
 
+function centroCostoCodigo(item: RevisionContableItem) {
+  const fila = filaFactura(item);
+  const centro = nestedRecord(fila, "centroCosto", "centro_costo");
+  const record = itemRecord(item);
+
+  return text(
+    pick(
+      nestedValue(
+        centro,
+        "codigo",
+        "centroCostoCodigo",
+        "centro_costo_codigo",
+      ),
+      record.codigoCentroCosto,
+      record.codigo_centro_costo,
+      record.codigoExpediente,
+      record.codigo_expediente,
+      null,
+    ),
+    "",
+  );
+}
+
 function fechaEmisionRaw(item: RevisionContableItem) {
   return pick(
     nestedValue(facturaRecord(item), "fechaEmision", "fecha_emision"),
@@ -269,6 +292,7 @@ function searchText(item: RevisionContableItem) {
     facturaNumero(item),
     principalTipo(item),
     principalNumero(item),
+    centroCostoCodigo(item),
     proveedorNombre(item),
     proveedorRuc(item),
     documentoIdentidad(guiaRecord(item)),
@@ -398,15 +422,20 @@ export function AlmacenBandeja() {
   const [pageSize, setPageSize] = useState("50");
   const [page, setPage] = useState(1);
 
-  const params = useMemo(
-    () => ({
-      empresa,
-      q: search.trim() || undefined,
-    }),
-    [empresa, search],
-  );
+  const normalizedSearch = search.trim();
+  const hasSearch = normalizedSearch.length >= 3;
 
-  const hasSearch = Boolean(search.trim());
+  const params = useMemo(
+    () => {
+      const numericPageSize = Number(pageSize);
+      return {
+        q: hasSearch ? normalizedSearch : undefined,
+        limit: hasSearch ? numericPageSize + 1 : undefined,
+        offset: hasSearch ? (page - 1) * numericPageSize : undefined,
+      };
+    },
+    [hasSearch, normalizedSearch, page, pageSize],
+  );
   const queryEnabled = Boolean(empresa.trim() && hasSearch);
 
   const { data, isLoading, isFetching, error, refetch } =
@@ -431,28 +460,11 @@ export function AlmacenBandeja() {
   }, [search, pageSize]);
 
   const numericPageSize = Number(pageSize);
-  const totalPages = Math.max(
-    1,
-    Math.ceil(filteredRows.length / numericPageSize),
-  );
-  const safePage = Math.min(page, totalPages);
+  const hasNextPage = filteredRows.length > numericPageSize;
+  const safePage = page;
   const start = (safePage - 1) * numericPageSize;
-  const pageRows = filteredRows.slice(start, start + numericPageSize);
-
-  if (isLoading && !data) {
-    return (
-      <main className="space-y-4">
-        <Skeleton className="h-10 w-72" />
-        <Card>
-          <CardContent className="space-y-3 py-6">
-            <Skeleton className="h-5 w-full" />
-            <Skeleton className="h-5 w-11/12" />
-            <Skeleton className="h-5 w-10/12" />
-          </CardContent>
-        </Card>
-      </main>
-    );
-  }
+  const totalPages = hasNextPage ? page + 1 : page;
+  const pageRows = filteredRows.slice(0, numericPageSize);
 
   return (
     <main className="space-y-4">
@@ -473,34 +485,35 @@ export function AlmacenBandeja() {
       ) : null}
 
       <Card className="overflow-hidden">
-        <CardHeader className="border-b py-3">
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-            <div>
-              <CardTitle className="text-base">Bandeja de Almacén</CardTitle>
-              <div className="mt-1 text-xs text-muted-foreground">
-                Empresa: <span className="font-medium text-foreground">{empresa}</span>
-                {" · "}
-                {filteredRows.length} factura
-                {filteredRows.length === 1 ? "" : "s"}
+        <CardHeader className="border-b px-4 py-3" data-msii-grid-first="MSII_GRID_FIRST_ALMACEN_02">
+          <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+            <CardTitle className="shrink-0 text-base">Bandeja de Almacén</CardTitle>
+
+            <div className="flex w-full flex-col gap-1 lg:max-w-[760px]">
+              <div className="flex items-center gap-2">
+                <Input
+                  className="min-w-0 flex-1"
+                  placeholder="Buscar factura, OC/OS, centro de costo, proveedor, RUC, guía o NI..."
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                />
+
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => refetch()}
+                  disabled={!queryEnabled || isFetching}
+                >
+                  <Search className="h-4 w-4" />
+                  {isFetching ? "Actualizando" : "Actualizar"}
+                </Button>
               </div>
-            </div>
 
-            <div className="grid w-full gap-2 sm:grid-cols-[minmax(360px,430px)_auto] lg:w-auto">
-              <Input
-                placeholder="Buscar factura, OC/OS, proveedor, RUC, guía o NI..."
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-              />
-
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => refetch()}
-                disabled={!queryEnabled || isFetching}
-              >
-                <Search className="h-4 w-4" />
-                {isFetching ? "Actualizando" : "Actualizar"}
-              </Button>
+              {search.trim().length > 0 && search.trim().length < 3 ? (
+                <p className="text-xs text-muted-foreground">
+                  Ingrese al menos 3 caracteres para buscar.
+                </p>
+              ) : null}
             </div>
           </div>
         </CardHeader>
@@ -516,7 +529,7 @@ export function AlmacenBandeja() {
                 <EmptyDescription>
                   {hasSearch
                     ? "No se encontraron facturas para la búsqueda realizada."
-                    : "Ingrese factura, OC/OS, proveedor, RUC, guía o NI para consultar."}
+                    : "Ingrese factura, OC/OS, centro de costo, proveedor, RUC, guía o NI para consultar."}
                 </EmptyDescription>
               </EmptyHeader>
             </Empty>
@@ -528,6 +541,10 @@ export function AlmacenBandeja() {
                     <tr className="border-b bg-muted/40 text-left align-bottom">
                       <th className="min-w-[105px] px-3 py-2.5">Factura</th>
                       <th className="min-w-[90px] px-3 py-2.5">OC/OS</th>
+                      <th className="min-w-[110px] px-3 py-2.5">
+                        <span className="block leading-tight">Centro de</span>
+                        <span className="block leading-tight">costo</span>
+                      </th>
                       <th className="w-[190px] min-w-[165px] max-w-[190px] px-3 py-2.5">
                         Proveedor
                       </th>
@@ -568,6 +585,10 @@ export function AlmacenBandeja() {
                             <PrincipalCell item={item} />
                           </td>
 
+                          <td className="whitespace-nowrap px-3 py-2.5 font-medium">
+                            {centroCostoCodigo(item) || "—"}
+                          </td>
+
                           <td className="w-[190px] max-w-[190px] px-3 py-2.5">
                             <ProveedorCell item={item} />
                           </td>
@@ -602,27 +623,25 @@ export function AlmacenBandeja() {
 
               <div className="flex flex-col gap-2 border-t px-4 py-3 text-sm md:flex-row md:items-center md:justify-between">
                 <div className="text-xs text-muted-foreground">
-                  Mostrando {pageRows.length ? start + 1 : 0}-
-                  {Math.min(start + pageRows.length, filteredRows.length)} de{" "}
-                  {filteredRows.length}
+                  Mostrando {pageRows.length ? start + 1 : 0}–{start + pageRows.length}
                 </div>
 
-                <div className="flex gap-2">
-            <div className="mr-auto flex items-center gap-2 text-xs text-muted-foreground">
-              <span>Tamaño</span>
-              <select
-                className="h-8 rounded-lg border border-input bg-background px-2 text-xs"
-                value={pageSize}
-                onChange={(event) => setPageSize(event.target.value)}
-                aria-label="Registros por página"
-              >
-                {PAGE_SIZE_OPTIONS.map((option) => (
-                  <option key={option} value={option}>
-                    {option}
-                  </option>
-                ))}
-              </select>
-            </div>
+                <div className="flex flex-wrap items-center justify-end gap-2">
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <span>Tamaño</span>
+                    <select
+                      className="h-8 rounded-lg border border-input bg-background px-2 text-xs"
+                      value={pageSize}
+                      onChange={(event) => setPageSize(event.target.value)}
+                      aria-label="Registros por página"
+                    >
+                      {PAGE_SIZE_OPTIONS.map((option) => (
+                        <option key={option} value={option}>
+                          {option}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
 
                   <Button
                     type="button"
@@ -634,14 +653,16 @@ export function AlmacenBandeja() {
                     Anterior
                   </Button>
 
+                  <span className="inline-flex h-8 items-center rounded-md border px-3 text-xs font-medium text-foreground">
+                    Página {safePage}
+                  </span>
+
                   <Button
                     type="button"
                     size="sm"
                     variant="outline"
                     disabled={safePage >= totalPages}
-                    onClick={() =>
-                      setPage((value) => Math.min(totalPages, value + 1))
-                    }
+                    onClick={() => setPage((value) => Math.min(totalPages, value + 1))}
                   >
                     Siguiente
                   </Button>

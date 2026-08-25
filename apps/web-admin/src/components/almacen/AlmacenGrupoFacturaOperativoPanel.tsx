@@ -329,6 +329,17 @@ export function AlmacenGrupoFacturaOperativoPanel({
                           Adjuntar Guía / NI
                         </Link>
                       </Button>
+                    ) : modo === "editar" && !grupoSolicitado ? (
+                      <Button asChild size="sm">
+                        <Link
+                          href={`/almacen/${expedienteId}/editar?grupoFacturaId=${String(
+                            grupoFacturaId,
+                          )}#adjuntar-guia-ni`}
+                        >
+                          <FileCheck2 className="h-4 w-4" />
+                          Gestionar recepción
+                        </Link>
+                      </Button>
                     ) : null}
                   </div>
                 </div>

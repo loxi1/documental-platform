@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { type ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Eye, FilePlus2, FileText, History, Pencil, Save, Trash2, X } from "lucide-react";
+import { Eye, FilePlus2, FileText, History, Pencil, Save, Trash2, X } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -12,6 +12,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AlmacenGrupoFacturaOperativoPanel } from "@/components/almacen/AlmacenGrupoFacturaOperativoPanel";
+import { VersionesDocumentoModal } from "@/components/compras/CompraExpedienteEditor";
 import { OcrProcessingDialog, type OcrProcessingStep } from "@/components/ocr/OcrProcessingDialog";
 import { OcrValidationModal, type OcrValidationFormState } from "@/components/ocr/OcrValidationModal";
 import {
@@ -26,11 +27,13 @@ import {
   prevalidarDocumentoGuiado,
   subirDocumentoGuiado,
 } from "@/services/carga-guiada";
-import { agregarArchivoComoVersion, actualizarDocumentoManual } from "@/services/documentos";
+import { agregarArchivoComoVersion, actualizarDocumentoManual, getDocumentoArchivos, subirArchivoVersion } from "@/services/documentos";
 import { getDocumentoArchivoPreviewUrl } from "@/services/documentos-preview";
 import { getWorkspaceDocumentalV2 } from "@/services/documental-v2-workspace";
 import { getOcrResultado, getOcrResultados } from "@/services/ocr-resultados";
 import {
+  entityVista,
+  getAdjuntosGrupo,
   getGrupoDocumentoPrincipalDocumentoId,
   getGrupoFacturaDocumentoId,
   getGrupoFacturaLabel,
@@ -48,6 +51,8 @@ import type { CargaGuiadaPayloadPreview } from "@/types/carga-guiada";
 
 type DocumentoVinculado = Record<string, any>;
 
+type AlmacenVersionesModalState = Parameters<typeof VersionesDocumentoModal>[0]["state"];
+
 type AccionAlmacen = DocumentoCargaOption & {
   grupo: "adjunto";
 };
@@ -55,6 +60,10 @@ type AccionAlmacen = DocumentoCargaOption & {
 type UploadYProcesarArgs = {
   accion: AccionAlmacen;
   file: File;
+};
+
+type UploadVersionYProcesarArgs = UploadYProcesarArgs & {
+  documentoId: string;
 };
 
 type OcrRecoveryIdentity = {
@@ -204,10 +213,70 @@ function getDocumentosPorRelacion(documentos: DocumentoVinculado[]) {
   return map;
 }
 
+function isArchivoVersionOperativa(
+  archivo: Record<string, unknown> | null | undefined,
+) {
+  return normalizeCompare(archivo?.estado) === "ACTIVO";
+}
+
 function getArchivoId(source: Record<string, unknown> | null | undefined) {
   const value = source?.archivoId ?? source?.archivo_id ?? source?.id;
   if (value === null || value === undefined || value === "") return null;
   return String(value);
+}
+
+function getMetadataLogicaVigenteParaVersion(
+  doc: DocumentoVinculado,
+  option: DocumentoCargaOption | null | undefined,
+  contexto: { codigoExpediente: string; rucComprador: string },
+): Partial<OcrValidationFormState> {
+  const metadata =
+    doc?.metadata && typeof doc.metadata === "object" && !Array.isArray(doc.metadata)
+      ? (doc.metadata as Record<string, unknown>)
+      : {};
+
+  const value = (...keys: string[]) => {
+    for (const source of [doc as Record<string, unknown>, metadata]) {
+      for (const key of keys) {
+        const candidate = source?.[key];
+        if (candidate !== null && candidate !== undefined && String(candidate).trim() !== "") {
+          return String(candidate).trim();
+        }
+      }
+    }
+    return "";
+  };
+
+  const rucEmisor = value(
+    "rucEmisor", "ruc_emisor", "rucProveedor", "ruc_proveedor", "proveedorRuc", "ruc",
+  );
+  const razonSocial = value(
+    "razonSocial", "razon_social", "razonSocialEmisor", "razon_social_emisor",
+    "proveedor", "proveedorNombre",
+  );
+
+  return {
+    tipoDocumental: normalizeTipoDocumentalParaBackend(
+      value("tipoDocumental", "tipo_documental") || option?.tipoEsperado || "FACTURA",
+    ),
+    numero: value("numero"),
+    serie: value("serie"),
+    fechaEmision: value("fechaEmision", "fecha_emision", "fecha"),
+    proveedor: razonSocial,
+    rucProveedor: rucEmisor,
+    rucComprador: value("rucComprador", "ruc_comprador") || contexto.rucComprador,
+    rucEmisor,
+    razonSocial,
+    montoTotal: value("montoTotal", "monto_total", "total"),
+    moneda: value("moneda"),
+    cotizacion: value("cotizacion"),
+    codigoExpediente:
+      value("codigoExpediente", "codigo_expediente") || contexto.codigoExpediente,
+    documentoRelacionado: value(
+      "documentoRelacionado", "documento_relacionado", "ordenCompra", "orden_compra",
+    ),
+    observacion: value("observacion"),
+  };
 }
 
 function getOcrResultadoId(source: Record<string, unknown> | null | undefined) {
@@ -524,6 +593,8 @@ function DocumentoResumen({
   option,
   onVer,
   onEditar,
+  onAgregarVersion,
+  onVersiones,
   onQuitar,
   puedeModificar = false,
   loadingArchivoId,
@@ -532,10 +603,31 @@ function DocumentoResumen({
   option?: DocumentoCargaOption;
   onVer?: (doc: DocumentoVinculado) => void;
   onEditar?: (doc: DocumentoVinculado) => void;
+  onAgregarVersion?: (doc: DocumentoVinculado) => void;
+  onVersiones?: (doc: DocumentoVinculado) => void;
   onQuitar?: (doc: DocumentoVinculado) => void;
   puedeModificar?: boolean;
   loadingArchivoId?: string | null;
 }) {
+  const documentoId = doc ? getDocumentoId(doc) : "";
+  const tipoDocumentalActual = doc ? getTipoDocumentalDoc(doc) : "";
+  const versionableEnAlmacen = Boolean(
+    documentoId &&
+      ["FACTURA", "GUIA_REMISION", "GUIA"].includes(tipoDocumentalActual),
+  );
+
+  const versionesQuery = useQuery({
+    queryKey: ["almacen-documento-versiones-contador", documentoId],
+    queryFn: () => getDocumentoArchivos(documentoId),
+    enabled: versionableEnAlmacen,
+  });
+
+  const archivosVersiones =
+    versionesQuery.data?.data ?? versionesQuery.data?.archivos ?? [];
+  const cantidadVersionesOperativas = archivosVersiones.filter((archivo) =>
+    isArchivoVersionOperativa(archivo as Record<string, unknown>),
+  ).length;
+
   if (!doc) {
     const visual = getDocumentoVisualState(null);
     return (
@@ -547,7 +639,6 @@ function DocumentoResumen({
 
   const visual = getDocumentoVisualState(doc);
   const summary = getDocumentoSummary(doc, option);
-  const documentoId = getDocumentoId(doc);
   const archivoId = getArchivoId(doc as Record<string, unknown>);
   const abriendo = Boolean(archivoId && loadingArchivoId === archivoId);
 
@@ -578,7 +669,10 @@ function DocumentoResumen({
           <Eye className="h-3.5 w-3.5" />
         </Button>
 
-        {puedeModificar ? (
+        {puedeModificar &&
+        !["FACTURA", "GUIA_REMISION", "GUIA", "NOTA_INGRESO"].includes(
+          getTipoDocumentalDoc(doc),
+        ) ? (
           <Button
             type="button"
             variant="ghost"
@@ -592,15 +686,41 @@ function DocumentoResumen({
           </Button>
         ) : null}
 
-        {documentoId ? (
-          <Button asChild type="button" variant="ghost" size="icon" className="h-7 w-7" title="Versiones" aria-label="Versiones">
-            <Link href={`/documentos/${documentoId}`}>
-              <History className="h-3.5 w-3.5" />
-            </Link>
+        {documentoId &&
+        ["FACTURA", "GUIA_REMISION", "GUIA"].includes(tipoDocumentalActual) ? (
+          <>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-7 gap-1 px-2"
+              title="Agregar versión"
+              aria-label="Agregar versión"
+              onClick={() => onAgregarVersion?.(doc)}
+            >
+              <FilePlus2 className="h-3.5 w-3.5" />
+              Agregar versión
+            </Button>
+
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-7 gap-1 px-2"
+            title={`Versiones (${cantidadVersionesOperativas})`}
+            aria-label={`Versiones (${cantidadVersionesOperativas})`}
+            onClick={() => onVersiones?.(doc)}
+          >
+            <History className="h-3.5 w-3.5" />
+            Versiones ({cantidadVersionesOperativas})
           </Button>
+          </>
         ) : null}
 
-        {puedeModificar ? (
+        {puedeModificar &&
+        !["FACTURA", "GUIA_REMISION", "GUIA", "NOTA_INGRESO"].includes(
+          getTipoDocumentalDoc(doc),
+        ) ? (
           <Button
             type="button"
             variant="ghost"
@@ -623,6 +743,8 @@ function DocumentosExistentes({
   option,
   onVer,
   onEditar,
+  onAgregarVersion,
+  onVersiones,
   onQuitar,
   puedeModificar = false,
   loadingArchivoId,
@@ -631,6 +753,8 @@ function DocumentosExistentes({
   option: DocumentoCargaOption;
   onVer?: (doc: DocumentoVinculado) => void;
   onEditar?: (doc: DocumentoVinculado) => void;
+  onAgregarVersion?: (doc: DocumentoVinculado) => void;
+  onVersiones?: (doc: DocumentoVinculado) => void;
   onQuitar?: (doc: DocumentoVinculado) => void;
   puedeModificar?: boolean;
   loadingArchivoId?: string | null;
@@ -648,6 +772,8 @@ function DocumentosExistentes({
           option={option}
           onVer={onVer}
           onEditar={onEditar}
+              onAgregarVersion={onAgregarVersion}
+          onVersiones={onVersiones}
           onQuitar={onQuitar}
           puedeModificar={puedeModificar}
           loadingArchivoId={loadingArchivoId}
@@ -759,6 +885,47 @@ function msiiEditorFacturaGrupoLabel(source: unknown, facturaDocumentoId: unknow
   return msiiEditorDocumentoLabel(factura, fallback);
 }
 
+function msiiEditorProveedorGrupo(
+  source: unknown,
+  facturaDocumentoId: unknown,
+  documentoBaseId: unknown,
+) {
+  const candidatos = [
+    msiiEditorText(facturaDocumentoId),
+    msiiEditorText(documentoBaseId),
+  ].filter(Boolean);
+
+  for (const documentoId of candidatos) {
+    const doc = msiiEditorFindRecordById(source, documentoId);
+    if (!doc) continue;
+
+    const metadata = msiiEditorRecord(doc.metadata);
+
+    const proveedor = msiiEditorText(
+      metadata?.proveedor ??
+        metadata?.razonSocial ??
+        metadata?.razonSocialEmisor ??
+        doc.razon_social_emisor ??
+        doc.proveedorNombre,
+    );
+
+    const ruc = msiiEditorText(
+      metadata?.rucProveedor ??
+        metadata?.rucEmisor ??
+        metadata?.ruc ??
+        metadata?.proveedorRuc ??
+        doc.ruc_emisor ??
+        doc.proveedorRuc,
+    );
+
+    if (proveedor && ruc) {
+      return { documentoId, proveedor, ruc };
+    }
+  }
+
+  return null;
+}
+
 export function AlmacenExpedienteEditor({ id }: { id: string | number }) {
   const queryClient = useQueryClient();
   const searchParams = useSearchParams();
@@ -769,11 +936,20 @@ export function AlmacenExpedienteEditor({ id }: { id: string | number }) {
   const [modalAbierto, setModalAbierto] = useState(false);
   const [resultadoModal, setResultadoModal] = useState<ProcesarOcrResultado | null>(null);
   const [accionActual, setAccionActual] = useState<AccionAlmacen | null>(null);
+  const [versionDocumentoDestinoId, setVersionDocumentoDestinoId] = useState<string | null>(null);
+  const [versionDocumentoDestinoDoc, setVersionDocumentoDestinoDoc] =
+    useState<DocumentoVinculado | null>(null);
   const [mensajeValidacion, setMensajeValidacion] = useState<string | null>(null);
   const [processingStep, setProcessingStep] = useState<OcrProcessingStep>("idle");
   const [processingFileName, setProcessingFileName] = useState<string | null>(null);
   const [processingError, setProcessingError] = useState<string | null>(null);
   const [previewLoadingId, setPreviewLoadingId] = useState<string | null>(null);
+  const [versionesModal, setVersionesModal] =
+    useState<AlmacenVersionesModalState>(null);
+  const [versionesLoading, setVersionesLoading] = useState(false);
+  const [versionesError, setVersionesError] = useState<string | null>(null);
+  const [versionesModalDoc, setVersionesModalDoc] =
+    useState<DocumentoVinculado | null>(null);
   const [adjuntoModalDoc, setAdjuntoModalDoc] = useState<DocumentoVinculado | null>(null);
   const [adjuntoModalMode, setAdjuntoModalMode] = useState<"ver" | "editar" | null>(null);
   const [adjuntoModalUrl, setAdjuntoModalUrl] = useState<string | null>(null);
@@ -906,6 +1082,54 @@ export function AlmacenExpedienteEditor({ id }: { id: string | number }) {
       documentoBaseId: documentoBaseActual,
       facturaDocumentoId: facturaDocumentoActual,
     };
+  }
+
+  async function resolverOcrResultadoIdConfirmado(
+    documentoId: string,
+    archivoId: string,
+  ) {
+    const contextoActual = requireContextoV2();
+
+    const rows = (await getOcrResultados({
+      grupoFacturaId: contextoActual.grupoFacturaId,
+    })) as unknown as OcrRecoveryRow[];
+
+    const matches = rows.filter((row) => {
+      if (getRecoveryGrupoFacturaId(row) !== contextoActual.grupoFacturaId) {
+        return false;
+      }
+      if (getRecoveryArchivoId(row) !== archivoId) {
+        return false;
+      }
+      return getRecoveryDocumentoId(row) === documentoId;
+    });
+
+    if (matches.length !== 1) {
+      throw new Error(
+        `OCR_CONFIRMADO_NO_UNIVOCO: esperado 1 resultado para documento ${documentoId} / archivo ${archivoId}, encontrados ${matches.length}.`,
+      );
+    }
+
+    const ocrResultadoId = positiveInteger(getOcrResultadoId(matches[0]));
+    if (ocrResultadoId === null) {
+      throw new Error(
+        "OCR_RESULTADO_REQUERIDO: el resultado OCR encontrado no contiene un identificador válido.",
+      );
+    }
+
+    const detalle = (await getOcrResultado(ocrResultadoId)) as unknown as OcrRecoveryRow;
+
+    if (getRecoveryGrupoFacturaId(detalle) !== contextoActual.grupoFacturaId) {
+      throw new Error("OCR_CONFIRMADO_GROUP_MISMATCH: el OCR ya no pertenece al grupo seleccionado.");
+    }
+    if (getRecoveryArchivoId(detalle) !== archivoId) {
+      throw new Error("OCR_CONFIRMADO_ARCHIVO_MISMATCH: el OCR ya no pertenece al archivo seleccionado.");
+    }
+    if (getRecoveryDocumentoId(detalle) !== documentoId) {
+      throw new Error("OCR_CONFIRMADO_DOCUMENTO_MISMATCH: el OCR ya no pertenece al documento seleccionado.");
+    }
+
+    return ocrResultadoId;
   }
 
   async function recuperarOcrPersistido(
@@ -1148,7 +1372,56 @@ const principalGrupoSeleccionado = grupoFacturaSeleccionado
   const facturaGrupoSeleccionado = grupoFacturaSeleccionado
     ? msiiEditorFacturaGrupoLabel([workspaceQuery.data, documentos], facturaDocumentoId, getGrupoFacturaLabel(grupoFacturaSeleccionado))
     : null;
-  const documentosPorRelacion = useMemo(() => getDocumentosPorRelacion(documentos), [documentos]);
+
+  const documentosGrupoSeleccionadoIds = useMemo(() => {
+    if (grupoFacturaId === null || !grupoFacturaSeleccionado) {
+      return null;
+    }
+
+    const ids = new Set<string>();
+
+    if (facturaDocumentoId !== null) {
+      ids.add(String(facturaDocumentoId));
+    }
+
+    for (const adjunto of getAdjuntosGrupo(grupoFacturaSeleccionado)) {
+      const vista = entityVista<Record<string, unknown>>(adjunto);
+      const documentoId = getDocumentoId(vista as DocumentoVinculado);
+      if (documentoId) {
+        ids.add(documentoId);
+      }
+    }
+
+    return ids;
+  }, [grupoFacturaId, grupoFacturaSeleccionado, facturaDocumentoId]);
+
+  const documentosPorRelacion = useMemo(
+    () => getDocumentosPorRelacion(documentos),
+    [documentos],
+  );
+
+  const documentosPorRelacionVisibles = useMemo(() => {
+    if (!documentosGrupoSeleccionadoIds) {
+      return documentosPorRelacion;
+    }
+
+    const visibles = new Map<string, DocumentoVinculado[]>();
+
+    for (const [relacion, documentosRelacion] of documentosPorRelacion.entries()) {
+      visibles.set(
+        relacion,
+        documentosRelacion.filter((documento) => {
+          const documentoId = getDocumentoId(documento);
+          return Boolean(
+            documentoId &&
+              documentosGrupoSeleccionadoIds.has(documentoId),
+          );
+        }),
+      );
+    }
+
+    return visibles;
+  }, [documentosPorRelacion, documentosGrupoSeleccionadoIds]);
 
   const actualizarAdjuntoMutation = useMutation({
     mutationFn: async ({ doc, form }: { doc: DocumentoVinculado; form: AlmacenEditForm }) => {
@@ -1157,15 +1430,56 @@ const principalGrupoSeleccionado = grupoFacturaSeleccionado
 
       const tipoDocumental = getTipoDocumentalDoc(doc) || "NOTA_INGRESO";
       const esNotaIngreso = tipoDocumental === "NOTA_INGRESO";
+      const esConfirmado = text(doc.estado, "").toLowerCase() === "confirmado";
+
+      const archivoId = getArchivoId(doc as Record<string, unknown>);
+      if (esConfirmado && !archivoId) {
+        throw new Error(
+          "CORRECCION_CONFIRMADA_SIN_ARCHIVO: no se pudo resolver el archivo del documento.",
+        );
+      }
+
+      const ocrResultadoId = esConfirmado
+        ? await resolverOcrResultadoIdConfirmado(documentoId, archivoId!)
+        : undefined;
+
+      const proveedorGrupo = esNotaIngreso
+        ? null
+        : msiiEditorProveedorGrupo(
+            [workspaceQuery.data, documentos],
+            facturaDocumentoId,
+            documentoBaseId,
+          );
+
+      if (!esNotaIngreso && !proveedorGrupo) {
+        throw new Error(
+          "PROVEEDOR_GRUPO_NO_RESUELTO: no se pudo resolver proveedor/RUC de la factura seleccionada ni de su OC/OS.",
+        );
+      }
+
+      const rucProveedor = esNotaIngreso
+        ? undefined
+        : emptyToUndefined(form.rucProveedor);
+
+      if (!esNotaIngreso && proveedorGrupo && rucProveedor !== proveedorGrupo.ruc) {
+        throw new Error(
+          `RUC_PROVEEDOR_NO_COINCIDE_GRUPO: use ${proveedorGrupo.ruc} (${proveedorGrupo.proveedor}).`,
+        );
+      }
+
       const metadata = {
         tipoDocumental,
         clienteAbreviatura: empresa,
         serie: esNotaIngreso ? undefined : emptyToUndefined(form.serie),
         numero: form.numero,
         fechaEmision: form.fechaEmision,
-        rucProveedor: esNotaIngreso ? undefined : emptyToUndefined(form.rucProveedor),
-        rucEmisor: esNotaIngreso ? undefined : emptyToUndefined(form.rucProveedor),
-        ruc: esNotaIngreso ? undefined : emptyToUndefined(form.rucProveedor),
+        rucProveedor,
+        rucEmisor: rucProveedor,
+        ruc: rucProveedor,
+        proveedor: esNotaIngreso ? undefined : proveedorGrupo?.proveedor,
+        proveedorNombre: esNotaIngreso ? undefined : proveedorGrupo?.proveedor,
+        razonSocial: esNotaIngreso ? undefined : proveedorGrupo?.proveedor,
+        razonSocialEmisor: esNotaIngreso ? undefined : proveedorGrupo?.proveedor,
         montoTotal: tipoDocumental === "FACTURA" ? normalizeAmount(form.montoTotal) : undefined,
         moneda: tipoDocumental === "FACTURA" ? emptyToUndefined(form.moneda) : undefined,
         codigoExpediente: codigo,
@@ -1181,9 +1495,14 @@ const principalGrupoSeleccionado = grupoFacturaSeleccionado
 
       return actualizarDocumentoManual(documentoId, {
         tipoDocumental,
+        ocrResultadoId,
         metadata,
         observacion: form.observacion || "Edición de documento desde Almacén",
-      });
+        motivo: esConfirmado
+          ? "Corrección manual de datos del documento confirmado"
+          : undefined,
+        origen: esConfirmado ? "ALMACEN_EDITAR_DOCUMENTO" : undefined,
+});
     },
     onSuccess: () => {
       setMensajeValidacion("Documento actualizado desde Almacén.");
@@ -1335,6 +1654,95 @@ const principalGrupoSeleccionado = grupoFacturaSeleccionado
     },
   });
 
+  const versionRealMutation = useMutation<
+    ProcesarOcrResultado,
+    Error,
+    UploadVersionYProcesarArgs
+  >({
+    mutationFn: async ({ accion, file, documentoId }) => {
+      const contextoV2 = requireContextoV2();
+      const tipoEsperado = normalizeTipoDocumentalParaBackend(accion.tipoEsperado);
+
+      if (tipoEsperado !== "FACTURA" && tipoEsperado !== "GUIA_REMISION") {
+        throw new Error("Solo Factura y Guía admiten nuevas versiones en Almacén.");
+      }
+
+      const clienteAbreviatura = text(
+        (expediente as any)?.empresa_codigo ??
+          (expediente as any)?.empresaCodigo ??
+          (expediente as any)?.cliente_abreviatura ??
+          (expediente as any)?.clienteAbreviatura,
+        "",
+      );
+      if (!clienteAbreviatura) {
+        throw new Error("No se pudo resolver clienteAbreviatura del expediente.");
+      }
+
+      setProcessingFileName(file.name);
+      setProcessingError(null);
+      setProcessingStep("uploading");
+
+      const uploadResponse = await subirArchivoVersion(documentoId, file);
+      const uploadRecord = uploadResponse as Record<string, unknown>;
+      const archivoId = getArchivoId(uploadRecord);
+      if (!archivoId) {
+        throw new Error("El upload directo de versión no devolvió archivoId.");
+      }
+
+      setProcessingStep("processing_ocr");
+      const resultado = await procesarArchivoOcr(archivoId, {
+        tipoEsperado,
+        areaOrigen: "ALMACEN",
+        clienteAbreviatura,
+        expedienteId: id,
+        documentoBaseId: contextoV2.documentoBaseId,
+        tipoRelacionSugerida: accion.tipoRelacionSugerida,
+        canalIngreso: "ALMACEN_VERSION_UPLOAD",
+        reprocesar: true,
+      });
+
+      setProcessingStep("preparing_preview");
+      return buildResultadoConContexto(
+        {
+          ...resultado,
+          documentoIdExistente: documentoId,
+          archivoIdActual: archivoId,
+        } as ProcesarOcrResultado,
+        accion,
+        { archivoId, filename: file.name, uploadResponse: uploadRecord },
+      );
+    },
+    onSuccess: (resultado, { accion, documentoId }) => {
+      setAccionActual(accion);
+      setVersionDocumentoDestinoId(documentoId);
+      setResultadoModal(resultado);
+      const empresaActual = text(
+        (expediente as any)?.empresa_codigo ?? (expediente as any)?.empresaCodigo,
+        "",
+      );
+      const rucCompradorActual = getRucComprador(expediente, empresaActual);
+      setMensajeValidacion(
+        getMensajeMismatchCliente(
+          resultado as Record<string, unknown>,
+          empresaActual,
+          rucCompradorActual,
+        ),
+      );
+      setProcessingStep("ready");
+      window.setTimeout(() => {
+        setProcessingStep("idle");
+        setModalAbierto(true);
+      }, 450);
+    },
+    onError: (err, { accion }) => {
+      setAccionActual(accion);
+      const message = `No se pudo subir/procesar la nueva versión de ${accion.label}. ${err.message}`;
+      setProcessingStep("error");
+      setProcessingError(message);
+      setMensajeValidacion(message);
+    },
+  });
+
   function iniciarSeleccionArchivo(option: DocumentoCargaOption) {
     recoveryGenerationRef.current += 1;
     ocrRecoveryRef.current = null;
@@ -1347,6 +1755,39 @@ const principalGrupoSeleccionado = grupoFacturaSeleccionado
       return;
     }
 
+    setVersionDocumentoDestinoId(null);
+    setVersionDocumentoDestinoDoc(null);
+    setAccionActual({ ...option, grupo: "adjunto" });
+    setMensajeValidacion(null);
+    fileInputRef.current?.click();
+  }
+
+  function iniciarSeleccionVersion(
+    doc: DocumentoVinculado,
+    option: DocumentoCargaOption,
+  ) {
+    if (!contextoV2Listo) {
+      setMensajeValidacion(
+        contextoV2Mensaje ??
+          "No se pudo determinar de forma segura la factura y la OC/OS asociada.",
+      );
+      return;
+    }
+
+    const documentoId = getDocumentoId(doc);
+    if (!documentoId) {
+      setMensajeValidacion("No se pudo resolver documentoId para agregar la versión.");
+      return;
+    }
+
+    const tipo = normalizeTipoDocumentalParaBackend(option.tipoEsperado);
+    if (tipo !== "FACTURA" && tipo !== "GUIA_REMISION") {
+      setMensajeValidacion("Solo Factura y Guía admiten nuevas versiones en Almacén.");
+      return;
+    }
+
+    setVersionDocumentoDestinoId(documentoId);
+    setVersionDocumentoDestinoDoc(doc);
     setAccionActual({ ...option, grupo: "adjunto" });
     setMensajeValidacion(null);
     fileInputRef.current?.click();
@@ -1356,6 +1797,16 @@ const principalGrupoSeleccionado = grupoFacturaSeleccionado
     const file = event.target.files?.[0] ?? null;
     event.target.value = "";
     if (!file || !accionActual) return;
+
+    if (versionDocumentoDestinoId) {
+      versionRealMutation.mutate({
+        accion: accionActual,
+        file,
+        documentoId: versionDocumentoDestinoId,
+      });
+      return;
+    }
+
     cargaRealMutation.mutate({ accion: accionActual, file });
   }
 
@@ -1376,7 +1827,7 @@ const principalGrupoSeleccionado = grupoFacturaSeleccionado
   const empresa = text((expediente as any).empresa_codigo ?? (expediente as any).empresaCodigo, "");
   const descripcion = text((expediente as any).descripcion, "");
   const rucComprador = getRucComprador(expediente, empresa);
-  const procesando = cargaRealMutation.isPending;
+  const procesando = cargaRealMutation.isPending || versionRealMutation.isPending;
   const archivoIdModal = getArchivoId(resultadoModal as Record<string, unknown> | null) ?? undefined;
 
   async function persistirEdicionOcr(form: OcrValidationFormState, observacion: string) {
@@ -1460,15 +1911,56 @@ const principalGrupoSeleccionado = grupoFacturaSeleccionado
       observacion: "Guardar y confirmar adjunto desde Almacén",
     });
 
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["ocr-resultados"] }),
+      queryClient.invalidateQueries({ queryKey: ["expediente-documentos", String(id)] }),
+      queryClient.invalidateQueries({ queryKey: ["almacen-editor-workspace-v2", String(id)] }),
+    ]);
+
     setModalAbierto(false);
     setMensajeValidacion(`Documento confirmado y vinculado al expediente ${codigo || id}.`);
-    queryClient.invalidateQueries({ queryKey: ["ocr-resultados"] });
-    queryClient.invalidateQueries({ queryKey: ["expediente-documentos", String(id)] });
+  }
+
+  async function confirmarVersionDocumentoExistente() {
+    const documentoIdDestino = versionDocumentoDestinoId;
+    const archivoIdCandidato = archivoIdModal;
+
+    if (!documentoIdDestino || !archivoIdCandidato) {
+      throw new Error(
+        "No se pudo resolver el documento destino o el archivo candidato de la versión.",
+      );
+    }
+
+    await agregarArchivoComoVersion(documentoIdDestino, archivoIdCandidato, {
+      tipoVersion: "escaneado",
+      observacion:
+        "Nueva representación física confirmada como versión desde Almacén tras validación humana.",
+      marcarComoActual: true,
+    });
+
+    setModalAbierto(false);
+    setVersionDocumentoDestinoId(null);
+    setVersionDocumentoDestinoDoc(null);
+    setMensajeValidacion(
+      `Archivo confirmado como nueva versión del documento ${documentoIdDestino}.`,
+    );
+
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["ocr-resultados"] }),
+      queryClient.invalidateQueries({ queryKey: ["expediente-documentos", String(id)] }),
+      queryClient.invalidateQueries({ queryKey: ["almacen-editor-workspace-v2", String(id)] }),
+      queryClient.invalidateQueries({
+        queryKey: ["almacen-documento-versiones-contador", documentoIdDestino],
+      }),
+    ]);
   }
 
   async function agregarDuplicadoComoVersion(details: { documentoIdExistente?: number | string; archivoIdActual?: number | string }) {
-    const documentoIdExistente = details.documentoIdExistente;
-    const archivoIdActual = details.archivoIdActual;
+    const documentoIdExistente =
+      versionDocumentoDestinoId ?? details.documentoIdExistente;
+    const archivoIdActual =
+      details.archivoIdActual ??
+      getArchivoId(resultadoModal as Record<string, unknown> | null);
 
     if (!documentoIdExistente || !archivoIdActual) {
       throw new Error("No se encontró el documento existente o el archivo nuevo para agregar como versión.");
@@ -1481,9 +1973,12 @@ const principalGrupoSeleccionado = grupoFacturaSeleccionado
     });
 
     setModalAbierto(false);
+    setVersionDocumentoDestinoId(null);
+    setVersionDocumentoDestinoDoc(null);
     setMensajeValidacion(`Archivo agregado como nueva versión del documento ${documentoIdExistente}.`);
     queryClient.invalidateQueries({ queryKey: ["ocr-resultados"] });
     queryClient.invalidateQueries({ queryKey: ["expediente-documentos", String(id)] });
+    queryClient.invalidateQueries({ queryKey: ["almacen-editor-workspace-v2", String(id)] });
   }
 
   async function rechazarOcrFinal(form: OcrValidationFormState) {
@@ -1505,8 +2000,75 @@ const principalGrupoSeleccionado = grupoFacturaSeleccionado
     queryClient.invalidateQueries({ queryKey: ["expediente-documentos", String(id)] });
   }
 
-  async function abrirAdjuntoModal(doc: DocumentoVinculado, mode: "ver" | "editar") {
-    const archivoId = getArchivoId(doc as Record<string, unknown>);
+  async function abrirHistorialVersiones(
+    doc: DocumentoVinculado,
+    option: DocumentoCargaOption,
+  ) {
+    const documentoId = getDocumentoId(doc);
+
+    if (!documentoId) {
+      setMensajeValidacion("No se pudo resolver el documento para consultar versiones.");
+      return;
+    }
+
+    const summary = getDocumentoSummary(doc, option);
+    const contextoLabel = `Almacén · ${option.label}`;
+
+    setVersionesModalDoc(doc);
+    setVersionesModal({
+      documentoId,
+      titulo: summary.title,
+      contextoLabel,
+      archivos: [],
+    });
+    setVersionesLoading(true);
+    setVersionesError(null);
+
+    try {
+      const response = await getDocumentoArchivos(documentoId);
+      setVersionesModal({
+        documentoId,
+        titulo: summary.title,
+        contextoLabel,
+        archivos: response.data ?? [],
+      });
+    } catch (err) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : "No se pudo cargar el historial de versiones.";
+      setVersionesError(message);
+    } finally {
+      setVersionesLoading(false);
+    }
+  }
+
+  async function abrirPreviewVersion(archivoId: number | string) {
+    const doc = versionesModalDoc;
+
+    if (!doc) {
+      setVersionesError(
+        "No se pudo resolver el documento del historial seleccionado.",
+      );
+      return;
+    }
+
+    // Flujo UX intencional: Historial -> Visor, nunca dos modales superpuestos.
+    setVersionesModal(null);
+    setVersionesModalDoc(null);
+    setVersionesError(null);
+
+    await abrirAdjuntoModal(doc, "ver", String(archivoId));
+  }
+
+  async function abrirAdjuntoModal(
+    doc: DocumentoVinculado,
+    mode: "ver" | "editar",
+    archivoIdSeleccionado?: string,
+  ) {
+    const archivoId =
+      archivoIdSeleccionado ??
+      getArchivoId(doc as Record<string, unknown>);
     if (!archivoId) {
       setMensajeValidacion("Este documento no tiene archivo asociado para visualizar.");
       return;
@@ -1554,21 +2116,19 @@ const principalGrupoSeleccionado = grupoFacturaSeleccionado
       />
 
       <main className="space-y-4">
-        <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+        <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
           <div>
-            <Button asChild variant="ghost" size="sm" className="mb-1 px-0">
-              <Link href="/almacen">
-                <ArrowLeft className="h-4 w-4" />
-                Volver
-              </Link>
-            </Button>
-            <div className="flex flex-wrap items-center gap-2">
+<div className="flex flex-wrap items-center gap-2">
               <h1 className="text-2xl font-bold">Almacén</h1>
               <span className="rounded-full border px-2 py-0.5 text-xs font-medium">{codigo || "SIN EXPEDIENTE"}</span>
               {empresa ? <span className="rounded-full border px-2 py-0.5 text-xs text-muted-foreground">{empresa}</span> : null}
               {descripcion ? <p className="rounded-full border px-2 py-0.5 text-xs text-muted-foreground">{descripcion}</p> : null}
             </div>            
           </div>
+
+          <Button asChild variant="outline" size="sm">
+            <Link href="/almacen">Volver</Link>
+          </Button>
         </div>
 
         {mensajeValidacion ? (
@@ -1587,11 +2147,16 @@ const principalGrupoSeleccionado = grupoFacturaSeleccionado
           </span>
         )}
 
-        <AlmacenGrupoFacturaOperativoPanel expedienteId={id} modo="editar" />
+        <AlmacenGrupoFacturaOperativoPanel
+          expedienteId={id}
+          grupoFacturaId={grupoFacturaId}
+          modo="editar"
+        />
 
+        {grupoFacturaId !== null ? (
         <Card id="adjuntar-guia-ni" className="scroll-mt-6">
           <CardHeader className="pb-2">
-            <CardTitle>Adjuntar Guía / Nota de ingreso</CardTitle>
+            <CardTitle>Adjuntar Guía escaneada / Nota de ingreso</CardTitle>
             <p className="text-sm text-muted-foreground">
               La nueva carga quedará vinculada al grupo documental que seleccionaste para esta recepción.
             </p>
@@ -1638,11 +2203,15 @@ const principalGrupoSeleccionado = grupoFacturaSeleccionado
 
             <div className="grid gap-3 md:grid-cols-3">
               {DOCUMENTO_ALMACEN_ADJUNTO_OPTIONS.map((item) => {
-              const documentosItem = documentosPorRelacion.get(item.tipoRelacionSugerida);
+              const documentosItem = documentosPorRelacionVisibles.get(item.tipoRelacionSugerida);
               return (
                 <div key={item.tipoRelacionSugerida} className="rounded-xl border p-4">
                   <div className="flex items-start justify-between gap-2">
-                    <div className="font-medium">{item.label}</div>
+                    <div className="font-medium">
+                      {normalizeTipoDocumentalParaBackend(item.tipoEsperado) === "FACTURA"
+                        ? "Factura"
+                        : item.label}
+                    </div>
                     <span className="rounded-full border px-2 py-0.5 text-[11px] text-muted-foreground">
                       {item.tipoEsperado}
                     </span>
@@ -1653,6 +2222,8 @@ const principalGrupoSeleccionado = grupoFacturaSeleccionado
                     option={item}
                     onVer={(doc) => abrirAdjuntoModal(doc, "ver")}
                     onEditar={(doc) => abrirAdjuntoModal(doc, "editar")}
+                    onAgregarVersion={(doc) => iniciarSeleccionVersion(doc, item)}
+                    onVersiones={(doc) => abrirHistorialVersiones(doc, item)}
                     onQuitar={(doc) => {
                       const resumen = getAlmacenResumen(doc);
                       setMensajeValidacion(
@@ -1663,24 +2234,55 @@ const principalGrupoSeleccionado = grupoFacturaSeleccionado
                     loadingArchivoId={previewLoadingId}
                   />
 
-                  <Button
-                    className="mt-3 w-full"
-                    size="sm"
-                    disabled={procesando || !contextoV2Listo}
-                    onClick={() => iniciarSeleccionArchivo(item)}
-                  >
-                    <FilePlus2 className="h-4 w-4" />
-                    {procesando && accionActual?.tipoRelacionSugerida === item.tipoRelacionSugerida
-                      ? "Subiendo/procesando..."
-                      : `Adjuntar ${item.label}`}
-                  </Button>
+                  {(documentosItem?.length ?? 0) === 0 &&
+                  normalizeTipoDocumentalParaBackend(item.tipoEsperado) === "GUIA_REMISION" ? (
+                    <Button
+                      className="mt-3 w-full"
+                      size="sm"
+                      disabled={procesando || !contextoV2Listo}
+                      onClick={() => iniciarSeleccionArchivo(item)}
+                    >
+                      <FilePlus2 className="h-4 w-4" />
+                      {procesando &&
+                      accionActual?.tipoRelacionSugerida === item.tipoRelacionSugerida
+                        ? "Subiendo/procesando..."
+                        : "Adjuntar Guía escaneada"}
+                    </Button>
+                  ) : (documentosItem?.length ?? 0) === 0 &&
+                    normalizeTipoDocumentalParaBackend(item.tipoEsperado) === "NOTA_INGRESO" ? (
+                    <Button
+                      className="mt-3 w-full"
+                      size="sm"
+                      disabled={procesando || !contextoV2Listo}
+                      onClick={() => iniciarSeleccionArchivo(item)}
+                    >
+                      <FilePlus2 className="h-4 w-4" />
+                      {procesando &&
+                      accionActual?.tipoRelacionSugerida === item.tipoRelacionSugerida
+                        ? "Subiendo/procesando..."
+                        : "Adjuntar Nota de ingreso"}
+                    </Button>
+                  ) : null}
                 </div>
               );
               })}
             </div>
           </CardContent>
         </Card>
+        ) : null}
       </main>
+
+      <VersionesDocumentoModal
+        state={versionesModal}
+        loading={versionesLoading}
+        error={versionesError}
+        onClose={() => {
+          setVersionesModal(null);
+          setVersionesModalDoc(null);
+          setVersionesError(null);
+        }}
+        onPreview={abrirPreviewVersion}
+      />
 
       {adjuntoModalDoc && adjuntoModalMode ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
@@ -1831,11 +2433,37 @@ const principalGrupoSeleccionado = grupoFacturaSeleccionado
           empresa,
           rucComprador,
         }}
-        onClose={() => setModalAbierto(false)}
-        onSave={guardarCambiosOcr}
-        onConfirm={confirmarOcrFinal}
-        onReject={rechazarOcrFinal}
-        onAgregarComoVersion={agregarDuplicadoComoVersion}
+        onClose={() => {
+          setModalAbierto(false);
+          setVersionDocumentoDestinoId(null);
+          setVersionDocumentoDestinoDoc(null);
+        }}
+        onSave={versionDocumentoDestinoId ? undefined : guardarCambiosOcr}
+        onConfirm={versionDocumentoDestinoId ? undefined : confirmarOcrFinal}
+        onReject={versionDocumentoDestinoId ? undefined : rechazarOcrFinal}
+        onAgregarComoVersion={
+          versionDocumentoDestinoId ? undefined : agregarDuplicadoComoVersion
+        }
+        modoVersionDocumentoExistente={
+          versionDocumentoDestinoId &&
+          versionDocumentoDestinoDoc &&
+          archivoIdModal
+            ? {
+                documentoId: versionDocumentoDestinoId,
+                archivoId: archivoIdModal,
+                metadataVigente: getMetadataLogicaVigenteParaVersion(
+                  versionDocumentoDestinoDoc,
+                  accionActual,
+                  { codigoExpediente: codigo, rucComprador },
+                ),
+              }
+            : undefined
+        }
+        onConfirmarVersion={
+          versionDocumentoDestinoId
+            ? confirmarVersionDocumentoExistente
+            : undefined
+        }
         tiposDocumentalesPermitidos={ALMACEN_TIPOS_DOCUMENTALES_PERMITIDOS}
         tipoDocumentalBloqueado={Boolean(accionActual?.tipoEsperado)}
         formularioContexto="ALMACEN"
