@@ -850,6 +850,14 @@ export class DocumentosGatewayController {
       knownLength: file.size,
     });
     form.append('expedienteId', String(validatedBody.expedienteId));
+
+    if (validatedBody.documentoBaseId !== null) {
+      form.append('documentoBaseId', String(validatedBody.documentoBaseId));
+    }
+
+    if (validatedBody.grupoFacturaId !== null) {
+      form.append('grupoFacturaId', String(validatedBody.grupoFacturaId));
+    }
     form.append('tipoDocumental', validatedBody.tipoDocumental);
 
     if (validatedBody.tipoRelacion) {
@@ -1219,6 +1227,96 @@ export class DocumentosGatewayController {
       authorization,
       requestId,
     });
+  }
+
+  @ApiOperation({ summary: 'Subir nueva versión física de un documento vía API Gateway' })
+  @ApiConsumes('multipart/form-data')
+  @Post(':documentoId/archivos/subir-version')
+  @UseInterceptors(
+    FileFieldsInterceptor([
+      { name: 'file', maxCount: 1 },
+      { name: 'archivo', maxCount: 1 },
+    ]),
+  )
+  async subirVersionArchivo(
+    @Headers('authorization') authorization: string | undefined,
+    @Headers(REQUEST_ID_HEADER) requestId: string | undefined,
+    @Param('documentoId') documentoId: string,
+    @UploadedFiles() files: Record<string, any[]>,
+    @Body() body: Record<string, any>,
+  ) {
+    const contexto = await this.validateAuthorization(authorization);
+    this.assertAnyActionPermitida(
+      contexto,
+      ['documentos.subir'],
+      'subir versiones de documentos',
+    );
+    await this.assertDocumentoPermitido(documentoId, contexto, requestId);
+
+    const empresaContexto = this.getEmpresaFromContext(contexto);
+
+    if (!empresaContexto) {
+      throw new ForbiddenException(
+        'El token no tiene empresa de workspace válida',
+      );
+    }
+
+    const file = files?.file?.[0] ?? files?.archivo?.[0];
+
+    if (!file?.buffer) {
+      throw new Error('Archivo requerido en el campo file o archivo');
+    }
+
+    const form = new FormData();
+    form.append('file', file.buffer, {
+      filename: file.originalname,
+      contentType: file.mimetype,
+      knownLength: file.size,
+    });
+
+    const forbiddenTenantFields = new Set([
+      'cliente',
+      'clienteAbreviatura',
+      'empresa',
+      'empresaCodigo',
+      'clienteDestinoId',
+      'workspaceId',
+    ]);
+
+    for (const [key, value] of Object.entries(body ?? {})) {
+      if (value === undefined || value === null) continue;
+      if (forbiddenTenantFields.has(key)) continue;
+
+      if (Array.isArray(value)) {
+        value.forEach((item) => form.append(key, String(item)));
+      } else {
+        form.append(key, String(value));
+      }
+    }
+
+    form.append('empresaCodigo', empresaContexto);
+
+    try {
+      const response = await axios.request({
+        method: 'POST',
+        url: `${this.getBaseUrl()}/documentos/${documentoId}/archivos/subir-version`,
+        data: form,
+        headers: {
+          ...this.buildAuditForwardHeaders(
+            authorization,
+            requestId,
+            contexto,
+          ),
+          ...form.getHeaders(),
+        },
+        maxBodyLength: Infinity,
+        maxContentLength: Infinity,
+      });
+
+      return this.unwrap(response);
+    } catch (error: any) {
+      this.throwUpstreamHttpException(error);
+    }
   }
 
   @ApiOperation({ summary: 'Agregar archivo existente como versión de un documento lógico vía API Gateway' })
