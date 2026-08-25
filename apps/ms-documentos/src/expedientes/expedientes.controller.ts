@@ -142,6 +142,7 @@ export class ExpedientesController {
     @Query('q') q?: string,
     @Query('limit') limit?: string,
     @Query('offset') offset?: string,
+    @Query('incluirPendientesValidacion') incluirPendientesValidacion?: string,
   ) {
     return this.service.getBandejaComprasOcos({
       empresa,
@@ -149,6 +150,7 @@ export class ExpedientesController {
       q,
       limit: limit ? Number(limit) : undefined,
       offset: offset ? Number(offset) : undefined,
+      incluirPendientesValidacion: incluirPendientesValidacion === 'true',
     });
   }
 
@@ -158,12 +160,18 @@ export class ExpedientesController {
     @Query('anio') anio?: string,
     @Query('mes') mes?: string,
     @Query('q') q?: string,
+    @Query('limit') limit?: string,
+    @Query('offset') offset?: string,
+    @Query('soloPendientesFinanzas') soloPendientesFinanzas?: string,
   ) {
     return this.service.getRevisionContable({
       empresa,
       anio: anio ? Number(anio) : undefined,
       mes: mes ? Number(mes) : undefined,
       q,
+      limit: limit ? Number(limit) : undefined,
+      offset: offset ? Number(offset) : undefined,
+      soloPendientesFinanzas: soloPendientesFinanzas === 'true',
     });
   }
 
@@ -173,12 +181,18 @@ export class ExpedientesController {
     @Query('anio') anio?: string,
     @Query('mes') mes?: string,
     @Query('q') q?: string,
+    @Query('limit') limit?: string,
+    @Query('offset') offset?: string,
+    @Query('soloPendientesFinanzas') soloPendientesFinanzas?: string,
   ) {
     return this.service.getRevisionContable({
       empresa,
       anio: anio ? Number(anio) : undefined,
       mes: mes ? Number(mes) : undefined,
       q,
+      limit: limit ? Number(limit) : undefined,
+      offset: offset ? Number(offset) : undefined,
+      soloPendientesFinanzas: soloPendientesFinanzas === 'true',
     });
   }
 

@@ -461,6 +461,7 @@ export class ExpedientesService {
     q?: string;
     limit?: number;
     offset?: number;
+    incluirPendientesValidacion?: boolean;
   }) {
     return this.repo.getBandejaComprasOcos(filters);
   }
@@ -470,6 +471,9 @@ export class ExpedientesService {
     anio?: number;
     mes?: number;
     q?: string;
+    limit?: number;
+    offset?: number;
+    soloPendientesFinanzas?: boolean;
   }) {
     return this.repo.getRevisionContable(filters);
   }

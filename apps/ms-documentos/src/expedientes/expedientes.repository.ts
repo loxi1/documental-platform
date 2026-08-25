@@ -908,7 +908,11 @@ export class ExpedientesRepository {
     q?: string;
     limit?: number;
     offset?: number;
+    incluirPendientesValidacion?: boolean;
   }) {
+    if (filters.incluirPendientesValidacion === true) {
+      return this.getBandejaComprasPendientesValidacion(filters);
+    }
     /**
      * Bandeja Compras OC/OS-céntrica:
      * - Una fila = un documento operativo principal V2 OC/OS.
@@ -1117,11 +1121,63 @@ export class ExpedientesRepository {
     };
   }
 
+  private async getBandejaComprasPendientesValidacion(filters: {
+    empresa: string; q?: string; limit?: number; offset?: number;
+  }) {
+    const empresa = String(filters.empresa ?? '').trim();
+    const q = String(filters.q ?? '').trim() || null;
+    const like = q ? `%${q}%` : null;
+    const rawLimit = Number(filters.limit ?? 50);
+    const rawOffset = Number(filters.offset ?? 0);
+    const limit = Number.isInteger(rawLimit) ? Math.min(Math.max(rawLimit, 1), 100) : 50;
+    const offset = Number.isInteger(rawOffset) && rawOffset >= 0 ? rawOffset : 0;
+    const base = sql`
+      FROM documentos.documentos_archivos da
+      JOIN documentos.documentos d ON d.id = da.documento_id
+      JOIN documentos.expedientes e ON e.id = da.expediente_id AND e.empresa_codigo = ${empresa}
+      LEFT JOIN LATERAL (
+        SELECT o.id, o.estado, o.metadata FROM documentos.ocr_resultados o
+        WHERE o.documento_id = d.id ORDER BY o.id DESC LIMIT 1
+      ) ocr ON true
+      WHERE da.es_version_actual = true
+        AND da.empresa_codigo = ${empresa}
+        AND d.tipo_documental IN ('OC', 'OS')
+        AND d.estado IN ('pendiente_ocr', 'pendiente_validacion')
+        AND COALESCE(ocr.estado, 'pendiente_validacion') IN ('pendiente', 'pendiente_validacion')
+        AND NOT EXISTS (
+          SELECT 1 FROM documentos.documentos_operativos_principales dop
+          WHERE dop.documento_id = d.id AND dop.estado = 'activo' AND dop.es_principal_activo = true
+        )
+        AND (${q}::text IS NULL OR d.numero ILIKE ${like} OR e.codigo_expediente ILIKE ${like}
+          OR e.descripcion ILIKE ${like} OR d.ruc_emisor ILIKE ${like}
+          OR d.razon_social_emisor ILIKE ${like} OR ocr.metadata->'metadata'->>'numero' ILIKE ${like})
+    `;
+    const totalRows = await sql`SELECT COUNT(DISTINCT d.id)::int AS total ${base}`;
+    const rows = await sql`
+      SELECT DISTINCT ON (d.id) e.id AS "expedienteId", e.codigo_expediente AS "codigoExpediente",
+        e.descripcion, 'pendiente_validacion'::text AS estado,
+        jsonb_build_object('documentoId', d.id, 'tipo', d.tipo_documental,
+          'numero', COALESCE(d.numero, ocr.metadata->'metadata'->>'numero')) AS principal,
+        CASE WHEN COALESCE(d.razon_social_emisor, ocr.metadata->'metadata'->>'proveedor') IS NULL
+          AND COALESCE(d.ruc_emisor, ocr.metadata->'metadata'->>'rucProveedor') IS NULL THEN NULL
+          ELSE jsonb_build_object(
+            'nombre', COALESCE(d.razon_social_emisor, ocr.metadata->'metadata'->>'proveedor'),
+            'ruc', COALESCE(d.ruc_emisor, ocr.metadata->'metadata'->>'rucProveedor')
+          ) END AS proveedor,
+        '[]'::jsonb AS facturas
+      ${base} ORDER BY d.id DESC, da.id DESC LIMIT ${limit} OFFSET ${offset}
+    `;
+    return { total: Number(totalRows[0]?.total ?? 0), limit, offset, data: rows };
+  }
+
   async getRevisionContable(filters: {
     empresa: string;
     anio?: number;
     mes?: number;
     q?: string;
+    limit?: number;
+    offset?: number;
+    soloPendientesFinanzas?: boolean;
   }) {
     /**
      * Regla contable oficial:
@@ -1160,8 +1216,33 @@ export class ExpedientesRepository {
         ? `${siguienteAnio}-${String(siguienteMes).padStart(2, '0')}-01`
         : null;
 
-    const q = filters.q?.trim() || null;
+    const qRaw = filters.q?.trim() || null;
+    const q = qRaw && qRaw.length >= 3 ? qRaw : null;
     const like = q ? `%${q}%` : null;
+    const soloPendientesFinanzas = filters.soloPendientesFinanzas === true;
+
+    // BUSQUEDA_OPERATIVA_MIN3:
+    // Sin periodo contable se consulta con q>=3 o con pendientes financieros.
+    // q de 1-2 caracteres no se aplica como filtro.
+    // Con periodo valido, Contabilidad conserva la carga completa del mes.
+    if (!tienePeriodo && !q && !soloPendientesFinanzas) {
+      return [];
+    }
+
+    const requestedLimit = Number(filters.limit);
+    const requestedOffset = Number(filters.offset);
+
+    const limit =
+      Number.isInteger(requestedLimit) && requestedLimit > 0
+        ? Math.min(requestedLimit, 201)
+        : tienePeriodo
+          ? null
+          : 51;
+
+    const offset =
+      Number.isInteger(requestedOffset) && requestedOffset >= 0
+        ? requestedOffset
+        : 0;
 
     return sql`
       WITH facturas_periodo AS (
@@ -1316,6 +1397,8 @@ export class ExpedientesRepository {
           'notaIngreso', canon.nota_ingreso,
           'transferencia', canon.transferencia,
           'detraccion', canon.detraccion,
+          'requiereRevisionFinanzas',
+            COALESCE(finanzas_pendiente.requiere_revision_finanzas, false),
 
           'periodo', jsonb_build_object(
             'anio', EXTRACT(YEAR FROM fp.fecha_emision)::int,
@@ -1379,6 +1462,26 @@ export class ExpedientesRepository {
           AND gf.estado <> 'anulado'
         LIMIT 1
       ) v2 ON true
+
+      /*
+       * Fuente canónica: draft persistido al emitir
+       * DECISION_CORRESPONDENCIA_REQUERIDA.
+       * Al resolver la decisión el mismo draft pasa a CONSUMIDO.
+       */
+      LEFT JOIN LATERAL (
+        SELECT EXISTS (
+          SELECT 1
+          FROM documentos.ocr_resultados o_fin
+          JOIN documentos.documentos_archivos da_fin
+            ON da_fin.id = o_fin.archivo_id
+          WHERE o_fin.metadata->'validacionPendientePago'->>'estado' = 'PENDIENTE_DECISION'
+            AND o_fin.metadata #>> '{validacionPendientePago,identidad,grupoFacturaId}'
+                = v2.grupo_factura_id::text
+            AND o_fin.metadata #>> '{validacionPendientePago,identidad,facturaDocumentoId}'
+                = fp.factura_id::text
+            AND da_fin.metadata->>'grupoFacturaId' = v2.grupo_factura_id::text
+        ) AS requiere_revision_finanzas
+      ) finanzas_pendiente ON true
 
       LEFT JOIN LATERAL (
         SELECT jsonb_build_object(
@@ -1606,6 +1709,10 @@ export class ExpedientesRepository {
 
       WHERE e.empresa_codigo = ${filters.empresa}
         AND (
+          ${soloPendientesFinanzas}::boolean = false
+          OR COALESCE(finanzas_pendiente.requiere_revision_finanzas, false)
+        )
+        AND (
           ${like}::text IS NULL
           OR fp.numero ILIKE ${like}
           OR fp.serie ILIKE ${like}
@@ -1661,8 +1768,12 @@ export class ExpedientesRepository {
         canon.guia,
         canon.nota_ingreso,
         canon.transferencia,
-        canon.detraccion
+        canon.detraccion,
+        finanzas_pendiente.requiere_revision_finanzas
+
       ORDER BY fp.fecha_emision ASC, e.codigo_expediente ASC, e.id ASC
+      LIMIT ${limit}
+      OFFSET ${offset}
     `;
   }
 
