@@ -143,6 +143,40 @@ export class GrupoFacturaDocumentoRepository {
     return (rows[0] as unknown as GrupoFacturaDocumentoRow | undefined) ?? null;
   }
 
+  async sumarMontoTransferenciasActivas(
+    grupoFacturaId: number,
+    executor: SqlExecutor = sql,
+  ): Promise<number> {
+    const rows = await executor<Array<{ montoAcumulado: string | number | null }>>`
+      SELECT
+        COALESCE(
+          SUM(
+            COALESCE(
+              d.monto_total,
+              CASE
+                WHEN NULLIF(TRIM(d.metadata ->> 'montoTotal'), '') ~ '^[0-9]+([.,][0-9]+)?$'
+                  THEN REPLACE(TRIM(d.metadata ->> 'montoTotal'), ',', '.')::numeric
+                WHEN NULLIF(TRIM(d.metadata #>> '{ocr,metadata,montoTotal}'), '') ~ '^[0-9]+([.,][0-9]+)?$'
+                  THEN REPLACE(TRIM(d.metadata #>> '{ocr,metadata,montoTotal}'), ',', '.')::numeric
+                ELSE NULL
+              END,
+              0
+            )
+          ),
+          0
+        )::numeric(14,2) AS "montoAcumulado"
+      FROM documentos.grupo_factura_documentos gfd
+      JOIN documentos.documentos d
+        ON d.id = gfd.documento_id
+      WHERE gfd.grupo_factura_id = ${grupoFacturaId}::bigint
+        AND gfd.estado = 'activo'
+        AND gfd.tipo_relacion = 'adjunto_transferencia'
+    `;
+
+    const value = Number(rows[0]?.montoAcumulado ?? 0);
+    return Number.isFinite(value) ? value : 0;
+  }
+
   async listarPorGrupoFactura(grupoFacturaId: number, executor: SqlExecutor = sql): Promise<GrupoFacturaDocumentoRow[]> {
     const rows = await executor`
       SELECT

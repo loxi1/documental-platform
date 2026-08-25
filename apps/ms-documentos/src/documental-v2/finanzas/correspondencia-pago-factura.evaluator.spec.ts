@@ -32,7 +32,7 @@ describe('FINANZAS-CORRESPONDENCIA-PAGO-FACTURA-02', () => {
     )).toBe(true);
   });
 
-  it('2. importe no coincidente requiere revisión humana', () => {
+  it('2. pago parcial menor al disponible permite asociación ordinaria', () => {
     const evaluacion = evaluarCorrespondenciaPagoFactura(factura, {
       documentoId: 31,
       proveedorRuc: '20370146994',
@@ -43,23 +43,11 @@ describe('FINANZAS-CORRESPONDENCIA-PAGO-FACTURA-02', () => {
     });
 
     expect(evaluacion.estado).toBe('PENDIENTE');
-    expect(evaluacion.comparaciones.importe.estado).toBe('NO_COINCIDE');
-    expect(evaluacion.requiereDecisionHumana).toBe(true);
-    expect(evaluacion.permiteAsociacionOrdinaria).toBe(false);
-    expect(evaluacion.advertencias).toContain(
-      'El importe del sustento no coincide con el importe de la factura. La diferencia requiere revisión humana.',
-    );
-
-    const validada = aplicarDecisionCorrespondencia(evaluacion, {
-      accion: 'ACEPTAR',
-      motivo: 'Diferencia de importe revisada y aceptada por Finanzas.',
-      usuarioId: 7,
-      fecha: '2026-07-31T20:00:00.000Z',
-    });
-
-    expect(validada.estado).toBe('PENDIENTE');
-    expect(validada.decision.accion).toBe('ACEPTAR');
-    expect(validada.permiteAsociacionOrdinaria).toBe(true);
+    expect(evaluacion.comparaciones.proveedor.estado).toBe('COINCIDE');
+    expect(evaluacion.comparaciones.moneda.estado).toBe('COINCIDE');
+    expect(evaluacion.comparaciones.importe.estado).toBe('COINCIDE');
+    expect(evaluacion.requiereDecisionHumana).toBe(false);
+    expect(evaluacion.permiteAsociacionOrdinaria).toBe(true);
   });
 
   it('3. datos no verificables producen NO_VERIFICABLE', () => {
@@ -90,7 +78,7 @@ describe('FINANZAS-CORRESPONDENCIA-PAGO-FACTURA-02', () => {
     expect(evaluacion.estado).toBe('INCOMPATIBLE');
     expect(evaluacion.comparaciones.proveedor.estado).toBe('NO_COINCIDE');
     expect(evaluacion.comparaciones.moneda.estado).toBe('COINCIDE');
-    expect(evaluacion.comparaciones.importe.estado).toBe('NO_COINCIDE');
+    expect(evaluacion.comparaciones.importe.estado).toBe('COINCIDE');
     expect(
       evaluacion.comparaciones.documentoReferenciado.estado,
     ).toBe('NO_COINCIDE');

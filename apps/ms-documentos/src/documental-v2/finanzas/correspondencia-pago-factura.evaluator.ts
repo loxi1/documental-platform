@@ -28,6 +28,27 @@ function textoComparable(value: unknown): string | null {
     : null;
 }
 
+function normalizarRucFinanzas(value: unknown): string | null {
+  const normalized = String(value ?? '').replace(/\D/g, '');
+  return normalized.length === 11 ? normalized : null;
+}
+
+function normalizarMonedaFinanzas(value: unknown): string | null {
+  const raw = String(value ?? '').trim();
+  if (!raw) return null;
+
+  const normalized = raw
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .toUpperCase()
+    .replace(/\s+/g, '');
+
+  if (['PEN', 'S/', 'S/.', 'SOLES', 'SOL'].includes(normalized)) return 'PEN';
+  if (['USD', 'US$', '$', 'DOLARES', 'DOLAR'].includes(normalized)) return 'USD';
+
+  return normalized;
+}
+
 function numero(value: unknown): number | null {
   const normalized = Number(value);
   return Number.isFinite(normalized) ? normalized : null;
@@ -56,21 +77,22 @@ function compararProveedor(
   factura: DatosFacturaCorrespondencia,
   pago: DatosPagoCorrespondencia,
 ): ComparacionCampo {
-  const facturaRuc = texto(factura.proveedorRuc);
-  const pagoRuc = texto(pago.proveedorRuc);
+  const facturaRuc = normalizarRucFinanzas(factura.proveedorRuc);
+  const pagoRuc = normalizarRucFinanzas(pago.proveedorRuc);
 
-  if (facturaRuc && pagoRuc) {
+  if (!facturaRuc || !pagoRuc) {
     return {
-      estado: facturaRuc === pagoRuc ? 'COINCIDE' : 'NO_COINCIDE',
+      estado: 'NO_VERIFICABLE',
       factura: facturaRuc,
       pago: pagoRuc,
     };
   }
 
-  return compararTexto(
-    texto(factura.proveedorNombre),
-    texto(pago.proveedorNombre),
-  );
+  return {
+    estado: facturaRuc === pagoRuc ? 'COINCIDE' : 'NO_COINCIDE',
+    factura: facturaRuc,
+    pago: pagoRuc,
+  };
 }
 
 function compararImporte(
@@ -80,13 +102,13 @@ function compararImporte(
   const factura = numero(facturaImporte);
   const pago = numero(pagoImporte);
 
-  if (factura === null || pago === null) {
+  if (factura === null || pago === null || factura <= 0 || pago <= 0) {
     return { estado: 'NO_VERIFICABLE', factura, pago };
   }
 
   return {
     estado:
-      Math.abs(factura - pago) <= IMPORTE_TOLERANCIA
+      pago <= factura + IMPORTE_TOLERANCIA
         ? 'COINCIDE'
         : 'NO_COINCIDE',
     factura,
@@ -123,7 +145,7 @@ export function evaluarCorrespondenciaPagoFactura(
 
   const comparaciones = {
     proveedor: compararProveedor(factura, pago),
-    moneda: compararTexto(texto(factura.moneda), texto(pago.moneda)),
+    moneda: compararTexto(normalizarMonedaFinanzas(factura.moneda), normalizarMonedaFinanzas(pago.moneda)),
     importe: compararImporte(factura.importe, pago.importe),
     documentoReferenciado: compararTexto(
       texto(factura.documento),
@@ -131,7 +153,11 @@ export function evaluarCorrespondenciaPagoFactura(
     ),
   };
 
-  const valores = Object.values(comparaciones);
+  const valores = [
+    comparaciones.proveedor,
+    comparaciones.moneda,
+    comparaciones.importe,
+  ];
   const noVerificables = valores.filter(
     (item) => item.estado === 'NO_VERIFICABLE',
   ).length;
@@ -141,18 +167,16 @@ export function evaluarCorrespondenciaPagoFactura(
 
   const proveedorIncompatible =
     comparaciones.proveedor.estado === 'NO_COINCIDE';
-  const referenciaIncompatible =
-    comparaciones.documentoReferenciado.estado === 'NO_COINCIDE';
   const monedaIncompatible = comparaciones.moneda.estado === 'NO_COINCIDE';
+  const importeIncompatible = comparaciones.importe.estado === 'NO_COINCIDE';
 
   const incompatibilidadManifiesta =
-    proveedorIncompatible &&
-    (referenciaIncompatible || monedaIncompatible);
+    proveedorIncompatible || monedaIncompatible || importeIncompatible;
 
   const advertencias: string[] = [];
   if (comparaciones.importe.estado === 'NO_COINCIDE') {
     advertencias.push(
-      'El importe del sustento no coincide con el importe de la factura. La diferencia requiere revisión humana.',
+      'El importe del pago excede el saldo disponible de la factura. Requiere revisión humana.',
     );
   }
   if (incompatibilidadManifiesta) {
@@ -173,7 +197,17 @@ export function evaluarCorrespondenciaPagoFactura(
     };
   }
 
-  if (noVerificables > 0) {
+  const monedaNoVerificable =
+    comparaciones.moneda.estado === 'NO_VERIFICABLE';
+  const importeNoVerificable =
+    comparaciones.importe.estado === 'NO_VERIFICABLE';
+  const proveedorNoVerificable =
+    comparaciones.proveedor.estado === 'NO_VERIFICABLE';
+
+  // La ausencia de RUC en el sustento no demuestra una incompatibilidad.
+  // Si moneda e importe son verificables y no existe NO_COINCIDE material,
+  // el pago sigue siendo asociable por la vía ordinaria.
+  if (monedaNoVerificable || importeNoVerificable) {
     return {
       estado: 'NO_VERIFICABLE',
       facturaDocumentoId: factura.documentoId,
@@ -181,6 +215,18 @@ export function evaluarCorrespondenciaPagoFactura(
       comparaciones,
       requiereDecisionHumana: true,
       permiteAsociacionOrdinaria: false,
+      advertencias,
+    };
+  }
+
+  if (proveedorNoVerificable) {
+    return {
+      estado: 'NO_VERIFICABLE',
+      facturaDocumentoId: factura.documentoId,
+      pagoDocumentoId: pago.documentoId,
+      comparaciones,
+      requiereDecisionHumana: false,
+      permiteAsociacionOrdinaria: true,
       advertencias,
     };
   }

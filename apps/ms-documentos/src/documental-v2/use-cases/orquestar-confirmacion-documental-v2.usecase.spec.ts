@@ -62,6 +62,7 @@ describe('OrquestarConfirmacionDocumentalV2UseCase', () => {
 
   const documentosLegacy = {
     confirmarOcrResultadoConExpedienteConExecutor: jest.fn(),
+    consumirValidacionPendientePagoConExecutor: jest.fn(),
   };
   const documentosV2 = {
     buscarPorId: jest.fn(),

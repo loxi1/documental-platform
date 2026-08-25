@@ -83,6 +83,7 @@ function buildUseCase(options?: {
     listarHistoricosPorDocumentoId: jest.fn().mockResolvedValue([]),
     crear: jest.fn().mockResolvedValue(row),
     actualizar: jest.fn().mockResolvedValue(row),
+    sumarMontoTransferenciasActivas: jest.fn().mockResolvedValue(0),
   };
   const documentos = {
     buscarPorId: jest.fn().mockResolvedValue({
@@ -340,4 +341,67 @@ describe('AsociarDocumentoGrupoFacturaV2UseCase - correspondencia financiera', (
     expect(ctx.evaluarCorrespondencia.execute).not.toHaveBeenCalled();
     expect(ctx.grupoFacturaDocumentos.crear).toHaveBeenCalledTimes(1);
   });
+
+
+  // FINANZAS_MULTIPAGO_SALDO_01B_R1
+  it('15. segundo pago igual al saldo restante se asocia ordinariamente', async () => {
+    const ctx = buildUseCase({
+      evaluacion: {
+        ...evaluacion('VALIDADA', false, true),
+        comparaciones: {
+          ...comparacionesCoinciden,
+          importe: { estado: 'COINCIDE', factura: 444.95, pago: 44.95 },
+        },
+      },
+    });
+    ctx.grupoFacturaDocumentos.sumarMontoTransferenciasActivas.mockResolvedValue(400);
+
+    const result = await ctx.useCase.execute(ctx.input);
+
+    expect(ctx.grupoFacturaDocumentos.sumarMontoTransferenciasActivas)
+      .toHaveBeenCalledWith(4, undefined);
+    expect(ctx.grupoFacturaDocumentos.crear).toHaveBeenCalledTimes(1);
+    expect(result.documentoGrupoFactura?.id).toBe(80);
+  });
+
+  it('16. pago mayor al saldo restante exige decisión humana', async () => {
+    const ctx = buildUseCase({
+      evaluacion: {
+        ...evaluacion('VALIDADA', false, true),
+        comparaciones: {
+          ...comparacionesCoinciden,
+          importe: { estado: 'COINCIDE', factura: 444.95, pago: 50 },
+        },
+      },
+    });
+    ctx.grupoFacturaDocumentos.sumarMontoTransferenciasActivas.mockResolvedValue(400);
+
+    await expect(ctx.useCase.execute(ctx.input)).rejects.toMatchObject({
+      response: expect.objectContaining({
+        code: 'DECISION_CORRESPONDENCIA_REQUERIDA',
+      }),
+    });
+    expect(ctx.grupoFacturaDocumentos.crear).not.toHaveBeenCalled();
+  });
+
+  it('17. factura con saldo cero bloquea un tercer pago', async () => {
+    const ctx = buildUseCase({
+      evaluacion: {
+        ...evaluacion('VALIDADA', false, true),
+        comparaciones: {
+          ...comparacionesCoinciden,
+          importe: { estado: 'COINCIDE', factura: 444.95, pago: 10 },
+        },
+      },
+    });
+    ctx.grupoFacturaDocumentos.sumarMontoTransferenciasActivas.mockResolvedValue(444.95);
+
+    await expect(ctx.useCase.execute(ctx.input)).rejects.toMatchObject({
+      response: expect.objectContaining({
+        code: 'FACTURA_PAGO_COMPLETO',
+      }),
+    });
+    expect(ctx.grupoFacturaDocumentos.crear).not.toHaveBeenCalled();
+  });
+
 });
