@@ -9,7 +9,6 @@ import {
   CheckCircle2,
   FileText,
   Loader2,
-  ReceiptText,
   Search,
   ShoppingCart,
   UploadCloud,
@@ -32,7 +31,6 @@ import {
   crearCargaSeguraIdempotencyKey,
   subirDocumentoCargaSegura,
 } from "@/services/carga-segura";
-import { agregarArchivoComoVersion } from "@/services/documentos";
 import {
   buscarExpedientes,
   crearExpediente,
@@ -95,15 +93,6 @@ const OPTIONS: OpcionInicio[] = [
     tipoRelacionPrincipal: "principal_os",
     codigoHint: "Ejemplo: 030120",
     codigoPrefix: "03",
-  },
-  {
-    tipo: "FACTURA",
-    title: "Factura directa",
-    shortLabel: "Factura principal",
-    description: "Registrar una factura sin OC/OS como gasto directo.",
-    icon: ReceiptText,
-    tipoRelacionPrincipal: "principal_factura",
-    codigoHint: "Ejemplo: GD-2026-001 o 050201",
   },
 ];
 
@@ -303,6 +292,20 @@ function getOcrResultadoId(source: Record<string, unknown> | null | undefined) {
   return String(value);
 }
 
+function getArchivoIdExplicito(source: Record<string, unknown> | null | undefined) {
+  const value = source?.archivoId ?? source?.archivo_id;
+  if (value === null || value === undefined || value === "") return null;
+  return String(value);
+}
+
+function getOcrResultadoIdExplicito(
+  source: Record<string, unknown> | null | undefined,
+) {
+  const value = source?.ocrResultadoId ?? source?.ocr_resultado_id;
+  if (value === null || value === undefined || value === "") return null;
+  return String(value);
+}
+
 function buildMetadataDesdeFormulario(
   form: OcrValidationFormState,
   context: {
@@ -428,6 +431,7 @@ export function NuevoExpedienteWizard() {
   const [processingError, setProcessingError] = useState<string | null>(null);
   const [resultadoModal, setResultadoModal] = useState<ProcesarOcrResultado | null>(null);
   const [archivoIdModal, setArchivoIdModal] = useState<string | number | null>(null);
+  const [ocrResultadoIdModal, setOcrResultadoIdModal] = useState<string | null>(null);
   const [validacionAbierta, setValidacionAbierta] = useState(false);
   const [accionError, setAccionError] = useState<string | null>(null);
   const [prevalidacionExistente, setPrevalidacionExistente] = useState<PrevalidacionExistenteUI | null>(null);
@@ -624,7 +628,6 @@ export function NuevoExpedienteWizard() {
         throw new Error("El upload no devolvió archivoId.");
       }
 
-      setArchivoIdModal(archivoId);
       setProcessingStep("processing_ocr");
 
       const resultado = await procesarArchivoOcr(archivoId, {
@@ -637,6 +640,25 @@ export function NuevoExpedienteWizard() {
         reprocesar: true,
       });
 
+      const resultadoActual = resultado as Record<string, unknown>;
+      const archivoIdResultado = getArchivoIdExplicito(resultadoActual);
+      const ocrResultadoIdActual = getOcrResultadoIdExplicito(resultadoActual);
+      const archivoIdActual = String(archivoId);
+
+      if (!ocrResultadoIdActual) {
+        throw new Error(
+          "El procesamiento OCR no devolvió ocrResultadoId explícito para la carga actual.",
+        );
+      }
+
+      if (!archivoIdResultado || archivoIdResultado !== archivoIdActual) {
+        throw new Error(
+          "La identidad OCR no corresponde al archivo recién cargado; se bloqueó la operación antes de confirmar.",
+        );
+      }
+
+      setArchivoIdModal(archivoIdActual);
+      setOcrResultadoIdModal(ocrResultadoIdActual);
       setProcessingStep("preparing_preview");
       setResultadoModal(
         buildResultadoConContexto(resultado, selectedOption, expedienteSeleccionado, {
@@ -664,16 +686,52 @@ export function NuevoExpedienteWizard() {
     const file = event.target.files?.[0] ?? null;
     event.target.value = "";
     if (!file) return;
+
+    setResultadoModal(null);
+    setArchivoIdModal(null);
+    setOcrResultadoIdModal(null);
+    setValidacionAbierta(false);
+    setAccionError(null);
+
     void procesarArchivoPrincipal(file);
   }
 
-  async function guardarCambiosOcr(form: OcrValidationFormState) {
+  function resolverOcrResultadoIdModalActual() {
     const resultadoActual = resultadoModal as Record<string, unknown> | null;
-    const ocrResultadoId = getOcrResultadoId(resultadoActual);
+    const ocrResultadoIdResultado = getOcrResultadoIdExplicito(resultadoActual);
+    const archivoIdResultado = getArchivoIdExplicito(resultadoActual);
+    const archivoIdActual =
+      archivoIdModal === null || archivoIdModal === undefined || archivoIdModal === ""
+        ? null
+        : String(archivoIdModal);
 
-    if (!ocrResultadoId) {
-      throw new Error("No se encontró ocrResultadoId para guardar cambios.");
+    if (!ocrResultadoIdModal || !ocrResultadoIdResultado) {
+      throw new Error(
+        "No existe una identidad OCR explícita acreditada para la carga actual.",
+      );
     }
+
+    if (ocrResultadoIdResultado !== ocrResultadoIdModal) {
+      throw new Error(
+        "La identidad OCR del modal cambió respecto de la carga actual; se bloqueó la operación.",
+      );
+    }
+
+    if (
+      !archivoIdActual ||
+      !archivoIdResultado ||
+      archivoIdResultado !== archivoIdActual
+    ) {
+      throw new Error(
+        "El OCR del modal no corresponde al archivo de la carga actual; se bloqueó la operación.",
+      );
+    }
+
+    return ocrResultadoIdModal;
+  }
+
+  async function guardarCambiosOcr(form: OcrValidationFormState) {
+    const ocrResultadoId = resolverOcrResultadoIdModalActual();
 
     await editarOcrResultado(ocrResultadoId, {
       tipoPropuesto: normalizeTipoDocumentalParaBackend(String(form.tipoDocumental || selectedOption.tipo)),
@@ -689,12 +747,7 @@ export function NuevoExpedienteWizard() {
   }
 
   async function confirmarOcrPrincipal(form: OcrValidationFormState) {
-    const resultadoActual = resultadoModal as Record<string, unknown> | null;
-    const ocrResultadoId = getOcrResultadoId(resultadoActual);
-
-    if (!ocrResultadoId) {
-      throw new Error("No se encontró ocrResultadoId para confirmar.");
-    }
+    const ocrResultadoId = resolverOcrResultadoIdModalActual();
 
     if (!expedienteSeleccionado?.id) {
       throw new Error("Selecciona un expediente antes de confirmar el documento principal.");
@@ -717,7 +770,7 @@ export function NuevoExpedienteWizard() {
       tipoRelacion: selectedOption.tipoRelacionPrincipal,
     });
 
-    await confirmarOcrConExpediente(ocrResultadoId, {
+    const confirmacion = await confirmarOcrConExpediente(ocrResultadoId, {
       expedienteId: expedienteSeleccionado.id,
       tipoRelacion: selectedOption.tipoRelacionPrincipal,
       esPrincipal: true,
@@ -726,42 +779,66 @@ export function NuevoExpedienteWizard() {
       observacion: "Guardar y confirmar principal desde Compras > Nuevo",
     });
 
+    const confirmacionRecord =
+      confirmacion && typeof confirmacion === "object"
+        ? (confirmacion as Record<string, unknown>)
+        : null;
+
+    const confirmacionDocumento =
+      confirmacionRecord?.documento &&
+      typeof confirmacionRecord.documento === "object" &&
+      !Array.isArray(confirmacionRecord.documento)
+        ? (confirmacionRecord.documento as Record<string, unknown>)
+        : null;
+
+    const confirmacionDocumentalV2 =
+      confirmacionRecord?.documentalV2 &&
+      typeof confirmacionRecord.documentalV2 === "object" &&
+      !Array.isArray(confirmacionRecord.documentalV2)
+        ? (confirmacionRecord.documentalV2 as Record<string, unknown>)
+        : null;
+
+    const documentoOperativoPrincipal =
+      confirmacionDocumentalV2?.documentoOperativoPrincipal &&
+      typeof confirmacionDocumentalV2.documentoOperativoPrincipal === "object" &&
+      !Array.isArray(confirmacionDocumentalV2.documentoOperativoPrincipal)
+        ? (confirmacionDocumentalV2.documentoOperativoPrincipal as Record<
+          string,
+          unknown
+        >)
+        : null;
+
+    const principalIdCandidato =
+      toIdValue(confirmacionDocumento?.id) ??
+      toIdValue(documentoOperativoPrincipal?.documentoId);
+
+    const principalIdNumero = Number(principalIdCandidato);
+
+    const principalId =
+      Number.isInteger(principalIdNumero) && principalIdNumero > 0
+        ? principalIdNumero
+        : null;
+
+    if (!principalId) {
+      throw new Error(
+        "La confirmación de la OC/OS no devolvió documentoId; no se puede abrir Compras Editar sin identidad de principal.",
+      );
+    }
+
     setValidacionAbierta(false);
-    router.push(`/compras/${expedienteSeleccionado.id}/editar`);
+    router.push(
+      `/compras/${expedienteSeleccionado.id}/editar?principalId=${encodeURIComponent(String(principalId))}`,
+    );
   }
 
   async function rechazarOcrPrincipal() {
-    const resultadoActual = resultadoModal as Record<string, unknown> | null;
-    const ocrResultadoId = getOcrResultadoId(resultadoActual);
-
-    if (!ocrResultadoId) {
-      throw new Error("No se encontró ocrResultadoId para rechazar.");
-    }
+    const ocrResultadoId = resolverOcrResultadoIdModalActual();
 
     await rechazarOcrResultado(ocrResultadoId, "Rechazado desde Compras > Nuevo");
     setValidacionAbierta(false);
   }
 
-  async function agregarDuplicadoComoVersion(details: { documentoIdExistente?: number | string; archivoIdActual?: number | string }) {
-    const documentoIdExistente = details.documentoIdExistente;
-    const archivoIdActual = details.archivoIdActual;
 
-    if (!documentoIdExistente || !archivoIdActual) {
-      throw new Error("No se encontró el documento existente o el archivo nuevo para agregar como versión.");
-    }
-
-    await agregarArchivoComoVersion(documentoIdExistente, archivoIdActual, {
-      tipoVersion: "escaneado",
-      observacion: "Archivo duplicado agregado como versión desde Compras > Nuevo",
-      marcarComoActual: true,
-    });
-
-    setValidacionAbierta(false);
-
-    if (expedienteSeleccionado?.id) {
-      router.push(`/compras/${expedienteSeleccionado.id}/editar`);
-    }
-  }
 
   return (
     <>
@@ -779,7 +856,7 @@ export function NuevoExpedienteWizard() {
           </p>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-3">
+        <div className="grid gap-4 md:grid-cols-2">
           {OPTIONS.map((option) => {
             const Icon = option.icon;
             const isSelected = selectedOption.tipo === option.tipo;
@@ -805,9 +882,6 @@ export function NuevoExpedienteWizard() {
                   </CardHeader>
                   <CardContent>
                     <p className="text-sm text-muted-foreground">{option.description}</p>
-                    <div className="mt-4 rounded-lg bg-muted px-3 py-2 text-xs text-muted-foreground">
-                      Principal sugerido: {option.tipoRelacionPrincipal}
-                    </div>
                   </CardContent>
                 </Card>
               </button>
@@ -815,7 +889,7 @@ export function NuevoExpedienteWizard() {
           })}
         </div>
 
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
+        <div>
           <Card>
             <CardHeader>
               <CardTitle>Buscar expediente existente</CardTitle>
@@ -935,27 +1009,6 @@ export function NuevoExpedienteWizard() {
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Flujo seleccionado</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3 text-sm">
-              <div>
-                <p className="text-xs uppercase text-muted-foreground">Documento principal</p>
-                <p className="font-medium">{selectedOption.title}</p>
-              </div>
-              <div>
-                <p className="text-xs uppercase text-muted-foreground">Relación principal</p>
-                <p className="font-mono text-xs">{selectedOption.tipoRelacionPrincipal}</p>
-              </div>
-              <div>
-                <p className="text-xs uppercase text-muted-foreground">Siguiente paso</p>
-                <p className="text-muted-foreground">
-                  Carga el PDF principal aquí. Al confirmar OCR, se validará como un principal independiente. Si el documento ya existe, el backend aplicará las reglas de duplicado real.
-                </p>
-              </div>
-            </CardContent>
-          </Card>
         </div>
 
         <Card className="border-dashed">
@@ -1120,14 +1173,9 @@ export function NuevoExpedienteWizard() {
                             <Link href={prevalidacionExistente.principalDocumentoId ? `/compras/${prevalidacionExistente.expedienteId}/ver?principalId=${encodeURIComponent(String(prevalidacionExistente.principalDocumentoId))}` : `/compras/${prevalidacionExistente.expedienteId}/ver`}>Ver documento existente</Link>
                           </Button>
                         ) : null}
-                        <Button type="button" size="sm" variant="outline" disabled={!prevalidacionExistente.documentoId || !prevalidacionExistente.archivoId} title={prevalidacionExistente.documentoId && prevalidacionExistente.archivoId ? undefined : "No hay archivoIdActual contractual disponible en este recorrido."} onClick={() => {
-                          if (!prevalidacionExistente.documentoId || !prevalidacionExistente.archivoId) return;
-                          void agregarDuplicadoComoVersion({ documentoIdExistente: prevalidacionExistente.documentoId, archivoIdActual: prevalidacionExistente.archivoId }).catch((err) => setAccionError(getErrorMessage(err)));
-                        }}>Adjuntar como nueva versión</Button>
                         <Button type="button" size="sm" variant="outline" onClick={() => { setPrevalidacionExistente(null); setAccionError(null); }}>Corregir datos</Button>
                         <Button asChild size="sm" variant="ghost"><Link href="/compras">Cancelar</Link></Button>
                       </div>
-                      {!prevalidacionExistente.archivoId ? <p className="text-xs text-muted-foreground">“Adjuntar como nueva versión” queda diferido porque este recorrido no entregó archivoIdActual. No se buscará ni generará por heurística.</p> : null}
                     </div>
                   ) : (
                     <div className="flex flex-wrap gap-2">
@@ -1168,7 +1216,7 @@ export function NuevoExpedienteWizard() {
         onSave={guardarCambiosOcr}
         onConfirm={confirmarOcrPrincipal}
         onReject={rechazarOcrPrincipal}
-        onAgregarComoVersion={agregarDuplicadoComoVersion}
+        formularioContexto="COMPRAS"
       />
     </>
   );

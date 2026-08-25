@@ -27,8 +27,9 @@ import {
   subirDocumentoCargaSegura,
 } from "@/services/carga-segura";
 import { api } from "@/services/api";
+import { buscarProveedoresCatalogo } from "@/services/ocr-procesamiento";
 import {
-  agregarArchivoComoVersion,
+  actualizarDocumentoManual,
   getDocumentoArchivos,
   type DocumentoArchivoVersion,
 } from "@/services/documentos";
@@ -409,10 +410,13 @@ function DocumentoExistenteResumen({
       <div className="mt-2 border-t pt-2 text-[11px] text-muted-foreground">
         {summary.archivo ? <div className="truncate">Archivo: {summary.archivo}</div> : null}
         {summary.archivoId ? <div>Archivo ID: {summary.archivoId}</div> : null}
-        {total > 1 ? <div>Versiones/cargas: {total}</div> : null}
       </div>
 
-      <div className="mt-2 grid gap-2 sm:grid-cols-2">
+      <div
+        className={`mt-2 grid gap-2 ${
+          isOcosPrincipalOption(option) ? "sm:grid-cols-1" : "sm:grid-cols-2"
+        }`}
+      >
         <Button
           type="button"
           variant="outline"
@@ -421,16 +425,6 @@ function DocumentoExistenteResumen({
           onClick={() => onVerValidar?.(principal)}
         >
           {isDocumentoConfirmado(principal) ? "Ver" : "Ver / Validar"}
-        </Button>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="h-8 text-xs"
-          onClick={() => onVerVersiones?.(principal)}
-        >
-          <History className="h-3.5 w-3.5" />
-          Versiones
         </Button>
       </div>
     </div>
@@ -562,12 +556,18 @@ function DocumentoHumanoCard({
   doc,
   option,
   onVer,
+  onValidar,
+  onEditar,
   onVersiones,
+  readOnly = false,
 }: {
   doc: DocumentoVinculado;
   option: DocumentoCargaOption;
   onVer: (doc: DocumentoVinculado) => void;
-  onVersiones: (doc: DocumentoVinculado) => void;
+  onValidar?: (doc: DocumentoVinculado) => void;
+  onEditar?: (doc: DocumentoVinculado) => void;
+  onVersiones?: (doc: DocumentoVinculado) => void;
+  readOnly?: boolean;
 }) {
   const visual = getDocumentoVisualState(doc);
   const summary = getDocumentoSummary(doc, option);
@@ -607,12 +607,29 @@ function DocumentoHumanoCard({
       </div>
       <div className="mt-4 flex flex-wrap gap-2">
         <Button type="button" variant="outline" size="sm" onClick={() => onVer(doc)}>
-          {isDocumentoConfirmado(doc) ? "Ver" : "Ver / Validar"}
+          Ver
         </Button>
-        <Button type="button" variant="outline" size="sm" onClick={() => onVersiones(doc)}>
-          <History className="h-4 w-4" />
-          Versiones
-        </Button>
+        {!readOnly && (isOcosPrincipalOption(option) || isFacturaOption(option)) ? (
+          isDocumentoConfirmado(doc) ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => onEditar?.(doc)}
+            >
+              Editar
+            </Button>
+          ) : (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => onValidar?.(doc)}
+            >
+              Validar
+            </Button>
+          )
+        ) : null}
       </div>
     </div>
   );
@@ -625,7 +642,7 @@ type VersionesDocumentoModalState = {
   archivos: DocumentoArchivoVersion[];
 };
 
-function VersionesDocumentoModal({
+export function VersionesDocumentoModal({
   state,
   loading,
   error,
@@ -851,6 +868,17 @@ function parseRecordLocal(value: unknown): Record<string, unknown> | null {
 function isDocumentoConfirmado(doc: DocumentoVinculado | null | undefined) {
   const estado = text(doc?.estado ?? doc?.documento_estado ?? doc?.ocr_estado, "").toLowerCase();
   return estado === "confirmado" || estado === "validado";
+}
+
+function isOcosPrincipalOption(option: DocumentoCargaOption) {
+  return (
+    option.tipoRelacionSugerida === "principal_oc" ||
+    option.tipoRelacionSugerida === "principal_os"
+  );
+}
+
+function isFacturaOption(option: DocumentoCargaOption) {
+  return option.tipoRelacionSugerida === "adjunto_factura";
 }
 
 function buildResultadoLecturaDesdeDocumento(
@@ -1086,7 +1114,13 @@ function buildResultadoConContexto(
   };
 }
 
-export function CompraExpedienteEditor({ id }: { id: string | number }) {
+export function CompraExpedienteEditor({
+  id,
+  modoSoloLectura = false,
+}: {
+  id: string | number;
+  modoSoloLectura?: boolean;
+}) {
   const queryClient = useQueryClient();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -1104,6 +1138,38 @@ export function CompraExpedienteEditor({ id }: { id: string | number }) {
   const [versionesModal, setVersionesModal] = useState<VersionesDocumentoModalState | null>(null);
   const [versionesLoading, setVersionesLoading] = useState(false);
   const [versionesError, setVersionesError] = useState<string | null>(null);
+  const [edicionOcos, setEdicionOcos] = useState<{
+    doc: DocumentoVinculado;
+    option: DocumentoCargaOption;
+    documentoId: string;
+    archivoId: string;
+    ocrResultadoId: string | null;
+    numero: string;
+    fechaEmision: string;
+    proveedor: string;
+    rucEmisor: string;
+    montoTotal: string;
+    moneda: string;
+    cotizacion: string;
+    saving: boolean;
+    error: string | null;
+  } | null>(null);
+  const [edicionFactura, setEdicionFactura] = useState<{
+    doc: DocumentoVinculado;
+    option: DocumentoCargaOption;
+    documentoId: string;
+    archivoId: string;
+    ocrResultadoId: string;
+    numero: string;
+    serie: string;
+    fechaEmision: string;
+    proveedor: string;
+    rucEmisor: string;
+    montoTotal: string;
+    moneda: string;
+    saving: boolean;
+    error: string | null;
+  } | null>(null);
 
   const documentosQuery = useQuery({
     queryKey: ["expediente-documentos", String(id)],
@@ -1357,6 +1423,39 @@ export function CompraExpedienteEditor({ id }: { id: string | number }) {
   }
 
 
+  function abrirDocumentoSoloLectura(
+    doc: DocumentoVinculado,
+    option: DocumentoCargaOption,
+  ) {
+    const archivoId = getArchivoId({
+      archivoId: doc.archivoId ?? doc.archivo_id,
+    });
+
+    if (!archivoId) {
+      setMensajeValidacion(
+        "El documento seleccionado no tiene archivo asociado para visualizar.",
+      );
+      return;
+    }
+
+    const accion: AccionCargaGuiada = {
+      ...option,
+      grupo: option.tipoRelacionSugerida.startsWith("principal_")
+        ? "principal"
+        : "adjunto",
+    };
+
+    setAccionActual(accion);
+    setMensajeValidacion(null);
+    setResultadoModal(
+      buildResultadoLecturaDesdeDocumento(doc, option, accion, archivoId),
+    );
+    setModalSoloLectura(true);
+    setProcessingStep("idle");
+    setProcessingError(null);
+    setModalAbierto(true);
+  }
+
   async function abrirDocumentoExistente(doc: DocumentoVinculado, option: DocumentoCargaOption) {
     const archivoId = getArchivoId({
       archivoId: doc.archivoId ?? doc.archivo_id,
@@ -1472,6 +1571,237 @@ export function CompraExpedienteEditor({ id }: { id: string | number }) {
     }
   }
 
+  async function resolverOcrHistoricoDocumento(
+    documentoId: string,
+    archivoId: string,
+    permitirSinOcr = false,
+  ): Promise<string | null> {
+    const { data } = await api.get("/documentos/ocr-resultados");
+    const payload = data?.data ?? data;
+    const rows = Array.isArray(payload) ? payload : [];
+
+    const matches = rows.filter((row: Record<string, unknown>) => {
+      const rowDocumentoId = String(
+        row.documentoId ?? row.documento_id ?? "",
+      );
+      const rowArchivoId = String(row.archivoId ?? row.archivo_id ?? "");
+      return rowDocumentoId === documentoId && rowArchivoId === archivoId;
+    });
+
+    if (matches.length === 0 && permitirSinOcr) {
+      return null;
+    }
+
+    if (matches.length !== 1) {
+      throw new Error(
+        `OCR_CONFIRMADO_NO_UNIVOCO: esperado 1 OCR para documento ${documentoId} / archivo ${archivoId}, encontrados ${matches.length}.`,
+      );
+    }
+
+    const ocrResultadoId = getOcrResultadoId(matches[0]);
+    if (!ocrResultadoId) {
+      throw new Error(
+        "OCR_RESULTADO_REQUERIDO: el documento confirmado no tiene identidad OCR histórica válida.",
+      );
+    }
+
+    return ocrResultadoId;
+  }
+
+  async function abrirEdicionOcosConfirmada(
+    doc: DocumentoVinculado,
+    option: DocumentoCargaOption,
+  ) {
+    if (!isOcosPrincipalOption(option) || !isDocumentoConfirmado(doc)) {
+      setMensajeValidacion(
+        "La edición directa está disponible únicamente para OC/OS confirmada.",
+      );
+      return;
+    }
+
+    const documentoId = getDocumentoId(doc);
+    const archivoId = getArchivoId({
+      archivoId: doc.archivoId ?? doc.archivo_id,
+    });
+
+    if (!documentoId || !archivoId) {
+      setMensajeValidacion(
+        "No se pudo resolver documentoId/archivoId para editar la OC/OS confirmada.",
+      );
+      return;
+    }
+
+    try {
+      const ocrResultadoId = await resolverOcrHistoricoDocumento(
+        String(documentoId),
+        String(archivoId),
+        true,
+      );
+      const metadataDoc = parseRecordLocal(doc.metadata) ?? {};
+      const ocrDoc = parseRecordLocal(metadataDoc.ocr) ?? {};
+      const ocrMetadata = parseRecordLocal(ocrDoc.metadata) ?? {};
+
+      setEdicionOcos({
+        doc,
+        option,
+        documentoId: String(documentoId),
+        archivoId: String(archivoId),
+        ocrResultadoId,
+        numero: text(doc.numero, ""),
+        fechaEmision: text(doc.fecha_emision ?? doc.fechaEmision, ""),
+        proveedor: text(
+          doc.razon_social_emisor ?? doc.razonSocialEmisor,
+          "",
+        ),
+        rucEmisor: text(doc.ruc_emisor ?? doc.rucEmisor, ""),
+        montoTotal: text(doc.monto_total ?? doc.montoTotal, ""),
+        moneda: text(doc.moneda, ""),
+        cotizacion: text(ocrMetadata.cotizacion, ""),
+        saving: false,
+        error: null,
+      });
+      setMensajeValidacion(null);
+    } catch (err) {
+      setMensajeValidacion(
+        err instanceof Error
+          ? err.message
+          : "No se pudo resolver el OCR histórico del documento confirmado.",
+      );
+    }
+  }
+
+  async function resolverProveedorCatalogoPorRuc(
+    ruc: string,
+  ): Promise<string | null> {
+    const normalizado = ruc.replace(/\D/g, "").trim();
+    if (!/^\d{11}$/.test(normalizado)) {
+      throw new Error("Ingresa un RUC proveedor válido de 11 dígitos.");
+    }
+
+    const proveedores = await buscarProveedoresCatalogo(normalizado, 20);
+    const exacto = proveedores.find((item) => item.ruc === normalizado);
+    return exacto?.razonSocial ?? null;
+  }
+
+  async function resolverProveedorOcosAlSalirDelRuc() {
+    if (!edicionOcos || edicionOcos.saving) return;
+
+    const ruc = edicionOcos.rucEmisor.replace(/\D/g, "").trim();
+
+    if (!/^\d{11}$/.test(ruc)) {
+      setEdicionOcos((current) =>
+        current
+          ? {
+              ...current,
+              rucEmisor: ruc,
+              proveedor: "",
+              error: "Ingresa un RUC proveedor válido de 11 dígitos.",
+            }
+          : current,
+      );
+      return;
+    }
+
+    try {
+      const proveedor = await resolverProveedorCatalogoPorRuc(ruc);
+      setEdicionOcos((current) =>
+        current
+          ? {
+              ...current,
+              rucEmisor: ruc,
+              proveedor: proveedor ?? "",
+              error: proveedor
+                ? null
+                : "Proveedor no encontrado para el RUC ingresado.",
+            }
+          : current,
+      );
+    } catch (error: unknown) {
+      setEdicionOcos((current) =>
+        current
+          ? {
+              ...current,
+              rucEmisor: ruc,
+              proveedor: "",
+              error:
+                error instanceof Error
+                  ? error.message
+                  : "No se pudo consultar el proveedor por RUC.",
+            }
+          : current,
+      );
+    }
+  }
+
+  async function guardarEdicionOcosConfirmada() {
+    if (!edicionOcos) return;
+
+    const { documentoId, archivoId, ocrResultadoId, option } = edicionOcos;
+
+    setEdicionOcos((current) =>
+      current ? { ...current, saving: true, error: null } : current,
+    );
+
+    try {
+      const razonSocialCatalogo = await resolverProveedorCatalogoPorRuc(
+        edicionOcos.rucEmisor,
+      );
+      if (!razonSocialCatalogo) {
+        throw new Error(
+          "Proveedor no encontrado para el RUC ingresado. Verifica el RUC antes de guardar.",
+        );
+      }
+      const razonSocialProveedor = razonSocialCatalogo;
+      await actualizarDocumentoManual(documentoId, {
+        tipoDocumental: option.tipoEsperado,
+        ...(ocrResultadoId
+          ? { ocrResultadoId: Number(ocrResultadoId) }
+          : {}),
+        metadata: {
+          numero: edicionOcos.numero.trim() || undefined,
+          fechaEmision: edicionOcos.fechaEmision.trim() || undefined,
+          proveedor: razonSocialProveedor,
+          razonSocial: razonSocialProveedor,
+          rucEmisor: edicionOcos.rucEmisor.trim() || undefined,
+          rucProveedor: edicionOcos.rucEmisor.trim() || undefined,
+          rucComprador: rucComprador || undefined,
+          montoTotal: edicionOcos.montoTotal.trim() || undefined,
+          moneda: edicionOcos.moneda.trim() || undefined,
+          cotizacion: edicionOcos.cotizacion.trim() || undefined,
+          clienteAbreviatura: empresa || undefined,
+          codigoExpediente: codigo || undefined,
+          contextoValidacion: {
+            origen: "COMPRAS_EDITAR_DOCUMENTO",
+            expedienteId: String(id),
+            codigoExpediente: codigo || undefined,
+            tipoRelacionSugerida: option.tipoRelacionSugerida,
+            confirmadoDesde: "compras_editar_documento",
+            documentoId,
+            archivoId,
+          },
+        },
+        motivo: "Corrección manual de datos de OC/OS confirmada",
+        origen: "COMPRAS_EDITAR_DOCUMENTO",
+      });
+
+      setEdicionOcos(null);
+      setMensajeValidacion(
+        `OC/OS ${documentoId} actualizada sin nueva carga ni reprocesamiento OCR.`,
+      );
+      await queryClient.invalidateQueries({
+        queryKey: ["expediente-documentos", String(id)],
+      });
+    } catch (err) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : "No se pudo actualizar la OC/OS confirmada.";
+      setEdicionOcos((current) =>
+        current ? { ...current, saving: false, error: message } : current,
+      );
+    }
+  }
+
   async function abrirHistorialVersiones(doc: DocumentoVinculado, option: DocumentoCargaOption) {
     const documentoId = getDocumentoId(doc);
 
@@ -1584,6 +1914,156 @@ export function CompraExpedienteEditor({ id }: { id: string | number }) {
     };
   }
 
+  async function abrirEdicionFacturaConfirmada(
+    doc: DocumentoVinculado,
+    option: DocumentoCargaOption,
+  ) {
+    if (!isFacturaOption(option) || !isDocumentoConfirmado(doc)) return;
+    const documentoIdRaw = getDocumentoId(doc);
+    const archivoId = getArchivoId({ archivoId: doc.archivoId ?? doc.archivo_id });
+    if (!documentoIdRaw || !archivoId) {
+      setMensajeValidacion("La Factura confirmada no tiene documento/archivo identificable para editar.");
+      return;
+    }
+    const documentoId = String(documentoIdRaw);
+
+    try {
+      const ocrResultadoId = await resolverOcrHistoricoDocumento(documentoId, archivoId);
+      if (!ocrResultadoId) {
+        throw new Error(
+          "OCR_RESULTADO_REQUERIDO: la Factura confirmada no tiene identidad OCR histórica válida.",
+        );
+      }
+      const metadata =
+        doc.metadata && typeof doc.metadata === "object"
+          ? (doc.metadata as Record<string, unknown>)
+          : {};
+      const ocrMetadata =
+        metadata.ocr &&
+        typeof metadata.ocr === "object" &&
+        !Array.isArray(metadata.ocr)
+          ? (((metadata.ocr as Record<string, unknown>).metadata ?? {}) as Record<string, unknown>)
+          : {};
+
+      setEdicionFactura({
+        doc,
+        option,
+        documentoId,
+        archivoId,
+        ocrResultadoId,
+        numero: text(doc.numero ?? ocrMetadata.numero, ""),
+        serie: text(doc.serie ?? ocrMetadata.serie, ""),
+        fechaEmision: text(doc.fecha_emision ?? doc.fechaEmision ?? ocrMetadata.fechaEmision, ""),
+        proveedor: text(
+          doc.razon_social_emisor ??
+            doc.razonSocialEmisor ??
+            ocrMetadata.razonSocial ??
+            ocrMetadata.proveedor,
+          "",
+        ),
+        rucEmisor: text(
+          doc.ruc_emisor ??
+            doc.rucEmisor ??
+            ocrMetadata.rucEmisor ??
+            ocrMetadata.rucProveedor,
+          "",
+        ),
+        montoTotal: text(doc.monto_total ?? doc.montoTotal ?? ocrMetadata.montoTotal, ""),
+        moneda: text(doc.moneda ?? ocrMetadata.moneda, ""),
+        saving: false,
+        error: null,
+      });
+      setMensajeValidacion(null);
+    } catch (err) {
+      setMensajeValidacion(
+        err instanceof Error
+          ? err.message
+          : "No se pudo resolver el OCR histórico de la Factura confirmada.",
+      );
+    }
+  }
+
+  async function guardarEdicionFacturaConfirmada() {
+    if (!edicionFactura) return;
+    const { documentoId, archivoId, ocrResultadoId, option } = edicionFactura;
+
+    setEdicionFactura((current) =>
+      current ? { ...current, saving: true, error: null } : current,
+    );
+
+    try {
+      const razonSocialCatalogo = await resolverProveedorCatalogoPorRuc(
+        edicionFactura.rucEmisor,
+      );
+      const razonSocialProveedor =
+        razonSocialCatalogo ?? (edicionFactura.proveedor.trim() || undefined);
+
+      await actualizarDocumentoManual(documentoId, {
+        tipoDocumental: option.tipoEsperado,
+        ocrResultadoId: Number(ocrResultadoId),
+        metadata: {
+          numero: edicionFactura.numero.trim() || undefined,
+          serie: edicionFactura.serie.trim() || undefined,
+          fechaEmision: edicionFactura.fechaEmision.trim() || undefined,
+          proveedor: razonSocialProveedor,
+          razonSocial: razonSocialProveedor,
+          rucEmisor: edicionFactura.rucEmisor.trim() || undefined,
+          rucProveedor: edicionFactura.rucEmisor.trim() || undefined,
+          montoTotal: edicionFactura.montoTotal.trim() || undefined,
+          moneda: edicionFactura.moneda.trim() || undefined,
+          clienteAbreviatura: text(
+            (expediente as any)?.empresa_codigo ??
+              (expediente as any)?.empresaCodigo ??
+              (expediente as any)?.cliente_abreviatura ??
+              (expediente as any)?.clienteAbreviatura,
+            "",
+          ),
+          codigoExpediente: text(
+            (expediente as any)?.codigo ??
+              (expediente as any)?.codigoExpediente ??
+              (expediente as any)?.codigo_expediente,
+            "",
+          ),
+          contextoValidacion: {
+            origen: "COMPRAS_EDITAR_DOCUMENTO",
+            expedienteId: String(id),
+            codigoExpediente: text(
+              (expediente as any)?.codigo ??
+                (expediente as any)?.codigoExpediente ??
+                (expediente as any)?.codigo_expediente,
+              "",
+            ),
+            tipoRelacionSugerida: option.tipoRelacionSugerida,
+            confirmadoDesde: "compras_editar_documento",
+            documentoId,
+            archivoId,
+          },
+        },
+        motivo: "Corrección manual de datos de Factura confirmada",
+        origen: "COMPRAS_EDITAR_DOCUMENTO",
+      });
+
+      setEdicionFactura(null);
+      setMensajeValidacion("Factura actualizada sobre el documento existente.");
+      await queryClient.invalidateQueries({
+        queryKey: ["expediente-documentos", String(id)],
+      });
+    } catch (err) {
+      setEdicionFactura((current) =>
+        current
+          ? {
+              ...current,
+              saving: false,
+              error:
+                err instanceof Error
+                  ? err.message
+                  : "No se pudo actualizar la Factura confirmada.",
+            }
+          : current,
+      );
+    }
+  }
+
   async function guardarCambiosOcr(form: OcrValidationFormState) {
     await persistirEdicionOcr(form, "Edición manual desde Compras > Editar");
     setMensajeValidacion(`Cambios OCR guardados para ${accionActual?.label ?? "documento"}.`);
@@ -1659,25 +2139,7 @@ export function CompraExpedienteEditor({ id }: { id: string | number }) {
     queryClient.invalidateQueries({ queryKey: ["expediente-documentos", String(id)] });
   }
 
-  async function agregarDuplicadoComoVersion(details: { documentoIdExistente?: number | string; archivoIdActual?: number | string }) {
-    const documentoIdExistente = details.documentoIdExistente;
-    const archivoIdActual = details.archivoIdActual;
 
-    if (!documentoIdExistente || !archivoIdActual) {
-      throw new Error("No se encontró el documento existente o el archivo nuevo para agregar como versión.");
-    }
-
-    await agregarArchivoComoVersion(documentoIdExistente, archivoIdActual, {
-      tipoVersion: "escaneado",
-      observacion: "Archivo duplicado agregado como versión desde Compras > Editar",
-      marcarComoActual: true,
-    });
-
-    setModalAbierto(false);
-    setMensajeValidacion(`Archivo agregado como nueva versión del documento ${documentoIdExistente}.`);
-    queryClient.invalidateQueries({ queryKey: ["ocr-resultados"] });
-    queryClient.invalidateQueries({ queryKey: ["expediente-documentos", String(id)] });
-  }
 
   async function rechazarOcrFinal(form: OcrValidationFormState) {
     const resultadoActual = resultadoModal as Record<string, unknown> | null;
@@ -1814,8 +2276,25 @@ export function CompraExpedienteEditor({ id }: { id: string | number }) {
                     <DocumentoHumanoCard
                       doc={principalActual.doc}
                       option={principalActual.option}
-                      onVer={(doc) => abrirDocumentoExistente(doc, principalActual.option)}
-                      onVersiones={(doc) => abrirHistorialVersiones(doc, principalActual.option)}
+                      onVer={(doc) =>
+                        abrirDocumentoSoloLectura(doc, principalActual.option)
+                      }
+                      onValidar={
+                        modoSoloLectura
+                          ? undefined
+                          : (doc) => abrirDocumentoExistente(doc, principalActual.option)
+                      }
+                      onEditar={
+                        modoSoloLectura
+                          ? undefined
+                          : (doc) => {
+                              void abrirEdicionOcosConfirmada(
+                                doc,
+                                principalActual.option,
+                              );
+                            }
+                      }
+                      readOnly={modoSoloLectura}
                     />
                   ) : (
                     <div className="rounded-xl border border-dashed px-4 py-6 text-sm text-muted-foreground">
@@ -1830,118 +2309,200 @@ export function CompraExpedienteEditor({ id }: { id: string | number }) {
 
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-base uppercase tracking-wide">
-              Documentos de compra
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid gap-4 lg:grid-cols-3">
-              <section className="min-w-0 rounded-xl border bg-background p-4">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="text-sm font-semibold uppercase tracking-wide">Facturas</div>
-                  <span className="text-xs text-muted-foreground">
-                    {facturas.length} factura{facturas.length === 1 ? "" : "s"}
-                  </span>
-                </div>
-                <div className="mt-4 space-y-3">
-                  {facturaOption && facturas.length ? (
-                    facturas.map((doc) => (
-                      <DocumentoHumanoCard
-                        key={String(getDocumentoId(doc) ?? doc.archivo_id ?? doc.archivoId)}
-                        doc={doc}
-                        option={facturaOption}
-                        onVer={(documento) => abrirDocumentoExistente(documento, facturaOption)}
-                        onVersiones={(documento) => abrirHistorialVersiones(documento, facturaOption)}
-                      />
-                    ))
-                  ) : (
-                    <div className="rounded-xl border border-dashed px-4 py-6 text-sm text-muted-foreground">
-                      Aún no se han adjuntado facturas.
-                    </div>
-                  )}
-                  {facturaOption ? (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="w-full"
-                      disabled={procesando || !principalSeleccionado}
-                      onClick={() => iniciarSeleccionArchivo(facturaOption, "adjunto")}
-                    >
-                      <FilePlus2 className="h-4 w-4" />
-                      {facturas.length ? "Adjuntar otra factura" : "Adjuntar factura"}
-                    </Button>
-                  ) : null}
-                </div>
-              </section>
+            <div className="flex flex-col items-center gap-3 text-center">
+              <CardTitle className="text-base uppercase tracking-wide">
+                Documentos de compra
+              </CardTitle>
 
-              <section className="min-w-0 rounded-xl border bg-background p-4">
-                <div className="text-sm font-semibold uppercase tracking-wide">Guía</div>
-                <div className="mt-4 space-y-3">
-                  {guiaOption && guias.length ? (
-                    guias.map((doc) => (
-                      <DocumentoHumanoCard
-                        key={String(getDocumentoId(doc) ?? doc.archivo_id ?? doc.archivoId)}
-                        doc={doc}
-                        option={guiaOption}
-                        onVer={(documento) => abrirDocumentoExistente(documento, guiaOption)}
-                        onVersiones={(documento) => abrirHistorialVersiones(documento, guiaOption)}
-                      />
-                    ))
-                  ) : (
-                    <div className="rounded-xl border border-dashed px-4 py-6 text-sm text-muted-foreground">
-                      Aún no se ha adjuntado una guía.
-                    </div>
-                  )}
-                  {guiaOption ? (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="w-full"
-                      disabled={true}
-                      onClick={() => iniciarSeleccionArchivo(guiaOption, "adjunto")}
-                    >
-                      <FilePlus2 className="h-4 w-4" />
-                      {guias.length ? "Adjuntar otra guía" : "Adjuntar guía"}
-                    </Button>
-                  ) : null}
-                </div>
-              </section>
+              {!modoSoloLectura && facturaOption ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="min-w-52 justify-center"
+                  disabled={
+                    procesando ||
+                    !principalSeleccionado ||
+                    !isDocumentoConfirmado(principalSeleccionado)
+                  }
+                  onClick={() => iniciarSeleccionArchivo(facturaOption, "adjunto")}
+                >
+                  <FilePlus2 className="h-4 w-4" />
+                  {facturas.length ? "Adjuntar otra factura" : "Adjuntar factura"}
+                </Button>
+              ) : null}
 
-              <section className="min-w-0 rounded-xl border bg-background p-4">
-                <div className="text-sm font-semibold uppercase tracking-wide">Otros sustentos</div>
-                <div className="mt-4 space-y-3">
-                  {otrosDocumentos.length ? (
-                    otrosOptions.flatMap((option) =>
-                      (documentosPorRelacion.get(option.tipoRelacionSugerida) ?? []).map((doc) => (
-                        <DocumentoHumanoCard
-                          key={String(getDocumentoId(doc) ?? doc.archivo_id ?? doc.archivoId)}
-                          doc={doc}
-                          option={option}
-                          onVer={(documento) => abrirDocumentoExistente(documento, option)}
-                          onVersiones={(documento) => abrirHistorialVersiones(documento, option)}
-                        />
-                      )),
-                    )
-                  ) : (
-                    <div className="rounded-xl border border-dashed px-4 py-6 text-sm text-muted-foreground">
-                      Aún no se han adjuntado otros documentos.
-                    </div>
-                  )}
-                  {otrosOptions.length ? (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="w-full"
-                      disabled={true}
-                      onClick={() => iniciarSeleccionArchivo(otrosOptions[0], "adjunto")}
-                    >
-                      <FilePlus2 className="h-4 w-4" />
-                      Adjuntar sustento
-                    </Button>
-                  ) : null}
-                </div>
-              </section>
+              {!modoSoloLectura &&
+              principalSeleccionado &&
+              !isDocumentoConfirmado(principalSeleccionado) ? (
+                <p className="text-xs text-muted-foreground">
+                  Valida primero la OC/OS para poder adjuntar facturas.
+                </p>
+              ) : null}
             </div>
+          </CardHeader>
+
+          <CardContent>
+            {!facturas.length ? (
+              <div className="rounded-xl border border-dashed px-4 py-8 text-center text-sm text-muted-foreground">
+                Aún no se han adjuntado facturas.
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {facturaOption
+                  ? facturas.map((doc, index) => (
+                      <section
+                        key={String(
+                          getDocumentoId(doc) ??
+                            doc.archivo_id ??
+                            doc.archivoId ??
+                            index,
+                        )}
+                        className="rounded-xl border bg-background p-4"
+                      >
+                        <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+                          <div>
+                            <div className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                              Contexto documental
+                            </div>
+                            <div className="mt-1 text-sm font-semibold">
+                              Factura {index + 1}
+                            </div>
+                          </div>
+                          <span className="text-xs text-muted-foreground">
+                            Factura con Guía y sustentos propios
+                          </span>
+                        </div>
+
+                        <div className="grid gap-4 lg:grid-cols-3">
+                          <div className="min-w-0">
+                            <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                              Factura
+                            </div>
+                            <DocumentoHumanoCard
+                              doc={doc}
+                              option={facturaOption}
+                              onVer={(documento) =>
+                                abrirDocumentoSoloLectura(documento, facturaOption)
+                              }
+                              onEditar={
+                                modoSoloLectura
+                                  ? undefined
+                                  : (documento) => {
+                                      void abrirEdicionFacturaConfirmada(
+                                        documento,
+                                        facturaOption,
+                                      );
+                                    }
+                              }
+                              readOnly={modoSoloLectura}
+                            />
+                          </div>
+
+                          <div className="min-w-0 rounded-xl border border-dashed p-3">
+                            <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                              Guía
+                            </div>
+                            <div className="mt-3 space-y-3">
+                              {facturas.length === 1 &&
+                              guiaOption &&
+                              guias.length ? (
+                                guias.map((guia) => (
+                                  <DocumentoHumanoCard
+                                    key={String(
+                                      getDocumentoId(guia) ??
+                                        guia.archivo_id ??
+                                        guia.archivoId,
+                                    )}
+                                    doc={guia}
+                                    option={guiaOption}
+                                    onVer={(documento) =>
+                                      abrirDocumentoSoloLectura(documento, guiaOption)
+                                    }
+                                    readOnly={modoSoloLectura}
+                                  />
+                                ))
+                              ) : (
+                                <div className="rounded-lg border border-dashed px-3 py-5 text-sm text-muted-foreground">
+                                  Aún no se ha adjuntado una guía.
+                                </div>
+                              )}
+
+                              {!modoSoloLectura ? (
+                              <Button
+                                  type="button"
+                                  variant="outline"
+                                  className="w-full"
+                                  disabled={true}
+                                >
+                                  <FilePlus2 className="h-4 w-4" />
+                                  Adjuntar guía
+                                </Button>
+                              ) : null}
+                            </div>
+                          </div>
+
+                          <div className="min-w-0 rounded-xl border border-dashed p-3">
+                            <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                              Otros sustentos
+                            </div>
+                            <div className="mt-3 space-y-3">
+                              {facturas.length === 1 &&
+                              otrosDocumentos.length ? (
+                                otrosOptions.flatMap((option) =>
+                                  (
+                                    documentosPorRelacion.get(
+                                      option.tipoRelacionSugerida,
+                                    ) ?? []
+                                  ).map((documento) => (
+                                    <DocumentoHumanoCard
+                                      key={String(
+                                        getDocumentoId(documento) ??
+                                          documento.archivo_id ??
+                                          documento.archivoId,
+                                      )}
+                                      doc={documento}
+                                      option={option}
+                                      onVer={(item) =>
+                                        abrirDocumentoSoloLectura(item, option)
+                                      }
+                                      readOnly={modoSoloLectura}
+                                    />
+                                  )),
+                                )
+                              ) : (
+                                <div className="rounded-lg border border-dashed px-3 py-5 text-sm text-muted-foreground">
+                                  Aún no se han adjuntado otros documentos.
+                                </div>
+                              )}
+
+                              {!modoSoloLectura ? (
+                              <Button
+                                  type="button"
+                                  variant="outline"
+                                  className="w-full"
+                                  disabled={true}
+                                >
+                                  <FilePlus2 className="h-4 w-4" />
+                                  Adjuntar sustento
+                                </Button>
+                              ) : null}
+                            </div>
+                          </div>
+                        </div>
+                      </section>
+                    ))
+                  : null}
+
+                {facturas.length > 1 &&
+                (guias.length || otrosDocumentos.length) ? (
+                  <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-300">
+                    Los documentos existentes de Guía/Otros sustentos no se
+                    reasignan visualmente entre múltiples facturas hasta contar
+                    con identidad exacta del contexto documental.
+                  </div>
+                ) : null}
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -2005,6 +2566,330 @@ export function CompraExpedienteEditor({ id }: { id: string | number }) {
         }}
       />
 
+      <Modal
+        isOpen={Boolean(edicionOcos)}
+        onClose={() => {
+          if (!edicionOcos?.saving) setEdicionOcos(null);
+        }}
+        className="mx-4 max-w-3xl p-5 md:p-6"
+      >
+        {edicionOcos ? (
+          <div className="space-y-5">
+            <div className="pr-10">
+              <div className="text-lg font-semibold">
+                Editar {edicionOcos.option.tipoEsperado}
+              </div>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Se actualizarán únicamente los datos del documento existente.
+                El archivo y el OCR histórico se conservan.
+              </p>
+            </div>
+
+            {edicionOcos.error ? (
+              <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-300">
+                {edicionOcos.error}
+              </div>
+            ) : null}
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <label className="space-y-1 text-sm">
+                <span className="font-medium">Número</span>
+                <Input
+                  value={edicionOcos.numero}
+                  onChange={(event) =>
+                    setEdicionOcos((current) =>
+                      current ? { ...current, numero: event.target.value } : current,
+                    )
+                  }
+                />
+              </label>
+
+              <label className="space-y-1 text-sm">
+                <span className="font-medium">Fecha de emisión</span>
+                <Input
+                  type="date"
+                  value={edicionOcos.fechaEmision}
+                  onChange={(event) =>
+                    setEdicionOcos((current) =>
+                      current
+                        ? { ...current, fechaEmision: event.target.value }
+                        : current,
+                    )
+                  }
+                />
+              </label>
+
+              <div className="space-y-1 text-sm">
+                <span className="font-medium">RUC proveedor</span>
+                <Input
+                  value={edicionOcos.rucEmisor}
+                  inputMode="numeric"
+                  maxLength={11}
+                  disabled={edicionOcos.saving}
+                  onChange={(event) => {
+                    const ruc = event.target.value.replace(/\D/g, "").slice(0, 11);
+                    setEdicionOcos((current) =>
+                      current
+                        ? {
+                            ...current,
+                            rucEmisor: ruc,
+                            proveedor:
+                              ruc === current.rucEmisor ? current.proveedor : "",
+                            error: null,
+                          }
+                        : current,
+                    );
+                  }}
+                  onBlur={() => {
+                    void resolverProveedorOcosAlSalirDelRuc();
+                  }}
+                />
+                <span className="block text-xs text-muted-foreground">
+                  La razón social se consulta automáticamente al salir del campo.
+                </span>
+              </div>
+
+              <label className="space-y-1 text-sm md:col-span-2">
+                <span className="font-medium">Razón social</span>
+                <Input value={edicionOcos.proveedor} readOnly />
+                <span className="block text-xs text-muted-foreground">
+                  Derivada del catálogo de proveedores según el RUC.
+                </span>
+              </label>
+
+              <label className="space-y-1 text-sm">
+                <span className="font-medium">Monto total</span>
+                <Input
+                  value={edicionOcos.montoTotal}
+                  onChange={(event) =>
+                    setEdicionOcos((current) =>
+                      current ? { ...current, montoTotal: event.target.value } : current,
+                    )
+                  }
+                />
+              </label>
+
+              <label className="space-y-1 text-sm">
+                <span className="font-medium">Moneda</span>
+                <Input
+                  value={edicionOcos.moneda}
+                  onChange={(event) =>
+                    setEdicionOcos((current) =>
+                      current ? { ...current, moneda: event.target.value } : current,
+                    )
+                  }
+                />
+              </label>
+
+              <label className="space-y-1 text-sm md:col-span-2">
+                <span className="font-medium">Cotización</span>
+                <Input
+                  value={edicionOcos.cotizacion}
+                  onChange={(event) =>
+                    setEdicionOcos((current) =>
+                      current ? { ...current, cotizacion: event.target.value } : current,
+                    )
+                  }
+                />
+              </label>
+            </div>
+
+            <div className="flex flex-wrap justify-end gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                disabled={edicionOcos.saving}
+                onClick={() => setEdicionOcos(null)}
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="button"
+                disabled={edicionOcos.saving}
+                onClick={() => {
+                  void guardarEdicionOcosConfirmada();
+                }}
+              >
+                {edicionOcos.saving ? "Guardando..." : "Guardar"}
+              </Button>
+            </div>
+          </div>
+        ) : null}
+      </Modal>
+
+      <Modal
+        isOpen={Boolean(edicionFactura)}
+        onClose={() => {
+          if (!edicionFactura?.saving) setEdicionFactura(null);
+        }}
+        className="mx-4 max-w-3xl p-5 md:p-6"
+      >
+        {edicionFactura ? (
+          <div className="space-y-5">
+            <div className="pr-10">
+              <div className="text-lg font-semibold">Editar Factura</div>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Se actualizarán únicamente los datos del documento existente.
+                El archivo, OCR histórico y grupo documental se conservan.
+              </p>
+            </div>
+
+            {edicionFactura.error ? (
+              <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-300">
+                {edicionFactura.error}
+              </div>
+            ) : null}
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <label className="space-y-1 text-sm">
+                <span className="font-medium">Número</span>
+                <Input
+                  value={edicionFactura.numero}
+                  onChange={(event) =>
+                    setEdicionFactura((current) =>
+                      current ? { ...current, numero: event.target.value } : current,
+                    )
+                  }
+                />
+              </label>
+
+              <label className="space-y-1 text-sm">
+                <span className="font-medium">Serie</span>
+                <Input
+                  value={edicionFactura.serie}
+                  onChange={(event) =>
+                    setEdicionFactura((current) =>
+                      current ? { ...current, serie: event.target.value } : current,
+                    )
+                  }
+                />
+              </label>
+
+              <label className="space-y-1 text-sm">
+                <span className="font-medium">Fecha de emisión</span>
+                <Input
+                  type="date"
+                  value={edicionFactura.fechaEmision}
+                  onChange={(event) =>
+                    setEdicionFactura((current) =>
+                      current
+                        ? { ...current, fechaEmision: event.target.value }
+                        : current,
+                    )
+                  }
+                />
+              </label>
+
+              <div className="space-y-1 text-sm">
+                <span className="font-medium">RUC proveedor</span>
+                <div className="flex gap-2">
+                  <Input
+                    value={edicionFactura.rucEmisor}
+                    onChange={(event) =>
+                      setEdicionFactura((current) =>
+                        current
+                          ? { ...current, rucEmisor: event.target.value, error: null }
+                          : current,
+                      )
+                    }
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={edicionFactura.saving}
+                    onClick={() => {
+                      void resolverProveedorCatalogoPorRuc(edicionFactura.rucEmisor)
+                        .then((proveedor) =>
+                          setEdicionFactura((current) =>
+                            current
+                              ? {
+                                  ...current,
+                                  proveedor: proveedor ?? current.proveedor,
+                                  error: proveedor
+                                    ? null
+                                    : "Proveedor no encontrado en catálogo; se conservará la razón social actual.",
+                                }
+                              : current,
+                          ),
+                        )
+                        .catch((error: unknown) =>
+                          setEdicionFactura((current) =>
+                            current
+                              ? {
+                                  ...current,
+                                  error:
+                                    error instanceof Error
+                                      ? error.message
+                                      : "No se pudo resolver el proveedor.",
+                                }
+                              : current,
+                          ),
+                        );
+                    }}
+                  >
+                    Buscar
+                  </Button>
+                </div>
+              </div>
+
+              <label className="space-y-1 text-sm md:col-span-2">
+                <span className="font-medium">Razón social</span>
+                <Input value={edicionFactura.proveedor} readOnly />
+                <span className="block text-xs text-muted-foreground">
+                  Derivada del catálogo de proveedores según el RUC.
+                </span>
+              </label>
+
+              <label className="space-y-1 text-sm">
+                <span className="font-medium">Monto total</span>
+                <Input
+                  value={edicionFactura.montoTotal}
+                  onChange={(event) =>
+                    setEdicionFactura((current) =>
+                      current
+                        ? { ...current, montoTotal: event.target.value }
+                        : current,
+                    )
+                  }
+                />
+              </label>
+
+              <label className="space-y-1 text-sm">
+                <span className="font-medium">Moneda</span>
+                <Input
+                  value={edicionFactura.moneda}
+                  onChange={(event) =>
+                    setEdicionFactura((current) =>
+                      current ? { ...current, moneda: event.target.value } : current,
+                    )
+                  }
+                />
+              </label>
+            </div>
+
+            <div className="flex flex-wrap justify-end gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                disabled={edicionFactura.saving}
+                onClick={() => setEdicionFactura(null)}
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="button"
+                disabled={edicionFactura.saving}
+                onClick={() => {
+                  void guardarEdicionFacturaConfirmada();
+                }}
+              >
+                {edicionFactura.saving ? "Guardando..." : "Guardar"}
+              </Button>
+            </div>
+          </div>
+        ) : null}
+      </Modal>
+
       <VersionesDocumentoModal
         state={versionesModal}
         loading={versionesLoading}
@@ -2031,7 +2916,7 @@ export function CompraExpedienteEditor({ id }: { id: string | number }) {
         onSave={guardarCambiosOcr}
         onConfirm={confirmarOcrFinal}
         onReject={rechazarOcrFinal}
-        onAgregarComoVersion={agregarDuplicadoComoVersion}
+        formularioContexto="COMPRAS"
         readOnly={modalSoloLectura}
       />
     </>
