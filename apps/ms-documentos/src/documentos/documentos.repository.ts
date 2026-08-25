@@ -459,11 +459,36 @@ export class DocumentosRepository {
       }
     }
 
-    const documentoExistente = params.claveDocumental
+    // Segunda barrera: después del OCR también se consideran identidades
+    // pendientes. Esto cubre PDFs reexportados cuyo hash cambió antes de que
+    // el primer documento haya sido confirmado y promovido canónicamente.
+    const documentoExistente = params.claveDocumental && params.documentoId
       ? await sql`
-          SELECT id
-          FROM documentos.documentos
-          WHERE clave_documental = ${params.claveDocumental}
+          SELECT candidato.id
+          FROM documentos.documentos candidato
+          JOIN documentos.documentos actual
+            ON actual.id = ${params.documentoId}::bigint
+          WHERE candidato.cliente_abreviatura = actual.cliente_abreviatura
+            AND candidato.id <> actual.id
+            AND COALESCE(candidato.estado, '') NOT IN ('anulado', 'duplicado_versionado')
+            AND (
+              candidato.clave_documental = ${params.claveDocumental}::text
+              OR EXISTS (
+                SELECT 1
+                FROM documentos.ocr_resultados ocr_existente
+                WHERE ocr_existente.documento_id = candidato.id
+                  AND ocr_existente.clave_documental = ${params.claveDocumental}::text
+                  AND ocr_existente.estado IN (
+                    'pendiente_validacion',
+                    'confirmado',
+                    'editado',
+                    'confirmado_como_version'
+                  )
+              )
+            )
+          ORDER BY
+            CASE WHEN candidato.clave_documental = ${params.claveDocumental}::text THEN 0 ELSE 1 END,
+            candidato.id ASC
           LIMIT 1
         `
       : [];
@@ -685,6 +710,51 @@ export class DocumentosRepository {
     return rows[0] ?? null;
   }
 
+
+  async guardarValidacionPendientePago(
+    id: number,
+    draft: Record<string, any>,
+  ) {
+    const rows = await sql`
+      UPDATE documentos.ocr_resultados
+      SET metadata = jsonb_set(
+        COALESCE(metadata, '{}'::jsonb),
+        '{validacionPendientePago}',
+        ${JSON.stringify(draft)}::jsonb,
+        true
+      )
+      WHERE id = ${id}::int
+      RETURNING *
+    `;
+    return rows[0] ?? null;
+  }
+
+  async consumirValidacionPendientePagoConExecutor(
+    tx: SqlExecutor,
+    id: number,
+    accion: 'ACEPTAR' | 'OBSERVAR' | 'AUTORIZAR_EXCEPCION',
+    motivo: string | null,
+  ) {
+    const rows = await tx`
+      UPDATE documentos.ocr_resultados
+      SET metadata = jsonb_set(
+        COALESCE(metadata, '{}'::jsonb),
+        '{validacionPendientePago}',
+        COALESCE(metadata->'validacionPendientePago', '{}'::jsonb)
+          || jsonb_build_object(
+            'estado', 'CONSUMIDO',
+            'consumidoEn', now(),
+            'accion', ${accion}::text,
+            'motivo', ${motivo}::text
+          ),
+        true
+      )
+      WHERE id = ${id}::int
+        AND metadata->'validacionPendientePago'->>'estado' = 'PENDIENTE_DECISION'
+      RETURNING *
+    `;
+    return rows[0] ?? null;
+  }
 
   async confirmarOcrResultadoConExpediente(
     id: number,
@@ -946,6 +1016,9 @@ export class DocumentosRepository {
           },
         );
       }
+      // Barrera semántica tenant-wide: un PDF reexportado puede cambiar de hash,
+      // pero no debe crear otro documento lógico con la misma identidad.
+      // El versionado explícito usa agregarArchivoComoVersion() y no pasa por esta rama.
       const duplicadoRows = await tx`
         SELECT
           d.id AS documento_id,
@@ -954,24 +1027,54 @@ export class DocumentosRepository {
           ed.tipo_relacion,
           ed.es_principal
         FROM documentos.documentos d
-        JOIN documentos.expediente_documentos ed
-          ON ed.documento_id = d.id
-        WHERE ed.expediente_id = ${Number(expediente.id)}::bigint
-          AND d.clave_documental = ${claveDocumental}
+        LEFT JOIN LATERAL (
+          SELECT
+            vinculo.expediente_id,
+            vinculo.tipo_relacion,
+            vinculo.es_principal
+          FROM documentos.expediente_documentos vinculo
+          WHERE vinculo.documento_id = d.id
+          ORDER BY vinculo.creado_en ASC
+          LIMIT 1
+        ) ed ON true
+        WHERE d.cliente_abreviatura = ${clienteAbreviatura}::text
           AND d.id <> ${Number(ocr.documento_id)}::bigint
+          AND COALESCE(d.estado, '') NOT IN ('anulado', 'duplicado_versionado')
+          AND (
+            d.clave_documental = ${claveDocumental}::text
+            OR EXISTS (
+              SELECT 1
+              FROM documentos.ocr_resultados ocr_existente
+              WHERE ocr_existente.documento_id = d.id
+                AND ocr_existente.clave_documental = ${claveDocumental}::text
+                AND ocr_existente.estado IN (
+                  'pendiente_validacion',
+                  'confirmado',
+                  'editado',
+                  'confirmado_como_version'
+                )
+            )
+          )
+        ORDER BY
+          CASE WHEN d.clave_documental = ${claveDocumental}::text THEN 0 ELSE 1 END,
+          d.id ASC
         LIMIT 1
       `;
 
       if (duplicadoRows[0]) {
         this.throwDomainError(
           'DOCUMENTO_DUPLICADO_EN_EXPEDIENTE',
-          'Ya existe otro documento con la misma clave documental en el expediente',
+          'Ya existe un documento activo con la misma clave documental en la empresa',
           {
             expedienteId: Number(expediente.id),
+            expedienteIdExistente: duplicadoRows[0].expediente_id == null
+              ? null
+              : Number(duplicadoRows[0].expediente_id),
             documentoIdExistente: Number(duplicadoRows[0].documento_id),
             documentoIdActual: Number(ocr.documento_id),
             archivoIdActual: Number(ocr.archivo_id),
             claveDocumental,
+            alcanceDuplicidad: 'TENANT',
             suggestedAction: 'AGREGAR_VERSION',
           },
         );
@@ -1434,30 +1537,42 @@ export class DocumentosRepository {
       let ocrObjetivo: any = null;
       if (esCorreccionPostConfirmacion) {
         const ocrResultadoId = Number(input.ocrResultadoId ?? NaN);
-        if (!Number.isFinite(ocrResultadoId) || ocrResultadoId <= 0) {
-          this.throwDomainError(
-            'OCR_RESULTADO_REQUERIDO',
-            'Debe indicar el ocrResultadoId que originó el documento confirmado',
-            { documentoId: id },
-          );
-        }
+        const tieneOcrResultadoId =
+          Number.isFinite(ocrResultadoId) && ocrResultadoId > 0;
 
-        const ocrRows = await tx`
-          SELECT *
-          FROM documentos.ocr_resultados
-          WHERE id = ${ocrResultadoId}::integer
-            AND documento_id = ${id}::integer
-          LIMIT 1
-          FOR UPDATE
-        `;
+        if (tieneOcrResultadoId) {
+          const ocrRows = await tx`
+            SELECT *
+            FROM documentos.ocr_resultados
+            WHERE id = ${ocrResultadoId}::integer
+              AND documento_id = ${id}::integer
+            LIMIT 1
+            FOR UPDATE
+          `;
 
-        ocrObjetivo = ocrRows[0];
-        if (!ocrObjetivo) {
-          this.throwDomainError(
-            'OCR_RESULTADO_NO_PERTENECE_DOCUMENTO',
-            `El resultado OCR ${ocrResultadoId} no pertenece al documento ${id}`,
-            { documentoId: id, ocrResultadoId },
-          );
+          ocrObjetivo = ocrRows[0];
+          if (!ocrObjetivo) {
+            this.throwDomainError(
+              'OCR_RESULTADO_NO_PERTENECE_DOCUMENTO',
+              `El resultado OCR ${ocrResultadoId} no pertenece al documento ${id}`,
+              { documentoId: id, ocrResultadoId },
+            );
+          }
+        } else {
+          const ocrHistoricos = await tx`
+            SELECT id
+            FROM documentos.ocr_resultados
+            WHERE documento_id = ${id}::integer
+            LIMIT 1
+          `;
+
+          if (ocrHistoricos[0]) {
+            this.throwDomainError(
+              'OCR_RESULTADO_REQUERIDO',
+              'Debe indicar el ocrResultadoId que originó el documento confirmado',
+              { documentoId: id },
+            );
+          }
         }
       }
 
@@ -2161,6 +2276,12 @@ export class DocumentosRepository {
     return 'adjunto_documento';
   }
 
+  /**
+   * El código de expediente detectado por OCR es solo una sugerencia.
+   * El vínculo canónico y la promoción de principal se realizan únicamente
+   * en confirmarOcrResultadoConExpedienteConExecutor(), después de la
+   * confirmación humana.
+   */
   private async vincularOcrAExpedienteExistente(params: {
     ocrResultadoId: number;
     documentoId: number | null;
@@ -2168,78 +2289,8 @@ export class DocumentosRepository {
     codigoExpediente?: string | null;
     tipoPropuesto?: string | null;
   }) {
-    const clienteAbreviatura = String(params.clienteAbreviatura ?? '')
-      .trim()
-      .toUpperCase();
-
-    const codigoExpediente = String(params.codigoExpediente ?? '').trim();
-
-    if (!params.documentoId || !clienteAbreviatura || !codigoExpediente) {
-      return null;
-    }
-
-    const expedienteRows = await sql`
-      SELECT
-        e.id,
-        e.cliente_destino_id,
-        e.empresa_codigo,
-        e.codigo_expediente,
-        e.descripcion
-      FROM core.clientes_destino cd
-      JOIN documentos.expedientes e
-        ON e.cliente_destino_id = cd.id
-      WHERE UPPER(cd.abreviatura) = ${clienteAbreviatura}::text
-        AND e.codigo_expediente = ${codigoExpediente}::text
-      LIMIT 1
-    `;
-
-    const expediente = expedienteRows[0];
-
-    if (!expediente) {
-      return null;
-    }
-
-    const tipoRelacion = this.tipoRelacionParaExpediente(
-      params.tipoPropuesto ?? null,
-    );
-
-    const esPrincipal = tipoRelacion.startsWith('principal_');
-    const orden = esPrincipal ? 1 : 0;
-
-    const vinculo = await this.upsertExpedienteDocumento({
-      expedienteId: Number(expediente.id),
-      documentoId: Number(params.documentoId),
-      tipoRelacion,
-      esPrincipal,
-      orden,
-    });
-
-    const ocrRows = await sql`
-      UPDATE documentos.ocr_resultados
-      SET metadata = COALESCE(metadata, '{}'::jsonb)
-        || jsonb_build_object(
-          'vinculoExpediente',
-          jsonb_build_object(
-            'expedienteId', ${Number(expediente.id)}::bigint,
-            'documentoId', ${Number(params.documentoId)}::int,
-            'clienteDestinoId', ${Number(expediente.cliente_destino_id)}::int,
-            'empresaCodigo', ${String(expediente.empresa_codigo ?? '')}::text,
-            'codigoExpediente', ${String(expediente.codigo_expediente ?? '')}::text,
-            'tipoRelacion', ${tipoRelacion}::text,
-            'esPrincipal', ${esPrincipal}::boolean,
-            'orden', ${orden}::int,
-            'vinculadoEn', now()
-          )
-        )
-      WHERE id = ${params.ocrResultadoId}::int
-      RETURNING *
-    `;
-
-    return {
-      expediente,
-      ocr: ocrRows[0],
-      vinculo,
-    };
+    void params;
+    return null;
   }
 
   private async upsertExpedienteDocumento(params: {

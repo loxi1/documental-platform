@@ -92,6 +92,84 @@ describe('DocumentosRepository corrección post-confirmación', () => {
     });
   });
 
+  it('permite corregir un documento confirmado legacy que no tiene OCR histórico', async () => {
+    const queries: string[] = [];
+    const inputSinOcr = { ...inputValido };
+    delete (inputSinOcr as Partial<typeof inputValido>).ocrResultadoId;
+
+    const tx = txFrom((query) => {
+      queries.push(query);
+
+      if (query.includes('FROM documentos.documentos') && query.includes('FOR UPDATE')) {
+        return [documentoConfirmado];
+      }
+      if (
+        query.includes('FROM documentos.ocr_resultados') &&
+        query.includes('WHERE documento_id')
+      ) {
+        return [];
+      }
+      if (query.includes('WHERE clave_documental')) {
+        return [];
+      }
+      if (query.includes('UPDATE documentos.documentos')) {
+        return [{ ...documentoConfirmado, ruc_emisor: '20538549071' }];
+      }
+      return [];
+    });
+
+    sqlBeginMock.mockImplementation((callback) => callback(tx));
+
+    const result = await new DocumentosRepository().actualizarDocumentoManual(
+      20,
+      inputSinOcr,
+      1,
+    );
+
+    expect(result).toMatchObject({
+      id: 20,
+      ruc_emisor: '20538549071',
+    });
+
+    expect(
+      queries.some(
+        (query) =>
+          query.includes('FROM documentos.ocr_resultados') &&
+          query.includes('WHERE documento_id'),
+      ),
+    ).toBe(true);
+  });
+
+  it('sigue exigiendo ocrResultadoId si el documento confirmado sí tiene OCR histórico', async () => {
+    const inputSinOcr = { ...inputValido };
+    delete (inputSinOcr as Partial<typeof inputValido>).ocrResultadoId;
+
+    const tx = txFrom((query) => {
+      if (query.includes('FROM documentos.documentos')) {
+        return [documentoConfirmado];
+      }
+      if (
+        query.includes('FROM documentos.ocr_resultados') &&
+        query.includes('WHERE documento_id')
+      ) {
+        return [{ id: 8 }];
+      }
+      return [];
+    });
+
+    sqlBeginMock.mockImplementation((callback) => callback(tx));
+
+    await expect(
+      new DocumentosRepository().actualizarDocumentoManual(
+        20,
+        inputSinOcr,
+        1,
+      ),
+    ).rejects.toMatchObject({
+      code: 'OCR_RESULTADO_REQUERIDO',
+    });
+  });
+
   it('rechaza un OCR que no pertenece al documento', async () => {
     const tx = txFrom((query) => {
       if (query.includes('FROM documentos.documentos')) {

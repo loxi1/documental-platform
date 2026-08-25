@@ -1,4 +1,5 @@
-import { BadRequestException, ConflictException, Injectable } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable,
+  ForbiddenException,} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { sql } from '@documental/database';
@@ -218,6 +219,148 @@ export class DocumentosUploadService {
       storageProvider: null,
     };
   }
+
+  /**
+   * 42-B-03A: sube un archivo candidato para un documento existente.
+   * NO promueve la versión. La promoción final queda exclusivamente en
+   * agregarArchivoComoVersion(), después de OCR + validación.
+   */
+  async subirVersionDocumentoExistente(
+    documentoIdRaw: string | number,
+    file: UploadedFileLike,
+    input: Record<string, unknown> = {},
+  ) {
+    const documentoId = Number(documentoIdRaw);
+    if (!Number.isInteger(documentoId) || documentoId <= 0) {
+      throw new BadRequestException('DOCUMENTO_ID_INVALIDO');
+    }
+
+    if (!file?.buffer?.length) {
+      throw new BadRequestException('ARCHIVO_REQUERIDO');
+    }
+
+    const empresaSolicitada = String(
+      input.empresaCodigo ??
+        input.clienteAbreviatura ??
+        '',
+    )
+      .trim()
+      .toUpperCase();
+
+    if (!empresaSolicitada) {
+      throw new BadRequestException('EMPRESA_REQUERIDA');
+    }
+
+    const documentoRows = await sql<
+      Array<{
+        id: number;
+        cliente_abreviatura: string | null;
+      }>
+    >`
+      SELECT
+        d.id,
+        d.cliente_abreviatura
+      FROM documentos.documentos d
+      WHERE d.id = ${documentoId}::bigint
+      LIMIT 1
+    `;
+
+    const documentoDestino = documentoRows[0];
+    if (!documentoDestino) {
+      throw new BadRequestException('DOCUMENTO_DESTINO_NO_ENCONTRADO');
+    }
+
+    const empresaDocumento = String(
+      documentoDestino.cliente_abreviatura ?? '',
+    )
+      .trim()
+      .toUpperCase();
+
+    if (!empresaDocumento || empresaDocumento !== empresaSolicitada) {
+      throw new ForbiddenException('DOCUMENTO_FUERA_DE_EMPRESA');
+    }
+
+    const originalName = path.basename(String(file.originalname || 'archivo.bin'));
+    const contentType =
+      String(file.mimetype || '').trim() || 'application/octet-stream';
+    const sha256 = createHash('sha256').update(file.buffer).digest('hex');
+    const bucket = this.resolveBucket();
+
+    const now = new Date();
+    const year = String(now.getUTCFullYear());
+    const month = String(now.getUTCMonth() + 1).padStart(2, '0');
+    const storageKey =
+      `documentos/${year}/${month}/${empresaDocumento}/` +
+      `${randomUUID()}__${originalName}`;
+
+    await this.subirAR2({
+      bucket,
+      storageKey,
+      body: file.buffer,
+      contentType,
+    });
+
+    const metadata = {
+      origen: 'UPLOAD_VERSION_CANDIDATA',
+      documentoIdDestino: documentoId,
+      empresaCodigo: empresaDocumento,
+    };
+
+    const archivoRows = await sql<Array<{ id: number }>>`
+      INSERT INTO documentos.documentos_archivos (
+        documento_id,
+        nombre_archivo,
+        ruta_archivo,
+        hash_sha256,
+        tipo_version,
+        area_origen,
+        estado,
+        origen_archivo,
+        observacion,
+        metadata,
+        storage_provider,
+        storage_bucket,
+        storage_key,
+        public_url,
+        version,
+        es_version_actual
+      )
+      VALUES (
+        ${documentoId},
+        ${originalName},
+        ${storageKey},
+        ${sha256},
+        NULL,
+        ${String(input.areaOrigen ?? 'ALMACEN')},
+        'subido',
+        'upload_version_candidata',
+        ${String(input.observacion ?? '') || null},
+        ${JSON.stringify(metadata)}::jsonb,
+        'r2',
+        ${bucket},
+        ${storageKey},
+        NULL,
+        1,
+        false
+      )
+      RETURNING id
+    `;
+
+    const archivoId = archivoRows[0]?.id;
+    if (!archivoId) {
+      throw new BadRequestException('ARCHIVO_VERSION_NO_PERSISTIDO');
+    }
+
+    return {
+      ok: true,
+      documentoId,
+      archivoId,
+      storageProvider: 'r2',
+      storageKey,
+      esVersionActual: false,
+    };
+  }
+
 
   async cargaGuiada(file: UploadedFileLike | undefined, body: CargaGuiadaBody) {
     if (!file?.buffer?.length) {

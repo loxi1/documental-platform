@@ -151,4 +151,124 @@ describe('DocumentosUploadService - múltiples principales por relación', () =>
     expect(result.accionSugerida).toBe('abrir_existente');
     expect(result.motivo).toBe('ARCHIVO_DUPLICADO_POR_HASH');
   });
+
+  describe('42-B-03A subir-version candidato', () => {
+    const sqlTexto = (call: any[]) =>
+      Array.from(call[0] as TemplateStringsArray | string[])
+        .join(' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+    it('sube una candidata para la misma empresa sin promover ni tocar otras entidades', async () => {
+      const svc = service() as any;
+      const subirAR2Spy = jest.spyOn(svc, 'subirAR2').mockResolvedValue(undefined);
+      jest.spyOn(svc, 'resolveBucket').mockReturnValue('data-prod');
+
+      sqlMock.mockImplementation(
+        (strings: TemplateStringsArray | string[], ..._values: unknown[]) => {
+          const query = Array.from(strings).join(' ').replace(/\s+/g, ' ').trim();
+
+          if (
+            query.includes('FROM documentos.documentos d') &&
+            query.includes('cliente_abreviatura')
+          ) {
+            return Promise.resolve([{ id: 92, cliente_abreviatura: 'BBTI' }]);
+          }
+
+          if (query.includes('INSERT INTO documentos.documentos_archivos')) {
+            return Promise.resolve([{ id: 777 }]);
+          }
+
+          throw new Error(`SQL 42-B-03A no mockeado: ${query}`);
+        },
+      );
+
+      const result = await svc.subirVersionDocumentoExistente(
+        92,
+        {
+          originalname: 'guia-version-candidata.pdf',
+          mimetype: 'application/pdf',
+          buffer: Buffer.from('42-B-03A'),
+          size: 9,
+        } as Express.Multer.File,
+        {
+          empresaCodigo: 'BBTI',
+          areaOrigen: 'ALMACEN',
+        },
+      );
+
+      expect(subirAR2Spy).toHaveBeenCalledTimes(1);
+
+      const sqlEjecutado = sqlMock.mock.calls.map(sqlTexto).join('\n');
+
+      expect(sqlEjecutado).toContain('INSERT INTO documentos.documentos_archivos');
+      expect(sqlEjecutado).not.toContain('INSERT INTO documentos.documentos (');
+      expect(sqlEjecutado).not.toContain('INSERT INTO documentos.documentos(');
+      expect(sqlEjecutado).not.toContain('UPDATE documentos.documentos_archivos');
+      expect(sqlEjecutado).not.toContain('expediente_documentos');
+      expect(sqlEjecutado).not.toContain('documento_relaciones');
+      expect(sqlEjecutado.toLowerCase()).not.toContain('grupo_factura');
+
+      const insertCall = sqlMock.mock.calls.find((call: any[]) =>
+        sqlTexto(call).includes('INSERT INTO documentos.documentos_archivos'),
+      );
+
+      expect(insertCall).toBeDefined();
+      expect(insertCall?.[1]).toBe(92);
+      expect(sqlTexto(insertCall as any[])).toContain('es_version_actual');
+      expect(sqlTexto(insertCall as any[])).toContain('false');
+
+      expect(result).toEqual(
+        expect.objectContaining({
+          archivoId: 777,
+          documentoId: 92,
+          esVersionActual: false,
+        }),
+      );
+    });
+
+    it('rechaza cruce de empresa antes de R2 y antes del INSERT', async () => {
+      const svc = service() as any;
+      const subirAR2Spy = jest.spyOn(svc, 'subirAR2').mockResolvedValue(undefined);
+      jest.spyOn(svc, 'resolveBucket').mockReturnValue('data-prod');
+
+      sqlMock.mockImplementation(
+        (strings: TemplateStringsArray | string[], ..._values: unknown[]) => {
+          const query = Array.from(strings).join(' ').replace(/\s+/g, ' ').trim();
+
+          if (
+            query.includes('FROM documentos.documentos d') &&
+            query.includes('cliente_abreviatura')
+          ) {
+            return Promise.resolve([{ id: 92, cliente_abreviatura: 'BBTEC' }]);
+          }
+
+          throw new Error(`SQL 42-B-03A inesperado: ${query}`);
+        },
+      );
+
+      await expect(
+        svc.subirVersionDocumentoExistente(
+          92,
+          {
+            originalname: 'guia-otra-empresa.pdf',
+            mimetype: 'application/pdf',
+            buffer: Buffer.from('42-B-03A-cross-tenant'),
+            size: 20,
+          } as Express.Multer.File,
+          {
+            empresaCodigo: 'BBTI',
+            areaOrigen: 'ALMACEN',
+          },
+        ),
+      ).rejects.toThrow('DOCUMENTO_FUERA_DE_EMPRESA');
+
+      expect(subirAR2Spy).not.toHaveBeenCalled();
+
+      const sqlEjecutado = sqlMock.mock.calls.map(sqlTexto).join('\n');
+      expect(sqlEjecutado).not.toContain('INSERT INTO documentos.documentos_archivos');
+      expect(sqlEjecutado).not.toContain('UPDATE documentos.documentos_archivos');
+    });
+  });
+
 });

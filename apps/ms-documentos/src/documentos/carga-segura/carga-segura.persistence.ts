@@ -176,6 +176,8 @@ export class CargaSeguraPersistence {
             empresaCodigo: input.command.empresaCodigo,
             clienteDestinoId: input.command.clienteDestinoId,
             expedienteId,
+            documentoBaseId: input.command.documentoBaseId ?? null,
+            grupoFacturaId: input.command.grupoFacturaId ?? null,
             cargaOperacionId: input.operacion.id,
             canalIngreso: input.command.canalIngreso,
             tipoRelacion: input.command.tipoRelacion,
@@ -240,6 +242,8 @@ export class CargaSeguraPersistence {
             tipoDocumental: input.command.tipoDocumental,
             tipoRelacion: input.command.tipoRelacion,
             esPrincipal: input.command.esPrincipal,
+            documentoBaseId: input.command.documentoBaseId ?? null,
+            grupoFacturaId: input.command.grupoFacturaId ?? null,
             cargaOperacionId: input.operacion.id,
           })}::jsonb,
           ${storageProvider}::text,
@@ -267,24 +271,8 @@ export class CargaSeguraPersistence {
         });
       }
 
-      if (expedienteId !== null) {
-        await tx`
-          INSERT INTO documentos.expediente_documentos (
-            expediente_id,
-            documento_id,
-            tipo_relacion,
-            es_principal,
-            orden
-          )
-          VALUES (
-            ${expedienteId}::bigint,
-            ${documentoId}::integer,
-            ${input.command.tipoRelacion ?? null}::text,
-            ${input.command.esPrincipal}::boolean,
-            ${input.command.esPrincipal ? 1 : 0}::integer
-          )
-        `;
-      }
+      // Conserva expedienteId como contexto técnico de carga/OCR. El vínculo
+      // canónico y la promoción principal se resuelven tras la validación humana.
 
       const eventKey = `carga-segura:${input.operacion.id}:archivo.subido:v1`;
 
@@ -334,6 +322,8 @@ export class CargaSeguraPersistence {
             documentoId,
             archivoId,
             expedienteId,
+            documentoBaseId: input.command.documentoBaseId ?? null,
+            grupoFacturaId: input.command.grupoFacturaId ?? null,
             workspaceId: input.command.workspaceId,
             empresaCodigo: input.command.empresaCodigo,
             clienteDestinoId: input.command.clienteDestinoId,

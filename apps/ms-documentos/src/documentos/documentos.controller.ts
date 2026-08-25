@@ -209,7 +209,30 @@ export class DocumentosController {
     return this.service.findArchivosByDocumentoId(id);
   }
 
-  @Post(':documentoId/archivos/:archivoId/agregar-version')
+
+  @Post(':documentoId/archivos/subir-version')
+  @UseInterceptors(
+    FileFieldsInterceptor([
+      { name: 'file', maxCount: 1 },
+      { name: 'archivo', maxCount: 1 },
+    ]),
+  )
+  async subirVersionDocumentoExistente(
+    @Param('documentoId') documentoId: string,
+    @UploadedFiles()
+    files: Record<string, any[]>,
+    @Body() body: Record<string, unknown>,
+  ) {
+    const file = files?.file?.[0] ?? files?.archivo?.[0];
+
+    if (!file) {
+      throw new BadRequestException('ARCHIVO_REQUERIDO');
+    }
+
+    return this.upload.subirVersionDocumentoExistente(documentoId, file, body);
+  }
+
+@Post(':documentoId/archivos/:archivoId/agregar-version')
   agregarArchivoComoVersion(
     @Param('documentoId', ParseIntPipe) documentoId: number,
     @Param('archivoId', ParseIntPipe) archivoId: number,

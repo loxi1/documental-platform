@@ -367,6 +367,59 @@ export class DocumentosService {
 
       return confirmado;
     } catch (error: any) {
+      const draftErrorPayload =
+        typeof error?.getResponse === 'function'
+          ? error.getResponse()
+          : error?.response ?? null;
+      const draftErrorCode = String(
+        draftErrorPayload?.code ?? error?.code ?? '',
+      ).trim();
+      const draftErrorDetails =
+        draftErrorPayload?.details ?? error?.details ?? null;
+
+      if (draftErrorCode === 'DECISION_CORRESPONDENCIA_REQUERIDA') {
+        // El orquestador ya rechazó su sql.begin(); este write es independiente.
+        const ocrActual = await this.repo.findOcrResultadoById(id);
+        if (!ocrActual) throw error;
+
+        const numeroPositivoONull = (value: unknown): number | null => {
+          const n = Number(value);
+          return Number.isInteger(n) && n > 0 ? n : null;
+        };
+
+        const draft = {
+          version: 1,
+          estado: 'PENDIENTE_DECISION',
+          identidad: {
+            ocrResultadoId: id,
+            archivoId: numeroPositivoONull(ocrActual.archivo_id),
+            documentoId: numeroPositivoONull(ocrActual.documento_id),
+            expedienteId: numeroPositivoONull(input.expedienteId),
+            documentoBaseId: numeroPositivoONull(input.documentoBaseId),
+            grupoFacturaId: numeroPositivoONull(input.grupoFacturaId),
+            facturaDocumentoId: numeroPositivoONull(
+              draftErrorDetails?.facturaDocumentoId,
+            ),
+          },
+          evaluacion:
+            draftErrorDetails?.evaluacion &&
+            typeof draftErrorDetails.evaluacion === 'object'
+              ? draftErrorDetails.evaluacion
+              : null,
+          request: {
+            metadata: input.metadata ?? {},
+            tipoRelacion: input.tipoRelacion ?? null,
+            esPrincipal: input.esPrincipal ?? false,
+            orden: input.orden ?? null,
+            observacion: input.observacion ?? null,
+          },
+          actualizadoEn: new Date().toISOString(),
+        };
+
+        await this.repo.guardarValidacionPendientePago(id, draft);
+        // Relanzar EXACTAMENTE la misma instancia 409.
+        throw error;
+      }
       if (
         [
           'DOCUMENTO_DUPLICADO_EN_EXPEDIENTE',
