@@ -107,6 +107,8 @@ describe('ExpedientesRepository revisión contable por factura V2', () => {
   it('permite consulta general por empresa sin periodo contable', async () => {
     await new ExpedientesRepository().getRevisionContable({
       empresa: 'BBTI',
+      anio: 2026,
+      mes: 5,
     });
 
     expect(sqlMock).toHaveBeenCalledTimes(1);
@@ -146,6 +148,8 @@ describe('ExpedientesRepository revisión contable por factura V2', () => {
   it('expone identidad suficiente para preview y revisión por grupo', async () => {
     await new ExpedientesRepository().getRevisionContable({
       empresa: 'BBTI',
+      anio: 2026,
+      mes: 5,
     });
 
     const [strings] = sqlMock.mock.calls[0];
