@@ -27,34 +27,33 @@ import {
   textValue,
 } from "@/components/documental-v2/workspace-v2-utils";
 
-function findAdjunto(grupo: WorkspaceV2GrupoFactura, aliases: string[]) {
+function findAdjuntos(
+  grupo: WorkspaceV2GrupoFactura,
+  aliases: string[],
+): WorkspaceV2Documento[] {
   const normalized = aliases.map((alias) => alias.toUpperCase());
 
-  return (
-    getAdjuntosGrupo(grupo).find((documento: WorkspaceV2Documento) => {
-      const vista = entityVista<Record<string, unknown>>(documento);
-      const tipo = String(
-        vista.tipoDocumental ?? vista.tipo_documental ?? "",
-      ).toUpperCase();
-      const relacion = String(
-        vista.tipoRelacion ?? vista.tipo_relacion ?? "",
-      ).toUpperCase();
+  return getAdjuntosGrupo(grupo).filter((documento: WorkspaceV2Documento) => {
+    const vista = entityVista<Record<string, unknown>>(documento);
+    const tipo = String(
+      vista.tipoDocumental ?? vista.tipo_documental ?? "",
+    ).toUpperCase();
+    const relacion = String(
+      vista.tipoRelacion ?? vista.tipo_relacion ?? "",
+    ).toUpperCase();
 
-      return normalized.some(
-        (alias) => tipo.includes(alias) || relacion.includes(alias),
-      );
-    }) ?? null
-  );
+    return normalized.some(
+      (alias) => tipo.includes(alias) || relacion.includes(alias),
+    );
+  });
+}
+
+function findAdjunto(grupo: WorkspaceV2GrupoFactura, aliases: string[]) {
+  return findAdjuntos(grupo, aliases)[0] ?? null;
 }
 
 function hasAdjunto(grupo: WorkspaceV2GrupoFactura, aliases: string[]) {
-  const normalized = aliases.map((alias) => alias.toUpperCase());
-  return getAdjuntosGrupo(grupo).some((documento: WorkspaceV2Documento) => {
-    const vista = entityVista<Record<string, unknown>>(documento);
-    const tipo = String(vista.tipoDocumental ?? vista.tipo_documental ?? "").toUpperCase();
-    const relacion = String(vista.tipoRelacion ?? vista.tipo_relacion ?? "").toUpperCase();
-    return normalized.some((alias) => tipo.includes(alias) || relacion.includes(alias));
-  });
+  return findAdjuntos(grupo, aliases).length > 0;
 }
 
 function msiiRecord(value: unknown): Record<string, unknown> | null {
@@ -270,6 +269,44 @@ function msiiResolvePersistedDocument({
   }
 
   return candidatos.length === 1 ? candidatos[0] : null;
+}
+
+function msiiResolvePersistedDocuments({
+  workspaceDocumentos,
+  aliases,
+  grupoFacturaId,
+  documentos,
+}: {
+  workspaceDocumentos: WorkspaceV2Documento[];
+  aliases: string[];
+  grupoFacturaId: unknown;
+  documentos: Array<Record<string, unknown>>;
+}) {
+  const resolved = workspaceDocumentos
+    .map((workspaceDocumento) =>
+      msiiResolvePersistedDocument({
+        workspaceDocumento,
+        aliases,
+        grupoFacturaId,
+        documentos,
+      }),
+    )
+    .filter((documento): documento is Record<string, unknown> => Boolean(documento));
+
+  const byId = new Map<string, Record<string, unknown>>();
+
+  for (const documento of resolved) {
+    const id = msiiText(
+      documento.documentoId ??
+        documento.documento_id ??
+        documento.id ??
+        msiiRecordId(documento),
+    );
+
+    if (id) byId.set(id, documento);
+  }
+
+  return Array.from(byId.values());
 }
 
 function msiiFormatDate(value: unknown) {
@@ -555,7 +592,8 @@ function GrupoRevisionCard({
     : null;
   const guiaDocumento = findAdjunto(grupo, ["GUIA_REMISION", "GUIA", "GUÍA", "ADJUNTO_GUIA"]);
   const notaIngresoDocumento = findAdjunto(grupo, ["NOTA_INGRESO", "NOTA INGRESO", "ADJUNTO_NOTA_INGRESO"]);
-  const transferenciaDocumento = findAdjunto(grupo, ["TRANSFERENCIA", "ADJUNTO_TRANSFERENCIA", "PAGO_TRANSFERENCIA"]);
+  const transferenciaDocumentos = findAdjuntos(grupo, ["TRANSFERENCIA", "ADJUNTO_TRANSFERENCIA", "PAGO_TRANSFERENCIA"]);
+  const transferenciaDocumento = transferenciaDocumentos[0] ?? null;
   const detraccionDocumento = findAdjunto(grupo, ["DETRACCION", "DETRACCIÓN", "ADJUNTO_DETRACCION", "PAGO_DETRACCION"]);
 
   const guiaPersistida = msiiResolvePersistedDocument({
@@ -572,8 +610,8 @@ function GrupoRevisionCard({
     documentos,
   });
 
-  const transferenciaPersistida = msiiResolvePersistedDocument({
-    workspaceDocumento: transferenciaDocumento,
+  const transferenciasPersistidas = msiiResolvePersistedDocuments({
+    workspaceDocumentos: transferenciaDocumentos,
     aliases: ["TRANSFERENCIA", "ADJUNTO_TRANSFERENCIA", "PAGO_TRANSFERENCIA"],
     grupoFacturaId,
     documentos,
@@ -677,13 +715,30 @@ function GrupoRevisionCard({
 
             <div className="rounded-lg border bg-muted/20 p-3">
               <div className="text-xs font-medium uppercase text-muted-foreground">Pago</div>
-              <div className="mt-2 text-sm">
-                <DocumentoAsociadoFila
-                  label="Transferencia"
-                  documento={transferenciaDocumento}
-                  documentoPersistido={transferenciaPersistida}
-                  onVer={onVer}
-                />
+              <div className="mt-2 space-y-2 text-sm">
+                {transferenciasPersistidas.length > 0 ? (
+                  transferenciasPersistidas.map((documento, index) => (
+                    <DocumentoAsociadoFila
+                      key={String(
+                        documento.documentoId ??
+                          documento.documento_id ??
+                          documento.id ??
+                          index,
+                      )}
+                      label="Transferencia"
+                      documento={transferenciaDocumentos[index] ?? null}
+                      documentoPersistido={documento}
+                      onVer={onVer}
+                    />
+                  ))
+                ) : (
+                  <DocumentoAsociadoFila
+                    label="Transferencia"
+                    documento={transferenciaDocumento}
+                    documentoPersistido={null}
+                    onVer={onVer}
+                  />
+                )}
               </div>
             </div>
 
