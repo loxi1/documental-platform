@@ -2010,9 +2010,33 @@ function GrupoPagoCard({
                     ? (metadataOcr.validacionPendientePago as Record<string, unknown>)
                     : null;
                 const draftPago = draftPagoExterior ?? draftPagoOcr;
+                const metadataDocumentoV1Interior =
+                  metadataDocumentoV1?.metadata &&
+                  typeof metadataDocumentoV1.metadata === "object" &&
+                  !Array.isArray(metadataDocumentoV1.metadata)
+                    ? (metadataDocumentoV1.metadata as Record<string, unknown>)
+                    : null;
+
+                const metadataDocumentoV1Ocr =
+                  metadataDocumentoV1Interior?.ocr &&
+                  typeof metadataDocumentoV1Interior.ocr === "object" &&
+                  !Array.isArray(metadataDocumentoV1Interior.ocr)
+                    ? (metadataDocumentoV1Interior.ocr as Record<string, unknown>)
+                    : null;
+
+                const metadataDocumentoV1OcrConfirmada =
+                  metadataDocumentoV1Ocr?.metadata &&
+                  typeof metadataDocumentoV1Ocr.metadata === "object" &&
+                  !Array.isArray(metadataDocumentoV1Ocr.metadata)
+                    ? (metadataDocumentoV1Ocr.metadata as Record<string, unknown>)
+                    : null;
+
                 const banco = textValue(
                   metadataOcrConfirmada?.banco ??
                     metadata?.banco ??
+                    metadataDocumentoV1?.banco ??
+                    metadataDocumentoV1Interior?.banco ??
+                    metadataDocumentoV1OcrConfirmada?.banco ??
                     documento.banco,
                   "",
                 );
