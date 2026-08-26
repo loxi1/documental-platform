@@ -6,6 +6,7 @@ export type ContenedorOperativoRow = {
   id: number;
   empresaCodigo: string;
   clienteDestinoId: number | null;
+  expedienteV1Id: number | null;
   tipoContexto: string;
   codigo: string;
   nombre: string | null;
@@ -27,6 +28,7 @@ export type ContenedorOperativoRow = {
 export type CrearContenedorOperativoInput = {
   empresaCodigo: string;
   clienteDestinoId?: number | null;
+  expedienteV1Id?: number | null;
   tipoContexto: string;
   codigo: string;
   nombre?: string | null;

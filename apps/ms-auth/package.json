@@ -76,12 +76,33 @@
     "rootDir": "src",
     "testRegex": ".*\\.spec\\.ts$",
     "transform": {
-      "^.+\\.(t|j)s$": "ts-jest"
+      "^.+\\.ts$": [
+        "ts-jest",
+        {
+          "useESM": false,
+          "tsconfig": {
+            "module": "CommonJS",
+            "moduleResolution": "Node",
+            "target": "ES2022",
+            "isolatedModules": true,
+            "esModuleInterop": true,
+            "allowSyntheticDefaultImports": true,
+            "resolvePackageJsonExports": false,
+            "resolvePackageJsonImports": false
+          }
+        }
+      ]
     },
     "collectCoverageFrom": [
       "**/*.(t|j)s"
     ],
     "coverageDirectory": "../coverage",
-    "testEnvironment": "node"
+    "testEnvironment": "node",
+    "moduleNameMapper": {
+      "^(\\.{1,2}/.*)\\.js$": "$1",
+      "^@documental/shared$": "<rootDir>/../../../packages/shared/src/index.ts",
+      "^@documental/config$": "<rootDir>/../../../packages/config/src/index.ts",
+      "^@documental/database$": "<rootDir>/../../../packages/database/src/index.ts"
+    }
   }
 }

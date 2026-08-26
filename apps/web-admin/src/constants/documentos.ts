@@ -101,7 +101,7 @@ export const DOCUMENTO_FINANZAS_ADJUNTO_OPTIONS = [
   {
     label: "Pago transferencia",
     description: "",
-    tipoEsperado: "PAGO_TRANSFERENCIA",
+    tipoEsperado: "TRANSFERENCIA",
     tipoRelacionSugerida: "adjunto_transferencia",
     confiabilidad: "fuerte",
   },

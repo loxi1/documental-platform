@@ -1,0 +1,90 @@
+GO-UX-2-1C-FINAL-C1 — Validación post-harness
+
+Harness temporal:
+ELIMINADO
+
+Ruta eliminada:
+apps/web-admin/src/app/go-ux-evidence/
+
+Resultado:
+HARNESS_ELIMINADO_OK
+
+HEAD final esperado:
+SIN HARNESS
+
+Cliente desacoplado:
+CLIENTE_DESACOPLADO_OK
+
+Rutas bloqueadas:
+SIN CAMBIOS
+
+Gateway:
+SIN CAMBIOS
+
+ms-documentos:
+SIN CAMBIOS
+
+Auth:
+SIN CAMBIOS
+
+R2:
+SIN USO
+
+fetch:
+AUSENTE EN GO-UX
+
+Axios:
+AUSENTE EN GO-UX
+
+Sidebar:
+SIN CAMBIOS
+
+Navegación productiva:
+SIN CAMBIOS
+
+Corrección C1:
+APLICADA
+
+Regla corregida:
+
+INTERNAL_SERVER_ERROR
+→ unknown_error
+
+Reglas conservadas:
+
+CARGA_SEGURA_STORAGE_FAILED
+CARGA_SEGURA_PERSISTENCE_FAILED
+CARGA_SEGURA_RECONCILIATION_PERSIST_FAILED
+→ dependency_unavailable
+
+unknown_error:
+VISUALMENTE DIFERENCIADO
+
+dependency_unavailable:
+SIN REGRESIÓN
+
+requestId:
+VISIBLE CUANDO CORRESPONDE
+
+retry:
+DIFERENCIADO
+
+Evidencia regenerada:
+11-evidencias-visuales/15-unknown-error.png
+
+Evidencias aprobadas:
+11-evidencias-visuales/16-request-id-copy.png
+11-evidencias-visuales/17-keyboard-focus.png
+
+Build:
+BUILD_EXIT=0
+
+TypeScript:
+APROBADO EN BUILD
+
+diff check:
+APROBADO
+
+Observación ESLint:
+El lint global del proyecto presenta errores preexistentes fuera del alcance GO-UX.
+No se corrigieron rutas externas por restricción de alcance.

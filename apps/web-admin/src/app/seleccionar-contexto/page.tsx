@@ -2,6 +2,7 @@
 
 import { Building2, FileText, ShieldCheck, Star } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import {
   getAuthSession,
@@ -21,6 +22,7 @@ function workspaceKey(workspace: AuthWorkspace) {
 
 export default function SeleccionarContextoPage() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [loginResult, setLoginResult] = useState<LoginResult | null>(null);
   const [selectionToken, setSelectionToken] = useState<string | null>(null);
   const [workspaces, setWorkspaces] = useState<AuthWorkspace[]>([]);
@@ -82,6 +84,8 @@ export default function SeleccionarContextoPage() {
         workspace.workspaceId,
         rememberWorkspace,
       );
+      await queryClient.cancelQueries();
+      queryClient.clear();
       saveAuthSession(session);
       router.replace(getDefaultPathForContext(session.contexto));
     } catch {

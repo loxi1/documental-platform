@@ -73,6 +73,7 @@ describe('WorkspaceDocumentalV2UseCase', () => {
     buscarPorClave: jest.fn(),
   };
   const documentosOperativos = {
+    buscarPorId: jest.fn(),
     buscarPorDocumentoId: jest.fn(),
     listarActivosPorContenedorOperativoId: jest.fn(),
   };
@@ -144,6 +145,52 @@ describe('WorkspaceDocumentalV2UseCase', () => {
     expect(result.contenedorOperativo.estadoPersistencia).toBe('persistido');
     expect(result.documentosOperativosPrincipales[0].estadoPersistencia).toBe('persistido');
     expect(result.gruposFactura[0].estadoPersistencia).toBe('persistido');
+  });
+
+  it('usa el principal V2 persistido cuando el grupo derivado V1 apunta a otro principal', async () => {
+    adapter.construirVistaV2DesdeExpedienteV1.mockResolvedValue(compatibilidadBase);
+    contenedores.buscarPorClave.mockResolvedValue({ id: 5, codigo: '050201' });
+    documentosOperativos.buscarPorDocumentoId.mockResolvedValue({ id: 3, documentoId: 21 });
+    documentosOperativos.buscarPorId.mockResolvedValue({
+      id: 3,
+      contenedorOperativoId: 5,
+      documentoId: 21,
+      tipoPrincipal: 'OC',
+      esPrincipalActivo: true,
+      estado: 'activo',
+      metadata: {},
+      creadoPor: 1,
+      creadoEn: '2026-07-30 14:35:00+00',
+      actualizadoPor: null,
+      actualizadoEn: null,
+      anuladoPor: null,
+      anuladoEn: null,
+      motivoAnulacion: null,
+    });
+    gruposFactura.buscarPorFacturaDocumentoId.mockResolvedValue({
+      id: 3,
+      documentoOperativoPrincipalId: 3,
+      facturaDocumentoId: 2,
+      estado: 'pendiente_revision',
+      metadata: {},
+      creadoPor: 1,
+      creadoEn: '2026-07-30 14:38:00+00',
+      actualizadoPor: null,
+      actualizadoEn: null,
+      anuladoPor: null,
+      anuladoEn: null,
+      motivoAnulacion: null,
+    });
+
+    const result = await useCase.construirDesdeExpedienteV1(41);
+
+    expect(documentosOperativos.buscarPorId).toHaveBeenCalledWith(3);
+    expect(result.gruposFactura).toHaveLength(1);
+    expect(result.gruposFactura[0].estadoPersistencia).toBe('persistido');
+    expect(
+      result.gruposFactura[0].vista.documentoOperativoPrincipalDocumentoId,
+    ).toBe(21);
+    expect(result.gruposFactura[0].persistido?.documentoOperativoPrincipalId).toBe(3);
   });
 
   it('no escribe V2 y marca entidades no persistidas cuando los services no encuentran filas', async () => {

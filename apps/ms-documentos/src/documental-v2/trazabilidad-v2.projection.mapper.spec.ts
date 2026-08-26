@@ -97,4 +97,67 @@ describe('TrazabilidadV2ProjectionMapper', () => {
       'SIN_TRAZABILIDAD_OPERATIVA',
     ]);
   });
+
+  it('proyecta materialización y anulación como acciones propias', () => {
+    const mapper = new TrazabilidadV2ProjectionMapper();
+
+    const response = mapper.construirRespuesta({
+      contenedorOperativoId: 4,
+      auditoriaRows: [
+        {
+          id: 372,
+          workspaceId: 1,
+          requestId: 'request-materializar',
+          usuarioId: 1,
+          empresaCodigo: 'BBTI',
+          modulo: 'documental-v2',
+          entidad: 'contenedor_operativo',
+          entidadId: '4',
+          accion: 'MATERIALIZAR_CONTEXTO_OPERATIVO',
+          descripcion: 'Contenedor Operativo materializado.',
+          despues: {
+            contenedorOperativoId: 4,
+            resultadoOperacion: 'CREADO',
+          },
+          creadoEn: new Date('2026-07-16T20:00:00.000Z'),
+        },
+        {
+          id: 374,
+          workspaceId: 1,
+          requestId: 'request-anular',
+          usuarioId: 1,
+          empresaCodigo: 'BBTI',
+          modulo: 'documental-v2',
+          entidad: 'contenedor_operativo',
+          entidadId: '4',
+          accion: 'ANULAR_CONTENEDOR_OPERATIVO',
+          descripcion: 'Contenedor Operativo anulado.',
+          despues: {
+            contenedorOperativoId: 4,
+            resultadoOperacion: 'ANULADO',
+            motivoAnulacion: 'Motivo controlado',
+          },
+          creadoEn: new Date('2026-07-26T20:00:00.000Z'),
+        },
+      ],
+      documentoEventosOperativoDisponible: false,
+    });
+
+    expect(response.items).toHaveLength(2);
+
+    expect(response.items[0]).toEqual(
+      expect.objectContaining({
+        tipo: 'ANULAR_CONTENEDOR_OPERATIVO',
+        resultado: 'ANULADO',
+      }),
+    );
+
+    expect(response.items[1]).toEqual(
+      expect.objectContaining({
+        tipo: 'MATERIALIZAR_CONTEXTO_OPERATIVO',
+        resultado: 'CREADO',
+      }),
+    );
+  });
+
 });

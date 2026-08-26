@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   ArrowRightLeft,
   Building2,
@@ -39,6 +40,7 @@ function workspaceLabel(workspace: AuthWorkspace) {
 
 export default function MiPerfilPage() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const { contexto, refreshSession } = useAuth();
   const [loadingWorkspaceId, setLoadingWorkspaceId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -67,6 +69,8 @@ export default function MiPerfilPage() {
         workspace.workspaceId,
         Boolean(workspace.esFavorito),
       );
+      await queryClient.cancelQueries();
+      queryClient.clear();
       saveAuthSession(newSession);
       refreshSession();
       router.replace(getDefaultPathForContext(newSession.contexto));

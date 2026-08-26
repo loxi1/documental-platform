@@ -57,7 +57,7 @@ def extract_metadata_by_type(
     if tipo == "NOTA_INGRESO":
         return extract_nota_ingreso_metadata(text)
 
-    if tipo in ["PAGO_TRANSFERENCIA", "PAGO_DETRACCION"]:
+    if tipo in ["TRANSFERENCIA", "PAGO_DETRACCION"]:
         return extract_pago_metadata(
             text=text,
             tipo_documental=tipo,

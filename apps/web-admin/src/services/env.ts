@@ -11,11 +11,19 @@ function assertProductionUrl(value: string, variableName: string) {
     throw new Error(`${variableName} es obligatorio en producción.`);
   }
 
-  if (value.includes("localhost") || value.includes("127.0.0.1") || value.includes("192.168.")) {
+  const allowLocalApiForTests =
+    process.env.NEXT_PUBLIC_ALLOW_LOCAL_API_FOR_TESTS === "true";
+
+  if (
+    !allowLocalApiForTests &&
+    (value.includes("localhost") ||
+      value.includes("127.0.0.1") ||
+      value.includes("192.168."))
+  ) {
     throw new Error(`${variableName} no puede apuntar a una URL local en producción: ${value}`);
   }
 
-  if (!value.startsWith("https://")) {
+  if (!allowLocalApiForTests && !value.startsWith("https://")) {
     throw new Error(`${variableName} debe usar HTTPS en producción: ${value}`);
   }
 }

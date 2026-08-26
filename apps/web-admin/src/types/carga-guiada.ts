@@ -6,6 +6,7 @@ export type TipoEsperado =
   | "FACTURA"
   | "GUIA_REMISION"
   | "NOTA_INGRESO"
+  | "TRANSFERENCIA"
   | "PAGO_TRANSFERENCIA"
   | "PAGO_DETRACCION"
   | "RECIBO_HONORARIO"
@@ -46,6 +47,7 @@ export interface CargaGuiadaPayloadPreview {
   tipoEsperado: TipoEsperado;
   expedienteId?: string | number | null;
   documentoBaseId?: string | number | null;
+  grupoFacturaId?: number | null;
   tipoRelacionSugerida: TipoRelacionSugerida;
   canalIngreso: "WEB_ADMIN_GUIADO" | "COMPRAS_EDITAR_UPLOAD" | string;
   observacion?: string;

@@ -69,3 +69,7 @@ export type BuscarDocumentosCandidatosGrupoFacturaDto = {
   pagina?: number | string;
   limite?: number | string;
 };
+
+export type AnularContenedorOperativoV2Dto = {
+  motivo: string;
+};

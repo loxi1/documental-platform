@@ -60,6 +60,31 @@ export async function getDocumento(id: number | string) {
 }
 
 
+export type SubirArchivoVersionResponse = {
+  archivoId?: number | string | null;
+  archivo_id?: number | string | null;
+  id?: number | string | null;
+  documentoId?: number | string | null;
+  documento_id?: number | string | null;
+  [key: string]: unknown;
+};
+
+export async function subirArchivoVersion(
+  documentoId: number | string,
+  file: File,
+) {
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const { data } = await api.post(
+    `/documentos/${documentoId}/archivos/subir-version`,
+    formData,
+  );
+
+  return unwrap<SubirArchivoVersionResponse>(data);
+}
+
+
 export type AgregarArchivoComoVersionPayload = {
   tipoVersion?: string;
   observacion?: string;
@@ -127,8 +152,11 @@ export async function getDocumentoArchivos(documentoId: number | string) {
 
 export type ActualizarDocumentoManualPayload = {
   tipoDocumental?: string;
+  ocrResultadoId?: number;
   metadata?: Record<string, unknown>;
   observacion?: string;
+  motivo?: string;
+  origen?: string;
 };
 
 export async function actualizarDocumentoManual(

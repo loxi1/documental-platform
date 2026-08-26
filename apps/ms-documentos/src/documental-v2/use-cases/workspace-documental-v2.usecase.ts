@@ -356,10 +356,22 @@ export class WorkspaceDocumentalV2UseCase {
       grupo.origen.expedienteId,
     );
 
+    let documentoOperativoPrincipalDocumentoId =
+      grupo.documentoOperativoPrincipalDocumentoId;
+
+    if (persistido?.documentoOperativoPrincipalId) {
+      const principalPersistido = await this.documentosOperativos.buscarPorId(
+        Number(persistido.documentoOperativoPrincipalId),
+      );
+
+      documentoOperativoPrincipalDocumentoId = Number(principalPersistido.documentoId);
+    }
+
     return {
       ...this.wrap(
         {
           ...grupo,
+          documentoOperativoPrincipalDocumentoId,
           documentos: documentos.map((documento) => documento.vista),
         },
         persistido,

@@ -1,16 +1,24 @@
 import { Injectable } from '@nestjs/common';
 import { sql } from '@documental/database';
+import type { SqlExecutor } from './sql-executor';
 
 type JsonRecord = Record<string, unknown>;
 
 type AccionAuditoriaV2 =
+  | 'MATERIALIZAR_CONTEXTO_OPERATIVO'
   | 'ASOCIAR_DOCUMENTO_PRINCIPAL'
   | 'GRUPO_FACTURA_CREADO'
-  | 'DOCUMENTO_GRUPO_FACTURA_ASOCIADO';
+  | 'DOCUMENTO_GRUPO_FACTURA_ASOCIADO'
+  | 'CORRESPONDENCIA_PAGO_FACTURA_DECIDIDA'
+  | 'ANULAR_CONTENEDOR_OPERATIVO';
 
 export interface RegistrarAuditoriaOperativaV2Input {
   accion: AccionAuditoriaV2;
-  entidad: 'documento_operativo_principal' | 'grupo_factura' | 'grupo_factura_documento';
+  entidad:
+    | 'contenedor_operativo'
+    | 'documento_operativo_principal'
+    | 'grupo_factura'
+    | 'grupo_factura_documento';
   entidadId: string | number;
   descripcion: string;
   empresaCodigo?: string | null;
@@ -27,7 +35,7 @@ export interface RegistrarAuditoriaOperativaV2Input {
  */
 @Injectable()
 export class AuditoriaOperativaV2Repository {
-  async registrarCreacion(input: RegistrarAuditoriaOperativaV2Input): Promise<void> {
+  async registrarCreacion(input: RegistrarAuditoriaOperativaV2Input, executor: SqlExecutor = sql): Promise<void> {
     const contexto = normalizarContexto(input.usuario);
     const despues = limpiarJson({
       ...(input.despues ?? {}),
@@ -37,7 +45,7 @@ export class AuditoriaOperativaV2Repository {
       origen: contexto.origen ?? 'api-gateway',
     });
 
-    await sql`
+    await executor`
       INSERT INTO core.auditoria_eventos (
         workspace_id,
         session_context_id,
@@ -71,6 +79,104 @@ export class AuditoriaOperativaV2Repository {
       )
     `;
   }
+  async registrarDecisionCorrespondencia(
+    input: RegistrarAuditoriaOperativaV2Input,
+    executor: SqlExecutor = sql,
+  ): Promise<void> {
+    const contexto = normalizarContexto(input.usuario);
+    const despues = limpiarJson({
+      ...(input.despues ?? {}),
+      usuarioEmail: contexto.usuarioEmail,
+      workspaceId: contexto.workspaceId,
+      empresaCodigo: input.empresaCodigo ?? contexto.empresaCodigo,
+      requestId: contexto.requestId,
+      correlationId: contexto.correlationId,
+      origen: contexto.origen ?? 'api-gateway',
+    });
+
+    await executor`
+      INSERT INTO core.auditoria_eventos (
+        workspace_id,
+        session_context_id,
+        request_id,
+        usuario_id,
+        empresa_codigo,
+        sistema_codigo,
+        perfil_codigo,
+        modulo,
+        entidad,
+        entidad_id,
+        accion,
+        descripcion,
+        antes,
+        despues
+      ) VALUES (
+        ${contexto.workspaceId},
+        ${contexto.sessionContextId},
+        ${contexto.requestId},
+        ${contexto.usuarioId},
+        ${input.empresaCodigo ?? contexto.empresaCodigo},
+        ${contexto.sistemaCodigo},
+        ${contexto.perfilCodigo},
+        ${'documental-v2'},
+        ${input.entidad},
+        ${String(input.entidadId)},
+        ${input.accion},
+        ${input.descripcion},
+        ${input.antes ? JSON.stringify(input.antes) : null}::jsonb,
+        ${JSON.stringify(despues)}::jsonb
+      )
+    `;
+  }
+
+  async registrarAnulacionConEjecutor(
+    executor: SqlExecutor,
+    input: RegistrarAuditoriaOperativaV2Input,
+  ): Promise<void> {
+    const contexto = normalizarContexto(input.usuario);
+    const despues = limpiarJson({
+      ...(input.despues ?? {}),
+      resultadoOperacion: 'ANULADO',
+      usuarioEmail: contexto.usuarioEmail,
+      correlationId: contexto.correlationId,
+      origen: contexto.origen ?? 'api-gateway',
+    });
+
+    await executor`
+      INSERT INTO core.auditoria_eventos (
+        workspace_id,
+        session_context_id,
+        request_id,
+        usuario_id,
+        empresa_codigo,
+        sistema_codigo,
+        perfil_codigo,
+        modulo,
+        entidad,
+        entidad_id,
+        accion,
+        descripcion,
+        antes,
+        despues
+      ) VALUES (
+        ${contexto.workspaceId},
+        ${contexto.sessionContextId},
+        ${contexto.requestId},
+        ${contexto.usuarioId},
+        ${input.empresaCodigo ?? contexto.empresaCodigo},
+        ${contexto.sistemaCodigo},
+        ${contexto.perfilCodigo},
+        ${'documental-v2'},
+        ${input.entidad},
+        ${String(input.entidadId)},
+        ${input.accion},
+        ${input.descripcion},
+        ${input.antes ? JSON.stringify(input.antes) : null}::jsonb,
+        ${JSON.stringify(despues)}::jsonb
+      )
+    `;
+  }
+
 }
 
 function normalizarContexto(usuario: unknown) {

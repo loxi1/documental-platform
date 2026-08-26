@@ -2,6 +2,19 @@ export type WorkspaceV2Primitive = string | number | boolean | null | undefined;
 
 export type WorkspaceV2Record = Record<string, unknown>;
 
+export type AnularEntidadV2Request = {
+  motivo: string;
+};
+
+export type AnularEntidadV2Result = {
+  id?: string | number | null;
+  estado?: string | null;
+  message?: string | null;
+  mensaje?: string | null;
+  workspaceDebeRefrescar?: boolean;
+  [key: string]: unknown;
+};
+
 export type WorkspaceV2ContextoOperativo = {
   id?: string | number | null;
   expedienteId?: string | number | null;
@@ -218,7 +231,7 @@ export type ApiEnvelope<T> = {
   success?: boolean;
   data?: T;
   message?: string;
-  error?: string;
+  error?: string | { code?: string; message?: string };
 };
 
 export type DocumentoPrincipalCandidato = {

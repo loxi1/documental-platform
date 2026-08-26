@@ -4,6 +4,7 @@ import Link from "next/link";
 import { BANCO_OPTIONS, MONEDA_OPTIONS, hasCatalogValue } from "@/constants/catalogos";
 import { api } from "@/services/api";
 import {
+  buscarProveedoresCatalogo,
   getDocumentoDuplicadoDetailsFromError,
   type DocumentoDuplicadoEnExpedienteDetails,
 } from "@/services/ocr-procesamiento";
@@ -63,6 +64,12 @@ type OcrValidationModalProps = {
   onConfirm?: (form: FormState) => void | Promise<void>;
   onReject?: (form: FormState) => void | Promise<void>;
   onAgregarComoVersion?: (details: DocumentoDuplicadoEnExpedienteDetails) => void | Promise<void>;
+  modoVersionDocumentoExistente?: {
+    documentoId: string | number;
+    archivoId: string | number;
+    metadataVigente: Partial<FormState>;
+  };
+  onConfirmarVersion?: () => void | Promise<void>;
   tiposDocumentalesPermitidos?: readonly string[];
   tipoDocumentalBloqueado?: boolean;
   /**
@@ -376,8 +383,43 @@ function buildInitialForm(resultado: unknown, expedienteContexto?: OcrValidation
         metadata.documento_relacionado,
       "",
     ),
-    observacion: texto(raw.observacion ?? metadata.observacion, ""),
+    observacion: texto(raw.observacion, ""),
   };
+}
+
+
+function mergeFormConMetadataVigente(
+  detectado: FormState,
+  metadataVigente?: Partial<FormState>,
+): FormState {
+  if (!metadataVigente) return detectado;
+
+  const next: FormState = { ...detectado };
+  for (const key of Object.keys(metadataVigente) as Array<keyof FormState>) {
+    const value = metadataVigente[key];
+    if (value !== undefined && value !== null) {
+      (next as unknown as Record<string, string>)[key] = String(value);
+    }
+  }
+  return next;
+}
+
+function buildInitialFormParaModo(
+  resultado: unknown,
+  expedienteContexto: OcrValidationExpedienteContexto | undefined,
+  metadataVigente?: Partial<FormState>,
+) {
+  return mergeFormConMetadataVigente(
+    buildInitialForm(resultado, expedienteContexto),
+    metadataVigente,
+  );
+}
+
+function normalizeComparacionVersion(value: unknown) {
+  return String(value ?? "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .toUpperCase();
 }
 
 function camposPorTipo(tipo: string, formularioContexto?: "ALMACEN" | "COMPRAS" | "FINANZAS"): Array<keyof FormState> {
@@ -481,7 +523,7 @@ const FIELD_LABELS: Record<keyof FormState, string> = {
   proveedor: "Proveedor",
   rucProveedor: "RUC proveedor",
   rucComprador: "RUC comprador",
-  rucEmisor: "RUC emisor",
+  rucEmisor: "RUC proveedor / emisor",
   razonSocial: "Razón social",
   montoTotal: "Monto total",
   moneda: "Moneda",
@@ -615,29 +657,50 @@ export function OcrValidationModal({
   onConfirm,
   onReject,
   onAgregarComoVersion,
+  modoVersionDocumentoExistente,
+  onConfirmarVersion,
   tiposDocumentalesPermitidos,
   tipoDocumentalBloqueado = false,
   formularioContexto,
   readOnly = false,
 }: OcrValidationModalProps) {
-  const [form, setForm] = useState<FormState>(() => buildInitialForm(resultado, expedienteContexto));
+  const esModoVersionDocumentoExistente = Boolean(
+    modoVersionDocumentoExistente,
+  );
+  const [form, setForm] = useState<FormState>(() =>
+    buildInitialFormParaModo(
+      resultado,
+      expedienteContexto,
+      modoVersionDocumentoExistente?.metadataVigente,
+    ),
+  );
   const [localMessage, setLocalMessage] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [duplicadoDetails, setDuplicadoDetails] = useState<DocumentoDuplicadoEnExpedienteDetails | null>(null);
   const [submittingAction, setSubmittingAction] = useState<null | "save" | "confirm" | "reject" | "version">(null);
   const [previewUrlFromApi, setPreviewUrlFromApi] = useState<string | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
+  const [proveedorEstado, setProveedorEstado] = useState<"SIN_CONSULTAR" | "BUSCANDO" | "RESUELTO" | "NO_ENCONTRADO" | "ERROR_CONSULTA">("SIN_CONSULTAR");
+  const [proveedorOrigen, setProveedorOrigen] = useState<string>("");
 
   useEffect(() => {
     if (open) {
-      setForm(buildInitialForm(resultado, expedienteContexto));
+      setForm(
+        buildInitialFormParaModo(
+          resultado,
+          expedienteContexto,
+          modoVersionDocumentoExistente?.metadataVigente,
+        ),
+      );
       setLocalMessage(null);
       setActionError(null);
       setDuplicadoDetails(null);
       setPreviewUrlFromApi(null);
       setPreviewError(null);
+      setProveedorEstado("SIN_CONSULTAR");
+      setProveedorOrigen("");
     }
-  }, [open, resultado, expedienteContexto]);
+  }, [open, resultado, expedienteContexto, modoVersionDocumentoExistente]);
 
   useEffect(() => {
     if (!open) return;
@@ -708,6 +771,128 @@ export function OcrValidationModal({
     (formularioContexto === "ALMACEN" || formularioContexto === "FINANZAS") &&
     tipoDocumentalBloqueado;
   const ocultarExpedienteVinculado = false;
+  const tipoDocumentoNormalizado = normalizeTipoParaUi(form.tipoDocumental);
+  const permiteVersionadoDuplicado =
+    formularioContexto === "ALMACEN" &&
+    ["FACTURA", "GUIA", "GUIA_REMISION"].includes(tipoDocumentoNormalizado) &&
+    Boolean(onAgregarComoVersion);
+  const tipoProveedor = tipoDocumentoNormalizado;
+  const resuelveProveedorPorRuc = [
+    "OC",
+    "OS",
+    "FACTURA",
+    "GUIA",
+    "RECIBO_HONORARIO",
+  ].includes(String(tipoProveedor));
+
+  useEffect(() => {
+    if (
+      !open ||
+      readOnly ||
+      esModoVersionDocumentoExistente ||
+      !resuelveProveedorPorRuc
+    ) return;
+
+    const ruc = form.rucEmisor.trim() || form.rucProveedor.trim();
+    if (!/^\d{11}$/.test(ruc)) {
+      setProveedorEstado("SIN_CONSULTAR");
+      setProveedorOrigen("");
+      return;
+    }
+
+    let cancelled = false;
+    const timer = window.setTimeout(async () => {
+      setProveedorEstado("BUSCANDO");
+      try {
+        const proveedores = await buscarProveedoresCatalogo(ruc, 20);
+        const exacto = proveedores.find((item) => item.ruc === ruc);
+        if (cancelled) return;
+
+        if (!exacto) {
+          setProveedorEstado("NO_ENCONTRADO");
+          setProveedorOrigen("");
+
+          setForm((current) => ({
+            ...current,
+            razonSocial: current.razonSocial || current.proveedor,
+            proveedor: current.proveedor || current.razonSocial,
+            rucProveedor: ruc,
+            rucEmisor: ruc,
+          }));
+
+          return;
+        }
+
+        setForm((current) => ({
+          ...current,
+          rucEmisor: ruc,
+          rucProveedor: ruc,
+          razonSocial: exacto.razonSocial,
+          proveedor: exacto.razonSocial,
+        }));
+        setProveedorEstado("RESUELTO");
+        setProveedorOrigen("CATALOGO_PROVEEDORES");
+      } catch {
+        if (!cancelled) {
+          setProveedorEstado("ERROR_CONSULTA");
+          setProveedorOrigen("");
+        }
+      }
+    }, 450);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [
+    open,
+    readOnly,
+    esModoVersionDocumentoExistente,
+    resuelveProveedorPorRuc,
+    form.rucEmisor,
+    form.rucProveedor,
+  ]);
+const esFactura = tipoProveedor === "FACTURA";
+  const metadataDetectada = useMemo(
+    () => buildInitialForm(resultado, expedienteContexto),
+    [resultado, expedienteContexto],
+  );
+  const camposComparacionVersion = useMemo(() => {
+    const extras: Array<keyof FormState> = esFactura
+      ? ["razonSocial", "rucComprador"]
+      : [];
+    return Array.from(new Set([...campos, ...extras]));
+  }, [campos, esFactura]);
+  const diferenciasVersion = useMemo(
+    () =>
+      esModoVersionDocumentoExistente
+        ? camposComparacionVersion
+            .filter((campo) => campo !== "claveDocumental")
+            .map((campo) => ({
+              campo,
+              vigente: String(form[campo] ?? ""),
+              detectado: String(metadataDetectada[campo] ?? ""),
+            }))
+            .filter(
+              ({ vigente, detectado }) =>
+                normalizeComparacionVersion(vigente) !==
+                normalizeComparacionVersion(detectado),
+            )
+        : [],
+    [
+      camposComparacionVersion,
+      esModoVersionDocumentoExistente,
+      form,
+      metadataDetectada,
+    ],
+  );
+  const proveedorEstadoVisible =
+    readOnly &&
+    proveedorEstado === "SIN_CONSULTAR" &&
+    /^\d{11}$/.test(form.rucEmisor.trim() || form.rucProveedor.trim()) &&
+    Boolean((form.razonSocial || form.proveedor).trim())
+      ? "RESUELTO"
+      : proveedorEstado;
 
   if (!open) return null;
 
@@ -749,8 +934,23 @@ export function OcrValidationModal({
   }
 
   function handleConfirm() {
+    setActionError(null);
+
     if (!expediente.id && !form.codigoExpediente.trim()) {
-      setActionError("Selecciona o completa el expediente antes de guardar y confirmar.");
+      setActionError(
+        "Selecciona o completa el expediente antes de guardar y confirmar.",
+      );
+      return;
+    }
+
+    if (
+      normalizeTipoParaUi(form.tipoDocumental) === "FACTURA" &&
+      !form.proveedor.trim() &&
+      !form.razonSocial.trim()
+    ) {
+      setActionError(
+        "Ingresa la razón social del proveedor antes de guardar y confirmar.",
+      );
       return;
     }
 
@@ -759,6 +959,27 @@ export function OcrValidationModal({
 
   function handleReject() {
     void runAction("reject", onReject);
+  }
+
+  async function handleConfirmarVersionDocumentoExistente() {
+    if (!modoVersionDocumentoExistente || !onConfirmarVersion) return;
+
+    setSubmittingAction("version");
+    setActionError(null);
+    setLocalMessage(null);
+
+    try {
+      await onConfirmarVersion();
+      setLocalMessage("Versión confirmada correctamente.");
+    } catch (error) {
+      setActionError(
+        error instanceof Error
+          ? error.message
+          : "No se pudo confirmar la nueva versión.",
+      );
+    } finally {
+      setSubmittingAction(null);
+    }
   }
 
   async function handleAgregarComoVersion() {
@@ -791,12 +1012,18 @@ export function OcrValidationModal({
               Validación visual documental
             </p>
             <h2 className="mt-1 max-w-5xl break-words text-lg font-semibold text-slate-950 dark:text-slate-100">
-              {readOnly ? "Vista documental" : "Validación OCR"} - {archivo.nombre}
+              {esModoVersionDocumentoExistente
+                ? "Validar nueva versión"
+                : readOnly
+                  ? "Vista documental"
+                  : "Validación OCR"} - {archivo.nombre}
             </h2>
             <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-              {readOnly
-                ? "Consulta el documento y su metadata confirmada. Esta vista no modifica el OCR ni genera auditoría."
-                : "Compara el documento con la metadata detectada. El modal no se cierra hasta confirmar, rechazar o cerrar manualmente."}
+              {esModoVersionDocumentoExistente
+                ? "La metadata lógica vigente es solo lectura. El OCR nuevo es evidencia comparativa y no modifica los datos del documento."
+                : readOnly
+                  ? "Consulta el documento y su metadata confirmada. Esta vista no modifica el OCR ni genera auditoría."
+                  : "Compara el documento con la metadata detectada. El modal no se cierra hasta confirmar, rechazar o cerrar manualmente."}
             </p>
           </div>
 
@@ -845,6 +1072,59 @@ export function OcrValidationModal({
 
           <div className="min-h-0 overflow-auto p-5">
             <div className="space-y-5">
+              {esModoVersionDocumentoExistente && modoVersionDocumentoExistente ? (
+                <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900 dark:border-blue-900/60 dark:bg-blue-950/30 dark:text-blue-100">
+                  <p className="font-semibold">
+                    Nueva versión del documento #{modoVersionDocumentoExistente.documentoId}
+                  </p>
+                  <p className="mt-1 text-xs text-blue-700 dark:text-blue-300">
+                    Archivo candidato #{modoVersionDocumentoExistente.archivoId}. La identidad ya fue elegida por el usuario.
+                  </p>
+
+                  <div className="mt-4">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-blue-700 dark:text-blue-300">
+                      Diferencias: vigente vs detectado
+                    </p>
+                    {diferenciasVersion.length ? (
+                      <div className="mt-2 space-y-2">
+                        {diferenciasVersion.map(({ campo, vigente, detectado }) => (
+                          <div
+                            key={campo}
+                            className="grid gap-2 rounded-xl border border-blue-200 bg-white/70 p-3 dark:border-blue-900/70 dark:bg-slate-950/40 md:grid-cols-[minmax(110px,0.7fr)_1fr_1fr]"
+                          >
+                            <p className="text-xs font-semibold">{FIELD_LABELS[campo]}</p>
+                            <div>
+                              <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                                Vigente
+                              </p>
+                              <p className="mt-1 break-words text-xs font-medium">
+                                {vigente || "—"}
+                              </p>
+                            </div>
+                            <div>
+                              <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                                Detectado
+                              </p>
+                              <p className="mt-1 break-words text-xs font-medium">
+                                {detectado || "—"}
+                              </p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="mt-2 text-xs text-blue-700 dark:text-blue-300">
+                        No se detectaron diferencias en los campos comparables.
+                      </p>
+                    )}
+                  </div>
+
+                  <p className="mt-3 text-xs text-blue-700 dark:text-blue-300">
+                    Esta operación no edita metadata. Confirma únicamente si el archivo debe incorporarse como nueva versión física.
+                  </p>
+                </div>
+              ) : null}
+
               {ocultarTipoDocumental ? null : (
                 <label className="block">
                   <span className="text-[11px] font-medium uppercase tracking-wide text-slate-400">
@@ -852,7 +1132,7 @@ export function OcrValidationModal({
                   </span>
                   <select
                     value={form.tipoDocumental}
-                    disabled={readOnly || tipoDocumentalBloqueado}
+                    disabled={readOnly || esModoVersionDocumentoExistente || tipoDocumentalBloqueado}
                     onChange={(event) => updateField("tipoDocumental", event.target.value)}
                     className={`mt-1 h-10 w-full rounded-lg border border-slate-200 px-3 text-sm font-semibold text-slate-950 outline-none transition focus:border-slate-400 disabled:cursor-not-allowed dark:border-slate-800 dark:text-slate-100 ${
                       readOnly || tipoDocumentalBloqueado
@@ -869,22 +1149,91 @@ export function OcrValidationModal({
                 </label>
               )}
 
-              <div className="grid gap-3 md:grid-cols-2">
-                {campos.map((campo) => (
-                  <FieldInput
-                    key={campo}
-                    name={campo}
-                    value={String(form[campo] ?? "")}
-                    onChange={updateField}
-                    readOnly={readOnly}
-                  />
-                ))}
-              </div>
+              {esFactura ? (
+                <div className="space-y-4">
+                  <div className="rounded-2xl border border-slate-200 p-4 dark:border-slate-800">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Proveedor / Emisor</p>
+                    <div className="mt-3 grid gap-3 md:grid-cols-2">
+                      <FieldInput
+                        name="rucEmisor"
+                        value={form.rucEmisor || form.rucProveedor}
+                        onChange={(name, value) => {
+                          updateField(name, value.replace(/\D/g, "").slice(0, 11));
+                          updateField("rucProveedor", value.replace(/\D/g, "").slice(0, 11));
+                        }}
+                        readOnly={readOnly || esModoVersionDocumentoExistente}
+                      />
+                      {proveedorEstado === "NO_ENCONTRADO" ||
+                        proveedorEstado === "ERROR_CONSULTA" ? (
+                          <label className="block">
+                            <span className="text-[11px] font-medium uppercase tracking-wide text-slate-400">
+                              Razón social del proveedor
+                            </span>
 
-              <div className="grid gap-3 md:grid-cols-2">
-                <ReadOnlyInfo label="Código expediente" value={form.codigoExpediente || expediente.codigo} />
-                <ReadOnlyInfo label="Clave documental" value={form.claveDocumental} mono />
-              </div>
+                            <input
+                              value={form.razonSocial || form.proveedor}
+                              onChange={(event) => {
+                                const value = event.target.value;
+
+                                setForm((current) => ({
+                                  ...current,
+                                  razonSocial: value,
+                                  proveedor: value,
+                                }));
+                              }}
+                              placeholder="Ingrese la razón social"
+                              disabled={readOnly || esModoVersionDocumentoExistente}
+                              className="mt-1 h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-950 outline-none transition focus:border-slate-400 disabled:cursor-not-allowed disabled:bg-slate-50 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100"
+                            />
+                          </label>
+                        ) : (
+                          <ReadOnlyInfo
+                            label="Razón social resuelta"
+                            value={form.razonSocial || form.proveedor}
+                          />
+                        )}
+                    </div>
+                    <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
+                      Estado: {proveedorEstadoVisible === "RESUELTO" ? "Resuelto" : proveedorEstadoVisible === "BUSCANDO" ? "Buscando…" : proveedorEstadoVisible === "NO_ENCONTRADO" ? "No encontrado en catálogo" : proveedorEstadoVisible === "ERROR_CONSULTA" ? "Error de consulta" : "Pendiente"}
+                      {proveedorOrigen ? ` · Origen: ${proveedorOrigen}` : ""}
+                    </p>
+                  </div>
+
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Empresa compradora</p>
+                    <div className="mt-3 grid gap-3 md:grid-cols-2">
+                      <ReadOnlyInfo label="Empresa" value={expediente.empresa} />
+                      <ReadOnlyInfo label="RUC comprador" value={form.rucComprador || expedienteContexto?.rucComprador || ""} mono />
+                    </div>
+                    <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">Origen: Workspace · Solo lectura</p>
+                  </div>
+
+                  <div className="rounded-2xl border border-slate-200 p-4 dark:border-slate-800">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Datos del comprobante</p>
+                    <div className="mt-3 grid gap-3 md:grid-cols-2">
+                      {(["serie", "numero", "fechaEmision", "moneda", "montoTotal"] as Array<keyof FormState>).map((campo) => (
+                        <FieldInput key={campo} name={campo} value={String(form[campo] ?? "")} onChange={updateField} readOnly={readOnly || esModoVersionDocumentoExistente} />
+                      ))}
+                    </div>
+                  </div>
+
+                  {form.documentoRelacionado ? (
+                    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900">
+                      <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Referencias detectadas</p>
+                      <p className="mt-2 text-sm font-medium text-slate-800 dark:text-slate-200">{form.documentoRelacionado}</p>
+                    </div>
+                  ) : null}
+                </div>
+              ) : (
+                <div className="grid gap-3 md:grid-cols-2">
+                  {campos.map((campo) => (
+                    <FieldInput key={campo} name={campo} value={String(form[campo] ?? "")} onChange={updateField} readOnly={readOnly || esModoVersionDocumentoExistente} />
+                  ))}
+                </div>
+              )}
+
+              {/* Código de contexto y clave documental se conservan
+                  internamente, pero no forman parte de la validación humana. */}
 
               {!ocultarExpedienteVinculado ? (
               <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900">
@@ -895,8 +1244,7 @@ export function OcrValidationModal({
                   <div className="mt-2 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                     <div>
                       <p className="text-sm font-semibold text-slate-950 dark:text-slate-100">
-                        #{expediente.id}
-                        {expediente.codigo ? ` · ${expediente.codigo}` : ""}
+                        {expediente.codigo || "Contexto seleccionado"}
                       </p>
                       {expediente.descripcion ? (
                         <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
@@ -930,26 +1278,24 @@ export function OcrValidationModal({
                 </div>
               ) : null}
 
-              {duplicadoDetails ? (
+              {!esModoVersionDocumentoExistente && duplicadoDetails ? (
                 <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200">
-                  <p className="font-semibold">Este documento ya existe en el expediente.</p>
-                  <div className="mt-2 space-y-1 text-xs">
-                    {duplicadoDetails.claveDocumental ? <p>Clave: {duplicadoDetails.claveDocumental}</p> : null}
-                    {duplicadoDetails.documentoIdExistente ? <p>Documento existente: {duplicadoDetails.documentoIdExistente}</p> : null}
-                    {duplicadoDetails.documentoIdActual ? <p>Documento temporal: {duplicadoDetails.documentoIdActual}</p> : null}
-                    {duplicadoDetails.archivoIdActual ? <p>Archivo nuevo: {duplicadoDetails.archivoIdActual}</p> : null}
-                  </div>
-                  <p className="mt-3 text-xs">
-                    No se creará otro documento lógico. Puedes agregar este archivo como nueva versión del documento existente.
+                  <p className="font-semibold">Este documento ya está registrado.</p>
+                  <p className="mt-2 text-xs">
+                    {permiteVersionadoDuplicado
+                      ? "En Almacén puedes incorporar el archivo validado como una nueva versión del documento existente."
+                      : "La nueva carga no fue confirmada ni vinculada. Cierra esta ventana y abre el documento existente."}
                   </p>
-                  <button
-                    type="button"
-                    onClick={handleAgregarComoVersion}
-                    disabled={submittingAction !== null || !onAgregarComoVersion || !duplicadoDetails.archivoIdActual || !duplicadoDetails.documentoIdExistente}
-                    className="mt-3 inline-flex h-9 items-center justify-center rounded-lg bg-amber-600 px-3 text-sm font-semibold text-white transition hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    {submittingAction === "version" ? "Agregando versión..." : "Agregar como versión"}
-                  </button>
+                  {permiteVersionadoDuplicado ? (
+                    <button
+                      type="button"
+                      onClick={handleAgregarComoVersion}
+                      disabled={submittingAction !== null || !duplicadoDetails.archivoIdActual || !duplicadoDetails.documentoIdExistente}
+                      className="mt-3 inline-flex h-9 items-center justify-center rounded-lg bg-amber-600 px-3 text-sm font-semibold text-white transition hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {submittingAction === "version" ? "Agregando versión..." : "Agregar como nueva versión"}
+                    </button>
+                  ) : null}
                 </div>
               ) : null}
 
@@ -970,12 +1316,40 @@ export function OcrValidationModal({
 
         <footer className="flex flex-col gap-3 border-t border-slate-200 px-5 py-4 dark:border-slate-800 md:flex-row md:items-center md:justify-between">
           <p className="text-xs text-slate-500 dark:text-slate-400">
-            {readOnly
-              ? "Modo consulta: no se reprocesa ni reconfirma el documento."
-              : "El OCR propone datos. El usuario puede corregirlos manualmente antes de guardar o confirmar."}
+            {esModoVersionDocumentoExistente
+              ? "Modo versión: metadata vigente y OCR comparativo en solo lectura. Confirmar versión no modifica metadata."
+              : readOnly
+                ? "Modo consulta: no se reprocesa ni reconfirma el documento."
+                : "El OCR propone datos. El usuario puede corregirlos manualmente antes de guardar o confirmar."}
           </p>
           <div className="flex flex-wrap justify-end gap-2">
-            {readOnly ? (
+            {esModoVersionDocumentoExistente ? (
+              <>
+                <button
+                  type="button"
+                  onClick={onClose}
+                  disabled={submittingAction !== null}
+                  className="inline-flex h-9 items-center justify-center rounded-lg border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100 dark:hover:bg-slate-900"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmarVersionDocumentoExistente}
+                  disabled={
+                    submittingAction !== null ||
+                    !onConfirmarVersion ||
+                    !modoVersionDocumentoExistente?.documentoId ||
+                    !modoVersionDocumentoExistente?.archivoId
+                  }
+                  className="inline-flex h-9 items-center justify-center rounded-lg bg-slate-950 px-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-slate-100 dark:text-slate-950 dark:hover:bg-white"
+                >
+                  {submittingAction === "version"
+                    ? "Confirmando versión..."
+                    : "Confirmar versión"}
+                </button>
+              </>
+            ) : readOnly ? (
               <button
                 type="button"
                 onClick={onClose}
@@ -985,31 +1359,35 @@ export function OcrValidationModal({
               </button>
             ) : (
               <>
-                <button
-                  type="button"
-                  onClick={handleReject}
-                  disabled={submittingAction !== null}
-                  className="inline-flex h-9 items-center justify-center rounded-lg border border-red-200 bg-white px-3 text-sm font-medium text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-red-900/60 dark:bg-slate-950 dark:hover:bg-red-950/30"
-                >
-                  {submittingAction === "reject" ? "Rechazando..." : "Rechazar OCR"}
-                </button>
+                {formularioContexto !== "FINANZAS" ? (
+                  <button
+                    type="button"
+                    onClick={handleReject}
+                    disabled={submittingAction !== null}
+                    className="inline-flex h-9 items-center justify-center rounded-lg border border-red-200 bg-white px-3 text-sm font-medium text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-red-900/60 dark:bg-slate-950 dark:hover:bg-red-950/30"
+                  >
+                    {submittingAction === "reject" ? "Rechazando..." : "Rechazar OCR"}
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   onClick={onClose}
                   className="inline-flex h-9 items-center justify-center rounded-lg border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100 dark:hover:bg-slate-900"
                 >
-                  Cancelar / Cerrar
+                  {formularioContexto === "FINANZAS" ? "Cancelar" : "Cancelar / Cerrar"}
                 </button>
                 {!duplicadoDetails ? (
                   <>
-                    <button
-                      type="button"
-                      onClick={handleSave}
-                      disabled={submittingAction !== null}
-                      className="inline-flex h-9 items-center justify-center rounded-lg border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100 dark:hover:bg-slate-900"
-                    >
-                      {submittingAction === "save" ? "Guardando..." : "Guardar cambios"}
-                    </button>
+                    {formularioContexto !== "FINANZAS" ? (
+                      <button
+                        type="button"
+                        onClick={handleSave}
+                        disabled={submittingAction !== null}
+                        className="inline-flex h-9 items-center justify-center rounded-lg border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100 dark:hover:bg-slate-900"
+                      >
+                        {submittingAction === "save" ? "Guardando..." : "Guardar cambios"}
+                      </button>
+                    ) : null}
                     <button
                       type="button"
                       onClick={handleConfirm}

@@ -10,8 +10,11 @@ RUN pnpm install --frozen-lockfile --dangerously-allow-all-builds
 
 FROM deps AS build
 ARG APP_PATH
+ARG APP_PACKAGE
 WORKDIR /app
-RUN pnpm --filter "./${APP_PATH}" build
+RUN test -n "${APP_PATH}"
+RUN test -n "${APP_PACKAGE}"
+RUN pnpm --filter "@documental/shared" run build  && pnpm --filter "@documental/config" run build  && pnpm --filter "@documental/database" run build  && pnpm --filter "${APP_PACKAGE}" run build
 
 FROM node:22-alpine AS runner
 WORKDIR /app
@@ -22,6 +25,9 @@ COPY --from=deps /app ./
 
 ARG APP_PATH
 COPY --from=build /app/${APP_PATH}/dist /app/${APP_PATH}/dist
+COPY --from=build /app/packages/shared/dist /app/packages/shared/dist
+COPY --from=build /app/packages/config/dist /app/packages/config/dist
+COPY --from=build /app/packages/database/dist /app/packages/database/dist
 
 WORKDIR /app/${APP_PATH}
 

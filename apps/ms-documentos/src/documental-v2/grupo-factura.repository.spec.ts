@@ -42,4 +42,30 @@ describe('GrupoFacturaRepository', () => {
     expect(sqlMock).toHaveBeenCalledTimes(1);
     expect(result).toBeNull();
   });
+
+  it('busca únicamente el Grupo vigente por factura', async () => {
+    const row = {
+      id: 31,
+      documentoOperativoPrincipalId: 21,
+      facturaDocumentoId: 4,
+      estado: 'pendiente_revision',
+      metadata: {},
+    };
+    sqlMock.mockResolvedValueOnce([row]);
+
+    const repository = new GrupoFacturaRepository();
+    const result = await repository.buscarVigentePorFacturaDocumentoId(4);
+
+    expect(sqlMock).toHaveBeenCalledTimes(1);
+    expect(result).toBe(row);
+  });
+
+  it('lista ids históricos anulados de la factura fundadora', async () => {
+    sqlMock.mockResolvedValueOnce([{ id: 9 }, { id: 14 }]);
+
+    const repository = new GrupoFacturaRepository();
+    const result = await repository.listarHistoricosPorFacturaDocumentoId(4);
+
+    expect(result).toEqual([9, 14]);
+  });
 });

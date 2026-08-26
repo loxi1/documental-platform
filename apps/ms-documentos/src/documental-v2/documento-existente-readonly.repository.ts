@@ -1,5 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { sql } from '@documental/database';
+import type { SqlExecutor } from './sql-executor';
+import type { DocumentoCorrespondenciaSnapshot } from './finanzas/correspondencia-pago-factura.adapter';
 
 export type DocumentoExistenteV2 = {
   id: number;
@@ -15,6 +17,7 @@ export type DocumentoExistenteV2 = {
   moneda: string | null;
   montoTotal: number | null;
   nombreArchivo: string | null;
+  metadata: Record<string, unknown> | null;
 };
 
 function mapDocumento(row: any): DocumentoExistenteV2 {
@@ -32,13 +35,21 @@ function mapDocumento(row: any): DocumentoExistenteV2 {
     moneda: row.moneda ?? null,
     montoTotal: row.monto_total === null || row.monto_total === undefined ? null : Number(row.monto_total),
     nombreArchivo: row.nombre_archivo ?? null,
+    metadata: row.metadata ?? null,
   };
 }
 
 @Injectable()
 export class DocumentoExistenteReadonlyRepository {
-  async buscarPorId(documentoId: number): Promise<DocumentoExistenteV2 | null> {
-    const rows = await sql<any[]>`
+  async buscarSnapshot(
+    documentoId: number,
+    executor: SqlExecutor = sql,
+  ): Promise<DocumentoCorrespondenciaSnapshot | null> {
+    return this.buscarPorId(documentoId, executor);
+  }
+
+  async buscarPorId(documentoId: number, executor: SqlExecutor = sql): Promise<DocumentoExistenteV2 | null> {
+    const rows = await executor<any[]>`
       SELECT
         d.id,
         d.cliente_abreviatura,
@@ -52,6 +63,7 @@ export class DocumentoExistenteReadonlyRepository {
         d.fecha_emision,
         d.moneda,
         d.monto_total,
+        d.metadata,
         da.nombre_archivo
       FROM documentos.documentos d
       LEFT JOIN documentos.documentos_archivos da
@@ -70,12 +82,14 @@ export class DocumentoExistenteReadonlyRepository {
     q?: string;
     estado?: string;
     limit?: number;
-  }): Promise<Array<DocumentoExistenteV2 & { yaEsPrincipalV2: boolean }>> {
+  },
+    executor: SqlExecutor = sql,
+  ): Promise<Array<DocumentoExistenteV2 & { yaEsPrincipalV2: boolean }>> {
     const q = input.q?.trim();
     const estado = input.estado?.trim() || 'confirmado';
     const limit = Math.min(Math.max(input.limit ?? 20, 1), 50);
 
-    const rows = await sql<any[]>`
+    const rows = await executor<any[]>`
       SELECT
         d.id,
         d.cliente_abreviatura,
@@ -89,6 +103,7 @@ export class DocumentoExistenteReadonlyRepository {
         d.fecha_emision,
         d.moneda,
         d.monto_total,
+        d.metadata,
         da.nombre_archivo,
         CASE WHEN dop.id IS NULL THEN false ELSE true END AS ya_es_principal_v2
       FROM documentos.documentos d
@@ -123,13 +138,15 @@ export class DocumentoExistenteReadonlyRepository {
     texto?: string;
     pagina?: number;
     limite?: number;
-  }): Promise<Array<DocumentoExistenteV2 & { yaTieneGrupoFacturaV2: boolean }>> {
+  },
+    executor: SqlExecutor = sql,
+  ): Promise<Array<DocumentoExistenteV2 & { yaTieneGrupoFacturaV2: boolean }>> {
     const texto = input.texto?.trim();
     const pagina = Math.max(input.pagina ?? 1, 1);
     const limite = Math.min(Math.max(input.limite ?? 20, 1), 50);
     const offset = (pagina - 1) * limite;
 
-    const rows = await sql<any[]>`
+    const rows = await executor<any[]>`
       SELECT
         d.id,
         d.cliente_abreviatura,
@@ -143,6 +160,7 @@ export class DocumentoExistenteReadonlyRepository {
         d.fecha_emision,
         d.moneda,
         d.monto_total,
+        d.metadata,
         da.nombre_archivo,
         CASE WHEN gf.id IS NULL THEN false ELSE true END AS ya_tiene_grupo_factura_v2
       FROM documentos.documentos d
@@ -181,14 +199,16 @@ export class DocumentoExistenteReadonlyRepository {
     texto?: string | null;
     pagina?: number;
     limite?: number;
-  }): Promise<Array<DocumentoExistenteV2 & { yaAsociadoGrupoV2: boolean }>> {
+  },
+    executor: SqlExecutor = sql,
+  ): Promise<Array<DocumentoExistenteV2 & { yaAsociadoGrupoV2: boolean }>> {
     const tipoFiltro = input.tipoDocumental?.trim().toUpperCase() || null;
     const texto = input.texto?.trim();
     const pagina = Math.max(input.pagina ?? 1, 1);
     const limite = Math.min(Math.max(input.limite ?? 20, 1), 50);
     const offset = (pagina - 1) * limite;
 
-    const rows = await sql<any[]>`
+    const rows = await executor<any[]>`
       SELECT
         d.id,
         d.cliente_abreviatura,
@@ -202,6 +222,7 @@ export class DocumentoExistenteReadonlyRepository {
         d.fecha_emision,
         d.moneda,
         d.monto_total,
+        d.metadata,
         da.nombre_archivo,
         CASE WHEN gfd.id IS NULL THEN false ELSE true END AS ya_asociado_grupo_v2
       FROM documentos.documentos d

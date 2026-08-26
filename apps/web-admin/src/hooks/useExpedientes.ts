@@ -8,6 +8,7 @@ import {
   getExpedienteEstadoDocumental,
   getExpedienteResumen,
   getExpedientes,
+  getExpedientesPage,
   getExpedienteTimeline,
   type ExpedientesQuery,
 } from "@/services/expedientes";
@@ -19,6 +20,18 @@ export function useExpedientes(params: ExpedientesQuery = {}) {
     queryKey: ["expedientes", params],
     queryFn: () => getExpedientes(params),
     enabled: hasToken,
+  });
+}
+
+
+export function useExpedientesPage(params: ExpedientesQuery = {}) {
+  const hasToken = typeof window !== "undefined" && Boolean(getAccessToken());
+
+  return useQuery({
+    queryKey: ["expedientes", "page", params],
+    queryFn: () => getExpedientesPage(params),
+    enabled: hasToken,
+    placeholderData: (previousData) => previousData,
   });
 }
 

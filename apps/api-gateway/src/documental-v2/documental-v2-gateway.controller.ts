@@ -4,6 +4,7 @@ import {
   Body,
   Post,
   Get,
+  Patch,
   Query,
   Headers,
   HttpException,
@@ -69,6 +70,15 @@ export class DocumentalV2GatewayController {
       ...(clienteDestinoId
         ? { 'x-cliente-destino-id': String(clienteDestinoId) }
         : {}),
+      ...(payload?.sessionContextId
+        ? { 'x-session-context-id': String(payload.sessionContextId) }
+        : {}),
+      ...(payload?.sistema
+        ? { 'x-sistema-codigo': String(payload.sistema) }
+        : {}),
+      ...(payload?.perfil
+        ? { 'x-perfil-codigo': String(payload.perfil) }
+        : {}),
     };
   }
 
@@ -90,6 +100,145 @@ export class DocumentalV2GatewayController {
       throw new ForbiddenException(
         `No tienes permiso para operar documentos de la empresa ${empresaSolicitada}`,
       );
+    }
+  }
+
+  private getWorkspaceActions(payload: any): string[] {
+    const candidates = [
+      payload?.permisos?.actions,
+      payload?.permissions?.actions,
+      payload?.actions,
+      Array.isArray(payload?.permisos) ? payload.permisos : null,
+      Array.isArray(payload?.permissions) ? payload.permissions : null,
+    ];
+
+    return candidates
+      .filter(Array.isArray)
+      .flat()
+      .map((action) => String(action ?? '').trim())
+      .filter((action) => action.length > 0);
+  }
+
+  private assertPuedeMaterializarContexto(payload: any) {
+    const actions = this.getWorkspaceActions(payload);
+
+    if (!actions.includes('documentos.vincular_expediente')) {
+      throw new ForbiddenException(
+        'No tienes permiso para materializar Contexto Operativo',
+      );
+    }
+  }
+
+  private assertPuedeAnularContenedorOperativo(payload: any) {
+    const actions = this.getWorkspaceActions(payload);
+
+    if (!actions.includes('documental_v2.contenedores.anular')) {
+      throw new ForbiddenException(
+        'No tienes permiso para anular Contenedores Operativos V2',
+      );
+    }
+  }
+
+  private assertPuedeVerContenedores(payload: any) {
+    const actions = this.getWorkspaceActions(payload);
+
+    if (!actions.includes('documental_v2.contenedores.ver')) {
+      throw new ForbiddenException(
+        'No tienes permiso para consultar Contenedores Operativos V2',
+      );
+    }
+  }
+
+  private assertPuedeCrearContenedores(payload: any) {
+    const actions = this.getWorkspaceActions(payload);
+
+    if (!actions.includes('documental_v2.contenedores.crear')) {
+      throw new ForbiddenException(
+        'No tienes permiso para crear Contenedores Operativos V2',
+      );
+    }
+  }
+
+  private assertPuedeEditarContenedores(payload: any) {
+    const actions = this.getWorkspaceActions(payload);
+
+    if (!actions.includes('documental_v2.contenedores.editar')) {
+      throw new ForbiddenException(
+        'No tienes permiso para editar Contenedores Operativos V2',
+      );
+    }
+  }
+
+  private assertContenedorPerteneceAlContexto(
+    payload: any,
+    contenedor: any,
+  ) {
+    const empresaContexto = this.getEmpresaFromContext(payload);
+    const clienteDestinoIdContexto =
+      this.getClienteDestinoIdFromContext(payload);
+
+    const empresaContenedor = String(
+      contenedor?.empresaCodigo ?? '',
+    )
+      .trim()
+      .toUpperCase();
+
+    const clienteDestinoIdContenedor = Number(
+      contenedor?.clienteDestinoId ?? NaN,
+    );
+
+    if (!empresaContexto) {
+      throw new ForbiddenException(
+        'El token no tiene empresa de workspace válida',
+      );
+    }
+
+    if (!clienteDestinoIdContexto) {
+      throw new ForbiddenException(
+        'El token no tiene cliente destino de workspace válido',
+      );
+    }
+
+    if (empresaContenedor !== empresaContexto) {
+      throw new ForbiddenException(
+        'No tienes permiso para operar este Contenedor Operativo',
+      );
+    }
+
+    if (
+      !Number.isFinite(clienteDestinoIdContenedor) ||
+      clienteDestinoIdContenedor !== clienteDestinoIdContexto
+    ) {
+      throw new ForbiddenException(
+        'No tienes permiso para operar un Contenedor Operativo de otro cliente destino',
+      );
+    }
+  }
+
+  private async obtenerContenedorOperativoInterno(
+    authorization: string | undefined,
+    requestId: string | undefined,
+    contexto: any,
+    id: string,
+  ) {
+    try {
+      const response = await axios.get(
+        `${this.getBaseUrl()}/documental-v2/contenedores/${id}`,
+        {
+          headers: this.buildDocumentosForwardHeaders(
+            authorization,
+            requestId,
+            contexto,
+          ),
+        },
+      );
+
+      const contenedor = this.unwrap(response);
+      this.assertContenedorPerteneceAlContexto(contexto, contenedor);
+
+      return contenedor;
+    } catch (error: any) {
+      this.throwUpstreamHttpException(error);
     }
   }
 
@@ -246,6 +395,36 @@ export class DocumentalV2GatewayController {
   }
 
   @ApiOperation({
+    summary: 'Listar documentos de un Grupo de Factura V2',
+  })
+  @ApiParam({ name: 'grupoFacturaId', example: 1 })
+  @Get('grupos-factura/:grupoFacturaId/documentos')
+  async listarDocumentosPorGrupoFactura(
+    @Headers('authorization') authorization: string | undefined,
+    @Headers(REQUEST_ID_HEADER) requestId: string | undefined,
+    @Param('grupoFacturaId') grupoFacturaId: string,
+  ) {
+    const contexto = await this.validateAuthorization(authorization);
+
+    try {
+      const response = await axios.get(
+        `${this.getBaseUrl()}/documental-v2/grupos-factura/${grupoFacturaId}/documentos`,
+        {
+          headers: this.buildDocumentosForwardHeaders(
+            authorization,
+            requestId,
+            contexto,
+          ),
+        },
+      );
+
+      return this.unwrap(response);
+    } catch (error: any) {
+      this.throwUpstreamHttpException(error);
+    }
+  }
+
+  @ApiOperation({
     summary: 'Asociar documento existente a Grupo de Factura V2',
   })
   @Post('grupos-factura/documentos/asociar')
@@ -255,17 +434,25 @@ export class DocumentalV2GatewayController {
     @Body() body: any,
   ) {
     const contexto = await this.validateAuthorization(authorization);
+    const puedeAutorizarExcepcion = this.getWorkspaceActions(contexto).includes(
+      'documental_v2.finanzas.correspondencia.autorizar_excepcion',
+    );
 
     try {
       const response = await axios.post(
         `${this.getBaseUrl()}/documental-v2/grupos-factura/documentos/asociar`,
         body,
         {
-          headers: this.buildDocumentosForwardHeaders(
-            authorization,
-            requestId,
-            contexto,
-          ),
+          headers: {
+            ...this.buildDocumentosForwardHeaders(
+              authorization,
+              requestId,
+              contexto,
+            ),
+            'x-finanzas-correspondencia-autorizar-excepcion': String(
+              puedeAutorizarExcepcion,
+            ),
+          },
         },
       );
 
@@ -292,6 +479,328 @@ export class DocumentalV2GatewayController {
       const response = await axios.get(
         `${this.getBaseUrl()}/documental-v2/trazabilidad/contenedores/${contenedorOperativoId}`,
         {
+          headers: this.buildDocumentosForwardHeaders(
+            authorization,
+            requestId,
+            contexto,
+          ),
+        },
+      );
+
+      return this.unwrap(response);
+    } catch (error: any) {
+      this.throwUpstreamHttpException(error);
+    }
+  }
+
+  @ApiOperation({
+    summary: 'Materializar Contexto Operativo V2 desde Expediente V1',
+  })
+  @ApiParam({ name: 'expedienteId', example: 16 })
+  @Post('workspace/expedientes-v1/:expedienteId/materializar-contenedor')
+  async materializarContextoOperativoDesdeExpedienteV1(
+    @Headers('authorization') authorization: string | undefined,
+    @Headers(REQUEST_ID_HEADER) requestId: string | undefined,
+    @Param('expedienteId') expedienteId: string,
+  ) {
+    const contexto = await this.validateAuthorization(authorization);
+    this.assertPuedeMaterializarContexto(contexto);
+
+    try {
+      const response = await axios.post(
+        `${this.getBaseUrl()}/documental-v2/workspace/expedientes-v1/${expedienteId}/materializar-contenedor`,
+        {},
+        {
+          headers: this.buildDocumentosForwardHeaders(
+            authorization,
+            requestId,
+            contexto,
+          ),
+        },
+      );
+
+      return this.unwrap(response);
+    } catch (error: any) {
+      this.throwUpstreamHttpException(error);
+    }
+  }
+
+
+  @ApiOperation({
+    summary: 'Listar Contenedores Operativos V2',
+  })
+  @Get('contenedores-operativos')
+  async listarContenedoresOperativos(
+    @Headers('authorization') authorization: string | undefined,
+    @Headers(REQUEST_ID_HEADER) requestId: string | undefined,
+    @Query() query: any,
+  ) {
+    const contexto = await this.validateAuthorization(authorization);
+    this.assertPuedeVerContenedores(contexto);
+
+    const empresaCodigo = this.getEmpresaFromContext(contexto);
+    const clienteDestinoId =
+      this.getClienteDestinoIdFromContext(contexto);
+
+    if (!empresaCodigo || !clienteDestinoId) {
+      throw new ForbiddenException(
+        'El token no contiene un contexto de workspace válido',
+      );
+    }
+
+    try {
+      const response = await axios.get(
+        `${this.getBaseUrl()}/documental-v2/contenedores`,
+        {
+          params: {
+            ...query,
+            empresaCodigo,
+            clienteDestinoId,
+          },
+          headers: this.buildDocumentosForwardHeaders(
+            authorization,
+            requestId,
+            contexto,
+          ),
+        },
+      );
+
+      return this.unwrap(response);
+    } catch (error: any) {
+      this.throwUpstreamHttpException(error);
+    }
+  }
+
+  @ApiOperation({
+    summary: 'Buscar Contenedor Operativo V2 por clave funcional',
+  })
+  @Get('contenedores-operativos/buscar')
+  async buscarContenedorOperativoPorClave(
+    @Headers('authorization') authorization: string | undefined,
+    @Headers(REQUEST_ID_HEADER) requestId: string | undefined,
+    @Query() query: any,
+  ) {
+    const contexto = await this.validateAuthorization(authorization);
+    this.assertPuedeVerContenedores(contexto);
+
+    const empresaCodigo = this.getEmpresaFromContext(contexto);
+
+    if (!empresaCodigo) {
+      throw new ForbiddenException(
+        'El token no tiene empresa de workspace válida',
+      );
+    }
+
+    try {
+      const response = await axios.get(
+        `${this.getBaseUrl()}/documental-v2/contenedores/buscar`,
+        {
+          params: {
+            ...query,
+            empresaCodigo,
+          },
+          headers: this.buildDocumentosForwardHeaders(
+            authorization,
+            requestId,
+            contexto,
+          ),
+        },
+      );
+
+      const contenedor = this.unwrap(response);
+
+      if (contenedor) {
+        this.assertContenedorPerteneceAlContexto(
+          contexto,
+          contenedor,
+        );
+      }
+
+      return contenedor;
+    } catch (error: any) {
+      this.throwUpstreamHttpException(error);
+    }
+  }
+
+  @ApiOperation({
+    summary: 'Obtener Contenedor Operativo V2 por ID',
+  })
+  @ApiParam({ name: 'id', example: 1 })
+  @Get('contenedores-operativos/:id')
+  async obtenerContenedorOperativo(
+    @Headers('authorization') authorization: string | undefined,
+    @Headers(REQUEST_ID_HEADER) requestId: string | undefined,
+    @Param('id') id: string,
+  ) {
+    const contexto = await this.validateAuthorization(authorization);
+    this.assertPuedeVerContenedores(contexto);
+
+    return this.obtenerContenedorOperativoInterno(
+      authorization,
+      requestId,
+      contexto,
+      id,
+    );
+  }
+
+  @ApiOperation({
+    summary: 'Crear Contenedor Operativo V2',
+  })
+  @Post('contenedores-operativos')
+  async crearContenedorOperativo(
+    @Headers('authorization') authorization: string | undefined,
+    @Headers(REQUEST_ID_HEADER) requestId: string | undefined,
+    @Body() body: any,
+  ) {
+    const contexto = await this.validateAuthorization(authorization);
+    this.assertPuedeCrearContenedores(contexto);
+
+    const empresaCodigo = this.getEmpresaFromContext(contexto);
+    const clienteDestinoId =
+      this.getClienteDestinoIdFromContext(contexto);
+
+    if (!empresaCodigo || !clienteDestinoId) {
+      throw new ForbiddenException(
+        'El token no contiene un contexto de workspace válido',
+      );
+    }
+
+    try {
+      const response = await axios.post(
+        `${this.getBaseUrl()}/documental-v2/contenedores`,
+        {
+          ...body,
+          empresaCodigo,
+          clienteDestinoId,
+        },
+        {
+          headers: this.buildDocumentosForwardHeaders(
+            authorization,
+            requestId,
+            contexto,
+          ),
+        },
+      );
+
+      return this.unwrap(response);
+    } catch (error: any) {
+      this.throwUpstreamHttpException(error);
+    }
+  }
+
+  @ApiOperation({
+    summary: 'Actualizar Contenedor Operativo V2',
+  })
+  @ApiParam({ name: 'id', example: 1 })
+  @Patch('contenedores-operativos/:id')
+  async actualizarContenedorOperativo(
+    @Headers('authorization') authorization: string | undefined,
+    @Headers(REQUEST_ID_HEADER) requestId: string | undefined,
+    @Param('id') id: string,
+    @Body() body: any,
+  ) {
+    const contexto = await this.validateAuthorization(authorization);
+    this.assertPuedeEditarContenedores(contexto);
+
+    const contenedor =
+      await this.obtenerContenedorOperativoInterno(
+        authorization,
+        requestId,
+        contexto,
+        id,
+      );
+
+    if (String(contenedor?.estado ?? '').toLowerCase() === 'anulado') {
+      throw new HttpException(
+        {
+          message:
+            'No se puede editar un Contenedor Operativo anulado.',
+          code: 'CONTENEDOR_OPERATIVO_ANULADO_NO_EDITABLE',
+          details: {
+            contenedorOperativoId: Number(id),
+            estadoActual: contenedor?.estado ?? null,
+          },
+        },
+        409,
+      );
+    }
+
+    try {
+      const response = await axios.patch(
+        `${this.getBaseUrl()}/documental-v2/contenedores/${id}`,
+        body,
+        {
+          headers: this.buildDocumentosForwardHeaders(
+            authorization,
+            requestId,
+            contexto,
+          ),
+        },
+      );
+
+      return this.unwrap(response);
+    } catch (error: any) {
+      this.throwUpstreamHttpException(error);
+    }
+  }
+
+
+  @ApiOperation({
+    summary: 'Anular lógicamente un Contenedor Operativo V2',
+  })
+  @ApiParam({ name: 'id', example: 4 })
+  @Post('contenedores-operativos/:id/anular')
+  async anularContenedorOperativo(
+    @Headers('authorization') authorization: string | undefined,
+    @Headers(REQUEST_ID_HEADER) requestId: string | undefined,
+    @Param('id') id: string,
+    @Body() body: any,
+  ) {
+    const contexto = await this.validateAuthorization(authorization);
+    this.assertPuedeAnularContenedorOperativo(contexto);
+
+    const motivo = String(body?.motivo ?? '').trim();
+
+    try {
+      const response = await axios.post(
+        `${this.getBaseUrl()}/documental-v2/contenedores/${id}/anular`,
+        { motivo },
+        {
+          headers: this.buildDocumentosForwardHeaders(
+            authorization,
+            requestId,
+            contexto,
+          ),
+        },
+      );
+
+      return this.unwrap(response);
+    } catch (error: any) {
+      this.throwUpstreamHttpException(error);
+    }
+  }
+
+
+  @ApiOperation({
+    summary: 'Evaluar correspondencia entre Factura y sustento de pago',
+  })
+  @Get('finanzas/correspondencia/evaluar')
+  async evaluarCorrespondenciaPagoFactura(
+    @Headers('authorization') authorization: string | undefined,
+    @Headers(REQUEST_ID_HEADER) requestId: string | undefined,
+    @Query('facturaDocumentoId') facturaDocumentoId: string,
+    @Query('pagoDocumentoId') pagoDocumentoId?: string,
+  ) {
+    const contexto = await this.validateAuthorization(authorization);
+
+    try {
+      const response = await axios.get(
+        `${this.getBaseUrl()}/documental-v2/finanzas/correspondencia/evaluar`,
+        {
+          params: {
+            facturaDocumentoId,
+            ...(pagoDocumentoId ? { pagoDocumentoId } : {}),
+          },
           headers: this.buildDocumentosForwardHeaders(
             authorization,
             requestId,
@@ -432,6 +941,102 @@ export class DocumentalV2GatewayController {
     }
 
     throw error;
+  }
+
+  @ApiOperation({
+    summary: 'Anular Documento Operativo Principal V2',
+  })
+  @ApiParam({ name: 'id', example: 1 })
+  @Post('documentos-operativos-principales/:id/anular')
+  async anularDocumentoOperativoPrincipal(
+    @Param('id') id: string,
+    @Body() body: any = {},
+    @Headers('authorization') authorization?: string,
+    @Headers(REQUEST_ID_HEADER) requestId?: string,
+  ) {
+    const contexto = await this.validateAuthorization(authorization);
+
+    try {
+      const response = await axios.post(
+        `${this.getBaseUrl()}/documental-v2/documentos-operativos-principales/${Number(id)}/anular`,
+        body,
+        {
+          headers: this.buildDocumentosForwardHeaders(
+            authorization,
+            requestId,
+            contexto,
+          ),
+        },
+      );
+
+      return this.unwrap(response);
+    } catch (error: any) {
+      this.throwUpstreamHttpException(error);
+    }
+  }
+
+  @ApiOperation({
+    summary: 'Anular Grupo de Factura V2',
+  })
+  @ApiParam({ name: 'id', example: 1 })
+  @Post('grupos-factura/:id/anular')
+  async anularGrupoFactura(
+    @Param('id') id: string,
+    @Body() body: any = {},
+    @Headers('authorization') authorization?: string,
+    @Headers(REQUEST_ID_HEADER) requestId?: string,
+  ) {
+    const contexto = await this.validateAuthorization(authorization);
+
+    try {
+      const response = await axios.post(
+        `${this.getBaseUrl()}/documental-v2/grupos-factura/${Number(id)}/anular`,
+        body,
+        {
+          headers: this.buildDocumentosForwardHeaders(
+            authorization,
+            requestId,
+            contexto,
+          ),
+        },
+      );
+
+      return this.unwrap(response);
+    } catch (error: any) {
+      this.throwUpstreamHttpException(error);
+    }
+  }
+
+  @ApiOperation({
+    summary: 'Anular vínculo de documento con Grupo de Factura V2',
+  })
+  @ApiParam({ name: 'id', example: 1 })
+  @Post('grupo-factura-documentos/:id/anular')
+  async anularGrupoFacturaDocumento(
+    @Param('id') id: string,
+    @Body() body: any = {},
+    @Headers('authorization') authorization?: string,
+    @Headers(REQUEST_ID_HEADER) requestId?: string,
+  ) {
+    const contexto = await this.validateAuthorization(authorization);
+
+    try {
+      const response = await axios.post(
+        `${this.getBaseUrl()}/documental-v2/grupo-factura-documentos/${Number(id)}/anular`,
+        body,
+        {
+          headers: this.buildDocumentosForwardHeaders(
+            authorization,
+            requestId,
+            contexto,
+          ),
+        },
+      );
+
+      return this.unwrap(response);
+    } catch (error: any) {
+      this.throwUpstreamHttpException(error);
+    }
   }
 
   @ApiOperation({

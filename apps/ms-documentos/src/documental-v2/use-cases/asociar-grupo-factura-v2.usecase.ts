@@ -11,6 +11,7 @@ import type {
   GrupoFacturaRow,
   JsonObject,
 } from '../documental-v2.types';
+import type { SqlExecutor } from '../sql-executor';
 
 const ESTADO_GRUPO_FACTURA_INICIAL = 'pendiente_revision';
 const TIPO_DOCUMENTAL_FACTURA = 'FACTURA';
@@ -24,6 +25,7 @@ export type ContextoAutenticadoV2 = {
   requestId?: string | null;
   correlationId?: string | null;
   origen?: string | null;
+  tienePermisoAutorizarExcepcion?: boolean;
 };
 
 export type AsociarGrupoFacturaV2Input = {
@@ -127,13 +129,13 @@ export class AsociarGrupoFacturaV2UseCase {
     pagina?: number | null;
     limite?: number | null;
     usuario?: ContextoAutenticadoV2;
-  }): Promise<FacturaCandidataGrupoFacturaV2[]> {
+  }, executor?: SqlExecutor): Promise<FacturaCandidataGrupoFacturaV2[]> {
     const documentoOperativoPrincipalId = normalizarId(
       input.documentoOperativoPrincipalId,
       'documentoOperativoPrincipalId',
     );
 
-    const principal = await this.principales.buscarPorId(documentoOperativoPrincipalId);
+    const principal = await this.principales.buscarPorId(documentoOperativoPrincipalId, executor);
     if (!principal) {
       throw new NotFoundException(
         crearError(
@@ -145,7 +147,7 @@ export class AsociarGrupoFacturaV2UseCase {
 
     this.validarPrincipalActivo(principal);
 
-    const contenedor = await this.contenedores.buscarPorId(Number(principal.contenedorOperativoId));
+    const contenedor = await this.contenedores.buscarPorId(Number(principal.contenedorOperativoId), executor);
     if (!contenedor) {
       throw new NotFoundException(
         crearError(
@@ -163,7 +165,7 @@ export class AsociarGrupoFacturaV2UseCase {
       texto: input.texto ?? undefined,
       pagina: input.pagina ?? undefined,
       limite: input.limite ?? undefined,
-    });
+    }, executor);
 
     return facturas.map((factura) => ({
       documentoId: factura.id,
@@ -182,14 +184,17 @@ export class AsociarGrupoFacturaV2UseCase {
     }));
   }
 
-  async execute(input: AsociarGrupoFacturaV2Input): Promise<AsociarGrupoFacturaV2Result> {
+  async execute(
+    input: AsociarGrupoFacturaV2Input,
+    executor?: SqlExecutor,
+  ): Promise<AsociarGrupoFacturaV2Result> {
     const documentoOperativoPrincipalId = normalizarId(
       input.documentoOperativoPrincipalId,
       'documentoOperativoPrincipalId',
     );
     const facturaDocumentoId = normalizarId(input.facturaDocumentoId, 'facturaDocumentoId');
 
-    const principal = await this.principales.buscarPorId(documentoOperativoPrincipalId);
+    const principal = await this.principales.buscarPorId(documentoOperativoPrincipalId, executor);
     if (!principal) {
       throw new NotFoundException(
         crearError(
@@ -201,7 +206,7 @@ export class AsociarGrupoFacturaV2UseCase {
 
     this.validarPrincipalActivo(principal);
 
-    const contenedor = await this.contenedores.buscarPorId(Number(principal.contenedorOperativoId));
+    const contenedor = await this.contenedores.buscarPorId(Number(principal.contenedorOperativoId), executor);
     if (!contenedor) {
       throw new NotFoundException(
         crearError(
@@ -214,7 +219,7 @@ export class AsociarGrupoFacturaV2UseCase {
     this.validarContenedorActivo(contenedor);
     this.validarAutorizacion(contenedor, input.usuario);
 
-    const factura = await this.documentos.buscarPorId(facturaDocumentoId);
+    const factura = await this.documentos.buscarPorId(facturaDocumentoId, executor);
     if (!factura) {
       throw new NotFoundException(crearError('Factura no encontrada', 'FACTURA_NO_ENCONTRADA'));
     }
@@ -222,6 +227,32 @@ export class AsociarGrupoFacturaV2UseCase {
     if (factura.tipoDocumental !== TIPO_DOCUMENTAL_FACTURA) {
       throw new ConflictException(
         crearError('El documento seleccionado no es una Factura', 'DOCUMENTO_NO_ES_FACTURA'),
+      );
+    }
+
+    if (factura.estado === 'anulado') {
+      throw new ConflictException(
+        crearError(
+          'Una Factura anulada no puede fundar un Grupo de Factura.',
+          'FACTURA_ANULADA',
+          {
+            facturaDocumentoId,
+            estado: factura.estado,
+          },
+        ),
+      );
+    }
+
+    if (factura.estado !== 'confirmado') {
+      throw new ConflictException(
+        crearError(
+          'La Factura debe estar confirmada antes de crear un Grupo de Factura.',
+          'FACTURA_NO_CONFIRMADA',
+          {
+            facturaDocumentoId,
+            estado: factura.estado,
+          },
+        ),
       );
     }
 
@@ -234,7 +265,7 @@ export class AsociarGrupoFacturaV2UseCase {
       );
     }
 
-    const existente = await this.gruposFactura.buscarPorFacturaDocumentoId(facturaDocumentoId);
+    const existente = await this.gruposFactura.buscarVigentePorFacturaDocumentoId(facturaDocumentoId, executor);
     if (existente) {
       if (
         existente.estado !== 'anulado' &&
@@ -256,20 +287,61 @@ export class AsociarGrupoFacturaV2UseCase {
       );
     }
 
+    const gruposHistoricosIds =
+      await this.gruposFactura.listarHistoricosPorFacturaDocumentoId(
+        facturaDocumentoId,
+        executor,
+      );
+
     const metadataCreacion = this.buildMetadataCreacion({
       principal,
       contenedor,
       factura,
       usuario: input.usuario,
+      gruposHistoricosIds,
     });
 
-    const creadoInicial = await this.gruposFactura.crear({
-      documentoOperativoPrincipalId,
-      facturaDocumentoId,
-      estado: ESTADO_GRUPO_FACTURA_INICIAL,
-      metadata: metadataCreacion,
-      creadoPor: input.usuario?.id ?? null,
-    });
+    let creadoInicial: GrupoFacturaRow;
+    try {
+      creadoInicial = await this.gruposFactura.crear({
+        documentoOperativoPrincipalId,
+        facturaDocumentoId,
+        estado: ESTADO_GRUPO_FACTURA_INICIAL,
+        metadata: metadataCreacion,
+        creadoPor: input.usuario?.id ?? null,
+      }, executor);
+    } catch (error: any) {
+      if (error?.code !== '23505') throw error;
+
+      const recuperado =
+        await this.gruposFactura.buscarVigentePorFacturaDocumentoId(
+          facturaDocumentoId,
+          executor,
+        );
+
+      if (
+        recuperado &&
+        Number(recuperado.documentoOperativoPrincipalId) ===
+          documentoOperativoPrincipalId
+      ) {
+        return {
+          grupoFactura: this.enriquecerVista(recuperado, principal, factura),
+          idempotente: true,
+          workspaceDebeRefrescar: false,
+        };
+      }
+
+      throw new ConflictException(
+        crearError(
+          'La factura ya pertenece a otro Grupo de Factura vigente',
+          'FACTURA_YA_TIENE_GRUPO_ACTIVO',
+          {
+            facturaDocumentoId,
+            grupoFacturaId: recuperado?.id ?? null,
+          },
+        ),
+      );
+    }
 
     const metadataFinal = this.completarMetadataEntidad(metadataCreacion, Number(creadoInicial.id));
     const creado =
@@ -277,7 +349,7 @@ export class AsociarGrupoFacturaV2UseCase {
         id: Number(creadoInicial.id),
         metadata: metadataFinal,
         actualizadoPor: input.usuario?.id ?? null,
-      })) ?? creadoInicial;
+      }, executor)) ?? creadoInicial;
 
     await this.auditoria.registrarCreacion({
       accion: 'GRUPO_FACTURA_CREADO',
@@ -291,11 +363,13 @@ export class AsociarGrupoFacturaV2UseCase {
         documentoOperativoPrincipalId,
         grupoFacturaId: creado.id,
         facturaDocumentoId,
+        gruposHistoricosIds,
+        recreacion: gruposHistoricosIds.length > 0,
         documentoOperativoPrincipalDocumentoId: principal.documentoId,
         empresaCodigo: contenedor.empresaCodigo,
         estado: creado.estado,
       },
-    });
+    }, executor);
 
     return {
       grupoFactura: this.enriquecerVista(creado, principal, factura),
@@ -357,6 +431,7 @@ export class AsociarGrupoFacturaV2UseCase {
     contenedor: ContenedorOperativoRow;
     factura: DocumentoExistenteV2;
     usuario?: ContextoAutenticadoV2;
+    gruposHistoricosIds: number[];
   }): JsonObject {
     return {
       tipoOperacion: 'GRUPO_FACTURA_CREADO',
@@ -366,6 +441,9 @@ export class AsociarGrupoFacturaV2UseCase {
       entidad: 'grupo_factura',
       origen: 'OPERACION_DOCUMENTAL_V2',
       sprint: '2.0B',
+      resultadoOperacion:
+        input.gruposHistoricosIds.length > 0 ? 'RECREADO' : 'CREADO',
+      gruposHistoricosIds: input.gruposHistoricosIds,
       usuario: input.usuario ?? null,
       contexto: {
         contenedorOperativoId: input.contenedor.id,

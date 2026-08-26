@@ -1,3 +1,29 @@
+jest.mock('@documental/shared', () => ({
+  createLiveResponse: jest.fn((service: string) => ({
+    service,
+    status: 'ok',
+    uptime: 0,
+  })),
+  createNatsClientOptions: jest.fn((servers: string) => ({
+    servers,
+    timeout: 1000,
+  })),
+  createVersionResponse: jest.fn((service: string) => ({
+    service,
+    version: 'test',
+    node_env: 'test',
+    uptime: 0,
+    commit: 'test',
+    build_date: 'test',
+  })),
+}));
+
+jest.mock('@documental/database', () => ({
+  sql: Object.assign(jest.fn(), {
+    end: jest.fn(),
+  }),
+}));
+
 import { Test, TestingModule } from '@nestjs/testing';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';

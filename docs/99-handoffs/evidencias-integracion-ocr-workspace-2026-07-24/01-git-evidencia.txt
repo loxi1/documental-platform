@@ -1,0 +1,24 @@
+=== FECHA ===
+2026-07-24T18:01:58-05:00
+
+=== RAMA ===
+test/integracion-exposicion-carga-segura-2-1C
+
+=== HEAD ===
+7eed83a6 (HEAD -> test/integracion-exposicion-carga-segura-2-1C) fix(ms-documentos): persist OCR expediente link metadata
+1f63e41e fix(documental-v2): align secure upload contract
+b63aa9e0 docs(documental-v2): document confirmed invoice requirement
+618238aa fix(documental-v2): require confirmed invoice for invoice group
+6c47d5db feat(ms-documentos): expose secure document upload endpoint
+
+=== STATUS ===
+?? docs/99-handoffs/
+?? paquetes_revision/
+
+=== COMMIT CORRECCIÓN ===
+7eed83a6 (HEAD -> test/integracion-exposicion-carga-segura-2-1C) fix(ms-documentos): persist OCR expediente link metadata
+ apps/ms-documentos/src/documentos/documentos.repository.ts | 14 ++++++++------
+ 1 file changed, 8 insertions(+), 6 deletions(-)
+
+=== DIFF CHECK COMMIT ===
+7eed83a6 fix(ms-documentos): persist OCR expediente link metadata

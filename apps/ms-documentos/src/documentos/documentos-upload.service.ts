@@ -1,8 +1,10 @@
-import { BadRequestException, ConflictException, Injectable } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable,
+  ForbiddenException,} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { sql } from '@documental/database';
 import { DocumentoEventosService } from '../documento-eventos/documento-eventos.service';
+import { WorkspaceDocumentalV2UseCase } from '../documental-v2/use-cases/workspace-documental-v2.usecase';
 import { createHash, randomUUID } from 'node:crypto';
 import path from 'node:path';
 
@@ -19,6 +21,8 @@ type UploadedFileLike = {
 type CargaGuiadaBody = {
   documentoId?: string | number | null;
   expedienteId?: string | number | null;
+  documentoBaseId?: string | number | null;
+  grupoFacturaId?: string | number | null;
   clienteAbreviatura?: string;
   areaOrigen?: string;
   tipoEsperado?: string;
@@ -49,6 +53,15 @@ function toOptionalNumber(value: unknown) {
   if (value === null || value === undefined || value === '') return null;
   const numberValue = Number(value);
   return Number.isFinite(numberValue) ? numberValue : null;
+}
+
+function toOptionalPositiveInteger(value: unknown, field: string) {
+  if (value === null || value === undefined || value === '') return null;
+  const normalized = Number(value);
+  if (!Number.isInteger(normalized) || normalized <= 0) {
+    throw new BadRequestException(`${field} debe ser un entero positivo`);
+  }
+  return normalized;
 }
 
 function sanitizeFilename(filename: string) {
@@ -83,6 +96,7 @@ export class DocumentosUploadService {
   constructor(
     private readonly config: ConfigService,
     private readonly documentoEventos: DocumentoEventosService,
+    private readonly workspaceV2: WorkspaceDocumentalV2UseCase,
   ) {}
 
   async prevalidarCarga(file: UploadedFileLike | undefined, body: CargaGuiadaBody) {
@@ -95,10 +109,17 @@ export class DocumentosUploadService {
       throw new BadRequestException('clienteAbreviatura es obligatorio');
     }
 
-    const tipoEsperado = normalizeUpper(body.tipoEsperado, 'OTRO');
+    const tipoEsperadoRaw = normalizeUpper(body.tipoEsperado, 'OTRO');
+    const tipoEsperado =
+      tipoEsperadoRaw === 'PAGO_TRANSFERENCIA' ? 'TRANSFERENCIA' : tipoEsperadoRaw;
     const tipoRelacionSugerida = firstNonEmpty(body.tipoRelacionSugerida) ?? null;
     const expedienteId = toOptionalNumber(body.expedienteId);
     const documentoIdPayload = toOptionalNumber(body.documentoId);
+    const documentoBaseId = toOptionalPositiveInteger(body.documentoBaseId, 'documentoBaseId');
+    const grupoFacturaId = toOptionalPositiveInteger(body.grupoFacturaId, 'grupoFacturaId');
+    if (grupoFacturaId !== null) {
+      await this.validarGrupoFacturaContextual({ expedienteId, documentoBaseId, grupoFacturaId });
+    }
     const claveDocumental = firstNonEmpty(body.claveDocumental) ?? null;
     const codigoExpedientePayload = firstNonEmpty(body.codigoExpediente) ?? null;
 
@@ -106,13 +127,36 @@ export class DocumentosUploadService {
     const contentType = inferContentType(file, originalFilename);
     const sha256 = createHash('sha256').update(file.buffer).digest('hex');
 
-    const [duplicados, expedienteInfo, documentoExistente] = await Promise.all([
-      this.buscarDuplicadosPorHash({
-        sha256,
-        documentoId: documentoIdPayload,
-        expedienteId,
-      }),
-      expedienteId ? this.obtenerResumenExpediente(expedienteId) : Promise.resolve(null),
+    const solicitudPrincipal = this.esSolicitudPrincipal(
+      tipoRelacionSugerida,
+      body,
+    );
+    const relacionPrincipalSolicitada =
+      solicitudPrincipal &&
+      String(tipoRelacionSugerida ?? '').trim().toLowerCase().startsWith('principal_')
+        ? String(tipoRelacionSugerida).trim().toLowerCase()
+        : null;
+
+    const expedienteInfo = expedienteId
+      ? await this.obtenerResumenExpediente(
+          expedienteId,
+          relacionPrincipalSolicitada,
+        )
+      : null;
+
+    const tenantEmpresaCodigo = expedienteInfo?.empresaCodigo
+      ? normalizeUpper(expedienteInfo.empresaCodigo, '')
+      : null;
+
+    const [duplicados, documentoExistente] = await Promise.all([
+      tenantEmpresaCodigo
+        ? this.buscarDuplicadosPorHash({
+            sha256,
+            documentoId: documentoIdPayload,
+            expedienteId,
+            empresaCodigo: tenantEmpresaCodigo,
+          })
+        : Promise.resolve([]),
       claveDocumental ? this.buscarDocumentoPorClave(claveDocumental) : Promise.resolve(null),
     ]);
 
@@ -129,7 +173,6 @@ export class DocumentosUploadService {
       : codigoExpedientePayload === expedienteInfo.codigoExpediente;
 
     const expedienteTienePrincipal = expedienteInfo?.principalActivo ? true : false;
-    const intentaPrincipal = this.esSolicitudPrincipal(tipoRelacionSugerida, body);
 
     let accionSugerida: 'abrir_existente' | 'vincular_existente' | 'cargar_nuevo' | 'bloquear' | 'requiere_confirmacion' = 'cargar_nuevo';
     let motivo: string | null = null;
@@ -139,14 +182,7 @@ export class DocumentosUploadService {
       motivo = 'ARCHIVO_DUPLICADO_POR_HASH';
     } else if (documentoExistente?.id && documentoYaVinculado?.expedienteId && expedienteId && Number(documentoYaVinculado.expedienteId) !== Number(expedienteId)) {
       accionSugerida = 'bloquear';
-      motivo = 'DOCUMENTO_YA_VINCULADO_A_OTRO_EXPEDIENTE';
-    } else if (codigoExpedienteCoincide === false) {
-      accionSugerida = 'bloquear';
-      motivo = 'CODIGO_EXPEDIENTE_NO_COINCIDE';
-    } else if (intentaPrincipal && expedienteTienePrincipal) {
-      accionSugerida = 'bloquear';
-      motivo = 'EXPEDIENTE_YA_TIENE_DOCUMENTO_PRINCIPAL';
-    } else if (documentoExistente?.id && expedienteId) {
+      motivo = 'DOCUMENTO_YA_VINCULADO_A_OTRO_EXPEDIENTE';    } else if (documentoExistente?.id && expedienteId) {
       accionSugerida = 'vincular_existente';
       motivo = 'MISMA_CLAVE_DOCUMENTAL';
     }
@@ -184,6 +220,148 @@ export class DocumentosUploadService {
     };
   }
 
+  /**
+   * 42-B-03A: sube un archivo candidato para un documento existente.
+   * NO promueve la versión. La promoción final queda exclusivamente en
+   * agregarArchivoComoVersion(), después de OCR + validación.
+   */
+  async subirVersionDocumentoExistente(
+    documentoIdRaw: string | number,
+    file: UploadedFileLike,
+    input: Record<string, unknown> = {},
+  ) {
+    const documentoId = Number(documentoIdRaw);
+    if (!Number.isInteger(documentoId) || documentoId <= 0) {
+      throw new BadRequestException('DOCUMENTO_ID_INVALIDO');
+    }
+
+    if (!file?.buffer?.length) {
+      throw new BadRequestException('ARCHIVO_REQUERIDO');
+    }
+
+    const empresaSolicitada = String(
+      input.empresaCodigo ??
+        input.clienteAbreviatura ??
+        '',
+    )
+      .trim()
+      .toUpperCase();
+
+    if (!empresaSolicitada) {
+      throw new BadRequestException('EMPRESA_REQUERIDA');
+    }
+
+    const documentoRows = await sql<
+      Array<{
+        id: number;
+        cliente_abreviatura: string | null;
+      }>
+    >`
+      SELECT
+        d.id,
+        d.cliente_abreviatura
+      FROM documentos.documentos d
+      WHERE d.id = ${documentoId}::bigint
+      LIMIT 1
+    `;
+
+    const documentoDestino = documentoRows[0];
+    if (!documentoDestino) {
+      throw new BadRequestException('DOCUMENTO_DESTINO_NO_ENCONTRADO');
+    }
+
+    const empresaDocumento = String(
+      documentoDestino.cliente_abreviatura ?? '',
+    )
+      .trim()
+      .toUpperCase();
+
+    if (!empresaDocumento || empresaDocumento !== empresaSolicitada) {
+      throw new ForbiddenException('DOCUMENTO_FUERA_DE_EMPRESA');
+    }
+
+    const originalName = path.basename(String(file.originalname || 'archivo.bin'));
+    const contentType =
+      String(file.mimetype || '').trim() || 'application/octet-stream';
+    const sha256 = createHash('sha256').update(file.buffer).digest('hex');
+    const bucket = this.resolveBucket();
+
+    const now = new Date();
+    const year = String(now.getUTCFullYear());
+    const month = String(now.getUTCMonth() + 1).padStart(2, '0');
+    const storageKey =
+      `documentos/${year}/${month}/${empresaDocumento}/` +
+      `${randomUUID()}__${originalName}`;
+
+    await this.subirAR2({
+      bucket,
+      storageKey,
+      body: file.buffer,
+      contentType,
+    });
+
+    const metadata = {
+      origen: 'UPLOAD_VERSION_CANDIDATA',
+      documentoIdDestino: documentoId,
+      empresaCodigo: empresaDocumento,
+    };
+
+    const archivoRows = await sql<Array<{ id: number }>>`
+      INSERT INTO documentos.documentos_archivos (
+        documento_id,
+        nombre_archivo,
+        ruta_archivo,
+        hash_sha256,
+        tipo_version,
+        area_origen,
+        estado,
+        origen_archivo,
+        observacion,
+        metadata,
+        storage_provider,
+        storage_bucket,
+        storage_key,
+        public_url,
+        version,
+        es_version_actual
+      )
+      VALUES (
+        ${documentoId},
+        ${originalName},
+        ${storageKey},
+        ${sha256},
+        NULL,
+        ${String(input.areaOrigen ?? 'ALMACEN')},
+        'subido',
+        'upload_version_candidata',
+        ${String(input.observacion ?? '') || null},
+        ${JSON.stringify(metadata)}::jsonb,
+        'r2',
+        ${bucket},
+        ${storageKey},
+        NULL,
+        1,
+        false
+      )
+      RETURNING id
+    `;
+
+    const archivoId = archivoRows[0]?.id;
+    if (!archivoId) {
+      throw new BadRequestException('ARCHIVO_VERSION_NO_PERSISTIDO');
+    }
+
+    return {
+      ok: true,
+      documentoId,
+      archivoId,
+      storageProvider: 'r2',
+      storageKey,
+      esVersionActual: false,
+    };
+  }
+
+
   async cargaGuiada(file: UploadedFileLike | undefined, body: CargaGuiadaBody) {
     if (!file?.buffer?.length) {
       throw new BadRequestException('Archivo requerido en el campo file o archivo');
@@ -194,13 +372,20 @@ export class DocumentosUploadService {
       throw new BadRequestException('clienteAbreviatura es obligatorio');
     }
 
-    const tipoEsperado = normalizeUpper(body.tipoEsperado, 'OTRO');
+    const tipoEsperadoRaw = normalizeUpper(body.tipoEsperado, 'OTRO');
+    const tipoEsperado =
+      tipoEsperadoRaw === 'PAGO_TRANSFERENCIA' ? 'TRANSFERENCIA' : tipoEsperadoRaw;
     const areaOrigen = normalizeUpper(body.areaOrigen, DEFAULT_AREA_ORIGEN);
     const canalIngreso = normalizeUpper(body.canalIngreso, DEFAULT_CANAL_INGRESO);
     const tipoRelacionSugerida = firstNonEmpty(body.tipoRelacionSugerida) ?? null;
     const observacion = firstNonEmpty(body.observacion) ?? null;
     const expedienteId = toOptionalNumber(body.expedienteId);
     const documentoIdPayload = toOptionalNumber(body.documentoId);
+    const documentoBaseId = toOptionalPositiveInteger(body.documentoBaseId, 'documentoBaseId');
+    const grupoFacturaId = toOptionalPositiveInteger(body.grupoFacturaId, 'grupoFacturaId');
+    if (grupoFacturaId !== null) {
+      await this.validarGrupoFacturaContextual({ expedienteId, documentoBaseId, grupoFacturaId });
+    }
 
     const now = new Date();
     const year = now.getFullYear();
@@ -211,11 +396,21 @@ export class DocumentosUploadService {
     const contentType = inferContentType(file, originalFilename);
     const sha256 = createHash('sha256').update(file.buffer).digest('hex');
 
-    const duplicadosPrevios = await this.buscarDuplicadosPorHash({
+    const expedienteTenantInfoCarga = expedienteId
+      ? await this.obtenerResumenExpediente(expedienteId)
+      : null;
+    const tenantEmpresaCodigoCarga = expedienteTenantInfoCarga?.empresaCodigo
+      ? normalizeUpper(expedienteTenantInfoCarga.empresaCodigo, '')
+      : null;
+
+    const duplicadosPrevios = tenantEmpresaCodigoCarga
+      ? await this.buscarDuplicadosPorHash({
       sha256,
       documentoId: documentoIdPayload,
       expedienteId,
-    });
+      empresaCodigo: tenantEmpresaCodigoCarga,
+        })
+      : [];
 
     if (duplicadosPrevios.length > 0) {
       throw new ConflictException({
@@ -238,30 +433,6 @@ export class DocumentosUploadService {
         },
       });
     }
-
-    const intentaPrincipal = this.esSolicitudPrincipal(tipoRelacionSugerida, body);
-
-    if (expedienteId && intentaPrincipal) {
-      const expedienteInfo = await this.obtenerResumenExpediente(expedienteId);
-      const principalActivo = expedienteInfo?.principalActivo ?? null;
-
-      if (principalActivo && Number(principalActivo.documentoId) !== Number(documentoIdPayload ?? 0)) {
-        throw new ConflictException({
-          code: 'EXPEDIENTE_YA_TIENE_DOCUMENTO_PRINCIPAL',
-          message: 'El expediente ya tiene un documento principal activo. No se subió nuevamente a R2.',
-          details: {
-            expedienteId,
-            codigoExpediente: expedienteInfo?.codigoExpediente ?? null,
-            documentoId: documentoIdPayload,
-            tipoRelacionSugerida,
-            canalIngreso,
-            principalActivo,
-            accionSugerida: 'bloquear',
-          },
-        });
-      }
-    }
-
     const bucket = this.resolveBucket();
     const storageKey = [
       'documentos',
@@ -347,6 +518,7 @@ export class DocumentosUploadService {
           contentType,
           size: file.size ?? file.buffer.length,
           expedienteId,
+          grupoFacturaId,
           clienteAbreviatura,
           tipoEsperado,
           tipoRelacionSugerida,
@@ -399,6 +571,7 @@ export class DocumentosUploadService {
     return {
       archivoId,
       documentoId,
+      grupoFacturaId,
       filename: originalFilename,
       contentType,
       storageProvider: 'r2',
@@ -412,6 +585,53 @@ export class DocumentosUploadService {
         documentoId: item.documento_id,
       })),
     };
+  }
+
+  private async validarGrupoFacturaContextual(params: {
+    expedienteId: number | null;
+    documentoBaseId: number | null;
+    grupoFacturaId: number;
+  }) {
+    if (!params.expedienteId) {
+      throw new BadRequestException('expedienteId es obligatorio cuando se envía grupoFacturaId');
+    }
+    if (!params.documentoBaseId) {
+      throw new BadRequestException('documentoBaseId es obligatorio cuando se envía grupoFacturaId');
+    }
+
+    const workspace = await this.workspaceV2.construirDesdeExpedienteV1(params.expedienteId);
+    const grupo = workspace.gruposFactura.find(
+      (item) =>
+        item.estadoPersistencia === 'persistido' &&
+        Number(item.persistido?.id ?? NaN) === params.grupoFacturaId,
+    );
+
+    if (!grupo || String(grupo.persistido?.estado ?? '').trim().toLowerCase() === 'anulado') {
+      throw new ConflictException({
+        code: 'GRUPO_FACTURA_NO_PERTENECE_AL_CONTEXTO',
+        message: 'El Grupo Factura indicado no pertenece al contexto seleccionado o no está activo.',
+        details: { expedienteId: params.expedienteId, grupoFacturaId: params.grupoFacturaId },
+      });
+    }
+
+    const documentoPrincipalGrupoId = Number(
+      grupo.vista?.documentoOperativoPrincipalDocumentoId ?? NaN,
+    );
+    if (documentoPrincipalGrupoId !== params.documentoBaseId) {
+      throw new ConflictException({
+        code: 'GRUPO_FACTURA_NO_PERTENECE_AL_PRINCIPAL',
+        message: 'El Grupo Factura indicado no pertenece al principal operativo seleccionado.',
+        details: {
+          expedienteId: params.expedienteId,
+          documentoBaseId: params.documentoBaseId,
+          grupoFacturaId: params.grupoFacturaId,
+          documentoPrincipalGrupoId:
+            Number.isInteger(documentoPrincipalGrupoId) && documentoPrincipalGrupoId > 0
+              ? documentoPrincipalGrupoId
+              : null,
+        },
+      });
+    }
   }
 
   private async crearDocumentoContenedor(params: {
@@ -470,6 +690,7 @@ export class DocumentosUploadService {
     sha256: string;
     documentoId: number | null;
     expedienteId: number | null;
+    empresaCodigo: string;
   }) {
     return sql<DuplicadoRow[]>`
       SELECT
@@ -481,9 +702,12 @@ export class DocumentosUploadService {
         ed.tipo_relacion,
         ed.es_principal
       FROM documentos.documentos_archivos da
+      JOIN documentos.documentos d
+        ON d.id = da.documento_id
       LEFT JOIN documentos.expediente_documentos ed
         ON ed.documento_id = da.documento_id
       WHERE da.hash_sha256 = ${params.sha256}
+        AND UPPER(TRIM(d.cliente_abreviatura)) = ${params.empresaCodigo}
         AND da.estado <> 'duplicado_absorbido'
         AND (
           ${params.documentoId}::bigint IS NULL
@@ -530,7 +754,10 @@ export class DocumentosUploadService {
     };
   }
 
-  private async obtenerResumenExpediente(expedienteId: number) {
+  private async obtenerResumenExpediente(
+    expedienteId: number,
+    tipoRelacionPrincipal: string | null = null,
+  ) {
     const expedienteRows = await sql`
       SELECT id, codigo_expediente, empresa_codigo, cliente_destino_id
       FROM documentos.expedientes
@@ -554,6 +781,11 @@ export class DocumentosUploadService {
         ON d.id = ed.documento_id
       WHERE ed.expediente_id = ${expedienteId}::bigint
         AND ed.es_principal = true
+        AND (
+          ${tipoRelacionPrincipal}::text IS NULL
+          OR ed.tipo_relacion = ${tipoRelacionPrincipal}::text
+        )
+        AND COALESCE(d.estado, '') <> 'anulado'
       ORDER BY ed.orden ASC, ed.creado_en ASC
       LIMIT 1
     `;
