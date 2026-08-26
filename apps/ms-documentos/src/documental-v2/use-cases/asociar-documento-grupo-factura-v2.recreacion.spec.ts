@@ -90,6 +90,7 @@ describe('AsociarDocumentoGrupoFacturaV2UseCase recreación', () => {
           documentosHistoricosIds: [12],
         }),
       }),
+      undefined,
     );
     expect(auditoria.registrarCreacion).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -98,6 +99,7 @@ describe('AsociarDocumentoGrupoFacturaV2UseCase recreación', () => {
           recreacion: true,
         }),
       }),
+      undefined,
     );
   });
 

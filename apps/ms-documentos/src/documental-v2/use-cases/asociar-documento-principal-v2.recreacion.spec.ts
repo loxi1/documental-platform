@@ -75,6 +75,7 @@ describe('AsociarDocumentoPrincipalV2UseCase recreación', () => {
           principalesHistoricosIds: [4],
         }),
       }),
+      undefined,
     );
     expect(auditoria.registrarCreacion).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -83,6 +84,7 @@ describe('AsociarDocumentoPrincipalV2UseCase recreación', () => {
           recreacion: true,
         }),
       }),
+      undefined,
     );
   });
 

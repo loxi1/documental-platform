@@ -59,6 +59,8 @@ describe('carga-segura.validation', () => {
         ),
       ).toEqual({
         expedienteId: 41,
+        documentoBaseId: null,
+        grupoFacturaId: null,
         tipoDocumental: 'FACTURA',
         tipoRelacion: null,
         esPrincipal: false,
@@ -292,5 +294,45 @@ describe('carga-segura.validation', () => {
         ),
       ).toThrow(HttpException);
     });
+
+    it('acepta documentoBaseId y grupoFacturaId positivos opcionales', () => {
+      expect(
+        validateSecureUploadBody({
+          expedienteId: '43',
+          documentoBaseId: '84',
+          grupoFacturaId: '12',
+          tipoDocumental: 'GUIA',
+          tipoRelacion: 'adjunto_guia',
+          esPrincipal: 'false',
+          canalIngreso: 'WEB_ADMIN_CARGA_SEGURA',
+          metadata: '{}',
+        }),
+      ).toMatchObject({
+        expedienteId: 43,
+        documentoBaseId: 84,
+        grupoFacturaId: 12,
+      });
+    });
+
+    it.each([
+      ['documentoBaseId', '0'],
+      ['documentoBaseId', '-1'],
+      ['documentoBaseId', '1.5'],
+      ['grupoFacturaId', '0'],
+      ['grupoFacturaId', '-1'],
+      ['grupoFacturaId', '1.5'],
+    ])('rechaza %s invalido', (field, value) => {
+      expect(() =>
+        validateSecureUploadBody({
+          expedienteId: '43',
+          tipoDocumental: 'FACTURA',
+          esPrincipal: 'false',
+          canalIngreso: 'WEB_ADMIN_CARGA_SEGURA',
+          metadata: '{}',
+          [field]: value,
+        }),
+      ).toThrow();
+    });
+
   });
 });

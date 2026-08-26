@@ -1,5 +1,5 @@
 import axios from "axios";
-import { clearAuthSession, getAccessToken } from "@/lib/auth-storage";
+import { clearAuthSession, getAccessToken, getContexto } from "@/lib/auth-storage";
 import { getPublicApiUrl } from "@/services/env";
 
 export const api = axios.create({
@@ -12,6 +12,13 @@ api.interceptors.request.use((config) => {
 
   if (token && !config.headers.Authorization) {
     config.headers.Authorization = `Bearer ${token}`;
+  }
+
+  if (process.env.NEXT_PUBLIC_ALLOW_LOCAL_API_FOR_TESTS === "true") {
+    const usuarioId = Number(getContexto()?.sub);
+    if (Number.isInteger(usuarioId) && usuarioId > 0 && !config.headers["x-user-id"]) {
+      config.headers["x-user-id"] = String(usuarioId);
+    }
   }
 
   return config;

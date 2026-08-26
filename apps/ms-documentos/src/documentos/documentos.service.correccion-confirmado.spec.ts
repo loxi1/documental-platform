@@ -14,6 +14,10 @@ jest.mock('./documentos.repository', () => ({
 
 import { DocumentosService } from './documentos.service';
 
+jest.mock('@documental/database', () => ({
+  sql: jest.fn(),
+}));
+
 function domainError(code: string, message: string, details?: unknown) {
   const error = new Error(message) as Error & {
     code?: string;

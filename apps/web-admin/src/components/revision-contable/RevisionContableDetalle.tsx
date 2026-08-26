@@ -43,6 +43,7 @@ type Props = {
   expedienteId: string | number;
   anio?: string | null;
   mes?: string | null;
+  facturaDocumentoId?: string | null;
 };
 
 
@@ -364,8 +365,15 @@ function AlertasExpediente({
   return null;
 }
 
-export function RevisionContableDetalle({ expedienteId, anio, mes }: Props) {
+export function RevisionContableDetalle({
+  expedienteId,
+  anio,
+  mes,
+  facturaDocumentoId,
+}: Props) {
   const [documentoSeleccionado, setDocumentoSeleccionado] =
+    useState<ExpedienteDocumento | null>(null);
+  const [documentoLogicoSeleccionado, setDocumentoLogicoSeleccionado] =
     useState<ExpedienteDocumento | null>(null);
   const contexto = getContexto();
   const workspaceEmpresa = asText(contexto?.empresa, "-");
@@ -386,6 +394,37 @@ export function RevisionContableDetalle({ expedienteId, anio, mes }: Props) {
       (expediente as unknown as Record<string, unknown> | undefined)?.documentos,
     );
   }, [documentosQuery.data, expediente]);
+  function abrirDocumentoPreview(documentoFisico: ExpedienteDocumento) {
+    const documentoId = String(
+      pickDocumento(documentoFisico, ["documentoId", "documento_id", "id"]) ?? "",
+    ).trim();
+
+    if (!documentoId) return;
+
+    const documentoLogico =
+      documentos.find(
+        (documento) =>
+          String(
+            pickDocumento(documento, ["documentoId", "documento_id", "id"]) ?? "",
+          ) === documentoId,
+      ) ?? null;
+
+    if (!documentoLogico) return;
+
+    setDocumentoLogicoSeleccionado(documentoLogico);
+    setDocumentoSeleccionado(documentoFisico);
+  }
+
+  function abrirDocumentoPreviewConLogico(
+    documentoFisico: ExpedienteDocumento,
+    documentoLogico: Record<string, unknown>,
+  ) {
+    setDocumentoLogicoSeleccionado(
+      documentoLogico as unknown as ExpedienteDocumento,
+    );
+    setDocumentoSeleccionado(documentoFisico);
+  }
+
   const alertas = useMemo(
     () => normalizeAlertas(alertasQuery.data),
     [alertasQuery.data],
@@ -441,35 +480,80 @@ export function RevisionContableDetalle({ expedienteId, anio, mes }: Props) {
 
   return (
     <main className="space-y-4">
-      <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <Button asChild className="mb-3" size="sm" variant="ghost">
-            <Link href={backHref}>
-              <ArrowLeft className="mr-1 h-4 w-4" />
-              Volver a bandeja documental
-            </Link>
-          </Button>
-          <h1 className="text-2xl font-bold">Revisión documental del contexto operativo</h1>
+          <div className="flex flex-wrap items-center gap-2">
+            <h1 className="text-2xl font-bold">Revisión contable</h1>
+            <Badge variant="secondary">Solo lectura</Badge>
+          </div>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {getExpedienteCodigo(expediente)} · {getExpedienteEmpresa(expediente, workspaceEmpresa)} · {periodo}
+          </p>
           <p className="text-sm text-muted-foreground">
-            Vista de solo lectura para verificar evidencia documental.
+            {asText(expediente.descripcion, "Sin descripción")}
           </p>
         </div>
 
-        <Badge variant="secondary" className="w-fit">
-          Solo lectura
-        </Badge>
+        <Button asChild variant="outline" size="sm" className="h-8 shrink-0 px-3">
+          <Link href={backHref}>Volver</Link>
+        </Button>
       </div>
 
-      <section className="grid gap-4 lg:grid-cols-2">
-        <ContabilidadDocumentoPrincipalOperativoCard id={expedienteId} />
-        <ContabilidadGrupoFacturaSoloLecturaPanel id={expedienteId} />
+      <section>
+        <ContabilidadDocumentoPrincipalOperativoCard
+          id={expedienteId}
+          facturaDocumentoId={facturaDocumentoId}
+          documentos={documentos as unknown as Array<Record<string, unknown>>}
+          onVer={(documentoId) => {
+            const documentoPrincipal = documentos.find(
+              (documento) =>
+                String(
+                  pickDocumento(documento, ["documentoId", "documento_id", "id"]) ?? "",
+                ) === String(documentoId),
+            );
+
+            if (documentoPrincipal) {
+              abrirDocumentoPreview(documentoPrincipal);
+            }
+          }}
+        />
       </section>
 
-      <div className="rounded-xl border border-dashed bg-muted/20 p-3 text-sm text-muted-foreground">
-        Vista legacy de revisión. Uso auxiliar / diagnóstico. No reemplaza el Principal V2 vigente ni el grupo documental persistido.
+      <section>
+        <ContabilidadGrupoFacturaSoloLecturaPanel
+          id={expedienteId}
+          facturaDocumentoId={facturaDocumentoId}
+          documentos={
+            documentos as unknown as Array<Record<string, unknown>>
+          }
+          onVer={(documentoId, documentoLogicoGrupo) => {
+            const documentoFisico = documentos.find(
+              (item) =>
+                String(
+                  pickDocumento(item, ["documentoId", "documento_id", "id"]) ?? "",
+                ) === String(documentoId),
+            );
+
+            if (!documentoFisico) return;
+
+            if (documentoLogicoGrupo) {
+              abrirDocumentoPreviewConLogico(
+                documentoFisico,
+                documentoLogicoGrupo,
+              );
+              return;
+            }
+
+            abrirDocumentoPreview(documentoFisico);
+          }}
+        />
+      </section>
+
+      <div className="hidden" aria-hidden="true">
+        Vista técnica auxiliar.
       </div>
 
-      <section className="grid gap-4 lg:grid-cols-2">
+      <section className="hidden" aria-hidden="true">
         <Card className="h-full">
           <CardHeader className="border-b">
             <CardTitle className="flex items-center gap-2">
@@ -504,11 +588,11 @@ export function RevisionContableDetalle({ expedienteId, anio, mes }: Props) {
         />
       </section>
 
-      <Card>
+      <Card className="hidden" aria-hidden="true">
         <CardHeader className="border-b">
           <CardTitle className="flex items-center gap-2">
             <CalendarDays className="h-5 w-5" />
-            Documentos legacy del expediente
+            Información técnica
           </CardTitle>
         </CardHeader>
         <CardContent className="p-4">
@@ -543,8 +627,13 @@ export function RevisionContableDetalle({ expedienteId, anio, mes }: Props) {
 
       <DocumentoPreviewModal
         documento={documentoSeleccionado}
+        documentoLogico={documentoLogicoSeleccionado}
+        ocultarClaveDocumental
         open={Boolean(documentoSeleccionado)}
-        onClose={() => setDocumentoSeleccionado(null)}
+        onClose={() => {
+          setDocumentoSeleccionado(null);
+          setDocumentoLogicoSeleccionado(null);
+        }}
       />
     </main>
   );

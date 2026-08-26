@@ -110,6 +110,27 @@ def extract_pago_rucs(text: str) -> dict[str, str | None]:
         "proveedorRuc": next((r for r in rucs if r not in _CLIENT_RUCS), None),
     }
 
+def extract_pago_proveedor_nombre_etiquetado(text: str) -> str | None:
+    lines = [line.strip() for line in normalize_ocr_text(text).splitlines() if line.strip()]
+    for idx, line in enumerate(lines[:-1]):
+        if not re.fullmatch(r"(?i)proveedor\s*:?", line):
+            continue
+
+        candidate = lines[idx + 1].strip(" :-")
+        if not candidate:
+            continue
+
+        if re.fullmatch(
+            r"(?i)(ruc\s+proveedor|fecha\s+factura|importe\s+factura|factura|centro\s+de\s+costo)\s*:?",
+            candidate,
+        ):
+            continue
+
+        return re.sub(r"\s+", " ", candidate)[:160]
+
+    return None
+
+
 def extract_pago_nombre_cercano(text: str, ruc: str | None) -> str | None:
     if not ruc:
         return None
@@ -141,7 +162,8 @@ def extract_pago_metadata(text: str, tipo_documental: str, filename: str | None 
         "fechaPago": extract_fecha(text),
         "banco": extract_banco(text) or from_file.get("banco"),
         "proveedorRuc": proveedor_ruc,
-        "proveedorNombre": extract_pago_nombre_cercano(text, proveedor_ruc),
+        "proveedorNombre": extract_pago_proveedor_nombre_etiquetado(text)
+        or extract_pago_nombre_cercano(text, proveedor_ruc),
         "clienteRuc": cliente_ruc,
         "clienteNombre": extract_pago_nombre_cercano(text, cliente_ruc),
         "clienteAbreviatura": from_file.get("clienteAbreviatura"),

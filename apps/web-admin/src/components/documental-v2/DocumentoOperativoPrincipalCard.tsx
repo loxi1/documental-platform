@@ -47,16 +47,16 @@ export function DocumentoOperativoPrincipalCard({
             <div className="rounded-lg bg-muted p-2 text-muted-foreground">
               <Info className="h-4 w-4" />
             </div>
-            <CardTitle>Documento Operativo Principal</CardTitle>
+            <CardTitle>Documento principal</CardTitle>
           </div>
         </CardHeader>
         <CardContent>
           <div className="rounded-lg border border-dashed bg-muted/20 p-4 text-sm text-muted-foreground">
-            <p className="font-medium text-foreground">Sin Documento Operativo Principal</p>
+            <p className="font-medium text-foreground">Sin documento principal</p>
             <p className="mt-1">
               {canAssociatePrincipal
-                ? "Asocia un documento existente como Documento Operativo Principal de este contexto."
-                : "No se ha informado un Documento Operativo Principal para este contexto."}
+                ? "Asocia un documento existente como principal de este contexto."
+                : "No se ha informado un documento principal para este contexto."}
             </p>
             {canAssociatePrincipal ? (
               <div className="mt-4">
@@ -87,7 +87,7 @@ export function DocumentoOperativoPrincipalCard({
               <FileCheck2 className="h-4 w-4" />
             </div>
             <div>
-              <CardTitle>Documento Operativo Principal</CardTitle>
+              <CardTitle>Documento principal</CardTitle>
               <p className="text-sm text-muted-foreground">{label}</p>
             </div>
           </div>
@@ -96,8 +96,7 @@ export function DocumentoOperativoPrincipalCard({
               {isPrincipal(documento) ? "Principal activo" : "No marcado como principal"}
             </Badge>
             <Badge variant="secondary">{getEstado(documento)}</Badge>
-            {documentoOperativoPrincipalId ? <Badge variant="outline">Principal V2 {String(documentoOperativoPrincipalId)}</Badge> : null}
-            {documentoId ? <Badge variant="outline">Documento {String(documentoId)}</Badge> : null}
+
             {documentoOperativoPrincipalId && canCancelPrincipal ? (
               <RevertirEntidadDialog
                 title="Anular documento principal"

@@ -10,6 +10,8 @@ export interface CargaSeguraCommand {
   empresaCodigo: string;
   clienteDestinoId: number | null;
   expedienteId: number | null;
+  documentoBaseId?: number | null;
+  grupoFacturaId?: number | null;
   actorId: number;
 
   idempotencyKey: string;

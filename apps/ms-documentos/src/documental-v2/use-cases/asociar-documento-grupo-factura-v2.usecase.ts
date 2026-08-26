@@ -271,6 +271,69 @@ export class AsociarDocumentoGrupoFacturaV2UseCase {
         pagoDocumentoId: documentoId,
       }, executor);
 
+      const montoFactura = Number(
+        evaluacionCorrespondencia.comparaciones.importe.factura ?? 0,
+      );
+      const montoPago = Number(
+        evaluacionCorrespondencia.comparaciones.importe.pago ?? 0,
+      );
+      const pagadoAcumulado =
+        (await this.grupoFacturaDocumentos.sumarMontoTransferenciasActivas?.(
+          grupoFacturaId,
+          executor,
+        )) ?? 0;
+      const saldoDisponible = Math.max(
+        Math.round((montoFactura - pagadoAcumulado) * 100) / 100,
+        0,
+      );
+
+      if (montoFactura > 0 && saldoDisponible <= 0.01) {
+        throw new ConflictException(
+          crearError(
+            'La factura ya se encuentra completamente pagada',
+            'FACTURA_PAGO_COMPLETO',
+            {
+              grupoFacturaId,
+              facturaDocumentoId: Number(contexto.grupo.facturaDocumentoId),
+              montoFactura,
+              pagadoAcumulado,
+              saldoDisponible,
+            },
+          ),
+        );
+      }
+
+      if (montoFactura > 0 && montoPago > 0) {
+        const sobrepago = montoPago > saldoDisponible + 0.01;
+
+        evaluacionCorrespondencia = {
+          ...evaluacionCorrespondencia,
+          estado: sobrepago
+            ? 'INCOMPATIBLE'
+            : evaluacionCorrespondencia.estado,
+          comparaciones: {
+            ...evaluacionCorrespondencia.comparaciones,
+            importe: {
+              estado: sobrepago ? 'NO_COINCIDE' : 'COINCIDE',
+              factura: saldoDisponible,
+              pago: montoPago,
+            },
+          },
+          requiereDecisionHumana:
+            sobrepago || evaluacionCorrespondencia.requiereDecisionHumana,
+          permiteAsociacionOrdinaria:
+            !sobrepago && evaluacionCorrespondencia.permiteAsociacionOrdinaria,
+          advertencias: sobrepago
+            ? Array.from(
+                new Set([
+                  ...evaluacionCorrespondencia.advertencias,
+                  'El importe del pago excede el saldo disponible de la factura. Requiere revisión humana.',
+                ]),
+              )
+            : evaluacionCorrespondencia.advertencias,
+        };
+      }
+
       const requiereDecision =
         evaluacionCorrespondencia.requiereDecisionHumana ||
         !evaluacionCorrespondencia.permiteAsociacionOrdinaria;
@@ -285,6 +348,7 @@ export class AsociarDocumentoGrupoFacturaV2UseCase {
                 estadoEvaluado: evaluacionCorrespondencia.estado,
                 facturaDocumentoId: evaluacionCorrespondencia.facturaDocumentoId,
                 pagoDocumentoId: evaluacionCorrespondencia.pagoDocumentoId,
+                evaluacion: evaluacionCorrespondencia,
               },
             ),
           );

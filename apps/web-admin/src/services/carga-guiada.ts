@@ -47,6 +47,10 @@ function buildCargaGuiadaFormData(
     formData.append("documentoBaseId", String(payload.documentoBaseId));
   }
 
+  if (payload.grupoFacturaId !== undefined && payload.grupoFacturaId !== null) {
+    formData.append("grupoFacturaId", String(payload.grupoFacturaId));
+  }
+
   if (payload.observacion?.trim()) {
     formData.append("observacion", payload.observacion.trim());
   }

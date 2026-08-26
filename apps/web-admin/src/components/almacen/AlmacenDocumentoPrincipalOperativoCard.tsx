@@ -16,6 +16,9 @@ import {
   getDocumentoTipo,
   getEstado,
   getFechaDocumento,
+  getGrupoDocumentoPrincipalDocumentoId,
+  getGrupoFacturaPersistidoId,
+  getGruposFactura,
   getMontoDocumento,
   getNumeroDocumento,
   getProveedor,
@@ -51,14 +54,57 @@ function documentoDescripcionV2(documento?: WorkspaceV2Documento | null) {
     .join(" · ") || "—";
 }
 
+function recordId(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return "";
+
+  const record = value as Record<string, unknown>;
+  return String(
+    record.documentoId ??
+      record.documento_id ??
+      record.id ??
+      "",
+  ).trim();
+}
+
+function findDocumentoById(
+  source: unknown,
+  documentoId: string,
+): WorkspaceV2Documento | null {
+  if (!documentoId) return null;
+
+  if (Array.isArray(source)) {
+    for (const item of source) {
+      const found = findDocumentoById(item, documentoId);
+      if (found) return found;
+    }
+    return null;
+  }
+
+  if (!source || typeof source !== "object") return null;
+
+  if (recordId(source) === documentoId) {
+    return source as WorkspaceV2Documento;
+  }
+
+  for (const value of Object.values(source as Record<string, unknown>)) {
+    if (!value || typeof value !== "object") continue;
+    const found = findDocumentoById(value, documentoId);
+    if (found) return found;
+  }
+
+  return null;
+}
+
 export function AlmacenDocumentoPrincipalOperativoCard({
   expedienteId,
+  grupoFacturaId = null,
   fallbackTitle,
   fallbackDescription,
   fallbackActive = false,
   emptyMessage = "Sin documento principal.",
 }: {
   expedienteId: string | number;
+  grupoFacturaId?: string | number | null;
   fallbackTitle?: string | null;
   fallbackDescription?: string | null;
   fallbackActive?: boolean;
@@ -70,7 +116,41 @@ export function AlmacenDocumentoPrincipalOperativoCard({
     queryFn: () => getWorkspaceDocumentalV2(expedienteId),
   });
 
-  const documentoV2 = workspaceQuery.data ? getWorkspaceDocumentoPrincipal(workspaceQuery.data) : null;
+  const grupoSolicitado =
+    grupoFacturaId === null || grupoFacturaId === undefined
+      ? null
+      : String(grupoFacturaId);
+
+  const grupo =
+    workspaceQuery.data && grupoSolicitado
+      ? getGruposFactura(workspaceQuery.data).find(
+          (item) =>
+            String(getGrupoFacturaPersistidoId(item) ?? "") ===
+            grupoSolicitado,
+        ) ?? null
+      : null;
+
+  const principalDocumentoId =
+    grupo && grupoSolicitado
+      ? getGrupoDocumentoPrincipalDocumentoId(grupo)
+      : null;
+
+  const documentoV2 =
+    workspaceQuery.data && grupoSolicitado
+      ? principalDocumentoId !== null && principalDocumentoId !== undefined
+        ? findDocumentoById(
+            workspaceQuery.data,
+            String(principalDocumentoId),
+          )
+        : null
+      : workspaceQuery.data
+        ? getWorkspaceDocumentoPrincipal(workspaceQuery.data)
+        : null;
+
+  const grupoNoResuelto = Boolean(
+    grupoSolicitado && workspaceQuery.data && !grupo,
+  );
+
   const documentoOperativoPrincipalId = getDocumentoOperativoPrincipalPersistidoId(documentoV2);
   const documentoId = getDocumentoId(documentoV2);
   const mostrarV2 = Boolean(documentoV2);
@@ -84,14 +164,17 @@ export function AlmacenDocumentoPrincipalOperativoCard({
           <CardTitle>Documento principal</CardTitle>
           <div className="flex flex-wrap gap-2">
             {documentoOperativoPrincipalId ? <Badge variant="secondary">Principal V2 {String(documentoOperativoPrincipalId)}</Badge> : null}
-            {documentoId ? <Badge variant="outline">Documento {String(documentoId)}</Badge> : null}
-            {mostrarV2 ? <Badge variant="outline">{getEstado(documentoV2)}</Badge> : null}
             {!mostrarV2 && fallbackActive ? <Badge variant="outline">Legacy de consulta</Badge> : null}
           </div>
         </div>
       </CardHeader>
       <CardContent>
-        {workspaceQuery.isLoading && !title ? (
+        {grupoNoResuelto ? (
+          <div className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
+            No se pudo resolver el documento principal del grupo solicitado.
+            No se mostrará el principal de otro grupo.
+          </div>
+        ) : workspaceQuery.isLoading && !title ? (
           <div className="space-y-3 rounded-xl border p-4">
             <Skeleton className="h-5 w-48" />
             <Skeleton className="h-4 w-72" />

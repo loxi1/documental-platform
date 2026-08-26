@@ -50,6 +50,22 @@ function pickNumber(
   return null;
 }
 
+function pickOcrMetadata(
+  source: Record<string, unknown> | null | undefined,
+): Record<string, unknown> | null {
+  const ocr = source?.ocr;
+  if (!ocr || typeof ocr !== 'object' || Array.isArray(ocr)) {
+    return null;
+  }
+
+  const metadata = (ocr as Record<string, unknown>).metadata;
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) {
+    return null;
+  }
+
+  return metadata as Record<string, unknown>;
+}
+
 function documentoSerieNumero(
   serie?: string | null,
   numero?: string | null,
@@ -100,38 +116,70 @@ export function adaptarFacturaCorrespondencia(
 export function adaptarPagoCorrespondencia(
   documento: DocumentoCorrespondenciaSnapshot,
 ): DatosPagoCorrespondencia {
+  const metadataOcr = pickOcrMetadata(documento.metadata);
+
   return {
     documentoId: documento.id,
     proveedorRuc:
+      pickString(
+        metadataOcr,
+        'proveedorRuc',
+        'rucProveedor',
+        'rucBeneficiario',
+      ) ??
       pickString(
         documento.metadata,
         'proveedorRuc',
         'rucProveedor',
         'rucBeneficiario',
-      ) ?? documento.rucEmisor,
+      ) ??
+      documento.rucEmisor,
     proveedorNombre:
+      pickString(
+        metadataOcr,
+        'proveedorNombre',
+        'proveedor',
+        'beneficiario',
+      ) ??
       pickString(
         documento.metadata,
         'proveedorNombre',
         'proveedor',
         'beneficiario',
-      ) ?? documento.razonSocialEmisor,
+      ) ??
+      documento.razonSocialEmisor,
     moneda:
+      pickString(metadataOcr, 'moneda', 'currency') ??
       pickString(documento.metadata, 'moneda', 'currency') ??
       documento.moneda,
     importe:
+      pickNumber(
+        metadataOcr,
+        'montoOperacion',
+        'montoAplicado',
+        'montoTotal',
+      ) ??
       pickNumber(
         documento.metadata,
         'montoOperacion',
         'montoAplicado',
         'montoTotal',
-      ) ?? documento.montoTotal,
-    documentoReferenciado: pickString(
-      documento.metadata,
-      'documentoReferenciado',
-      'numeroDocumentoReferenciado',
-      'referencia',
-      'comprobante',
-    ),
+      ) ??
+      documento.montoTotal,
+    documentoReferenciado:
+      pickString(
+        metadataOcr,
+        'documentoReferenciado',
+        'numeroDocumentoReferenciado',
+        'referencia',
+        'comprobante',
+      ) ??
+      pickString(
+        documento.metadata,
+        'documentoReferenciado',
+        'numeroDocumentoReferenciado',
+        'referencia',
+        'comprobante',
+      ),
   };
 }

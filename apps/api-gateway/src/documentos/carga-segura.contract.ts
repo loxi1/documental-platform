@@ -7,8 +7,8 @@ export const SECURE_UPLOAD = {
   multipartTotalBytes: 16 * 1024 * 1024,
   timeoutMs: 55_000,
 
-  maxFields: 6,
-  maxParts: 8,
+  maxFields: 8,
+  maxParts: 10,
   maxFieldSizeBytes: 64 * 1024,
   maxIdempotencyKeyLength: 128,
 
@@ -20,6 +20,8 @@ export const SECURE_UPLOAD = {
 
   allowedBodyFields: new Set<string>([
     'expedienteId',
+    'documentoBaseId',
+    'grupoFacturaId',
     'tipoDocumental',
     'tipoRelacion',
     'esPrincipal',

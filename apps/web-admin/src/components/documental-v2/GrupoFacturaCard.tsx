@@ -51,16 +51,13 @@ export function GrupoFacturaCard({
               <ReceiptText className="h-4 w-4" />
             </div>
             <div>
-              <CardTitle>Grupo de Factura {index + 1}</CardTitle>
-              <p className="text-sm text-muted-foreground">{label}</p>
+              <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Factura</div>
+              <CardTitle>{label}</CardTitle>
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <Badge variant="secondary">{getEstado(grupo)}</Badge>
-            <Badge variant={grupoPersistido ? "default" : "outline"}>
-              {grupoPersistido ? "Grupo documental persistido" : "Vista de compatibilidad V1"}
-            </Badge>
-            {grupoPersistido ? <Badge variant="outline">Listo para Almacén</Badge> : null}
+
             {grupoFacturaId ? (
               <>
                 {canAssociateGroupDocument ? (
@@ -85,37 +82,13 @@ export function GrupoFacturaCard({
                   />
                 ) : null}
               </>
-            ) : (
-              <div className="flex items-center gap-1 rounded-md border border-dashed px-2 py-1 text-xs text-muted-foreground">
-                <Lock className="h-3.5 w-3.5" />
-                Asociación no persistida
-              </div>
-            )}
+            ) : null}
           </div>
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className={`flex gap-2 rounded-lg border p-3 text-sm ${
-          grupoPersistido
-            ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-800 dark:text-emerald-200"
-            : "border-amber-500/30 bg-amber-500/10 text-amber-800 dark:text-amber-200"
-        }`}>
-          {grupoPersistido ? <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" /> : <Link2 className="mt-0.5 h-4 w-4 shrink-0" />}
-          <div>
-            <p className="font-medium">
-              {grupoPersistido
-                ? "Grupo documental persistido — listo para asociación de documentos"
-                : "Vista de compatibilidad V1 — asociación no persistida"}
-            </p>
-            <p className="mt-1 text-xs opacity-90">
-              {grupoPersistido
-                ? `grupoFacturaId: ${grupoFacturaId}. Las acciones de Almacén deben usar este identificador.`
-                : "No use este grupo derivado como destino de escritura para Guía, Nota de ingreso, Transferencia o Detracción."}
-            </p>
-          </div>
-        </div>
 
-        <div className="grid gap-4 rounded-lg bg-muted/20 p-4 sm:grid-cols-2 lg:grid-cols-5">
+        <div className="grid gap-4 rounded-lg bg-muted/20 p-4 sm:grid-cols-2 lg:grid-cols-4">
           <div>
             <p className="text-xs font-medium uppercase text-muted-foreground">Factura</p>
             <p className="mt-1 font-medium">{label}</p>
@@ -133,20 +106,12 @@ export function GrupoFacturaCard({
             <p className="text-xs font-medium uppercase text-muted-foreground">Importe</p>
             <p className="mt-1 font-medium">{getGrupoImporte(grupo)}</p>
           </div>
-          <div>
-            <p className="text-xs font-medium uppercase text-muted-foreground">Principal V2</p>
-            <p className="mt-1 font-medium">{principalDocumentoId ? `Documento ${principalDocumentoId}` : "No informado"}</p>
-          </div>
-          <div>
-            <p className="text-xs font-medium uppercase text-muted-foreground">Factura documento</p>
-            <p className="mt-1 font-medium">{facturaDocumentoId ? `Documento ${facturaDocumentoId}` : "No informado"}</p>
-          </div>
         </div>
 
         <div>
           <div className="mb-2 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-            <h3 className="text-sm font-semibold">Documentos asociados al grupo</h3>
-            <span className="text-xs text-muted-foreground">Guías, notas de ingreso, transferencias y detracciones asociadas al grupo persistido</span>
+            <h3 className="text-sm font-semibold">Documentos asociados</h3>
+            <span className="text-xs text-muted-foreground">Documentos vinculados a esta factura</span>
           </div>
           <AdjuntosList
             documentos={adjuntos}

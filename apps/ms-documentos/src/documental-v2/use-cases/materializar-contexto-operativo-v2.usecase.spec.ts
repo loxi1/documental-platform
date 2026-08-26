@@ -89,11 +89,14 @@ describe('MaterializarContextoOperativoV2UseCase', () => {
 
     const result = await useCase.execute({ expedienteId: 16, usuario });
 
-    expect(contenedores.buscarExpedienteV1Activo).toHaveBeenCalledWith({
-      empresaCodigo: 'BBTI',
-      clienteDestinoId: 2,
-      expedienteV1Id: 16,
-    });
+    expect(contenedores.buscarExpedienteV1Activo).toHaveBeenCalledWith(
+      {
+        empresaCodigo: 'BBTI',
+        clienteDestinoId: 2,
+        expedienteV1Id: 16,
+      },
+      undefined,
+    );
     expect(contenedores.crearSiNoExistePorClave).toHaveBeenCalledWith(
       expect.objectContaining({
         empresaCodigo: 'BBTI',
@@ -103,6 +106,7 @@ describe('MaterializarContextoOperativoV2UseCase', () => {
         codigo: '0501',
         estado: 'activo',
       }),
+      undefined,
     );
     expect(auditoria.registrarCreacion).toHaveBeenCalledTimes(1);
     expect(result).toEqual({
@@ -200,6 +204,7 @@ describe('MaterializarContextoOperativoV2UseCase', () => {
           recreacion: true,
         }),
       }),
+      undefined,
     );
   });
 

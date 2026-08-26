@@ -455,10 +455,25 @@ export class ExpedientesService {
     };
   }
 
+  getBandejaComprasOcos(filters: {
+    empresa: string;
+    estado?: string;
+    q?: string;
+    limit?: number;
+    offset?: number;
+    incluirPendientesValidacion?: boolean;
+  }) {
+    return this.repo.getBandejaComprasOcos(filters);
+  }
+
   getRevisionContable(filters: {
     empresa: string;
-    anio: number;
-    mes: number;
+    anio?: number;
+    mes?: number;
+    q?: string;
+    limit?: number;
+    offset?: number;
+    soloPendientesFinanzas?: boolean;
   }) {
     return this.repo.getRevisionContable(filters);
   }

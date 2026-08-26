@@ -38,7 +38,7 @@ function formatMoney(value: unknown) {
 
 export default function DashboardPage() {
   const { contexto } = useAuth();
-  const empresa = contexto?.empresa?.trim().toUpperCase() || "BBTI";
+  const empresa = contexto?.empresa?.trim().toUpperCase() ?? "";
   const [anio, setAnio] = useState("2026");
   const [mes, setMes] = useState("1");
 

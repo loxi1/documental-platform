@@ -50,6 +50,8 @@ type CargaSeguraMultipartBody = Record<string, unknown>;
 
 const ALLOWED_BODY_FIELDS = new Set([
   'expedienteId',
+  'documentoBaseId',
+  'grupoFacturaId',
   'tipoDocumental',
   'tipoRelacion',
   'esPrincipal',
@@ -114,6 +116,14 @@ export class CargaSeguraController {
       expedienteId: parseNullablePositiveInteger(
         body.expedienteId,
         'expedienteId',
+      ),
+      documentoBaseId: parseNullablePositiveInteger(
+        body.documentoBaseId,
+        'documentoBaseId',
+      ),
+      grupoFacturaId: parseNullablePositiveInteger(
+        body.grupoFacturaId,
+        'grupoFacturaId',
       ),
       actorId: identity.actorId,
       idempotencyKey: identity.idempotencyKey,

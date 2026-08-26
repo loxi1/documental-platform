@@ -65,7 +65,7 @@ describe('EvaluarCorrespondenciaPagoFacturaUseCase', () => {
             estado: 'COINCIDE',
           }),
           importe: expect.objectContaining({
-            estado: 'NO_COINCIDE',
+            estado: 'COINCIDE',
             factura: 9704.23,
             pago: 2334.8,
           }),

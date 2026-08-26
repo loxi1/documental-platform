@@ -17,8 +17,8 @@ export const CARGA_SEGURA_MULTER_OPTIONS: MulterOptions = {
   limits: {
     fileSize: CARGA_SEGURA_HTTP_MAX_FILE_SIZE_BYTES,
     files: CARGA_SEGURA_HTTP_MAX_FILES,
-    fields: 6,
-    parts: 8,
+    fields: 8,
+    parts: 10,
     fieldSize: CARGA_SEGURA_HTTP_MAX_METADATA_BYTES,
   },
   preservePath: false,

@@ -1,10 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { Eye, FilePlus2, Search, X } from "lucide-react";
+import { Eye, FilePlus2, Search } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -16,647 +15,604 @@ import {
 } from "@/components/ui/empty";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useExpedientesPage } from "@/hooks/useExpedientes";
+import { useRevisionContable } from "@/hooks/useRevisionContable";
 import { getContexto } from "@/lib/auth-storage";
-import { buscarExpedientes, enriquecerExpedientes } from "@/services/expedientes";
-import type { Expediente, ExpedienteDocumento } from "@/types/expediente";
+import type { RevisionContableItem } from "@/types/revision-contable";
 
-const PAGE_SIZE = 8;
+type UnknownRecord = Record<string, unknown>;
 
-const EMPRESA_LABELS: Record<string, string> = {
-  BBTI: "BBTI - BBTI S.A.C.",
-  BBTEC: "BBTEC - BB TECNOLOGÍA INDUSTRIAL S.A.C.",
-  CIMA: "CIMA - CIMA ENERGY",
-  HUANCA: "HUANCA - HUANCA",
-  TARMA: "TARMA - TARMA",
-  KIMBIRI: "KIMBIRI - KIMBIRI",
-};
+const PAGE_SIZE_OPTIONS = ["25", "50", "100"];
 
-function empresaLabel(value: string) {
-  return EMPRESA_LABELS[value] ?? value;
+function asRecord(value: unknown): UnknownRecord | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  return value as UnknownRecord;
 }
 
-function text(value: unknown, fallback = "") {
-  if (value === null || value === undefined) return fallback;
-  const normalized = String(value).trim();
-  return normalized || fallback;
-}
-
-function field<T = unknown>(source: unknown, key: string): T | undefined {
-  if (!source || typeof source !== "object") return undefined;
-  return (source as unknown as Record<string, T | undefined>)[key];
-}
-
-function listField<T = unknown>(source: unknown, key: string): T[] {
-  const value = field<unknown>(source, key);
-  return Array.isArray(value) ? (value as T[]) : [];
-}
-
-function getEmpresa(expediente: Expediente) {
-  return text(
-    field(expediente, "empresa_codigo") ?? field(expediente, "empresaCodigo"),
-    "-",
+function pick<T>(...values: T[]) {
+  return values.find(
+    (value) => value !== null && value !== undefined && value !== "",
   );
 }
 
-function getCodigoExpediente(expediente: Expediente) {
+function nestedRecord(
+  parent: UnknownRecord | null,
+  ...keys: string[]
+): UnknownRecord | null {
+  if (!parent) return null;
+
+  for (const key of keys) {
+    const value = asRecord(parent[key]);
+    if (value) return value;
+  }
+
+  return null;
+}
+
+function nestedValue(parent: UnknownRecord | null, ...keys: string[]) {
+  if (!parent) return undefined;
+
+  for (const key of keys) {
+    const value = parent[key];
+    if (value !== null && value !== undefined && value !== "") return value;
+  }
+
+  return undefined;
+}
+
+function text(value: unknown, fallback = "—") {
+  if (value === null || value === undefined || value === "") return fallback;
+  return String(value);
+}
+
+function normalizeEmpresa(value: string | null | undefined) {
+  return (value ?? "").trim().toUpperCase();
+}
+
+function itemRecord(item: RevisionContableItem) {
+  return item as unknown as UnknownRecord;
+}
+
+function filaFactura(item: RevisionContableItem) {
+  return asRecord(itemRecord(item).filaFactura);
+}
+
+function facturaRecord(item: RevisionContableItem) {
+  return nestedRecord(filaFactura(item), "factura");
+}
+
+function principalRecord(item: RevisionContableItem) {
+  return (
+    nestedRecord(filaFactura(item), "principal") ??
+    asRecord(
+      pick(
+        itemRecord(item).documento_principal,
+        itemRecord(item).documentoprincipal,
+        null,
+      ),
+    )
+  );
+}
+
+function guiaRecord(item: RevisionContableItem) {
+  return nestedRecord(filaFactura(item), "guia");
+}
+
+function notaIngresoRecord(item: RevisionContableItem) {
+  return nestedRecord(filaFactura(item), "notaIngreso", "nota_ingreso");
+}
+
+function facturaSerie(item: RevisionContableItem) {
   return text(
-    field(expediente, "codigo_expediente") ?? field(expediente, "codigoExpediente"),
+    pick(
+      nestedValue(facturaRecord(item), "serie"),
+      itemRecord(item).serie,
+      null,
+    ),
+  );
+}
+
+function facturaNumero(item: RevisionContableItem) {
+  return text(
+    pick(
+      nestedValue(facturaRecord(item), "numero"),
+      itemRecord(item).numero,
+      null,
+    ),
+  );
+}
+
+function proveedorNombre(item: RevisionContableItem) {
+  return text(
+    pick(
+      nestedValue(
+        facturaRecord(item),
+        "proveedorNombre",
+        "razonSocialEmisor",
+        "razon_social_emisor",
+      ),
+      itemRecord(item).razonSocialEmisor,
+      itemRecord(item).razon_social_emisor,
+      null,
+    ),
+  );
+}
+
+function proveedorRuc(item: RevisionContableItem) {
+  return text(
+    pick(
+      nestedValue(
+        facturaRecord(item),
+        "proveedorRuc",
+        "rucEmisor",
+        "ruc_emisor",
+      ),
+      itemRecord(item).rucEmisor,
+      itemRecord(item).ruc_emisor,
+      null,
+    ),
+  );
+}
+
+function principalTipo(item: RevisionContableItem) {
+  return text(
+    nestedValue(
+      principalRecord(item),
+      "tipo",
+      "tipoDocumental",
+      "tipo_documental",
+    ),
+  ).toUpperCase();
+}
+
+function principalNumero(item: RevisionContableItem) {
+  const principal = principalRecord(item);
+  const serie = text(nestedValue(principal, "serie"), "");
+  const numero = text(nestedValue(principal, "numero"), "");
+
+  if (serie && numero) return `${serie}-${numero}`;
+  return numero || serie || "—";
+}
+
+function centroCostoCodigo(item: RevisionContableItem) {
+  const fila = filaFactura(item);
+  const centro = nestedRecord(fila, "centroCosto", "centro_costo");
+  const record = itemRecord(item);
+
+  return text(
+    pick(
+      nestedValue(
+        centro,
+        "codigo",
+        "centroCostoCodigo",
+        "centro_costo_codigo",
+      ),
+      record.codigoCentroCosto,
+      record.codigo_centro_costo,
+      record.codigoExpediente,
+      record.codigo_expediente,
+      null,
+    ),
     "",
   );
 }
 
-function getClienteNombre(expediente: Expediente) {
-  return text(
-    field(expediente, "cliente_nombre") ??
-      field(expediente, "clienteNombre") ??
-      field(expediente, "cliente_abreviatura") ??
-      field(expediente, "clienteAbreviatura") ??
-      getEmpresa(expediente),
-    "-",
+function fechaEmisionRaw(item: RevisionContableItem) {
+  return pick(
+    nestedValue(facturaRecord(item), "fechaEmision", "fecha_emision"),
+    itemRecord(item).fechaEmision,
+    itemRecord(item).fecha_emision,
+    null,
   );
 }
 
-function getDescripcion(expediente: Expediente) {
-  return text(field(expediente, "descripcion"), "Pendiente de descripción");
+function formatDateCompact(value: unknown) {
+  if (!value) return "—";
+
+  const raw = String(value).trim();
+  const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+
+  if (match) {
+    return `${match[3]}/${match[2]}/${match[1].slice(-2)}`;
+  }
+
+  const date = new Date(raw);
+  if (Number.isNaN(date.getTime())) return raw.slice(0, 10);
+
+  return new Intl.DateTimeFormat("es-PE", {
+    year: "2-digit",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date);
 }
 
-function getEstado(expediente: Expediente) {
-  return text(field(expediente, "estado"), "abierto");
+function fechaEmision(item: RevisionContableItem) {
+  return formatDateCompact(fechaEmisionRaw(item));
 }
 
-function getPrincipal(expediente: Expediente): ExpedienteDocumento | null {
-  const documentoPrincipal = field<ExpedienteDocumento | null>(
-    expediente,
-    "documentoPrincipal",
+function expedienteId(item: RevisionContableItem) {
+  return pick(
+    nestedValue(filaFactura(item), "expedienteId", "expediente_id"),
+    itemRecord(item).expedienteId,
+    itemRecord(item).expediente_id,
+    null,
+  );
+}
+
+function grupoFacturaId(item: RevisionContableItem) {
+  return pick(
+    nestedValue(filaFactura(item), "grupoFacturaId", "grupo_factura_id"),
+    itemRecord(item).grupoFacturaId,
+    itemRecord(item).grupo_factura_id,
+    null,
+  );
+}
+
+function isFacturaRow(item: RevisionContableItem) {
+  if (facturaRecord(item)) return true;
+
+  const tipo = String(
+    pick(
+      itemRecord(item).tipoDocumental,
+      itemRecord(item).tipo_documental,
+      "",
+    ),
+  ).toUpperCase();
+
+  return tipo === "FACTURA";
+}
+
+function documentoIdentidad(record: UnknownRecord | null) {
+  if (!record) return "—";
+
+  const serie = text(
+    nestedValue(record, "serie", "serieDocumento", "serie_documento"),
+    "",
+  );
+  const numero = text(
+    nestedValue(record, "numero", "numeroDocumento", "numero_documento"),
+    "",
   );
 
-  if (documentoPrincipal) return documentoPrincipal;
+  if (serie && numero) return `${serie}-${numero}`;
+  return numero || serie || "✓";
+}
 
-  const documentosPrincipales = field<ExpedienteDocumento[]>(
-    expediente,
-    "documentosPrincipales",
-  );
-  const documentos = field<ExpedienteDocumento[]>(expediente, "documentos");
-  const documentosAdjuntos = field<ExpedienteDocumento[]>(
-    expediente,
-    "documentosAdjuntos",
-  );
+function normalizeSearch(value: unknown) {
+  return String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .replace(/[^a-z0-9]/g, "");
+}
 
+function searchText(item: RevisionContableItem) {
+  return [
+    facturaSerie(item),
+    facturaNumero(item),
+    principalTipo(item),
+    principalNumero(item),
+    centroCostoCodigo(item),
+    proveedorNombre(item),
+    proveedorRuc(item),
+    documentoIdentidad(guiaRecord(item)),
+    documentoIdentidad(notaIngresoRecord(item)),
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
+
+function FacturaCell({ item }: { item: RevisionContableItem }) {
   return (
-    documentosPrincipales?.[0] ??
-    documentos?.find((documento) => Boolean(field(documento, "esPrincipal"))) ??
-    documentosAdjuntos?.find((documento) => Boolean(field(documento, "esPrincipal"))) ??
-    null
-  );
-}
-
-function getAllDocuments(expediente: Expediente) {
-  const documentos = listField<ExpedienteDocumento>(expediente, "documentos");
-  const documentosLista = listField<ExpedienteDocumento>(expediente, "documentosLista");
-  const documentosPrincipales =
-    listField<ExpedienteDocumento>(expediente, "documentosPrincipales");
-  const documentoPrincipal = field<ExpedienteDocumento | null>(
-    expediente,
-    "documentoPrincipal",
-  );
-  const documentosAdjuntos =
-    listField<ExpedienteDocumento>(expediente, "documentosAdjuntos");
-
-  const all = [
-    ...documentos,
-    ...documentosLista,
-    ...documentosPrincipales,
-    ...(documentoPrincipal ? [documentoPrincipal] : []),
-    ...documentosAdjuntos,
-  ];
-
-  const seen = new Set<string>();
-  return all.filter((documento, index) => {
-    const doc = documento as unknown as Record<string, unknown>;
-    const key = String(
-      doc.documentoId ??
-        doc.documento_id ??
-        doc.claveDocumental ??
-        doc.clave_documental ??
-        `${doc.tipoDocumental ?? doc.tipo_documental ?? "DOC"}-${index}`,
-    );
-
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
-}
-
-function hasDocument(expediente: Expediente, aliases: string[]) {
-  const normalizedAliases = aliases.map((alias) => alias.toUpperCase());
-
-  return getAllDocuments(expediente).some((documento) => {
-    const doc = documento as unknown as Record<string, unknown>;
-    const tipo = String(doc.tipoDocumental ?? doc.tipo_documental ?? "").toUpperCase();
-    const relacion = String(doc.tipoRelacion ?? doc.tipo_relacion ?? "").toUpperCase();
-
-    return normalizedAliases.some(
-      (alias) => tipo.includes(alias) || relacion.includes(alias),
-    );
-  });
-}
-
-function principalLabel(expediente: Expediente) {
-  const principal = getPrincipal(expediente);
-
-  if (!principal) return "Sin principal";
-
-  const doc = principal as unknown as Record<string, unknown>;
-  const tipo = text(
-    doc.tipoDocumental ?? doc.tipo_documental ?? doc.tipoRelacion ?? doc.tipo_relacion,
-    "DOC",
-  )
-    .replace("PRINCIPAL_", "")
-    .replace("ADJUNTO_", "")
-    .replaceAll("_", " ")
-    .toUpperCase();
-
-  const serie = text(doc.serie);
-  const numero = text(doc.numero);
-  const labelNumero = [serie, numero].filter(Boolean).join("-");
-
-  return labelNumero ? `${tipo} ${labelNumero}` : tipo;
-}
-
-function principalDescription(expediente: Expediente) {
-  const principal = getPrincipal(expediente);
-  if (!principal) return "—";
-
-  const doc = principal as unknown as Record<string, unknown>;
-  const proveedor = text(
-    doc.razonSocialEmisor ?? doc.razon_social_emisor ?? doc.proveedor ?? doc.razonSocial,
-  );
-  const fecha = text(doc.fechaEmision ?? doc.fecha_emision);
-  const monto = text(doc.montoTotal ?? doc.monto_total);
-
-  return [proveedor, fecha, monto ? `Monto ${monto}` : ""].filter(Boolean).join(" · ") || "—";
-}
-
-function documentCount(expediente: Expediente) {
-  return getAllDocuments(expediente).length;
-}
-
-function AdjuntosBadge({ label, active }: { label: string; active: boolean }) {
-  return (
-    <Badge
-      variant={active ? "secondary" : "outline"}
-      className={active ? "gap-1" : "gap-1 text-muted-foreground"}
-      title={active ? `${label} presente` : `${label} pendiente`}
-    >
-      <span>{active ? "✓" : "—"}</span>
-      {label}
-    </Badge>
-  );
-}
-
-function ExpedienteCell({ expediente }: { expediente: Expediente }) {
-  const codigo = getCodigoExpediente(expediente);
-  const descripcion = getDescripcion(expediente);
-
-  return (
-    <div className="space-y-1">
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="font-mono text-sm font-semibold text-foreground">
-          {codigo || "SIN EXPEDIENTE"}
-        </span>
-        <Badge variant="outline">{getEmpresa(expediente)}</Badge>
-      </div>
-      <div className="line-clamp-2 text-xs text-muted-foreground">
-        {descripcion}
+    <div>
+      <div className="font-medium leading-tight">{facturaSerie(item)}</div>
+      <div className="text-xs leading-tight text-muted-foreground">
+        {facturaNumero(item)}
       </div>
     </div>
   );
 }
 
-function ActionsCell({ expediente }: { expediente: Expediente }) {
+function PrincipalCell({ item }: { item: RevisionContableItem }) {
   return (
-    <div className="flex justify-end gap-1">
-      <Button asChild size="icon" variant="outline" title="Ver contexto de almacén">
-        <Link href={`/almacen/${expediente.id}/ver`} aria-label="Ver contexto de almacén">
-          <Eye className="h-4 w-4" />
-        </Link>
-      </Button>
-      <Button asChild size="icon" variant="outline" title="Adjuntar Guía/NI">
-        <Link href={`/almacen/${expediente.id}/editar?accion=adjuntar`} aria-label="Adjuntar Guía/NI">
-          <FilePlus2 className="h-4 w-4" />
-        </Link>
-      </Button>
+    <div>
+      <div className="font-medium leading-tight">{principalTipo(item)}</div>
+      <div className="text-xs leading-tight text-muted-foreground">
+        {principalNumero(item)}
+      </div>
     </div>
   );
 }
 
-function PaginationControls({
-  page,
-  totalPages,
-  totalRows,
-  pageSize,
-  onPageChange,
+function ProveedorCell({ item }: { item: RevisionContableItem }) {
+  const nombre = proveedorNombre(item);
+
+  return (
+    <div className="w-[190px] max-w-[190px]">
+      <div className="truncate font-medium" title={nombre}>
+        {nombre}
+      </div>
+      <div className="text-xs text-muted-foreground">{proveedorRuc(item)}</div>
+    </div>
+  );
+}
+
+function DocumentoCanonicoCell({
+  record,
+  label,
 }: {
-  page: number;
-  totalPages: number;
-  totalRows: number;
-  pageSize: number;
-  onPageChange: (page: number) => void;
+  record: UnknownRecord | null;
+  label: string;
 }) {
-  if (totalRows === 0) return null;
-
-  const start = (page - 1) * pageSize + 1;
-  const end = Math.min(page * pageSize, totalRows);
-  const pages = Array.from({ length: totalPages }, (_, index) => index + 1);
-  const visiblePages = pages.filter(
-    (item) =>
-      item === 1 ||
-      item === totalPages ||
-      Math.abs(item - page) <= 1,
-  );
+  const identidad = documentoIdentidad(record);
+  const existe = Boolean(record);
 
   return (
-    <div className="flex flex-col gap-3 border-t pt-4 text-sm text-muted-foreground md:flex-row md:items-center md:justify-between">
-      <div>
-        Mostrando {start} a {end} de {totalRows} resultados
-      </div>
+    <span
+      className={existe ? "font-medium" : "text-muted-foreground"}
+      title={
+        existe
+          ? `${label} canónico disponible`
+          : `${label} no disponible o multiplicidad no resoluble`
+      }
+    >
+      {identidad}
+    </span>
+  );
+}
 
-      <div className="flex items-center gap-1">
+function ActionsCell({ item }: { item: RevisionContableItem }) {
+  const expId = expedienteId(item);
+  const grupoId = grupoFacturaId(item);
+
+  if (
+    (typeof expId !== "string" && typeof expId !== "number") ||
+    expId === ""
+  ) {
+    return <span className="text-muted-foreground">—</span>;
+  }
+
+  const tieneGrupo =
+    (typeof grupoId === "string" || typeof grupoId === "number") &&
+    grupoId !== "";
+
+  const suffix = tieneGrupo
+    ? `?grupoFacturaId=${encodeURIComponent(String(grupoId))}`
+    : "";
+
+  return (
+    <div className="flex justify-end gap-2">
+      <Button asChild size="sm" variant="outline">
+        <Link href={`/almacen/${expId}/ver${suffix}`}>
+          <Eye className="h-4 w-4" />
+          Ver
+        </Link>
+      </Button>
+
+      {tieneGrupo ? (
+        <Button asChild size="sm">
+          <Link
+            href={`/almacen/${expId}/editar?grupoFacturaId=${encodeURIComponent(
+              String(grupoId),
+            )}#adjuntar-guia-ni`}
+          >
+            <FilePlus2 className="h-4 w-4" />
+            Adjuntar
+          </Link>
+        </Button>
+      ) : (
         <Button
           type="button"
-          variant="outline"
           size="sm"
-          disabled={page <= 1}
-          onClick={() => onPageChange(page - 1)}
+          disabled
+          title="La factura no tiene grupo persistido para adjuntar Guía o Nota de ingreso"
         >
-          Anterior
+          <FilePlus2 className="h-4 w-4" />
+          Adjuntar
         </Button>
-
-        {visiblePages.map((item, index) => {
-          const previous = visiblePages[index - 1];
-          const showEllipsis = previous !== undefined && item - previous > 1;
-
-          return (
-            <div key={item} className="flex items-center gap-1">
-              {showEllipsis ? <span className="px-2">...</span> : null}
-              <Button
-                type="button"
-                variant={item === page ? "default" : "outline"}
-                size="sm"
-                className="min-w-9"
-                onClick={() => onPageChange(item)}
-              >
-                {item}
-              </Button>
-            </div>
-          );
-        })}
-
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          disabled={page >= totalPages}
-          onClick={() => onPageChange(page + 1)}
-        >
-          Siguiente
-        </Button>
-      </div>
+      )}
     </div>
   );
 }
 
 export function AlmacenBandeja() {
-  const [workspaceEmpresa, setWorkspaceEmpresa] = useState("BBTI");
-  const [empresa, setEmpresa] = useState("BBTI");
-  const [estado, setEstado] = useState("abierto");
+  const contexto = getContexto();
+  const empresa = normalizeEmpresa(contexto?.empresa);
   const [search, setSearch] = useState("");
+  const [pageSize, setPageSize] = useState("50");
   const [page, setPage] = useState(1);
-  const [remoteRows, setRemoteRows] = useState<Expediente[]>([]);
-  const [remoteDetailErrors, setRemoteDetailErrors] = useState<Array<number | string>>([]);
-  const [searchMode, setSearchMode] = useState(false);
-  const [isSearching, setIsSearching] = useState(false);
-  const [searchError, setSearchError] = useState<string | null>(null);
 
-  useEffect(() => {
-    const contexto = getContexto();
-    const empresaContexto = contexto?.empresa?.trim() || "BBTI";
-    setWorkspaceEmpresa(empresaContexto);
-    setEmpresa(empresaContexto);
-  }, []);
+  const normalizedSearch = search.trim();
+  const hasSearch = normalizedSearch.length >= 3;
 
-  const offset = (page - 1) * PAGE_SIZE;
-  const {
-    data: pageData,
-    isLoading,
-    isFetching,
-    error,
-  } = useExpedientesPage({
-    empresa,
-    estado,
-    limit: PAGE_SIZE,
-    offset,
-  });
+  const params = useMemo(
+    () => {
+      const numericPageSize = Number(pageSize);
+      return {
+        q: hasSearch ? normalizedSearch : undefined,
+        limit: hasSearch ? numericPageSize + 1 : undefined,
+        offset: hasSearch ? (page - 1) * numericPageSize : undefined,
+      };
+    },
+    [hasSearch, normalizedSearch, page, pageSize],
+  );
+  const queryEnabled = Boolean(empresa.trim() && hasSearch);
 
-  const expedientes = pageData?.data ?? [];
-  const backendTotal = pageData?.total ?? 0;
-  const detailErrors = searchMode
-    ? remoteDetailErrors
-    : pageData?.detailErrors ?? [];
+  const { data, isLoading, isFetching, error, refetch } =
+    useRevisionContable(params, queryEnabled);
 
-  const rows = useMemo(() => {
-    const value = search.trim().toLowerCase();
-    const sourceRows = searchMode ? remoteRows : expedientes;
-    const scopedRows = sourceRows.filter((expediente) => getEmpresa(expediente) === empresa);
-    const withPrincipal = scopedRows.filter((expediente) => Boolean(getPrincipal(expediente)));
-    const visibleRows = searchMode
-      ? withPrincipal
-      : withPrincipal.length > 0
-        ? withPrincipal
-        : scopedRows;
+  const rows = useMemo(
+    () => (data?.items ?? []).filter(isFacturaRow),
+    [data?.items],
+  );
 
-    if (searchMode) return withPrincipal;
-    if (!value) return visibleRows;
+  const filteredRows = useMemo(() => {
+    const query = normalizeSearch(search);
+    if (!query) return rows;
 
-    return visibleRows.filter((expediente) =>
-      [
-        getEmpresa(expediente),
-        getClienteNombre(expediente),
-        getCodigoExpediente(expediente),
-        getDescripcion(expediente),
-        principalLabel(expediente),
-        principalDescription(expediente),
-        getEstado(expediente),
-      ]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase()
-        .includes(value),
+    return rows.filter((item) =>
+      normalizeSearch(searchText(item)).includes(query),
     );
-  }, [empresa, expedientes, remoteRows, search, searchMode]);
-
-  async function ejecutarBusqueda() {
-    const value = search.trim();
-
-    if (value.length < 2) {
-      setSearchMode(false);
-      setRemoteRows([]);
-      setRemoteDetailErrors([]);
-      setSearchError(null);
-      return;
-    }
-
-    setIsSearching(true);
-    setSearchError(null);
-
-    try {
-      const results = await buscarExpedientes(value, 50);
-      const enriched = await enriquecerExpedientes(
-        results as unknown as Expediente[],
-      );
-      setRemoteRows(enriched.data);
-      setRemoteDetailErrors(enriched.detailErrors);
-      setSearchMode(true);
-      setPage(1);
-    } catch {
-      setSearchError("No se pudo buscar expedientes o documentos.");
-    } finally {
-      setIsSearching(false);
-    }
-  }
-
-  function limpiarBusqueda() {
-    setSearch("");
-    setRemoteRows([]);
-    setRemoteDetailErrors([]);
-    setSearchMode(false);
-    setSearchError(null);
-    setPage(1);
-  }
-
-  const totalRows = searchMode ? rows.length : backendTotal;
-  const totalPages = Math.max(1, Math.ceil(totalRows / PAGE_SIZE));
-  const currentPage = Math.min(page, totalPages);
-  const paginatedRows = useMemo(() => {
-    if (!searchMode) return rows;
-
-    const start = (currentPage - 1) * PAGE_SIZE;
-    return rows.slice(start, start + PAGE_SIZE);
-  }, [currentPage, rows, searchMode]);
+  }, [rows, search]);
 
   useEffect(() => {
     setPage(1);
-  }, [empresa, estado]);
+  }, [search, pageSize]);
 
-  useEffect(() => {
-    if (!search.trim()) {
-      setSearchMode(false);
-      setRemoteRows([]);
-      setRemoteDetailErrors([]);
-      setSearchError(null);
-    }
-  }, [search]);
-
-
-  useEffect(() => {
-    if (page > totalPages) {
-      setPage(totalPages);
-    }
-  }, [page, totalPages]);
-
-  if (isLoading && !pageData) {
-    return (
-      <main className="space-y-4">
-        <Skeleton className="h-10 w-72" />
-        <Card>
-          <CardContent className="space-y-3 py-6">
-            <Skeleton className="h-5 w-full" />
-            <Skeleton className="h-5 w-11/12" />
-            <Skeleton className="h-5 w-10/12" />
-          </CardContent>
-        </Card>
-      </main>
-    );
-  }
-
-  if (error) {
-    return <div className="p-6 text-red-600">Error cargando bandeja de almacén.</div>;
-  }
+  const numericPageSize = Number(pageSize);
+  const hasNextPage = filteredRows.length > numericPageSize;
+  const safePage = page;
+  const start = (safePage - 1) * numericPageSize;
+  const totalPages = hasNextPage ? page + 1 : page;
+  const pageRows = filteredRows.slice(0, numericPageSize);
 
   return (
     <main className="space-y-4">
-      <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">Almacén</h1>
-          <p className="text-sm text-muted-foreground">
-            Bandeja operativa de recepción. Almacén consulta OC/OS y factura, y adjunta Guía o Nota de ingreso solo cuando exista Grupo de Factura V2 persistido.
-          </p>
-        </div>
+      <div>
+        <h1 className="text-2xl font-bold">Almacén</h1>
+        <p className="text-sm text-muted-foreground">
+          Bandeja por factura para consultar recepción y adjuntar Guía o Nota de ingreso.
+        </p>
       </div>
 
-      <Card>
-        <CardHeader className="gap-4">
-          <CardTitle>Filtro</CardTitle>
-          <form
-            className="grid gap-2 md:grid-cols-[140px_160px_1fr_auto]"
-            onSubmit={(event) => {
-              event.preventDefault();
-              void ejecutarBusqueda();
-            }}
-          >
-            <div
-              className="flex h-8 items-center rounded-lg border border-dashed border-input bg-muted/40 px-3 text-sm font-medium text-foreground"
-              title="Empresa definida por el workspace activo"
-            >
-              {empresaLabel(workspaceEmpresa)}
-            </div>
+      {error ? (
+        <Card>
+          <CardContent className="py-4 text-sm text-red-600">
+            No se pudo cargar la bandeja de Almacén desde la fuente común por
+            factura.
+          </CardContent>
+        </Card>
+      ) : null}
 
-            <select
-              className="h-8 rounded-lg border border-input bg-background px-2 text-sm"
-              value={estado}
-              onChange={(event) => setEstado(event.target.value)}
-              disabled={searchMode}
-            >
-              <option value="abierto">Abierto</option>
-              <option value="en_proceso">En proceso</option>
-              <option value="observado">Observado</option>
-              <option value="completo">Completo</option>
-              <option value="cerrado">Cerrado</option>
-            </select>
+      <Card className="overflow-hidden">
+        <CardHeader className="border-b px-4 py-3" data-msii-grid-first="MSII_GRID_FIRST_ALMACEN_02">
+          <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+            <CardTitle className="shrink-0 text-base">Bandeja de Almacén</CardTitle>
 
-            <Input
-              placeholder="Buscar OC, expediente, factura, guía, RUC o proveedor..."
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-            />
+            <div className="flex w-full flex-col gap-1 lg:max-w-[760px]">
+              <div className="flex items-center gap-2">
+                <Input
+                  className="min-w-0 flex-1"
+                  placeholder="Buscar factura, OC/OS, centro de costo, proveedor, RUC, guía o NI..."
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                />
 
-            <div className="flex gap-2">
-              <Button type="submit" size="sm" disabled={isSearching}>
-                <Search className="h-4 w-4" />
-                {isSearching ? "Buscando" : "Buscar"}
-              </Button>
-              {searchMode ? (
-                <Button type="button" size="sm" variant="outline" onClick={limpiarBusqueda}>
-                  <X className="h-4 w-4" />
-                  Limpiar
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => refetch()}
+                  disabled={!queryEnabled || isFetching}
+                >
+                  <Search className="h-4 w-4" />
+                  {isFetching ? "Actualizando" : "Actualizar"}
                 </Button>
+              </div>
+
+              {search.trim().length > 0 && search.trim().length < 3 ? (
+                <p className="text-xs text-muted-foreground">
+                  Ingrese al menos 3 caracteres para buscar.
+                </p>
               ) : null}
             </div>
-          </form>
-
-          {searchMode ? (
-            <p className="text-xs text-muted-foreground">
-              Búsqueda global activa: {rows.length} expediente(s) con principal. La búsqueda se mantiene limitada a la empresa del workspace activo.
-            </p>
-          ) : null}
-          {searchError ? <p className="text-xs text-red-600">{searchError}</p> : null}
-          {detailErrors.length > 0 ? (
-            <p className="text-xs text-amber-700">
-              {detailErrors.length} expediente(s) no pudieron completar su detalle y fueron excluidos de esta vista.
-            </p>
-          ) : null}
-          {!searchMode && rows.length > 0 && rows.some((expediente) => !getPrincipal(expediente)) ? (
-            <p className="text-xs text-amber-700">
-              Esta página contiene expedientes sin documento principal disponible para Almacén. Se muestran para no ocultar la paginación general; use la búsqueda para ubicar un caso documental específico.
-            </p>
-          ) : null}
-        </CardHeader>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between gap-3">
-            <CardTitle>Bandeja de almacén</CardTitle>
-            {isFetching ? (
-              <span className="text-xs text-muted-foreground">Actualizando…</span>
-            ) : null}
           </div>
-          <p className="text-sm text-muted-foreground">
-            Las acciones de recepción se habilitan en el detalle cuando Workspace V2 expone grupoFacturaId real.
-          </p>
         </CardHeader>
 
-        <CardContent className="space-y-4">
-          {rows.length === 0 ? (
-            <>
-              <Empty>
+        <CardContent className="p-0">
+          {filteredRows.length === 0 ? (
+            <Empty className="py-10">
               <EmptyHeader>
                 <EmptyMedia variant="icon">📦</EmptyMedia>
-                <EmptyTitle>Sin expedientes para almacén</EmptyTitle>
+                <EmptyTitle>
+                  {hasSearch ? "Sin facturas para Almacén" : "Buscar facturas para Almacén"}
+                </EmptyTitle>
                 <EmptyDescription>
-                  {searchMode
-                    ? "No se encontraron expedientes con principal para esa búsqueda."
-                    : "La página consultada no contiene expedientes con principal disponible. Use la paginación o búsqueda para continuar."}
+                  {hasSearch
+                    ? "No se encontraron facturas para la búsqueda realizada."
+                    : "Ingrese factura, OC/OS, centro de costo, proveedor, RUC, guía o NI para consultar."}
                 </EmptyDescription>
               </EmptyHeader>
-              </Empty>
-
-              {!searchMode && totalPages > 1 ? (
-                <PaginationControls
-                  page={currentPage}
-                  totalPages={totalPages}
-                  totalRows={totalRows}
-                  pageSize={PAGE_SIZE}
-                  onPageChange={setPage}
-                />
-              ) : null}
-            </>
+            </Empty>
           ) : (
             <>
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[860px] text-sm">
+                <table className="w-full text-sm">
                   <thead>
-                    <tr className="border-b text-left text-muted-foreground">
-                      <th className="py-2">Expediente</th>
-                      <th>Documento principal</th>
-                      <th>Documentos</th>
-                      <th>Estado almacén</th>
-                      <th className="text-right">Acciones</th>
+                    <tr className="border-b bg-muted/40 text-left align-bottom">
+                      <th className="min-w-[105px] px-3 py-2.5">Factura</th>
+                      <th className="min-w-[90px] px-3 py-2.5">OC/OS</th>
+                      <th className="min-w-[110px] px-3 py-2.5">
+                        <span className="block leading-tight">Centro de</span>
+                        <span className="block leading-tight">costo</span>
+                      </th>
+                      <th className="w-[190px] min-w-[165px] max-w-[190px] px-3 py-2.5">
+                        Proveedor
+                      </th>
+                      <th className="min-w-[92px] px-3 py-2.5">
+                        <span className="block leading-tight">Fecha de</span>
+                        <span className="block leading-tight">emisión</span>
+                      </th>
+                      <th className="min-w-[115px] px-3 py-2.5">Guía</th>
+                      <th className="min-w-[130px] px-3 py-2.5">
+                        <span className="block leading-tight">Nota de</span>
+                        <span className="block leading-tight">ingreso</span>
+                      </th>
+                      <th className="min-w-[170px] px-3 py-2.5 text-right">
+                        Acciones
+                      </th>
                     </tr>
                   </thead>
 
                   <tbody>
-                    {paginatedRows.map((expediente) => {
-                      const tieneFactura = hasDocument(expediente, [
-                        "FACTURA",
-                        "ADJUNTO_FACTURA",
-                        "PRINCIPAL_FACTURA",
-                      ]);
-                      const tieneGuia = hasDocument(expediente, ["GUIA", "GUÍA"]);
-                      const tieneNotaIngreso = hasDocument(expediente, [
-                        "NOTA_INGRESO",
-                        "NOTA INGRESO",
-                        "NOTA",
-                        "NI",
-                      ]);
+                    {pageRows.map((item) => {
+                      const expId = expedienteId(item);
+                      const grupoId = grupoFacturaId(item);
+                      const key = `${String(expId ?? "sin-exp")}-${String(
+                        grupoId ??
+                          `${facturaSerie(item)}-${facturaNumero(item)}`,
+                      )}`;
 
                       return (
-                        <tr key={expediente.id} className="border-b align-top hover:bg-muted/30">
-                          <td className="w-[30%] py-3 pr-4">
-                            <ExpedienteCell expediente={expediente} />
+                        <tr
+                          key={key}
+                          className="border-b align-middle hover:bg-muted/30"
+                        >
+                          <td className="px-3 py-2.5">
+                            <FacturaCell item={item} />
                           </td>
-                          <td className="w-[30%] py-3 pr-4">
-                            <div className="font-medium">{principalLabel(expediente)}</div>
-                            <div className="mt-1 line-clamp-2 text-xs text-muted-foreground">
-                              {principalDescription(expediente)}
-                            </div>
+
+                          <td className="px-3 py-2.5">
+                            <PrincipalCell item={item} />
                           </td>
-                          <td className="w-[22%] py-3 pr-4">
-                            <div className="flex flex-wrap gap-1.5">
-                              <AdjuntosBadge label="FAC" active={tieneFactura} />
-                              <AdjuntosBadge label="GUÍA" active={tieneGuia} />
-                              <AdjuntosBadge label="NI" active={tieneNotaIngreso} />
-                            </div>
-                            <div className="mt-2 text-xs text-muted-foreground">
-                              {documentCount(expediente)} documento(s)
-                            </div>
+
+                          <td className="whitespace-nowrap px-3 py-2.5 font-medium">
+                            {centroCostoCodigo(item) || "—"}
                           </td>
-                          <td className="w-[10%] py-3 pr-4">
-                            <Badge variant="secondary">{getEstado(expediente)}</Badge>
+
+                          <td className="w-[190px] max-w-[190px] px-3 py-2.5">
+                            <ProveedorCell item={item} />
                           </td>
-                          <td className="w-[8%] py-3 text-right">
-                            <ActionsCell expediente={expediente} />
+
+                          <td className="whitespace-nowrap px-3 py-2.5">
+                            {fechaEmision(item)}
+                          </td>
+
+                          <td className="px-3 py-2.5">
+                            <DocumentoCanonicoCell
+                              record={guiaRecord(item)}
+                              label="Guía"
+                            />
+                          </td>
+
+                          <td className="px-3 py-2.5">
+                            <DocumentoCanonicoCell
+                              record={notaIngresoRecord(item)}
+                              label="Nota de ingreso"
+                            />
+                          </td>
+
+                          <td className="px-3 py-2.5 text-right">
+                            <ActionsCell item={item} />
                           </td>
                         </tr>
                       );
@@ -665,13 +621,53 @@ export function AlmacenBandeja() {
                 </table>
               </div>
 
-              <PaginationControls
-                page={currentPage}
-                totalPages={totalPages}
-                totalRows={totalRows}
-                pageSize={PAGE_SIZE}
-                onPageChange={setPage}
-              />
+              <div className="flex flex-col gap-2 border-t px-4 py-3 text-sm md:flex-row md:items-center md:justify-between">
+                <div className="text-xs text-muted-foreground">
+                  Mostrando {pageRows.length ? start + 1 : 0}–{start + pageRows.length}
+                </div>
+
+                <div className="flex flex-wrap items-center justify-end gap-2">
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <span>Tamaño</span>
+                    <select
+                      className="h-8 rounded-lg border border-input bg-background px-2 text-xs"
+                      value={pageSize}
+                      onChange={(event) => setPageSize(event.target.value)}
+                      aria-label="Registros por página"
+                    >
+                      {PAGE_SIZE_OPTIONS.map((option) => (
+                        <option key={option} value={option}>
+                          {option}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={safePage <= 1}
+                    onClick={() => setPage((value) => Math.max(1, value - 1))}
+                  >
+                    Anterior
+                  </Button>
+
+                  <span className="inline-flex h-8 items-center rounded-md border px-3 text-xs font-medium text-foreground">
+                    Página {safePage}
+                  </span>
+
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={safePage >= totalPages}
+                    onClick={() => setPage((value) => Math.min(totalPages, value + 1))}
+                  >
+                    Siguiente
+                  </Button>
+                </div>
+              </div>
             </>
           )}
         </CardContent>

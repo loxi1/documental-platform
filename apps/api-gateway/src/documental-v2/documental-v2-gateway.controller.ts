@@ -395,6 +395,36 @@ export class DocumentalV2GatewayController {
   }
 
   @ApiOperation({
+    summary: 'Listar documentos de un Grupo de Factura V2',
+  })
+  @ApiParam({ name: 'grupoFacturaId', example: 1 })
+  @Get('grupos-factura/:grupoFacturaId/documentos')
+  async listarDocumentosPorGrupoFactura(
+    @Headers('authorization') authorization: string | undefined,
+    @Headers(REQUEST_ID_HEADER) requestId: string | undefined,
+    @Param('grupoFacturaId') grupoFacturaId: string,
+  ) {
+    const contexto = await this.validateAuthorization(authorization);
+
+    try {
+      const response = await axios.get(
+        `${this.getBaseUrl()}/documental-v2/grupos-factura/${grupoFacturaId}/documentos`,
+        {
+          headers: this.buildDocumentosForwardHeaders(
+            authorization,
+            requestId,
+            contexto,
+          ),
+        },
+      );
+
+      return this.unwrap(response);
+    } catch (error: any) {
+      this.throwUpstreamHttpException(error);
+    }
+  }
+
+  @ApiOperation({
     summary: 'Asociar documento existente a Grupo de Factura V2',
   })
   @Post('grupos-factura/documentos/asociar')
