@@ -576,15 +576,19 @@ function DocumentoHumanoCard({
   const monto = formatMontoHumano(doc.monto_total ?? doc.montoTotal, doc.moneda);
   const fecha = formatFechaHumana(doc.fecha_emision ?? doc.fechaEmision);
   const detalle = [monto, fecha].filter(Boolean).join(" · ");
+  const tituloLimpio = summary.title
+  .replace(
+    /^(FACTURA|GUIA_REMISION|GUIA|GUÍA|NOTA_INGRESO|NOTA INGRESO|TRANSFERENCIA|DETRACCION|DETRACCIÓN)\s*[·-]?\s*/i,
+    "",
+  )
+  .trim();
 
   return (
     <div className="rounded-xl border bg-background p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="font-semibold text-foreground">
-            {option.tipoRelacionSugerida === "adjunto_factura"
-              ? summary.title.replace(/^FACTURA\s*[·-]?\s*/i, "")
-              : summary.title}
+            {tituloLimpio || summary.title}
           </div>
           {proveedor ? (
             <div
@@ -2398,8 +2402,14 @@ export function CompraExpedienteEditor({
                             />
                           </div>
 
-                          <div className="min-w-0 rounded-xl border border-dashed p-3">
-                            <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                          <div
+                            className={
+                              facturas.length === 1 && guiaOption && guias.length
+                                ? "min-w-0"
+                                : "min-w-0 rounded-xl border border-dashed p-3"
+                            }
+                          >
+                            <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                               Guía
                             </div>
                             <div className="mt-3 space-y-3">
@@ -2427,8 +2437,8 @@ export function CompraExpedienteEditor({
                                 </div>
                               )}
 
-                              {!modoSoloLectura ? (
-                              <Button
+                              {!modoSoloLectura && !(facturas.length === 1 && guiaOption && guias.length) ? (
+                                <Button
                                   type="button"
                                   variant="outline"
                                   className="w-full"
