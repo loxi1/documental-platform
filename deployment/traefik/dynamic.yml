@@ -12,3 +12,8 @@ http:
 
     compress:
       compress: {}
+
+tls:
+  certificates:
+    - certFile: /etc/traefik/certs-mvp/mvp.crt
+      keyFile: /etc/traefik/certs-mvp/mvp.key

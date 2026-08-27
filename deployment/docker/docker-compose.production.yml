@@ -13,6 +13,7 @@ services:
       - ../traefik/traefik.yml:/etc/traefik/traefik.yml:ro
       - ../traefik/dynamic.yml:/etc/traefik/dynamic.yml:ro
       - traefik_letsencrypt:/letsencrypt
+      - "/home/loxi1/.local/share/documental-platform/tls-mvp/20260815-135822/traefik:/etc/traefik/certs-mvp:ro"
     networks:
       - dp_net
 
