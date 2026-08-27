@@ -5,7 +5,9 @@ function cleanUrl(value: string) {
 }
 
 function assertProductionUrl(value: string, variableName: string) {
-  if (process.env.NODE_ENV !== "production") return;
+  const allowLocalApiForTests = process.env.NEXT_PUBLIC_ALLOW_LOCAL_API_FOR_TESTS === "true";
+
+  if (process.env.NODE_ENV !== "production" || allowLocalApiForTests) return;
 
   if (!value) {
     throw new Error(`${variableName} es obligatorio en producción.`);
