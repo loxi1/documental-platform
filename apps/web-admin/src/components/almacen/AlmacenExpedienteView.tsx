@@ -275,6 +275,14 @@ export function AlmacenExpedienteView({ id }: { id: string | number }) {
     useState<string | null>(null);
 
   const principal = getPrincipal(expediente);
+  const facturaDocumentoId = grupoFacturaDocumentoId(grupo);
+  const facturaAsociadaGrupo =
+    facturaDocumentoId
+      ? documentos.find(
+          (candidate) =>
+            expedienteDocumentoId(candidate) === String(facturaDocumentoId),
+        ) ?? null
+      : null;
 
   const factura = grupoFacturaId
     ? Boolean(grupo)
@@ -295,6 +303,43 @@ export function AlmacenExpedienteView({ id }: { id: string | number }) {
         "ADJUNTO_NOTA_INGRESO",
       ])
     : hasDocument(documentos, ["NOTA_INGRESO", "NOTA INGRESO"]);
+
+  
+  function grupoFacturaDocumentoId(
+    grupo: WorkspaceV2GrupoFactura | null,
+  ): string | null {
+    if (!grupo) return null;
+
+    const vista = entityVista<Record<string, unknown>>(grupo);
+    const metadata =
+      vista.metadata && typeof vista.metadata === "object" && !Array.isArray(vista.metadata)
+        ? (vista.metadata as Record<string, unknown>)
+        : null;
+
+    const compatibilidad =
+      metadata?.compatibilidad &&
+      typeof metadata.compatibilidad === "object" &&
+      !Array.isArray(metadata.compatibilidad)
+        ? (metadata.compatibilidad as Record<string, unknown>)
+        : null;
+
+    const documentoV1 =
+      compatibilidad?.documentoV1 &&
+      typeof compatibilidad.documentoV1 === "object" &&
+      !Array.isArray(compatibilidad.documentoV1)
+        ? (compatibilidad.documentoV1 as Record<string, unknown>)
+        : null;
+
+    return text(
+      vista.facturaDocumentoId ??
+        vista.factura_documento_id ??
+        vista.documentoId ??
+        vista.documento_id ??
+        documentoV1?.documentoId ??
+        documentoV1?.documento_id,
+      "",
+    ) || null;
+  }
 
   const documentosAsociadosGrupo = grupo
     ? getAdjuntosGrupo(grupo)
@@ -484,7 +529,47 @@ export function AlmacenExpedienteView({ id }: { id: string | number }) {
             <CardTitle>Documentos asociados</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid gap-3 md:grid-cols-2">
+            <div className="grid gap-3 md:grid-cols-3">
+              <div
+                className={
+                  facturaAsociadaGrupo
+                    ? "rounded-xl border p-3"
+                    : "rounded-xl border border-dashed p-3"
+                }
+              >
+                <div className="mb-2 text-xs font-medium uppercase text-muted-foreground">
+                  Factura
+                </div>
+
+                {facturaAsociadaGrupo ? (
+                  <div className="flex items-center justify-between gap-3 py-3">
+                    <div className="min-w-0">
+                      <div className="truncate font-medium">
+                        ✓ {documentoLabel(facturaAsociadaGrupo)}
+                      </div>
+                      <div className="mt-1 truncate text-xs text-muted-foreground">
+                        {documentoDescripcion(facturaAsociadaGrupo)}
+                      </div>
+                    </div>
+
+                    {expedienteArchivoId(facturaAsociadaGrupo) ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="shrink-0"
+                        onClick={() => void abrirDocumentoAsociado(facturaAsociadaGrupo)}
+                      >
+                        Ver
+                      </Button>
+                    ) : null}
+                  </div>
+                ) : (
+                  <div className="text-sm text-muted-foreground">
+                    — Factura no registrada
+                  </div>
+                )}
+              </div>
               <div
                 className={
                   guiasAsociadasGrupo.length
