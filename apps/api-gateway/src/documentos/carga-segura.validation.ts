@@ -4,6 +4,8 @@ import { SECURE_UPLOAD } from './carga-segura.contract';
 
 export type SecureUploadValidatedBody = {
   expedienteId: number;
+  documentoBaseId: number | null;
+  grupoFacturaId: number | null;
   tipoDocumental: string;
   tipoRelacion: string | null;
   esPrincipal: boolean;
@@ -160,6 +162,17 @@ function parseMetadata(value: unknown): Record<string, unknown> | undefined {
   return parsed as Record<string, unknown>;
 }
 
+function parseOptionalPositiveInteger(
+  value: unknown,
+  field: string,
+): number | null {
+  if (value === undefined || value === null || value === '') {
+    return null;
+  }
+
+  return parsePositiveInteger(value, field);
+}
+
 export function validateSecureUploadBody(
   body: Record<string, unknown>,
 ): SecureUploadValidatedBody {
@@ -171,6 +184,14 @@ export function validateSecureUploadBody(
 
   return {
     expedienteId: parsePositiveInteger(body.expedienteId, 'expedienteId'),
+    documentoBaseId: parseOptionalPositiveInteger(
+      body.documentoBaseId,
+      'documentoBaseId',
+    ),
+    grupoFacturaId: parseOptionalPositiveInteger(
+      body.grupoFacturaId,
+      'grupoFacturaId',
+    ),
     tipoDocumental: parseRequiredString(body.tipoDocumental, 'tipoDocumental'),
     tipoRelacion: parseOptionalString(body.tipoRelacion, 'tipoRelacion'),
     esPrincipal: parseStrictBoolean(body.esPrincipal),

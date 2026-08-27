@@ -510,7 +510,7 @@ export default function MantenimientoExpedientesPage() {
   return (
     <main className="space-y-5">
       <div>
-        <p className="text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground">Contabilidad</p>
+        <p className="text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground">Compras</p>
         <h1 className="mt-1 text-2xl font-bold tracking-tight">Centro de costo</h1>
       </div>
 
@@ -546,7 +546,7 @@ export default function MantenimientoExpedientesPage() {
         </CardHeader>
         <CardContent>
           {error ? (
-            <ErrorBox title="No se pudo cargar el mantenimiento" description="Valida que el backend exponga GET /api/v1/expedientes/mantenimiento para admin y contabilidad." />
+            <ErrorBox title="No se pudo cargar el mantenimiento" description="Valida que el backend exponga GET /api/v1/expedientes/mantenimiento para admin, compras o contabilidad." />
           ) : null}
 
           {isLoading ? (

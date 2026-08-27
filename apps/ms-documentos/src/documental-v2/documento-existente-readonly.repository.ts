@@ -236,6 +236,11 @@ export class DocumentoExistenteReadonlyRepository {
         AND d.tipo_documental IN ('GUIA_REMISION', 'NOTA_INGRESO', 'TRANSFERENCIA', 'DETRACCION')
         AND (${tipoFiltro}::text IS NULL OR d.tipo_documental = ${tipoFiltro}::text)
         AND d.estado <> 'anulado'
+        AND NOT (
+          d.tipo_documental = 'TRANSFERENCIA'
+          AND d.estado = 'observado'
+          AND gfd.tipo_relacion IN ('adjunto_transferencia', 'adjunto_pago', 'sustento_pago')
+        )
         AND (
           ${texto ?? null}::text IS NULL
           OR d.numero ILIKE '%' || ${texto ?? ''} || '%'

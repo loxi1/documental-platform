@@ -372,6 +372,7 @@ describe('DocumentalV2Controller', () => {
       grupoFacturaId: 2,
       documentoId: 910007,
       tipoRelacion: 'adjunto_guia',
+      decisionCorrespondencia: undefined,
       usuario: {
         id: 1,
         email: 'admin@documental.local',
@@ -381,6 +382,7 @@ describe('DocumentalV2Controller', () => {
         requestId: 'req-2',
         correlationId: 'corr-2',
         origen: 'api-gateway',
+        tienePermisoAutorizarExcepcion: false,
       },
     });
   });

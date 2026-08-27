@@ -143,25 +143,91 @@ export class GrupoFacturaDocumentoRepository {
     return (rows[0] as unknown as GrupoFacturaDocumentoRow | undefined) ?? null;
   }
 
+  async sumarMontoTransferenciasActivas(
+    grupoFacturaId: number,
+    executor: SqlExecutor = sql,
+  ): Promise<number> {
+    const rows = await executor<Array<{ montoAcumulado: string | number | null }>>`
+      SELECT
+        COALESCE(
+          SUM(
+            COALESCE(
+              d.monto_total,
+              CASE
+                WHEN NULLIF(TRIM(d.metadata ->> 'montoTotal'), '') ~ '^[0-9]+([.,][0-9]+)?$'
+                  THEN REPLACE(TRIM(d.metadata ->> 'montoTotal'), ',', '.')::numeric
+                WHEN NULLIF(TRIM(d.metadata #>> '{ocr,metadata,montoTotal}'), '') ~ '^[0-9]+([.,][0-9]+)?$'
+                  THEN REPLACE(TRIM(d.metadata #>> '{ocr,metadata,montoTotal}'), ',', '.')::numeric
+                ELSE NULL
+              END,
+              0
+            )
+          ),
+          0
+        )::numeric(14,2) AS "montoAcumulado"
+      FROM documentos.grupo_factura_documentos gfd
+      JOIN documentos.documentos d
+        ON d.id = gfd.documento_id
+      WHERE gfd.grupo_factura_id = ${grupoFacturaId}::bigint
+        AND gfd.estado = 'activo'
+        AND gfd.tipo_relacion = 'adjunto_transferencia'
+        AND d.estado NOT IN ('observado', 'anulado')
+    `;
+
+    const value = Number(rows[0]?.montoAcumulado ?? 0);
+    return Number.isFinite(value) ? value : 0;
+  }
+
   async listarPorGrupoFactura(grupoFacturaId: number, executor: SqlExecutor = sql): Promise<GrupoFacturaDocumentoRow[]> {
     const rows = await executor`
       SELECT
-        id,
-        grupo_factura_id AS "grupoFacturaId",
-        documento_id AS "documentoId",
-        tipo_relacion AS "tipoRelacion",
-        estado,
-        metadata,
-        creado_por AS "creadoPor",
-        creado_en AS "creadoEn",
-        actualizado_por AS "actualizadoPor",
-        actualizado_en AS "actualizadoEn",
-        anulado_por AS "anuladoPor",
-        anulado_en AS "anuladoEn",
-        motivo_anulacion AS "motivoAnulacion"
-      FROM documentos.grupo_factura_documentos
-      WHERE grupo_factura_id = ${grupoFacturaId}::bigint
-      ORDER BY creado_en DESC, id DESC
+        gfd.id,
+        gfd.grupo_factura_id AS "grupoFacturaId",
+        gfd.documento_id AS "documentoId",
+        gfd.tipo_relacion AS "tipoRelacion",
+        gfd.estado,
+        CASE
+          WHEN d.id IS NULL THEN gfd.metadata
+          ELSE jsonb_set(
+            jsonb_set(
+              COALESCE(gfd.metadata, '{}'::jsonb),
+              '{documentoV1}',
+              COALESCE(gfd.metadata -> 'documentoV1', '{}'::jsonb) || jsonb_build_object(
+                'banco',
+                COALESCE(
+                  NULLIF(TRIM(d.metadata ->> 'banco'), ''),
+                  NULLIF(TRIM(d.metadata #>> '{ocr,metadata,banco}'), '')
+                ),
+                'metadata',
+                d.metadata
+              ),
+              true
+            ),
+            '{compatibilidad,documentoV1}',
+            COALESCE(gfd.metadata #> '{compatibilidad,documentoV1}', '{}'::jsonb) || jsonb_build_object(
+              'banco',
+              COALESCE(
+                NULLIF(TRIM(d.metadata ->> 'banco'), ''),
+                NULLIF(TRIM(d.metadata #>> '{ocr,metadata,banco}'), '')
+              ),
+              'metadata',
+              d.metadata
+            ),
+            true
+          )
+        END AS metadata,
+        gfd.creado_por AS "creadoPor",
+        gfd.creado_en AS "creadoEn",
+        gfd.actualizado_por AS "actualizadoPor",
+        gfd.actualizado_en AS "actualizadoEn",
+        gfd.anulado_por AS "anuladoPor",
+        gfd.anulado_en AS "anuladoEn",
+        gfd.motivo_anulacion AS "motivoAnulacion"
+      FROM documentos.grupo_factura_documentos gfd
+      LEFT JOIN documentos.documentos d
+        ON d.id = gfd.documento_id
+      WHERE gfd.grupo_factura_id = ${grupoFacturaId}::bigint
+      ORDER BY gfd.creado_en DESC, gfd.id DESC
     `;
 
     return rows as unknown as GrupoFacturaDocumentoRow[];

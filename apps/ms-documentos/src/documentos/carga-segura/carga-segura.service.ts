@@ -286,6 +286,8 @@ export class CargaSeguraService {
   private normalizeCommand(command: CargaSeguraCommand): CargaSeguraCommand {
     const normalized: CargaSeguraCommand = {
       ...command,
+      documentoBaseId: command.documentoBaseId ?? null,
+      grupoFacturaId: command.grupoFacturaId ?? null,
       empresaCodigo: this.requiredText(command.empresaCodigo, 'empresaCodigo'),
       idempotencyKey: this.requiredText(
         command.idempotencyKey,
@@ -317,6 +319,14 @@ export class CargaSeguraService {
       'clienteDestinoId',
     );
     this.nullablePositiveInteger(normalized.expedienteId, 'expedienteId');
+    this.nullablePositiveInteger(
+      normalized.documentoBaseId ?? null,
+      'documentoBaseId',
+    );
+    this.nullablePositiveInteger(
+      normalized.grupoFacturaId ?? null,
+      'grupoFacturaId',
+    );
 
     if (
       normalized.idempotencyKey.length > 128 ||

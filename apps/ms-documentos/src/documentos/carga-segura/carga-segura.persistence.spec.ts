@@ -126,6 +126,12 @@ function queue(...results: unknown[][]): void {
   queryResults.push(...results);
 }
 
+function executedSql(): string {
+  return txMock.mock.calls
+    .map(([strings]) => (Array.isArray(strings) ? strings.join(' ') : String(strings)))
+    .join('\n');
+}
+
 describe('CargaSeguraPersistence', () => {
   beforeEach(() => {
     queryResults = [];
@@ -146,7 +152,7 @@ describe('CargaSeguraPersistence', () => {
     );
   });
 
-  it('persiste documento, archivo, relación, outbox y operación', async () => {
+  it('persiste documento, archivo, contexto, outbox y operación sin vínculo canónico', async () => {
     queue(
       [storedOperationRow()],
       [],
@@ -159,7 +165,6 @@ describe('CargaSeguraPersistence', () => {
       ],
       [{ id: 100 }],
       [{ id: 200 }],
-      [],
       [],
       [{ id: 50 }],
     );
@@ -179,7 +184,10 @@ describe('CargaSeguraPersistence', () => {
     });
 
     expect(beginMock).toHaveBeenCalledTimes(1);
-    expect(executedQueries).toBe(8);
+    expect(executedQueries).toBe(7);
+    expect(executedSql()).not.toContain(
+      'INSERT INTO documentos.expediente_documentos',
+    );
   });
 
   it('persiste sin relación cuando no existe expediente', async () => {
@@ -212,7 +220,7 @@ describe('CargaSeguraPersistence', () => {
     expect(executedQueries).toBe(5);
   });
 
-  it('permite otro principal distinto de la misma relación en el mismo expediente', async () => {
+  it('difiere otro principal de la misma relación hasta la confirmación humana', async () => {
     queue(
       [storedOperationRow()],
       [],
@@ -225,7 +233,6 @@ describe('CargaSeguraPersistence', () => {
       ],
       [{ id: 100 }],
       [{ id: 200 }],
-      [],
       [],
       [{ id: 50 }],
     );
@@ -242,10 +249,10 @@ describe('CargaSeguraPersistence', () => {
       expedienteId: 17,
     });
 
-    expect(executedQueries).toBe(8);
+    expect(executedQueries).toBe(7);
   });
 
-  it('permite otro principal de distinta relación en el mismo expediente', async () => {
+  it('difiere otro principal de distinta relación hasta la confirmación humana', async () => {
     queue(
       [storedOperationRow()],
       [],
@@ -258,7 +265,6 @@ describe('CargaSeguraPersistence', () => {
       ],
       [{ id: 100 }],
       [{ id: 200 }],
-      [],
       [],
       [{ id: 50 }],
     );
@@ -278,7 +284,7 @@ describe('CargaSeguraPersistence', () => {
       expedienteId: 17,
     });
 
-    expect(executedQueries).toBe(8);
+    expect(executedQueries).toBe(7);
   });
 
   it('rechaza una operación que no está almacenada', async () => {

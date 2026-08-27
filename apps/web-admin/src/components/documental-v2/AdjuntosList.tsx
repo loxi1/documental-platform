@@ -86,20 +86,14 @@ export function AdjuntosList({
                 <div className="flex flex-wrap items-center gap-2">
                   <p className="font-medium text-foreground">{label}</p>
                   <Badge variant="outline">{getDocumentoTipo(documento)}</Badge>
-                  {documentoGrupoFacturaId ? (
-                    <Badge variant="outline">Persistido en grupo</Badge>
-                  ) : (
-                    <Badge variant="outline">Solo expediente</Badge>
-                  )}
+
                   {pruebaControlada ? <Badge variant="secondary">Prueba controlada</Badge> : null}
                   {documentoNoRelacionado ? <Badge variant="destructive">Documento no relacionado</Badge> : null}
                 </div>
                 <p className="mt-1 text-xs text-muted-foreground">
                   Fecha: {getFechaDocumento(documento)} · Monto: {getMontoDocumento(documento)}
                 </p>
-                <p className="mt-1 truncate text-xs text-muted-foreground" title={getDocumentoArchivo(documento)}>
-                  Archivo: {getDocumentoArchivo(documento)}
-                </p>
+
                 {pruebaControlada || documentoNoRelacionado ? (
                   <p className="mt-1 rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-xs text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-300">
                     Prueba controlada. Documento no relacionado con la factura. No debe utilizarse para validar correspondencia.

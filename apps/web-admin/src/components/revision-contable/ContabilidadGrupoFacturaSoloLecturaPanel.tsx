@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
-import { Link2, ReceiptText } from "lucide-react";
+import { Eye, Link2, ReceiptText } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -27,14 +27,127 @@ import {
   textValue,
 } from "@/components/documental-v2/workspace-v2-utils";
 
-function hasAdjunto(grupo: WorkspaceV2GrupoFactura, aliases: string[]) {
+function findAdjuntos(
+  grupo: WorkspaceV2GrupoFactura,
+  aliases: string[],
+): WorkspaceV2Documento[] {
   const normalized = aliases.map((alias) => alias.toUpperCase());
-  return getAdjuntosGrupo(grupo).some((documento: WorkspaceV2Documento) => {
+
+  return getAdjuntosGrupo(grupo).filter((documento: WorkspaceV2Documento) => {
     const vista = entityVista<Record<string, unknown>>(documento);
-    const tipo = String(vista.tipoDocumental ?? vista.tipo_documental ?? "").toUpperCase();
-    const relacion = String(vista.tipoRelacion ?? vista.tipo_relacion ?? "").toUpperCase();
-    return normalized.some((alias) => tipo.includes(alias) || relacion.includes(alias));
+    const tipo = String(
+      vista.tipoDocumental ?? vista.tipo_documental ?? "",
+    ).toUpperCase();
+    const relacion = String(
+      vista.tipoRelacion ?? vista.tipo_relacion ?? "",
+    ).toUpperCase();
+
+    return normalized.some(
+      (alias) => tipo.includes(alias) || relacion.includes(alias),
+    );
   });
+}
+
+function findAdjunto(grupo: WorkspaceV2GrupoFactura, aliases: string[]) {
+  return findAdjuntos(grupo, aliases)[0] ?? null;
+}
+
+function hasAdjunto(grupo: WorkspaceV2GrupoFactura, aliases: string[]) {
+  return findAdjuntos(grupo, aliases).length > 0;
+}
+
+function msiiRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function msiiText(value: unknown) {
+  if (value === null || value === undefined) return "";
+  const normalized = String(value).trim();
+  return normalized && normalized !== "null" && normalized !== "undefined"
+    ? normalized
+    : "";
+}
+
+function msiiTipoOperativo(value: unknown) {
+  return msiiText(value)
+    .replace(/^PRINCIPAL_/i, "")
+    .replace(/^ADJUNTO_/i, "")
+    .replaceAll("_", " ")
+    .trim()
+    .toUpperCase();
+}
+
+function msiiRecordId(value: unknown) {
+  const record = msiiRecord(value);
+  if (!record) return "";
+
+  return (
+    msiiText(record.id) ||
+    msiiText(record.documentoId) ||
+    msiiText(record.documento_id)
+  );
+}
+
+function msiiDocumentoLabel(source: unknown, fallback: string) {
+  const record = msiiRecord(source);
+  if (!record) return fallback;
+
+  const tipo = msiiTipoOperativo(
+    record.tipoDocumental ??
+      record.tipo_documental ??
+      record.tipo ??
+      record.tipoDocumento ??
+      record.tipo_documento,
+  );
+  const serie = msiiText(
+    record.serie ?? record.serieDocumento ?? record.serie_documento,
+  );
+  const numero = msiiText(
+    record.numero ?? record.numeroDocumento ?? record.numero_documento,
+  );
+  const numeroCompleto = [serie, numero].filter(Boolean).join("-");
+
+  if (tipo && numeroCompleto) return `${tipo} ${numeroCompleto}`;
+  if (numeroCompleto) return numeroCompleto;
+  return fallback;
+}
+
+function msiiFindRecordById(source: unknown, targetId: unknown): Record<string, unknown> | null {
+  const expected = msiiText(targetId);
+  if (!expected) return null;
+
+  if (Array.isArray(source)) {
+    for (const item of source) {
+      const found = msiiFindRecordById(item, expected);
+      if (found) return found;
+    }
+    return null;
+  }
+
+  const record = msiiRecord(source);
+  if (!record) return null;
+
+  if (msiiRecordId(record) == expected) return record;
+
+  for (const value of Object.values(record)) {
+    if (!value || typeof value !== "object") continue;
+    const found = msiiFindRecordById(value, expected);
+    if (found) return found;
+  }
+
+  return null;
+}
+
+function msiiPrincipalGrupoLabel(source: unknown, documentoBaseId: unknown) {
+  const documentoId = msiiText(documentoBaseId);
+  const principal = msiiFindRecordById(source, documentoId);
+
+  if (!documentoId) return "OC/OS asociado";
+  if (!principal) return `OC/OS documento ${documentoId}`;
+
+  return msiiDocumentoLabel(principal, `OC/OS documento ${documentoId}`);
 }
 
 function EstadoContableBadge({ label, active }: { label: string; active: boolean }) {
@@ -46,86 +159,625 @@ function EstadoContableBadge({ label, active }: { label: string; active: boolean
   );
 }
 
-function GrupoRevisionCard({ grupo, expedienteId }: { grupo: WorkspaceV2GrupoFactura; expedienteId: string | number }) {
+function msiiPersistedMetadata(
+  documento: Record<string, unknown> | null,
+) {
+  if (!documento) return null;
+
+  const metadata = msiiRecord(documento.metadata);
+  const ocr = msiiRecord(metadata?.ocr);
+  const ocrMetadata = msiiRecord(ocr?.metadata);
+
+  return ocrMetadata ?? metadata;
+}
+
+function msiiPersistedGrupoFacturaId(
+  documento: Record<string, unknown>,
+) {
+  const metadata = msiiPersistedMetadata(documento);
+
+  return msiiText(
+    documento.grupoFacturaId ??
+      documento.grupo_factura_id ??
+      metadata?.grupoFacturaId ??
+      metadata?.grupo_factura_id,
+  );
+}
+
+function msiiMatchesAlias(
+  documento: Record<string, unknown>,
+  aliases: string[],
+) {
+  const normalized = aliases.map((alias) => alias.toUpperCase());
+  const metadata = msiiPersistedMetadata(documento);
+
+  const tipo = msiiTipoOperativo(
+    documento.tipoDocumental ??
+      documento.tipo_documental ??
+      metadata?.tipoDocumental ??
+      metadata?.tipo_documental,
+  );
+
+  const relacion = msiiTipoOperativo(
+    documento.tipoRelacion ??
+      documento.tipo_relacion ??
+      metadata?.tipoRelacion ??
+      metadata?.tipo_relacion,
+  );
+
+  return normalized.some(
+    (alias) =>
+      tipo.includes(alias.toUpperCase()) ||
+      relacion.includes(alias.toUpperCase()),
+  );
+}
+
+function msiiResolvePersistedDocument({
+  workspaceDocumento,
+  aliases,
+  grupoFacturaId,
+  documentos,
+}: {
+  workspaceDocumento: WorkspaceV2Documento | null;
+  aliases: string[];
+  grupoFacturaId: unknown;
+  documentos: Array<Record<string, unknown>>;
+}) {
+  const workspaceVista = workspaceDocumento
+    ? entityVista<Record<string, unknown>>(workspaceDocumento)
+    : null;
+
+  const workspaceId = msiiText(
+    workspaceVista?.documentoId ??
+      workspaceVista?.documento_id ??
+      workspaceVista?.id ??
+      msiiRecordId(workspaceDocumento),
+  );
+
+  // Regla contractual UX:
+  // si Workspace entrega documentoId explícito, esa identidad manda.
+  // No degradar a búsqueda por tipo documental.
+  if (workspaceId) {
+    return (
+      documentos.find((documento) => {
+        const persistedId = msiiText(
+          documento.documentoId ??
+            documento.documento_id ??
+            documento.id ??
+            msiiRecordId(documento),
+        );
+
+        return persistedId === workspaceId;
+      }) ?? null
+    );
+  }
+
+  // Fallback únicamente para payloads antiguos que realmente no traen ID.
+  const candidatos = documentos.filter((documento) =>
+    msiiMatchesAlias(documento, aliases),
+  );
+
+  const grupoId = msiiText(grupoFacturaId);
+
+  if (grupoId) {
+    const porGrupo = candidatos.filter(
+      (documento) =>
+        msiiPersistedGrupoFacturaId(documento) === grupoId,
+    );
+
+    if (porGrupo.length === 1) return porGrupo[0];
+  }
+
+  return candidatos.length === 1 ? candidatos[0] : null;
+}
+
+function msiiResolvePersistedDocuments({
+  workspaceDocumentos,
+  aliases,
+  grupoFacturaId,
+  documentos,
+}: {
+  workspaceDocumentos: WorkspaceV2Documento[];
+  aliases: string[];
+  grupoFacturaId: unknown;
+  documentos: Array<Record<string, unknown>>;
+}) {
+  const resolved = workspaceDocumentos
+    .map((workspaceDocumento) =>
+      msiiResolvePersistedDocument({
+        workspaceDocumento,
+        aliases,
+        grupoFacturaId,
+        documentos,
+      }),
+    )
+    .filter((documento): documento is Record<string, unknown> => Boolean(documento));
+
+  const byId = new Map<string, Record<string, unknown>>();
+
+  for (const documento of resolved) {
+    const id = msiiText(
+      documento.documentoId ??
+        documento.documento_id ??
+        documento.id ??
+        msiiRecordId(documento),
+    );
+
+    if (id) byId.set(id, documento);
+  }
+
+  return Array.from(byId.values());
+}
+
+function msiiFormatDate(value: unknown) {
+  const text = msiiText(value);
+  const match = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
+
+  if (!match) return text;
+
+  const [, year, month, day] = match;
+  return `${day}/${month}/${year}`;
+}
+
+function msiiFormatMoney(
+  monedaValue: unknown,
+  montoValue: unknown,
+) {
+  const rawMonto = msiiText(montoValue);
+  if (!rawMonto) return "";
+
+  const monto = Number(rawMonto.replace(/,/g, ""));
+  if (!Number.isFinite(monto)) return rawMonto;
+
+  const moneda = msiiText(monedaValue).toUpperCase();
+  const currency =
+    moneda === "USD" || moneda.includes("DOLAR") ? "USD" : "PEN";
+
+  return new Intl.NumberFormat("es-PE", {
+    style: "currency",
+    currency,
+    minimumFractionDigits: 2,
+  }).format(monto);
+}
+
+function DocumentoAsociadoFila({
+  label,
+  documento,
+  documentoPersistido,
+  onVer,
+}: {
+  label: string;
+  documento: WorkspaceV2Documento | null;
+  documentoPersistido?: Record<string, unknown> | null;
+  onVer?: (
+    documentoId: string | number,
+    documentoLogico?: Record<string, unknown>,
+  ) => void;
+}) {
+  if (!documento && !documentoPersistido) {
+    return (
+      <div className="flex items-center justify-between gap-2 text-muted-foreground">
+        <span>{label}</span>
+        <span>—</span>
+      </div>
+    );
+  }
+
+  const source = documentoPersistido ?? documento;
+  const documentoId =
+    msiiRecordId(documentoPersistido) || msiiRecordId(documento);
+  const documentoLabel = msiiDocumentoLabel(source, label);
+  const metadata = msiiPersistedMetadata(documentoPersistido ?? null);
+
+  const numeroOperacion = msiiText(
+    metadata?.numeroOperacion ??
+      metadata?.numeroConstancia ??
+      metadata?.numero ??
+      documentoPersistido?.numero,
+  );
+
+  const banco = msiiText(metadata?.banco);
+
+  const fecha = msiiFormatDate(
+    metadata?.fechaPago ??
+      metadata?.fechaEmision ??
+      documentoPersistido?.fecha_emision ??
+      documentoPersistido?.fechaEmision,
+  );
+
+  const monto = msiiFormatMoney(
+    metadata?.moneda ?? documentoPersistido?.moneda,
+    metadata?.montoTotal ??
+      documentoPersistido?.monto_total ??
+      documentoPersistido?.montoTotal,
+  );
+
+  const titulo =
+    label.toUpperCase() === "TRANSFERENCIA" && numeroOperacion
+      ? `Transferencia ${numeroOperacion}`
+      : documentoLabel;
+
+  return (
+    <div className="space-y-1">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="font-medium">{titulo}</span>
+
+        {onVer && documentoId ? (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-7 px-2.5"
+            onClick={() => onVer(documentoId)}
+          >
+            <Eye className="mr-1.5 h-3.5 w-3.5" />
+            Ver
+          </Button>
+        ) : null}
+      </div>
+
+      {banco ? (
+        <div className="text-xs text-muted-foreground">
+          {banco}
+        </div>
+      ) : null}
+
+      {fecha || monto ? (
+        <div className="text-xs text-muted-foreground">
+          {[fecha, monto].filter(Boolean).join(" · ")}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+
+
+type ContabilidadFacturaLogicaGrupo = {
+  documentoId: string | number;
+  tipoDocumental: "FACTURA";
+  serie?: string;
+  numero?: string;
+  fechaEmision?: string;
+  rucEmisor?: string;
+  razonSocialEmisor?: string;
+  montoTotal?: number;
+  moneda?: string;
+  estado?: string;
+};
+
+function normalizarFechaGrupoParaModal(value: unknown) {
+  const text = String(value ?? "").trim();
+  if (!text || text === "-") return undefined;
+
+  const iso = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
+
+  const pe = text.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (pe) return `${pe[3]}-${pe[2]}-${pe[1]}`;
+
+  return text;
+}
+
+function normalizarFacturaLabelGrupo(label: unknown) {
+  const original = String(label ?? "").trim();
+  if (!original || original === "Factura no informada") {
+    return { serie: undefined, numero: undefined };
+  }
+
+  const text = original.replace(/^factura\s+/i, "").trim();
+
+  const match = text.match(/^([^-\s]+)\s*-\s*(.+)$/);
+  if (match) {
+    return {
+      serie: match[1].trim() || undefined,
+      numero: match[2].trim() || undefined,
+    };
+  }
+
+  const parts = text.split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) {
+    return {
+      serie: parts[0],
+      numero: parts.slice(1).join(" "),
+    };
+  }
+
+  return { serie: undefined, numero: text || undefined };
+}
+
+function normalizarImporteGrupo(value: unknown) {
+  const text = String(value ?? "").trim();
+  const upper = text.toUpperCase();
+
+  const moneda =
+    upper.includes("USD") || upper.includes("US$") || upper.includes("$")
+      ? "USD"
+      : upper.includes("PEN") || upper.includes("S/") || upper.includes("S/.")
+        ? "PEN"
+        : undefined;
+
+  const numericText = text
+    .replace(/[^0-9,.-]/g, "")
+    .replace(/,(?=\d{3}(?:\D|$))/g, "")
+    .replace(",", ".");
+
+  const monto = Number(numericText);
+
+  return {
+    moneda,
+    montoTotal: Number.isFinite(monto) ? monto : undefined,
+  };
+}
+
+function buildFacturaLogicaDesdeGrupo(
+  grupo: WorkspaceV2GrupoFactura,
+  facturaDocumentoId: string | number,
+  facturaDocumento: Record<string, unknown> | null,
+): ContabilidadFacturaLogicaGrupo {
+  const facturaVista = entityVista<Record<string, unknown>>(facturaDocumento);
+  const grupoVista = entityVista<Record<string, unknown>>(grupo);
+  const label = normalizarFacturaLabelGrupo(getGrupoFacturaLabel(grupo));
+  const importe = normalizarImporteGrupo(getGrupoImporte(grupo));
+  const serieExplicita = String(
+    facturaVista.serie ??
+      grupoVista.serie ??
+      "",
+  ).trim();
+  const numeroExplicito = String(
+    facturaVista.numero ??
+      grupoVista.numero ??
+      "",
+  ).trim();
+
+  return {
+    documentoId: facturaDocumentoId,
+    tipoDocumental: "FACTURA",
+    serie: serieExplicita || label.serie,
+    numero: numeroExplicito || label.numero,
+    fechaEmision: normalizarFechaGrupoParaModal(getGrupoFecha(grupo)),
+    rucEmisor: String(getGrupoRucProveedor(grupo) ?? "").trim() || undefined,
+    razonSocialEmisor:
+      String(getGrupoProveedor(grupo) ?? "").trim() || undefined,
+    montoTotal: importe.montoTotal,
+    moneda:
+      importe.moneda ??
+      (
+        String(
+          facturaVista.moneda ??
+            grupoVista.moneda ??
+            "",
+        ).trim() ||
+        undefined
+      ),
+    estado:
+      String(
+        facturaVista.estado ??
+          grupoVista.estadoRevisionLabel ??
+          grupoVista.estado_revision_label ??
+          grupoVista.estado ??
+          "",
+      ).trim() ||
+      undefined,
+  };
+}
+
+function GrupoRevisionCard({
+  workspace,
+  grupo,
+  expedienteId,
+  documentos,
+  onVer,
+}: {
+  workspace: unknown;
+  grupo: WorkspaceV2GrupoFactura;
+  expedienteId: string | number;
+  documentos: Array<Record<string, unknown>>;
+  onVer?: (
+    documentoId: string | number,
+    documentoLogico?: Record<string, unknown>,
+  ) => void;
+}) {
   const grupoFacturaId = getGrupoFacturaPersistidoId(grupo);
   const principalDocumentoId = getGrupoDocumentoPrincipalDocumentoId(grupo);
   const facturaDocumentoId = getGrupoFacturaDocumentoId(grupo);
-  const guia = hasAdjunto(grupo, ["GUIA_REMISION", "GUIA", "GUÍA", "ADJUNTO_GUIA"]);
-  const notaIngreso = hasAdjunto(grupo, ["NOTA_INGRESO", "NOTA INGRESO", "ADJUNTO_NOTA_INGRESO"]);
-  const transferencia = hasAdjunto(grupo, ["TRANSFERENCIA", "ADJUNTO_TRANSFERENCIA", "PAGO_TRANSFERENCIA"]);
-  const detraccion = hasAdjunto(grupo, ["DETRACCION", "DETRACCIÓN", "ADJUNTO_DETRACCION", "PAGO_DETRACCION"]);
-  const recepcionConEvidencia = guia || notaIngreso;
+  const principalOperativo = msiiPrincipalGrupoLabel(workspace, principalDocumentoId);
+  const facturaDocumento = msiiFindRecordById(workspace, facturaDocumentoId);
+  const facturaLogicaGrupo = facturaDocumentoId
+    ? buildFacturaLogicaDesdeGrupo(
+        grupo,
+        facturaDocumentoId,
+        facturaDocumento,
+      )
+    : null;
+  const guiaDocumento = findAdjunto(grupo, ["GUIA_REMISION", "GUIA", "GUÍA", "ADJUNTO_GUIA"]);
+  const notaIngresoDocumento = findAdjunto(grupo, ["NOTA_INGRESO", "NOTA INGRESO", "ADJUNTO_NOTA_INGRESO"]);
+  const transferenciaDocumentos = findAdjuntos(grupo, ["TRANSFERENCIA", "ADJUNTO_TRANSFERENCIA", "PAGO_TRANSFERENCIA"]);
+  const transferenciaDocumento = transferenciaDocumentos[0] ?? null;
+  const detraccionDocumento = findAdjunto(grupo, ["DETRACCION", "DETRACCIÓN", "ADJUNTO_DETRACCION", "PAGO_DETRACCION"]);
+
+  const guiaPersistida = msiiResolvePersistedDocument({
+    workspaceDocumento: guiaDocumento,
+    aliases: ["GUIA_REMISION", "GUIA", "GUÍA", "ADJUNTO_GUIA"],
+    grupoFacturaId,
+    documentos,
+  });
+
+  const notaIngresoPersistida = msiiResolvePersistedDocument({
+    workspaceDocumento: notaIngresoDocumento,
+    aliases: ["NOTA_INGRESO", "NOTA INGRESO", "ADJUNTO_NOTA_INGRESO"],
+    grupoFacturaId,
+    documentos,
+  });
+
+  const transferenciasPersistidas = msiiResolvePersistedDocuments({
+    workspaceDocumentos: transferenciaDocumentos,
+    aliases: ["TRANSFERENCIA", "ADJUNTO_TRANSFERENCIA", "PAGO_TRANSFERENCIA"],
+    grupoFacturaId,
+    documentos,
+  });
+
+  const detraccionPersistida = msiiResolvePersistedDocument({
+    workspaceDocumento: detraccionDocumento,
+    aliases: ["DETRACCION", "DETRACCIÓN", "ADJUNTO_DETRACCION", "PAGO_DETRACCION"],
+    grupoFacturaId,
+    documentos,
+  });
 
   return (
     <div className="rounded-xl border p-4">
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-        <div className="min-w-0 space-y-3">
-          <div className="flex flex-wrap items-center gap-2">
-            <ReceiptText className="h-4 w-4 text-muted-foreground" />
-            <h3 className="font-semibold">{getGrupoFacturaLabel(grupo)}</h3>
-            <Badge variant="secondary">Grupo documental persistido</Badge>
-            <Badge variant="outline">Solo lectura</Badge>
-            {grupoFacturaId ? <Badge variant="outline">grupoFacturaId {String(grupoFacturaId)}</Badge> : null}
+      <div className="space-y-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              Factura en revisión
+            </div>
+            <div className="mt-1 flex flex-wrap items-center gap-2">
+              <ReceiptText className="h-4 w-4 text-muted-foreground" />
+              <h3 className="font-semibold">{getGrupoFacturaLabel(grupo)}</h3>
+              <Badge variant="outline">OC/OS: {principalOperativo}</Badge>
+              {onVer && facturaDocumentoId ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-7 px-2.5"
+                  onClick={() => onVer(facturaDocumentoId, facturaLogicaGrupo ?? undefined)}
+                >
+                  <Eye className="mr-1.5 h-3.5 w-3.5" />
+                  Ver
+                </Button>
+              ) : null}
+            </div>
           </div>
 
-          <dl className="grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
-            <div>
-              <dt className="text-xs font-medium uppercase text-muted-foreground">Proveedor</dt>
-              <dd className="mt-1 font-medium">{getGrupoProveedor(grupo)}</dd>
-            </div>
-            <div>
-              <dt className="text-xs font-medium uppercase text-muted-foreground">RUC</dt>
-              <dd className="mt-1 font-medium">{getGrupoRucProveedor(grupo)}</dd>
-            </div>
-            <div>
-              <dt className="text-xs font-medium uppercase text-muted-foreground">Fecha</dt>
-              <dd className="mt-1 font-medium">{getGrupoFecha(grupo)}</dd>
-            </div>
-            <div>
-              <dt className="text-xs font-medium uppercase text-muted-foreground">Importe</dt>
-              <dd className="mt-1 font-medium">{getGrupoImporte(grupo)}</dd>
-            </div>
-          </dl>
+          <Button asChild variant="outline" size="sm" className="shrink-0">
+            <Link href={`/workspace/expedientes-v1/${expedienteId}`}>
+              <Link2 className="h-4 w-4" />
+              Ver Workspace
+            </Link>
+          </Button>
+        </div>
 
-          <div className="flex flex-wrap gap-2 text-xs">
-            {principalDocumentoId ? <Badge variant="outline">Principal documento {String(principalDocumentoId)}</Badge> : null}
-            {facturaDocumentoId ? <Badge variant="outline">Factura documento {String(facturaDocumentoId)}</Badge> : null}
-            <Badge variant="outline">Estado documental {textValue(entityVista<Record<string, unknown>>(grupo).estadoRevisionLabel ?? entityVista<Record<string, unknown>>(grupo).estado_revision_label ?? entityVista<Record<string, unknown>>(grupo).estado, "Sin estado")}</Badge>
-            <Badge variant="outline">Persistencia persistido</Badge>
+        <dl className="grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
+          <div>
+            <dt className="text-xs font-medium uppercase text-muted-foreground">Proveedor</dt>
+            <dd className="mt-1 font-medium">{getGrupoProveedor(grupo)}</dd>
           </div>
+          <div>
+            <dt className="text-xs font-medium uppercase text-muted-foreground">RUC</dt>
+            <dd className="mt-1 font-medium">{getGrupoRucProveedor(grupo)}</dd>
+          </div>
+          <div>
+            <dt className="text-xs font-medium uppercase text-muted-foreground">Fecha</dt>
+            <dd className="mt-1 font-medium">{getGrupoFecha(grupo)}</dd>
+          </div>
+          <div>
+            <dt className="text-xs font-medium uppercase text-muted-foreground">Importe</dt>
+            <dd className="mt-1 font-medium">{getGrupoImporte(grupo)}</dd>
+          </div>
+        </dl>
 
-          <div className="space-y-1 pt-1">
-            <div className="flex flex-wrap gap-2">
-              <EstadoContableBadge label="Factura" active />
-              <EstadoContableBadge label="Recepción" active={recepcionConEvidencia} />
-              <EstadoContableBadge label="Transferencia" active={transferencia} />
-              <EstadoContableBadge label="Detracción" active={detraccion} />
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs font-medium uppercase text-muted-foreground">Estado</span>
+          <Badge variant="outline">
+            {textValue(
+              entityVista<Record<string, unknown>>(grupo).estadoRevisionLabel ??
+                entityVista<Record<string, unknown>>(grupo).estado_revision_label ??
+                entityVista<Record<string, unknown>>(grupo).estado,
+              "Sin estado",
+            )}
+          </Badge>
+          <Badge variant="secondary">Solo lectura</Badge>
+        </div>
+
+        <div className="border-t pt-4">
+          <div className="mb-3 text-sm font-semibold">Documentos asociados</div>
+
+          <div className="grid gap-3 lg:grid-cols-3">
+            <div className="rounded-lg border bg-muted/20 p-3">
+              <div className="text-xs font-medium uppercase text-muted-foreground">Recepción</div>
+              <div className="mt-2 space-y-2 text-sm">
+                <DocumentoAsociadoFila
+                  label="Guía"
+                  documento={guiaDocumento}
+                  documentoPersistido={guiaPersistida}
+                  onVer={onVer}
+                />
+                <DocumentoAsociadoFila
+                  label="Nota de ingreso"
+                  documento={notaIngresoDocumento}
+                  documentoPersistido={notaIngresoPersistida}
+                  onVer={onVer}
+                />
+              </div>
             </div>
-            {!recepcionConEvidencia ? (
-              <p className="text-xs text-muted-foreground">
-                Recepción sin evidencia asociada en el grupo. Contabilidad no infiere recepción completa solo por existir factura o grupo persistido.
-              </p>
-            ) : null}
-            {!transferencia && !detraccion ? (
-              <p className="text-xs text-muted-foreground">
-                Documentos de pago sin evidencia asociada. Contabilidad no interpreta archivo adjunto como pago conciliado.
-              </p>
-            ) : null}
+
+            <div className="rounded-lg border bg-muted/20 p-3">
+              <div className="text-xs font-medium uppercase text-muted-foreground">Pago</div>
+              <div className="mt-2 space-y-2 text-sm">
+                {transferenciasPersistidas.length > 0 ? (
+                  transferenciasPersistidas.map((documento, index) => (
+                    <DocumentoAsociadoFila
+                      key={String(
+                        documento.documentoId ??
+                          documento.documento_id ??
+                          documento.id ??
+                          index,
+                      )}
+                      label="Transferencia"
+                      documento={transferenciaDocumentos[index] ?? null}
+                      documentoPersistido={documento}
+                      onVer={onVer}
+                    />
+                  ))
+                ) : (
+                  <DocumentoAsociadoFila
+                    label="Transferencia"
+                    documento={transferenciaDocumento}
+                    documentoPersistido={null}
+                    onVer={onVer}
+                  />
+                )}
+              </div>
+            </div>
+
+            <div className="rounded-lg border bg-muted/20 p-3">
+              <div className="text-xs font-medium uppercase text-muted-foreground">Detracción</div>
+              <div className="mt-2 text-sm">
+                <DocumentoAsociadoFila
+                  label="Detracción"
+                  documento={detraccionDocumento}
+                  documentoPersistido={detraccionPersistida}
+                  onVer={onVer}
+                />
+              </div>
+            </div>
           </div>
         </div>
 
-        <Button asChild variant="outline" size="sm" className="shrink-0">
-          <Link href={`/workspace/expedientes-v1/${expedienteId}`}>
-            <Link2 className="h-4 w-4" />
-            Ver Workspace
-          </Link>
-        </Button>
+        <span className="sr-only">
+          grupoFacturaId {String(grupoFacturaId ?? "")} · principalDocumentoId {String(principalDocumentoId ?? "")} · facturaDocumentoId {String(facturaDocumentoId ?? "")}
+        </span>
       </div>
     </div>
   );
 }
 
-export function ContabilidadGrupoFacturaSoloLecturaPanel({ id }: { id: string | number }) {
+export function ContabilidadGrupoFacturaSoloLecturaPanel({
+  id,
+  facturaDocumentoId,
+  documentos = [],
+  onVer,
+}: {
+  id: string | number;
+  facturaDocumentoId?: string | null;
+  documentos?: Array<Record<string, unknown>>;
+  onVer?: (
+    documentoId: string | number,
+    documentoLogico?: Record<string, unknown>,
+  ) => void;
+}) {
   const workspaceQuery = useQuery({
     queryKey: ["contabilidad-v2-grupos-revision", String(id)],
     queryFn: () => getWorkspaceDocumentalV2(id),
@@ -136,7 +788,7 @@ export function ContabilidadGrupoFacturaSoloLecturaPanel({ id }: { id: string | 
     return (
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle>Facturas documentales para revisión contable</CardTitle>
+          <CardTitle>Facturas en revisión</CardTitle>
         </CardHeader>
         <CardContent>
           <Skeleton className="h-28 w-full" />
@@ -149,11 +801,11 @@ export function ContabilidadGrupoFacturaSoloLecturaPanel({ id }: { id: string | 
     return (
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle>Facturas documentales para revisión contable</CardTitle>
+          <CardTitle>Facturas en revisión</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
-            No se pudo cargar el Workspace V2. Contabilidad mantiene esta vista en solo lectura y no debe inferir relaciones desde legacy.
+            No se pudo cargar la información documental para revisión contable.
           </div>
         </CardContent>
       </Card>
@@ -161,7 +813,23 @@ export function ContabilidadGrupoFacturaSoloLecturaPanel({ id }: { id: string | 
   }
 
   const workspace = workspaceQuery.data;
-  const gruposPersistidos = getGruposFactura(workspace).filter((grupo) => Boolean(getGrupoFacturaPersistidoId(grupo)));
+  const gruposPersistidos = getGruposFactura(workspace).filter((grupo) =>
+    Boolean(getGrupoFacturaPersistidoId(grupo)),
+  );
+  const grupoSeleccionado = facturaDocumentoId
+    ? gruposPersistidos.find(
+        (grupo) =>
+          String(getGrupoFacturaDocumentoId(grupo) ?? "") ===
+          String(facturaDocumentoId),
+      ) ?? null
+    : null;
+  const gruposVisibles = facturaDocumentoId
+    ? grupoSeleccionado
+      ? [grupoSeleccionado]
+      : []
+    : gruposPersistidos;
+  const grupoSolicitadoNoLocalizado =
+    Boolean(facturaDocumentoId) && !grupoSeleccionado;
   const contexto = getContexto(workspace);
 
   return (
@@ -169,29 +837,41 @@ export function ContabilidadGrupoFacturaSoloLecturaPanel({ id }: { id: string | 
       <CardHeader className="pb-2">
         <div className="flex flex-wrap items-start justify-between gap-2">
           <div>
-            <CardTitle>Facturas documentales para revisión contable</CardTitle>
+            <CardTitle>Facturas en revisión</CardTitle>
             <p className="mt-1 text-sm text-muted-foreground">
-              Vista de solo lectura por factura sobre el núcleo documental V2. No permite adjuntar, asociar, anular ni corregir documentos.
+              Vista de solo lectura por factura y sus documentos asociados.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
             <Badge variant="outline">{getContextoEmpresaCodigo(contexto) || "Empresa"}</Badge>
-            <Badge variant="outline">{gruposPersistidos.length} grupo(s) persistido(s)</Badge>
+            <Badge variant="outline">{gruposVisibles.length} factura(s) en vista</Badge>
           </div>
         </div>
       </CardHeader>
       <CardContent className="space-y-3">
-        {gruposPersistidos.length ? (
-          gruposPersistidos.map((grupo, index) => (
+        {grupoSolicitadoNoLocalizado ? (
+          <div className="rounded-xl border border-dashed p-4 text-sm">
+            <p className="font-medium">
+              No se pudo localizar la factura solicitada.
+            </p>
+            <p className="mt-1 text-muted-foreground">
+              Vuelve a la bandeja o usa “Ver Workspace” para revisar el expediente completo.
+            </p>
+          </div>
+        ) : gruposVisibles.length ? (
+          gruposVisibles.map((grupo, index) => (
             <GrupoRevisionCard
               key={String(getGrupoFacturaPersistidoId(grupo) ?? index)}
+              workspace={workspace}
               grupo={grupo}
               expedienteId={id}
+              documentos={documentos}
+              onVer={onVer}
             />
           ))
         ) : (
           <div className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
-            No hay facturas con grupo persistido para revisión contable.
+            No hay facturas disponibles para revisión contable.
           </div>
         )}
       </CardContent>

@@ -62,6 +62,8 @@ export function buildCargaSeguraPayloadDesdeGuiada(
     areaOrigen: payload.areaOrigen,
     tipoDocumental: payload.tipoEsperado,
     expedienteId: payload.expedienteId,
+    documentoBaseId: payload.documentoBaseId ?? null,
+    grupoFacturaId: payload.grupoFacturaId ?? null,
     tipoRelacion,
     esPrincipal: payload.esPrincipal ?? String(tipoRelacion ?? "").startsWith("principal_"),
     canalIngreso: payload.canalIngreso,
@@ -83,6 +85,15 @@ function buildCargaSeguraFormData(
 
   formData.append("archivo", file);
   formData.append("expedienteId", String(payload.expedienteId));
+
+  if (payload.documentoBaseId !== undefined && payload.documentoBaseId !== null) {
+    formData.append("documentoBaseId", String(payload.documentoBaseId));
+  }
+
+  if (payload.grupoFacturaId !== undefined && payload.grupoFacturaId !== null) {
+    formData.append("grupoFacturaId", String(payload.grupoFacturaId));
+  }
+
   formData.append("tipoDocumental", String(payload.tipoDocumental));
 
   if (payload.tipoRelacion) {

@@ -10,6 +10,8 @@ export interface CargaSeguraUploadPayload {
   areaOrigen: AreaOrigen;
   tipoDocumental: TipoEsperado | string;
   expedienteId: string | number;
+  documentoBaseId?: string | number | null;
+  grupoFacturaId?: string | number | null;
   tipoRelacion?: TipoRelacionSugerida | string | null;
   esPrincipal: boolean;
   canalIngreso: string;

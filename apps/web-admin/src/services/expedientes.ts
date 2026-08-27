@@ -247,3 +247,84 @@ function unwrapDeep<T = any>(payload: unknown): T {
 
   return current as T;
 }
+
+// Compras: bandeja OC/OS-céntrica read-only.
+export type BandejaComprasQuery = {
+  empresa?: string;
+  estado?: string;
+  q?: string;
+  limit?: number;
+  offset?: number;
+  incluirPendientesValidacion?: boolean;
+};
+
+export type BandejaComprasFactura = {
+  documentoId: string | number;
+  serie?: string | null;
+  numero?: string | null;
+  grupoFacturaId: string | number;
+};
+
+export type BandejaComprasPrincipal = {
+  documentoId: string | number;
+  tipo?: string | null;
+  tipoDocumental?: string | null;
+  numero?: string | null;
+  proveedor?: string | null;
+  proveedorNombre?: string | null;
+  ruc?: string | null;
+  proveedorRuc?: string | null;
+};
+
+export type BandejaComprasProveedor = {
+  ruc?: string | null;
+  nombre?: string | null;
+};
+
+export type BandejaComprasFila = {
+  expedienteId: string | number;
+  codigoExpediente?: string | null;
+  descripcion?: string | null;
+  estado?: string | null;
+  principal: BandejaComprasPrincipal;
+  proveedor?: BandejaComprasProveedor | null;
+  facturas: BandejaComprasFactura[];
+};
+
+export type BandejaComprasPage = {
+  total: number;
+  limit: number;
+  offset: number;
+  data: BandejaComprasFila[];
+};
+
+export async function obtenerBandejaCompras(
+  params: BandejaComprasQuery = {},
+): Promise<BandejaComprasPage> {
+  const response = await api.get("/expedientes/bandeja-compras", { params });
+
+  let payload: unknown = response.data;
+
+  for (let depth = 0; depth < 4; depth += 1) {
+    if (
+      payload &&
+      typeof payload === "object" &&
+      "total" in payload &&
+      "limit" in payload &&
+      "offset" in payload &&
+      "data" in payload &&
+      Array.isArray((payload as { data?: unknown }).data)
+    ) {
+      return payload as BandejaComprasPage;
+    }
+
+    if (payload && typeof payload === "object" && "data" in payload) {
+      payload = (payload as { data?: unknown }).data;
+      continue;
+    }
+
+    break;
+  }
+
+  throw new Error("Respuesta inválida de GET /expedientes/bandeja-compras");
+}

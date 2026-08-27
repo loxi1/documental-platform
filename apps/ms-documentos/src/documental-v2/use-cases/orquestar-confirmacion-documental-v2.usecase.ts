@@ -174,6 +174,20 @@ export class OrquestarConfirmacionDocumentalV2UseCase {
           },
           tx,
         );
+
+        const accionDecision = input.decisionCorrespondencia?.accion;
+        if (
+          accionDecision === 'ACEPTAR' ||
+          accionDecision === 'OBSERVAR' ||
+          accionDecision === 'AUTORIZAR_EXCEPCION'
+        ) {
+          await this.documentosLegacy.consumirValidacionPendientePagoConExecutor(
+            tx,
+            ocrResultadoId,
+            accionDecision,
+            input.decisionCorrespondencia?.motivo ?? null,
+          );
+        }
       }
 
       return {

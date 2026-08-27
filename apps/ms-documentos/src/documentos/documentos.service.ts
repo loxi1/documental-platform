@@ -11,6 +11,7 @@ import {
   DocumentosFilters,
   DocumentosRepository,
 } from './documentos.repository';
+import { limpiarCamposLegacyOcr as normalizarCamposLegacyOcr } from './ocr-metadata-normalizer';
 
 @Injectable()
 export class DocumentosService {
@@ -193,14 +194,26 @@ export class DocumentosService {
     return result;
   }
 
-  findOcrResultados(filters: {
+  async findOcrResultados(filters: {
     estado?: string;
     cliente?: string;
     limit?: number;
     offset?: number;
     soloNoVinculados?: boolean;
+    grupoFacturaId?: number;
   }) {
-    return this.repo.findOcrResultados(filters);
+    const rows = await this.repo.findOcrResultados(filters);
+
+    return rows.map((row: any) => {
+      const { grupo_factura_id: grupoFacturaIdRaw, ...rest } = row;
+      return {
+        ...rest,
+        grupoFacturaId:
+          grupoFacturaIdRaw === null || grupoFacturaIdRaw === undefined
+            ? null
+            : Number(grupoFacturaIdRaw),
+      };
+    });
   }
 
   async findOcrResultadoById(id: number) {
@@ -210,7 +223,14 @@ export class DocumentosService {
       throw new NotFoundException(`Resultado OCR ${id} no encontrado`);
     }
 
-    return result;
+    const { grupo_factura_id: grupoFacturaIdRaw, ...rest } = result as Record<string, any>;
+    return {
+      ...rest,
+      grupoFacturaId:
+        grupoFacturaIdRaw === null || grupoFacturaIdRaw === undefined
+          ? null
+          : Number(grupoFacturaIdRaw),
+    };
   }
 
   async confirmarOcrResultado(id: number, usuarioId?: number) {
@@ -347,6 +367,59 @@ export class DocumentosService {
 
       return confirmado;
     } catch (error: any) {
+      const draftErrorPayload =
+        typeof error?.getResponse === 'function'
+          ? error.getResponse()
+          : error?.response ?? null;
+      const draftErrorCode = String(
+        draftErrorPayload?.code ?? error?.code ?? '',
+      ).trim();
+      const draftErrorDetails =
+        draftErrorPayload?.details ?? error?.details ?? null;
+
+      if (draftErrorCode === 'DECISION_CORRESPONDENCIA_REQUERIDA') {
+        // El orquestador ya rechazó su sql.begin(); este write es independiente.
+        const ocrActual = await this.repo.findOcrResultadoById(id);
+        if (!ocrActual) throw error;
+
+        const numeroPositivoONull = (value: unknown): number | null => {
+          const n = Number(value);
+          return Number.isInteger(n) && n > 0 ? n : null;
+        };
+
+        const draft = {
+          version: 1,
+          estado: 'PENDIENTE_DECISION',
+          identidad: {
+            ocrResultadoId: id,
+            archivoId: numeroPositivoONull(ocrActual.archivo_id),
+            documentoId: numeroPositivoONull(ocrActual.documento_id),
+            expedienteId: numeroPositivoONull(input.expedienteId),
+            documentoBaseId: numeroPositivoONull(input.documentoBaseId),
+            grupoFacturaId: numeroPositivoONull(input.grupoFacturaId),
+            facturaDocumentoId: numeroPositivoONull(
+              draftErrorDetails?.facturaDocumentoId,
+            ),
+          },
+          evaluacion:
+            draftErrorDetails?.evaluacion &&
+            typeof draftErrorDetails.evaluacion === 'object'
+              ? draftErrorDetails.evaluacion
+              : null,
+          request: {
+            metadata: input.metadata ?? {},
+            tipoRelacion: input.tipoRelacion ?? null,
+            esPrincipal: input.esPrincipal ?? false,
+            orden: input.orden ?? null,
+            observacion: input.observacion ?? null,
+          },
+          actualizadoEn: new Date().toISOString(),
+        };
+
+        await this.repo.guardarValidacionPendientePago(id, draft);
+        // Relanzar EXACTAMENTE la misma instancia 409.
+        throw error;
+      }
       if (
         [
           'DOCUMENTO_DUPLICADO_EN_EXPEDIENTE',
@@ -736,27 +809,7 @@ export class DocumentosService {
     };
   }
   private limpiarCamposLegacyOcr<T>(value: T): T {
-    const legacyKeys = new Set([
-      'tipoCodigoExpediente',
-      'codigoOp',
-      'codigoCentroCosto',
-      'proveedorRuc',
-      'compradorRuc',
-    ]);
-
-    if (Array.isArray(value)) {
-      return value.map((item) => this.limpiarCamposLegacyOcr(item)) as T;
-    }
-
-    if (value && typeof value === 'object') {
-      return Object.fromEntries(
-        Object.entries(value as Record<string, unknown>)
-          .filter(([key]) => !legacyKeys.has(key))
-          .map(([key, item]) => [key, this.limpiarCamposLegacyOcr(item)]),
-      ) as T;
-    }
-
-    return value;
+    return normalizarCamposLegacyOcr(value);
   }
 
 }
