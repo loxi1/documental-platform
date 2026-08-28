@@ -157,7 +157,7 @@ export class DocumentosRepository {
     const searchValue = String(search ?? '').trim();
     const term = searchValue ? `%${searchValue}%` : null;
 
-    let data = await sql`
+    const data = await sql`
       SELECT
         id,
         ruc,
@@ -174,45 +174,22 @@ export class DocumentosRepository {
       OFFSET ${offset}
     `;
 
+    const resultado = [...data];
+
     if (
-      data.length === 0 &&
+      resultado.length === 0 &&
       /^\d{11}$/.test(searchValue)
     ) {
       const proveedorExterno = await this.fetchProveedorRucExterno(searchValue);
 
       if (proveedorExterno?.razon_social) {
-        const rows = await sql`
-          INSERT INTO core.proveedores (
-            ruc,
-            razon_social,
-            direccion,
-            tipo_persona,
-            creado_en,
-            actualizado_en
-          )
-          VALUES (
-            ${proveedorExterno.ruc},
-            ${proveedorExterno.razon_social},
-            ${proveedorExterno.direccion},
-            ${proveedorExterno.tipo_persona},
-            now(),
-            now()
-          )
-          ON CONFLICT (ruc)
-          DO UPDATE SET
-            razon_social = EXCLUDED.razon_social,
-            direccion = COALESCE(EXCLUDED.direccion, core.proveedores.direccion),
-            tipo_persona = EXCLUDED.tipo_persona,
-            actualizado_en = now()
-          RETURNING
-            id,
-            ruc,
-            razon_social,
-            direccion,
-            tipo_persona
-        `;
-
-        data = rows;
+        resultado.push({
+          id: null,
+          ruc: proveedorExterno.ruc,
+          razon_social: proveedorExterno.razon_social,
+          direccion: proveedorExterno.direccion,
+          tipo_persona: proveedorExterno.tipo_persona,
+        });
       }
     }
 
@@ -226,12 +203,13 @@ export class DocumentosRepository {
     `;
 
     return {
-      total: data.length === 1 && /^\d{11}$/.test(searchValue)
-        ? 1
-        : countRow.total,
+      total:
+        resultado.length === 1 && /^\d{11}$/.test(searchValue)
+          ? 1
+          : countRow.total,
       limit,
       offset,
-      data,
+      data: resultado,
     };
   }
 

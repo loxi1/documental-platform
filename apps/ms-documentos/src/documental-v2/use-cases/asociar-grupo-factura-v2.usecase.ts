@@ -260,7 +260,51 @@ export class AsociarGrupoFacturaV2UseCase {
       throw new ForbiddenException(
         crearError(
           'La factura no pertenece al contexto autorizado',
-          'PRINCIPAL_NO_PERTENECE_AL_CONTEXTO_AUTORIZADO',
+          'FACTURA_NO_PERTENECE_AL_CONTEXTO_AUTORIZADO',
+        ),
+      );
+    }
+
+    const normalizarRuc = (value: unknown) =>
+      String(value ?? '').replace(/\D/g, '');
+
+    const rucFactura = normalizarRuc(factura.rucEmisor);
+    const rucPrincipal = normalizarRuc(principal.rucProveedor);
+
+    if (!rucFactura) {
+      throw new ConflictException(
+        crearError(
+          'La Factura debe tener un RUC emisor para asociarse a la OC/OS principal.',
+          'FACTURA_RUC_EMISOR_REQUERIDO',
+          { facturaDocumentoId },
+        ),
+      );
+    }
+
+    if (!rucPrincipal) {
+      throw new ConflictException(
+        crearError(
+          'La OC/OS principal no tiene un RUC de proveedor registrado.',
+          'PRINCIPAL_SIN_RUC_PROVEEDOR',
+          {
+            documentoOperativoPrincipalId,
+            principalDocumentoId: principal.documentoId,
+          },
+        ),
+      );
+    }
+
+    if (rucFactura !== rucPrincipal) {
+      throw new ConflictException(
+        crearError(
+          'El RUC emisor de la Factura no coincide con el proveedor de la OC/OS principal.',
+          'FACTURA_PROVEEDOR_NO_COINCIDE_CON_PRINCIPAL',
+          {
+            documentoOperativoPrincipalId,
+            facturaDocumentoId,
+            rucProveedorPrincipal: rucPrincipal,
+            rucEmisorFactura: rucFactura,
+          },
         ),
       );
     }

@@ -124,7 +124,7 @@ describe('DocumentosRepository - proveedor por RUC', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it('consulta API por RUC faltante, normaliza y sincroniza core.proveedores', async () => {
+  it('consulta API por RUC faltante y devuelve sugerencia sin persistir proveedor', async () => {
     process.env.APISPERU_TOKEN = 'token-test-no-real';
 
     const queries: string[] = [];
@@ -162,8 +162,8 @@ describe('DocumentosRepository - proveedor por RUC', () => {
       ok: true,
       json: async () => ({
         ruc: '20557258885',
-        razonSocial: '  SeleIn   S.A.  ',
-        direccion: '  Av. Húsares de Junín 468  ',
+        razonSocial: 'SeleIn S.A.',
+        direccion: 'Av. Húsares de Junín 468',
         estado: 'ACTIVO',
         condicion: 'HABIDO',
       }),
@@ -187,11 +187,12 @@ describe('DocumentosRepository - proveedor por RUC', () => {
       queries.some((query) =>
         query.includes('INSERT INTO core.proveedores'),
       ),
-    ).toBe(true);
+    ).toBe(false);
 
     expect(result.total).toBe(1);
     expect(result.data).toEqual([
       expect.objectContaining({
+        id: null,
         ruc: '20557258885',
         razon_social: 'SELEIN S.A.',
         tipo_persona: 'JURIDICA',
@@ -199,34 +200,23 @@ describe('DocumentosRepository - proveedor por RUC', () => {
     ]);
   });
 
-  it('usa catálogo en segunda consulta y evita una segunda llamada externa', async () => {
+  it('consulta API nuevamente si el proveedor externo no fue persistido localmente', async () => {
     process.env.APISPERU_TOKEN = 'token-test-no-real';
-
-    const proveedor = {
-      id: 77,
-      ruc: '20557258885',
-      razon_social: 'SELEIN S.A.',
-      direccion: null,
-      tipo_persona: 'JURIDICA',
-    };
-
-    let sincronizado = false;
 
     installSqlHandler((query) => {
       if (
         query.includes('FROM core.proveedores') &&
         !query.includes('COUNT(*)')
       ) {
-        return sincronizado ? [proveedor] : [];
+        return [];
       }
 
       if (query.includes('INSERT INTO core.proveedores')) {
-        sincronizado = true;
-        return [proveedor];
+        throw new Error('No debe persistir proveedor desde getProveedores');
       }
 
       if (query.includes('COUNT(*)')) {
-        return [{ total: sincronizado ? 1 : 0 }];
+        return [{ total: 0 }];
       }
 
       return [];
@@ -242,22 +232,26 @@ describe('DocumentosRepository - proveedor por RUC', () => {
 
     const repository = new DocumentosRepository();
 
-    const first = await repository.getProveedores(
-      '20557258885',
-      20,
-      0,
-    );
-
-    const second = await repository.getProveedores(
-      '20557258885',
-      20,
-      0,
-    );
+    const first = await repository.getProveedores('20557258885', 20, 0);
+    const second = await repository.getProveedores('20557258885', 20, 0);
 
     expect(first.total).toBe(1);
     expect(second.total).toBe(1);
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(second.data).toEqual([proveedor]);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(first.data).toEqual([
+      expect.objectContaining({
+        id: null,
+        ruc: '20557258885',
+        razon_social: 'SELEIN S.A.',
+      }),
+    ]);
+    expect(second.data).toEqual([
+      expect.objectContaining({
+        id: null,
+        ruc: '20557258885',
+        razon_social: 'SELEIN S.A.',
+      }),
+    ]);
   });
 
   it('rechaza respuesta externa cuyo RUC no coincide y no hace UPSERT', async () => {
