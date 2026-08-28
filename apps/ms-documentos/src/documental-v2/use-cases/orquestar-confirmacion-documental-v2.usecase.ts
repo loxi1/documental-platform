@@ -138,6 +138,7 @@ export class OrquestarConfirmacionDocumentalV2UseCase {
           contenedorOperativoId: contexto.contenedorOperativo.id,
           documentoId: documentoBaseId,
           tipoPrincipal,
+          crearProveedorSiNoExiste: esPrincipalOperativoV2,
           usuario,
         },
         tx,

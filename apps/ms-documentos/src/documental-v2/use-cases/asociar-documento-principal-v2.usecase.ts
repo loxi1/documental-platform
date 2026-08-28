@@ -12,6 +12,7 @@ const TIPOS_PRINCIPALES_PERMITIDOS = new Set(['OC', 'OS']);
 export type AsociarDocumentoPrincipalV2Input = {
   contenedorOperativoId: number;
   documentoId: number;
+  crearProveedorSiNoExiste?: boolean;
   tipoPrincipal: string;
   usuario?: {
     id?: number | null;
@@ -161,12 +162,74 @@ export class AsociarDocumentoPrincipalV2UseCase {
       await this.principales.listarHistoricosPorDocumentoId(input.documentoId, executor);
 
     let creado: DocumentoOperativoPrincipalRow;
+
+    const documentoMetadata =
+      documento.metadata && typeof documento.metadata === 'object'
+        ? (documento.metadata as Record<string, any>)
+        : {};
+
+    const ocrMetadata =
+      documentoMetadata.ocr &&
+      typeof documentoMetadata.ocr === 'object' &&
+      !Array.isArray(documentoMetadata.ocr)
+        ? (documentoMetadata.ocr as Record<string, any>)
+        : {};
+
+    const documentoV1 =
+      documentoMetadata.documentoV1 &&
+      typeof documentoMetadata.documentoV1 === 'object' &&
+      !Array.isArray(documentoMetadata.documentoV1)
+        ? (documentoMetadata.documentoV1 as Record<string, any>)
+        : {};
+
+    const rucProveedor =
+      String(
+        documento.rucEmisor ??
+          ocrMetadata.rucProveedor ??
+          ocrMetadata.rucEmisor ??
+          documentoMetadata.rucProveedor ??
+          documentoMetadata.rucEmisor ??
+          documentoV1.rucProveedor ??
+          documentoV1.rucEmisor ??
+          '',
+      ).trim() || null;
+
+    const razonSocialProveedor =
+      String(
+        documento.razonSocialEmisor ??
+          ocrMetadata.proveedorNombre ??
+          ocrMetadata.razonSocialProveedor ??
+          ocrMetadata.razonSocialEmisor ??
+          documentoMetadata.proveedorNombre ??
+          documentoMetadata.razonSocialProveedor ??
+          documentoMetadata.razonSocialEmisor ??
+          documentoV1.proveedorNombre ??
+          documentoV1.razonSocialProveedor ??
+          documentoV1.razonSocialEmisor ??
+          '',
+      ).trim() || null;
+    
+    const proveedorId = rucProveedor
+      ? input.crearProveedorSiNoExiste === true
+        ? await this.principales.asegurarProveedorPorRuc(
+            {
+              ruc: rucProveedor,
+              razonSocial: razonSocialProveedor,
+            },
+            executor,
+          )
+        : await this.principales.buscarProveedorIdPorRuc(rucProveedor, executor)
+      : null;
+
     try {
       creado = await this.principales.crear({
         contenedorOperativoId: input.contenedorOperativoId,
         documentoId: input.documentoId,
         tipoPrincipal,
         esPrincipalActivo: true,
+        proveedorId,
+        rucProveedor,
+        razonSocialProveedor,
         estado: 'activo',
         metadata: {
           origen: 'OPERACION_DOCUMENTAL_V2',
@@ -181,6 +244,11 @@ export class AsociarDocumentoPrincipalV2UseCase {
             empresaCodigo: contenedor.empresaCodigo,
             tipoContexto: contenedor.tipoContexto,
             codigo: contenedor.codigo,
+          },
+          proveedor: {
+            id: proveedorId,
+            ruc: rucProveedor,
+            razonSocial: razonSocialProveedor,
           },
         },
         creadoPor: input.usuario?.id ?? null,

@@ -69,6 +69,9 @@ export type DocumentoOperativoPrincipalRow = {
   documentoId: number;
   tipoPrincipal: string;
   esPrincipalActivo: boolean;
+  proveedorId?: number | null;
+  rucProveedor?: string | null;
+  razonSocialProveedor?: string | null;
   estado: string;
   metadata: JsonObject;
   creadoPor: number | null;
@@ -85,6 +88,9 @@ export type CrearDocumentoOperativoPrincipalInput = {
   documentoId: number;
   tipoPrincipal: string;
   esPrincipalActivo?: boolean;
+  proveedorId?: number | null;
+  rucProveedor?: string | null;
+  razonSocialProveedor?: string | null;
   estado?: string;
   metadata?: JsonObject;
   creadoPor?: number | null;

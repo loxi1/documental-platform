@@ -1284,6 +1284,20 @@ export function CompraExpedienteEditor({
     principalActual?.relacion ??
     principalActual?.option.tipoRelacionSugerida ??
     "";
+  
+  const principalProveedorRuc =
+    principalSeleccionado?.rucProveedor ??
+    principalSeleccionado?.ruc_proveedor ??
+    principalSeleccionado?.rucEmisor ??
+    principalSeleccionado?.ruc_emisor ??
+    undefined;
+
+  const principalProveedorNombre =
+    principalSeleccionado?.razonSocialProveedor ??
+    principalSeleccionado?.razon_social_proveedor ??
+    principalSeleccionado?.razonSocialEmisor ??
+    principalSeleccionado?.razon_social_emisor ??
+    undefined;
 
   const cargaRealMutation = useMutation<
     ProcesarOcrResultado,
@@ -2921,6 +2935,8 @@ export function CompraExpedienteEditor({
           descripcion,
           empresa,
           rucComprador,
+          rucProveedor:principalProveedorRuc,
+          razonSocialProveedor:principalProveedorNombre,
         }}
         onClose={() => setModalAbierto(false)}
         onSave={guardarCambiosOcr}

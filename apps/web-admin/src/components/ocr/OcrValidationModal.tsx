@@ -52,6 +52,8 @@ export type OcrValidationExpedienteContexto = {
   descripcion?: string | null;
   empresa?: string | null;
   rucComprador?: string | null;
+  rucProveedor?: string | null;
+  razonSocialProveedor?: string | null;
 };
 
 type OcrValidationModalProps = {
@@ -274,6 +276,87 @@ function buildInitialForm(resultado: unknown, expedienteContexto?: OcrValidation
   const raw = getRaw(resultado);
   const metadata = getMetadata(resultado);
   const contextoCarga = parseMaybeJson(raw.contextoCarga) ?? getRecord(metadata, "contextoCarga");
+  const tipoNormalizado = texto(
+    raw.tipoDocumental ?? raw.tipo_documental ?? metadata.tipoDocumental ?? metadata.tipoPropuesto,
+    "",
+  ).toUpperCase();
+
+  const textoOcr = getRecord(raw, "texto") ?? getRecord(metadata, "texto");
+
+  const esFactura = tipoNormalizado === "FACTURA";
+
+  const rucEmisor = esFactura
+    ? texto(
+        raw.rucEmisor ??
+          raw.ruc_emisor ??
+          metadata.rucEmisor ??
+          metadata.ruc_emisor ??
+          raw.proveedorRuc ??
+          metadata.proveedorRuc ??
+          expedienteContexto?.rucProveedor,
+        "",
+      )
+    : texto(
+        raw.rucEmisor ??
+          raw.ruc_emisor ??
+          metadata.rucEmisor ??
+          metadata.ruc_emisor ??
+          raw.ruc ??
+          metadata.ruc,
+        "",
+      );
+  
+  const proveedor = esFactura
+    ? texto(
+        raw.proveedor ??
+          raw.proveedorNombre ??
+          raw.razonSocialEmisor ??
+          raw.razon_social_emisor ??
+          metadata.proveedor ??
+          metadata.proveedorNombre ??
+          metadata.razonSocialEmisor ??
+          metadata.razon_social_emisor ??
+          expedienteContexto?.razonSocialProveedor,
+        "",
+      )
+    : texto(
+        raw.proveedor ??
+          raw.proveedorNombre ??
+          raw.razonSocialEmisor ??
+          metadata.proveedor ??
+          metadata.proveedorNombre ??
+          metadata.razonSocialEmisor ??
+          metadata.razonSocial ??
+          metadata.razon_social,
+        "",
+      );
+  
+  const rucProveedor = esFactura
+    ? texto(
+        raw.rucProveedor ??
+          raw.ruc_proveedor ??
+          raw.proveedorRuc ??
+          metadata.rucProveedor ??
+          metadata.ruc_proveedor ??
+          metadata.proveedorRuc ??
+          expedienteContexto?.rucProveedor,
+        "",
+      )
+    : texto(
+        raw.rucProveedor ??
+          raw.ruc_proveedor ??
+          raw.proveedorRuc ??
+          raw.rucEmisor ??
+          raw.ruc_emisor ??
+          raw.ruc ??
+          metadata.rucProveedor ??
+          metadata.ruc_proveedor ??
+          metadata.proveedorRuc ??
+          metadata.rucEmisor ??
+          metadata.ruc_emisor ??
+          metadata.ruc,
+        "",
+      );
 
   return {
     tipoDocumental: normalizeTipoParaUi(
@@ -282,35 +365,18 @@ function buildInitialForm(resultado: unknown, expedienteContexto?: OcrValidation
     ),
     numero: texto(raw.numero ?? metadata.numero, ""),
     serie: texto(raw.serie ?? metadata.serie, ""),
-    fechaEmision: texto(raw.fechaEmision ?? raw.fecha_emision ?? metadata.fechaEmision ?? metadata.fecha_emision, ""),
-    proveedor: texto(
-      raw.proveedor ??
-        raw.proveedorNombre ??
-        raw.razonSocialEmisor ??
-        metadata.proveedor ??
-        metadata.proveedorNombre ??
-        metadata.razonSocialEmisor ??
-        metadata.razonSocial ??
-        metadata.razon_social,
+    fechaEmision: texto(raw.fechaEmision ?? raw.fecha_emision ?? metadata.fechaEmision ?? metadata.fecha_emision, ""),    
+    proveedor,
+    rucProveedor,
+    rucComprador: texto(
+      raw.rucComprador ??
+        raw.ruc_comprador ??
+        metadata.rucComprador ??
+        metadata.ruc_comprador ??
+        expedienteContexto?.rucComprador,
       "",
     ),
-    rucProveedor: texto(
-      raw.rucProveedor ??
-        raw.ruc_proveedor ??
-        raw.proveedorRuc ??
-        raw.rucEmisor ??
-        raw.ruc_emisor ??
-        raw.ruc ??
-        metadata.rucProveedor ??
-        metadata.ruc_proveedor ??
-        metadata.proveedorRuc ??
-        metadata.rucEmisor ??
-        metadata.ruc_emisor ??
-        metadata.ruc,
-      "",
-    ),
-    rucComprador: texto(raw.rucComprador ?? raw.ruc_comprador ?? metadata.rucComprador ?? metadata.ruc_comprador ?? expedienteContexto?.rucComprador, ""),
-    rucEmisor: texto(raw.rucEmisor ?? raw.ruc_emisor ?? metadata.rucEmisor ?? metadata.ruc_emisor ?? raw.ruc ?? metadata.ruc, ""),
+    rucEmisor,
     razonSocial: texto(
       raw.razonSocial ??
         raw.razon_social ??
@@ -321,11 +387,15 @@ function buildInitialForm(resultado: unknown, expedienteContexto?: OcrValidation
         metadata.razon_social ??
         metadata.razonSocialEmisor ??
         metadata.razon_social_emisor ??
-        metadata.proveedor,
+        metadata.proveedor ??
+        (esFactura ? expedienteContexto?.razonSocialProveedor : undefined),
       "",
     ),
     montoTotal: texto(raw.montoTotal ?? raw.monto_total ?? metadata.montoTotal ?? metadata.monto_total, ""),
-    moneda: texto(raw.moneda ?? metadata.moneda, ""),
+    moneda: normalizarMonedaOcr(
+      raw.moneda ?? metadata.moneda,
+      textoOcr?.preview ?? raw.texto ?? metadata.texto,
+    ),
     cotizacion: texto(raw.cotizacion ?? metadata.cotizacion, ""),
     codigoExpediente: texto(
       raw.codigoExpediente ??
@@ -544,6 +614,35 @@ function fieldSpanClass(name: keyof FormState) {
   }
 
   return "";
+}
+
+function normalizarMonedaOcr(value: unknown, fallbackTexto?: unknown) {
+  const raw = texto(value, "");
+  const fallback = texto(fallbackTexto, "");
+  const normalized = `${raw} ${fallback}`
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase();
+
+  if (
+    normalized.includes("DOLAR") ||
+    normalized.includes("DOLARES") ||
+    normalized.includes("USD") ||
+    normalized.includes("US$")
+  ) {
+    return "DOLARES AMERICANOS";
+  }
+
+  if (
+    normalized.includes("SOL") ||
+    normalized.includes("SOLES") ||
+    normalized.includes("PEN") ||
+    normalized.includes("S/")
+  ) {
+    return "SOLES";
+  }
+
+  return raw;
 }
 
 function ReadOnlyInfo({

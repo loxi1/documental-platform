@@ -750,7 +750,6 @@ export class ExpedientesRepository {
     `;
   }
 
-
   async buscarExpedientes(filters: { q: string; empresa?: string; limit?: number }) {
     const q = filters.q.trim();
     const like = `%${q}%`;
@@ -788,6 +787,12 @@ export class ExpedientesRepository {
               'estado', d.estado,
               'tipoRelacion', ed.tipo_relacion,
               'esPrincipal', ed.es_principal,
+              'proveedorId', dop.proveedor_id,
+              'rucProveedor', dop.ruc_proveedor,
+              'razonSocialProveedor', dop.razon_social_proveedor,
+              'proveedor_id', dop.proveedor_id,
+              'ruc_proveedor', dop.ruc_proveedor,
+              'razon_social_proveedor', dop.razon_social_proveedor,
               'orden', ed.orden,
               'archivoId', da.id,
               'nombreArchivo', da.nombre_archivo,
@@ -804,6 +809,10 @@ export class ExpedientesRepository {
         ON ed.expediente_id = e.id
       LEFT JOIN documentos.documentos d
         ON d.id = ed.documento_id
+      LEFT JOIN documentos.documentos_operativos_principales dop
+        ON dop.documento_id = d.id
+      AND dop.estado = 'activo'
+      AND dop.es_principal_activo = true
       LEFT JOIN LATERAL (
         SELECT da.*
         FROM documentos.documentos_archivos da
@@ -825,11 +834,21 @@ export class ExpedientesRepository {
           'estado', dp.estado,
           'tipoRelacion', edp.tipo_relacion,
           'esPrincipal', edp.es_principal,
+          'proveedorId', dopp.proveedor_id,
+          'rucProveedor', dopp.ruc_proveedor,
+          'razonSocialProveedor', dopp.razon_social_proveedor,
+          'proveedor_id', dopp.proveedor_id,
+          'ruc_proveedor', dopp.ruc_proveedor,
+          'razon_social_proveedor', dopp.razon_social_proveedor,
           'orden', edp.orden
         ) AS documento_principal
         FROM documentos.expediente_documentos edp
         JOIN documentos.documentos dp
           ON dp.id = edp.documento_id
+        LEFT JOIN documentos.documentos_operativos_principales dopp
+          ON dopp.documento_id = dp.id
+        AND dopp.estado = 'activo'
+        AND dopp.es_principal_activo = true
         WHERE edp.expediente_id = e.id
           AND edp.es_principal = true
           AND edp.tipo_relacion LIKE 'principal_%'
@@ -1877,16 +1896,19 @@ export class ExpedientesRepository {
   async findDocumentosByExpedienteId(id: number) {
     const rows = await sql`
       SELECT
-        ed.expediente_id,
-        ed.documento_id,
-        ed.tipo_relacion,
-        ed.es_principal,
+        ed.documento_id AS "documentoId",
+        ed.expediente_id AS "expedienteId",
+        ed.tipo_relacion AS "tipoRelacion",
+        ed.es_principal AS "esPrincipal",
         ed.orden,
         ed.creado_en,
         d.cliente_abreviatura,
         d.tipo_documental,
         d.ruc_emisor,
         d.razon_social_emisor,
+        dop.proveedor_id,
+        dop.ruc_proveedor,
+        dop.razon_social_proveedor,
         d.serie,
         d.numero,
         d.clave_documental,
@@ -1905,6 +1927,10 @@ export class ExpedientesRepository {
       FROM documentos.expediente_documentos ed
       JOIN documentos.documentos d
         ON d.id = ed.documento_id
+      LEFT JOIN documentos.documentos_operativos_principales dop
+        ON dop.documento_id = d.id
+      AND dop.estado = 'activo'
+      AND dop.es_principal_activo = true
       LEFT JOIN LATERAL (
         SELECT da.*
         FROM documentos.documentos_archivos da
