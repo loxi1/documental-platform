@@ -14,6 +14,8 @@ import type { ExpedienteDocumento } from "@/types/expediente";
 
 type Props = {
   documento: ExpedienteDocumento | null;
+  documentoLogico?: ExpedienteDocumento | null;
+  ocultarClaveDocumental?: boolean;
   open: boolean;
   onClose: () => void;
 };
@@ -53,6 +55,13 @@ function asText(value: unknown, fallback = "-") {
 
 function formatDate(value: unknown) {
   if (!value) return "-";
+
+  // R12_FECHA_CIVIL_YYYY_MM_DD: fecha civil pura, sin UTC/timezone.
+  const fechaCivilMatch = String(value ?? "").trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (fechaCivilMatch) {
+    const [, year, month, day] = fechaCivilMatch;
+    return `${day}/${month}/${year}`;
+  }
 
   const date = new Date(String(value));
 
@@ -215,7 +224,6 @@ function buildDetailFields(documento: ExpedienteDocumento | null): DetailField[]
     return [
       { label: "Tipo documental", value: common.tipoDocumental },
       { label: "Número", value: common.numero },
-      { label: "Clave documental", value: common.claveDocumental, wide: true },
     ];
   }
 
@@ -228,7 +236,6 @@ function buildDetailFields(documento: ExpedienteDocumento | null): DetailField[]
       { label: "Monto", value: formatMoney(common.moneda, common.monto) },
       { label: "Moneda", value: common.moneda },
       { label: "Estado", value: common.estado },
-      { label: "Clave documental", value: common.claveDocumental, wide: true },
     ];
   }
 
@@ -243,7 +250,6 @@ function buildDetailFields(documento: ExpedienteDocumento | null): DetailField[]
       { label: "Monto", value: formatMoney(common.moneda, common.monto) },
       { label: "Moneda", value: common.moneda },
       { label: "Estado", value: common.estado },
-      { label: "Clave documental", value: common.claveDocumental, wide: true },
     ];
   }
 
@@ -257,7 +263,6 @@ function buildDetailFields(documento: ExpedienteDocumento | null): DetailField[]
       { label: "RUC emisor", value: common.ruc },
       { label: "Razón social", value: common.razonSocial, wide: true },
       { label: "Estado", value: common.estado },
-      { label: "Clave documental", value: common.claveDocumental, wide: true },
     ];
   }
 
@@ -272,7 +277,6 @@ function buildDetailFields(documento: ExpedienteDocumento | null): DetailField[]
       { label: "Monto", value: formatMoney(common.moneda, common.monto) },
       { label: "Moneda", value: common.moneda },
       { label: "Estado", value: common.estado },
-      { label: "Clave documental", value: common.claveDocumental, wide: true },
     ];
   }
 
@@ -287,17 +291,23 @@ function buildDetailFields(documento: ExpedienteDocumento | null): DetailField[]
     { label: "Monto", value: formatMoney(common.moneda, common.monto) },
     { label: "Moneda", value: common.moneda },
     { label: "Estado", value: common.estado },
-    { label: "Clave documental", value: common.claveDocumental, wide: true },
   ];
 }
 
-export function DocumentoPreviewModal({ documento, open, onClose }: Props) {
+export function DocumentoPreviewModal({
+  documento,
+  documentoLogico,
+  ocultarClaveDocumental = false,
+  open,
+  onClose,
+}: Props) {
   const [preview, setPreview] = useState<DocumentoArchivoPreview | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const archivoId = useMemo(() => getArchivoId(documento), [documento]);
-  const titulo = documentoLabel(documento);
+  const documentoDatos = documentoLogico ?? documento;
+  const titulo = documentoLabel(documentoDatos);
 
   useEffect(() => {
     let mounted = true;
@@ -333,7 +343,23 @@ export function DocumentoPreviewModal({ documento, open, onClose }: Props) {
     };
   }, [archivoId, documento, open]);
 
-  const detailFields = useMemo(() => buildDetailFields(documento), [documento]);
+  const detailFields = useMemo(() => {
+    const fields = buildDetailFields(documentoDatos);
+
+    if (ocultarClaveDocumental) return fields;
+
+    return [
+      ...fields,
+      {
+        label: "Clave documental",
+        value: pickDocumentoValue(documentoDatos, [
+          "claveDocumental",
+          "clave_documental",
+        ]),
+        wide: true,
+      },
+    ];
+  }, [documentoDatos, ocultarClaveDocumental]);
 
   return (
     <Modal

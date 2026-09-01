@@ -5,16 +5,19 @@ import { firstValueFrom } from 'rxjs';
 import { NatsSubjects } from '@documental/shared';
 import { NATS_CLIENT } from '../nats/nats-client.provider';
 import { DocumentoEventosService } from '../documento-eventos/documento-eventos.service';
+import { OrquestarConfirmacionDocumentalV2UseCase } from '../documental-v2/use-cases/orquestar-confirmacion-documental-v2.usecase';
 
 import {
   DocumentosFilters,
   DocumentosRepository,
 } from './documentos.repository';
+import { limpiarCamposLegacyOcr as normalizarCamposLegacyOcr } from './ocr-metadata-normalizer';
 
 @Injectable()
 export class DocumentosService {
   constructor(
     private readonly repo: DocumentosRepository,
+    private readonly orquestarConfirmacionV2: OrquestarConfirmacionDocumentalV2UseCase,
     private readonly documentoEventos: DocumentoEventosService,
     @Inject(NATS_CLIENT)
     private readonly nats: ClientProxy,
@@ -191,14 +194,26 @@ export class DocumentosService {
     return result;
   }
 
-  findOcrResultados(filters: {
+  async findOcrResultados(filters: {
     estado?: string;
     cliente?: string;
     limit?: number;
     offset?: number;
     soloNoVinculados?: boolean;
+    grupoFacturaId?: number;
   }) {
-    return this.repo.findOcrResultados(filters);
+    const rows = await this.repo.findOcrResultados(filters);
+
+    return rows.map((row: any) => {
+      const { grupo_factura_id: grupoFacturaIdRaw, ...rest } = row;
+      return {
+        ...rest,
+        grupoFacturaId:
+          grupoFacturaIdRaw === null || grupoFacturaIdRaw === undefined
+            ? null
+            : Number(grupoFacturaIdRaw),
+      };
+    });
   }
 
   async findOcrResultadoById(id: number) {
@@ -208,7 +223,14 @@ export class DocumentosService {
       throw new NotFoundException(`Resultado OCR ${id} no encontrado`);
     }
 
-    return result;
+    const { grupo_factura_id: grupoFacturaIdRaw, ...rest } = result as Record<string, any>;
+    return {
+      ...rest,
+      grupoFacturaId:
+        grupoFacturaIdRaw === null || grupoFacturaIdRaw === undefined
+          ? null
+          : Number(grupoFacturaIdRaw),
+    };
   }
 
   async confirmarOcrResultado(id: number, usuarioId?: number) {
@@ -261,31 +283,143 @@ export class DocumentosService {
     id: number,
     input: {
       expedienteId: number;
+      documentoBaseId?: number;
+      grupoFacturaId?: number | null;
       tipoRelacion?: string;
       esPrincipal?: boolean;
       orden?: number;
       metadata?: Record<string, any>;
       observacion?: string;
+      decisionCorrespondencia?: {
+        accion: 'ACEPTAR' | 'OBSERVAR' | 'AUTORIZAR_EXCEPCION';
+        motivo?: string | null;
+      };
     },
-    usuarioId?: number,
+    audit?: {
+      usuarioId?: number | null;
+      requestId?: string | null;
+      correlationId?: string | null;
+      tienePermisoAutorizarExcepcion?: boolean;
+    },
   ) {
     if (!input?.expedienteId) {
       throw new BadRequestException('El expediente es obligatorio para confirmar el OCR');
     }
 
     try {
-      const confirmado = await this.repo.confirmarOcrResultadoConExpediente(
+      const confirmado = await this.orquestarConfirmacionV2.execute(
         id,
         input,
-        usuarioId,
+        audit,
       );
 
       if (!confirmado) {
         throw new NotFoundException(`Resultado OCR ${id} no encontrado`);
       }
 
+      const documentoId = Number(confirmado.documento?.id ?? NaN);
+      const archivoId = Number(confirmado.ocrResultado?.archivo_id ?? NaN);
+      const expedienteId = Number(confirmado.expediente?.id ?? NaN);
+      const ocrResultadoId = Number(confirmado.ocrResultado?.id ?? id);
+      const usuarioId = audit?.usuarioId ?? null;
+      const requestId = audit?.requestId ?? null;
+      const correlationId = audit?.correlationId ?? requestId;
+
+      await this.documentoEventos.registrarEvento({
+        documentoId: Number.isFinite(documentoId) ? documentoId : null,
+        archivoId: Number.isFinite(archivoId) ? archivoId : null,
+        expedienteId: Number.isFinite(expedienteId) ? expedienteId : null,
+        tipoEvento: 'ocr.confirmado',
+        entidadTipo: 'ocr_resultado',
+        entidadId: Number.isFinite(ocrResultadoId) ? ocrResultadoId : id,
+        descripcion: 'Resultado OCR confirmado con expediente.',
+        metadata: {
+          tipoPropuesto: confirmado.tipoDocumental ?? null,
+          claveDocumental: confirmado.claveDocumental ?? null,
+          tipoRelacion: confirmado.tipoRelacion ?? null,
+          esPrincipal: confirmado.vinculo?.es_principal ?? false,
+        },
+        usuarioId,
+        origen: 'api',
+        requestId,
+        correlationId,
+      });
+
+      await this.documentoEventos.registrarEvento({
+        documentoId: Number.isFinite(documentoId) ? documentoId : null,
+        archivoId: Number.isFinite(archivoId) ? archivoId : null,
+        expedienteId: Number.isFinite(expedienteId) ? expedienteId : null,
+        tipoEvento: 'expediente.vinculado',
+        entidadTipo: 'expediente',
+        entidadId: Number.isFinite(expedienteId) ? expedienteId : null,
+        descripcion: 'Documento OCR vinculado a expediente.',
+        metadata: {
+          ocrResultadoId: Number.isFinite(ocrResultadoId) ? ocrResultadoId : id,
+          tipoRelacion: confirmado.tipoRelacion ?? null,
+          esPrincipal: confirmado.vinculo?.es_principal ?? false,
+          orden: confirmado.vinculo?.orden ?? null,
+        },
+        usuarioId,
+        origen: 'api',
+        requestId,
+        correlationId,
+      });
+
       return confirmado;
     } catch (error: any) {
+      const draftErrorPayload =
+        typeof error?.getResponse === 'function'
+          ? error.getResponse()
+          : error?.response ?? null;
+      const draftErrorCode = String(
+        draftErrorPayload?.code ?? error?.code ?? '',
+      ).trim();
+      const draftErrorDetails =
+        draftErrorPayload?.details ?? error?.details ?? null;
+
+      if (draftErrorCode === 'DECISION_CORRESPONDENCIA_REQUERIDA') {
+        // El orquestador ya rechazó su sql.begin(); este write es independiente.
+        const ocrActual = await this.repo.findOcrResultadoById(id);
+        if (!ocrActual) throw error;
+
+        const numeroPositivoONull = (value: unknown): number | null => {
+          const n = Number(value);
+          return Number.isInteger(n) && n > 0 ? n : null;
+        };
+
+        const draft = {
+          version: 1,
+          estado: 'PENDIENTE_DECISION',
+          identidad: {
+            ocrResultadoId: id,
+            archivoId: numeroPositivoONull(ocrActual.archivo_id),
+            documentoId: numeroPositivoONull(ocrActual.documento_id),
+            expedienteId: numeroPositivoONull(input.expedienteId),
+            documentoBaseId: numeroPositivoONull(input.documentoBaseId),
+            grupoFacturaId: numeroPositivoONull(input.grupoFacturaId),
+            facturaDocumentoId: numeroPositivoONull(
+              draftErrorDetails?.facturaDocumentoId,
+            ),
+          },
+          evaluacion:
+            draftErrorDetails?.evaluacion &&
+            typeof draftErrorDetails.evaluacion === 'object'
+              ? draftErrorDetails.evaluacion
+              : null,
+          request: {
+            metadata: input.metadata ?? {},
+            tipoRelacion: input.tipoRelacion ?? null,
+            esPrincipal: input.esPrincipal ?? false,
+            orden: input.orden ?? null,
+            observacion: input.observacion ?? null,
+          },
+          actualizadoEn: new Date().toISOString(),
+        };
+
+        await this.repo.guardarValidacionPendientePago(id, draft);
+        // Relanzar EXACTAMENTE la misma instancia 409.
+        throw error;
+      }
       if (
         [
           'DOCUMENTO_DUPLICADO_EN_EXPEDIENTE',
@@ -582,28 +716,70 @@ export class DocumentosService {
     id: number,
     input: {
       tipoDocumental?: string;
+      ocrResultadoId?: number;
       metadata?: Record<string, any>;
       observacion?: string;
+      motivo?: string;
+      origen?: string;
     },
     usuarioId?: number,
   ) {
-    const actualizado = await this.repo.actualizarDocumentoManual(id, input, usuarioId);
+    try {
+      const actualizado = await this.repo.actualizarDocumentoManual(
+        id,
+        input,
+        usuarioId,
+      );
 
-    if (!actualizado) {
-      throw new NotFoundException(`Documento ${id} no encontrado`);
+      if (!actualizado) {
+        throw new NotFoundException(`Documento ${id} no encontrado`);
+      }
+
+      return {
+        id: actualizado.id,
+        estado: actualizado.estado,
+        tipoDocumental: actualizado.tipo_documental,
+        claveDocumental: actualizado.clave_documental,
+        numero: actualizado.numero,
+        fechaEmision: actualizado.fecha_emision,
+        moneda: actualizado.moneda,
+        montoTotal: actualizado.monto_total,
+        metadata: actualizado.metadata?.ocr?.metadata ?? actualizado.metadata ?? {},
+      };
+    } catch (error: any) {
+      if (
+        error instanceof BadRequestException ||
+        error instanceof ConflictException ||
+        error instanceof NotFoundException
+      ) {
+        throw error;
+      }
+
+      const code = String(error?.code ?? '');
+      const payload = {
+        code,
+        message: String(error?.message ?? 'No se pudo corregir el documento'),
+        details: error?.details ?? null,
+      };
+
+      if (code === 'DOCUMENTO_DUPLICADO') {
+        throw new ConflictException(payload);
+      }
+
+      if (code === 'ESTADO_DOCUMENTAL_NO_PERMITE_CORRECCION') {
+        throw new ConflictException(payload);
+      }
+
+      if (
+        code === 'MOTIVO_CORRECCION_REQUERIDO' ||
+        code === 'OCR_RESULTADO_REQUERIDO' ||
+        code === 'OCR_RESULTADO_NO_PERTENECE_DOCUMENTO'
+      ) {
+        throw new BadRequestException(payload);
+      }
+
+      throw error;
     }
-
-    return {
-      id: actualizado.id,
-      estado: actualizado.estado,
-      tipoDocumental: actualizado.tipo_documental,
-      claveDocumental: actualizado.clave_documental,
-      numero: actualizado.numero,
-      fechaEmision: actualizado.fecha_emision,
-      moneda: actualizado.moneda,
-      montoTotal: actualizado.monto_total,
-      metadata: actualizado.metadata?.ocr?.metadata ?? actualizado.metadata ?? {},
-    };
   }
 
   async editarOcrResultado(
@@ -633,27 +809,7 @@ export class DocumentosService {
     };
   }
   private limpiarCamposLegacyOcr<T>(value: T): T {
-    const legacyKeys = new Set([
-      'tipoCodigoExpediente',
-      'codigoOp',
-      'codigoCentroCosto',
-      'proveedorRuc',
-      'compradorRuc',
-    ]);
-
-    if (Array.isArray(value)) {
-      return value.map((item) => this.limpiarCamposLegacyOcr(item)) as T;
-    }
-
-    if (value && typeof value === 'object') {
-      return Object.fromEntries(
-        Object.entries(value as Record<string, unknown>)
-          .filter(([key]) => !legacyKeys.has(key))
-          .map(([key, item]) => [key, this.limpiarCamposLegacyOcr(item)]),
-      ) as T;
-    }
-
-    return value;
+    return normalizarCamposLegacyOcr(value);
   }
 
 }

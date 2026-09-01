@@ -44,4 +44,13 @@ describe('GrupoFacturaDocumentoRepository', () => {
     expect(sqlMock).toHaveBeenCalledTimes(1);
     expect(result).toBeNull();
   });
+
+  it('lista ids históricos anulados del documento asociado', async () => {
+    sqlMock.mockResolvedValueOnce([{ id: 11 }, { id: 18 }]);
+
+    const repository = new GrupoFacturaDocumentoRepository();
+    const result = await repository.listarHistoricosPorDocumentoId(5);
+
+    expect(result).toEqual([11, 18]);
+  });
 });

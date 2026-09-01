@@ -103,7 +103,14 @@ export class WorkspaceDocumentalV2UseCase {
         adaptador: 'V1V2CompatibilityAdapter',
         casoUso: 'WorkspaceDocumentalV2UseCase',
       },
-      compatibilidad,
+      compatibilidad: {
+        ...compatibilidad,
+        gruposFactura: gruposFactura.map((grupo) => ({
+          ...grupo.vista,
+          documentos: grupo.documentos.map((documento) => documento.vista),
+        })),
+        advertencias,
+      },
       contenedorOperativo: this.wrap(compatibilidad.contenedorOperativo, contenedorPersistido),
       documentosOperativosPrincipales,
       gruposFactura,
@@ -233,8 +240,36 @@ export class WorkspaceDocumentalV2UseCase {
       fechaEmision: documento.fechaEmision,
       moneda: documento.moneda,
       montoTotal: documento.montoTotal,
+      banco: this.pickBanco(documento.metadata),
+      metadata: documento.metadata ?? null,
       nombreArchivo: documento.nombreArchivo,
     };
+  }
+
+  private pickBanco(metadata: JsonObject | null | undefined): string | null {
+    if (!metadata) return null;
+
+    const direct = metadata.banco;
+    if (typeof direct === 'string' && direct.trim() !== '') {
+      return direct.trim();
+    }
+
+    const ocr = metadata.ocr;
+    if (!ocr || typeof ocr !== 'object' || Array.isArray(ocr)) {
+      return null;
+    }
+
+    const ocrMetadata = (ocr as JsonObject).metadata;
+    if (!ocrMetadata || typeof ocrMetadata !== 'object' || Array.isArray(ocrMetadata)) {
+      return null;
+    }
+
+    const nested = (ocrMetadata as JsonObject).banco;
+    if (typeof nested === 'string' && nested.trim() !== '') {
+      return nested.trim();
+    }
+
+    return null;
   }
 
 
@@ -352,14 +387,30 @@ export class WorkspaceDocumentalV2UseCase {
     );
     const documentos = await this.mapGrupoFacturaDocumentosPersistidos(
       persistido?.id ? Number(persistido.id) : null,
-      documentosCompatibilidad,
+      persistido
+        ? documentosCompatibilidad.filter(
+            (documento) => documento.estadoPersistencia === 'persistido',
+          )
+        : documentosCompatibilidad,
       grupo.origen.expedienteId,
     );
+
+    let documentoOperativoPrincipalDocumentoId =
+      grupo.documentoOperativoPrincipalDocumentoId;
+
+    if (persistido?.documentoOperativoPrincipalId) {
+      const principalPersistido = await this.documentosOperativos.buscarPorId(
+        Number(persistido.documentoOperativoPrincipalId),
+      );
+
+      documentoOperativoPrincipalDocumentoId = Number(principalPersistido.documentoId);
+    }
 
     return {
       ...this.wrap(
         {
           ...grupo,
+          documentoOperativoPrincipalDocumentoId,
           documentos: documentos.map((documento) => documento.vista),
         },
         persistido,

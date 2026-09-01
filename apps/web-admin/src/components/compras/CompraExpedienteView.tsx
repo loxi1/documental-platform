@@ -79,7 +79,16 @@ function allDocuments(expediente?: Expediente): ExpedienteDocumento[] {
   ];
 }
 
-function principal(expediente?: Expediente) {
+function principalesOperativos(expediente?: Expediente) {
+  return allDocuments(expediente).filter((documento) => {
+    if (!documento.esPrincipal) return false;
+
+    const tipo = String(documento.tipoDocumental ?? "").toUpperCase();
+    return tipo === "OC" || tipo === "OS";
+  });
+}
+
+function principalLegacy(expediente?: Expediente) {
   return (
     expediente?.documentoPrincipal ??
     expediente?.documentos?.find((documento) => documento.esPrincipal) ??
@@ -178,8 +187,11 @@ export function CompraExpedienteView({ id }: { id: string | number }) {
 
   const expediente = expedienteQuery.data;
   const documentos = allDocuments(expediente);
-  const documentoPrincipal = principal(expediente);
-  const adjuntos = documentos.filter((documento) => !documento.esPrincipal);
+  const principales = principalesOperativos(expediente);
+  const documentoPrincipalLegacy = principalLegacy(expediente);
+  const adjuntos = documentos.filter(
+    (documento) => !documento.esPrincipal,
+  );
   const factura = expediente ? hasDocument(expediente, ["FACTURA", "ADJUNTO_FACTURA", "PRINCIPAL_FACTURA"]) : false;
   const guia = expediente ? hasDocument(expediente, ["GUIA", "GUÍA"]) : false;
 
@@ -229,8 +241,11 @@ export function CompraExpedienteView({ id }: { id: string | number }) {
       </div>
 
       <section className="grid gap-3 md:grid-cols-4">
-        <QuickMetric label="Documento principal" value={documentoPrincipal ? documentLabel(documentoPrincipal) : principalFromClave(expediente)} />
-        <QuickMetric label="Adjuntos" value={adjuntos.length} />
+        <QuickMetric
+          label="OC / OS activas"
+          value={principales.length}
+        />
+        <QuickMetric label="Documentos asociados" value={adjuntos.length} />
         <QuickMetric label="Factura" value={factura ? "Presente" : "Pendiente"} />
         <QuickMetric label="Guía" value={guia ? "Presente" : "Pendiente"} />
       </section>
@@ -282,12 +297,24 @@ export function CompraExpedienteView({ id }: { id: string | number }) {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <FileText className="h-5 w-5" />
-            Documento principal
+            {principales.length ? "OC / OS del expediente" : "Documento principal directo"}
           </CardTitle>
         </CardHeader>
-        <CardContent>
-          {documentoPrincipal ? (
-            <DocumentCard documento={documentoPrincipal} />
+        <CardContent className="space-y-3">
+          {principales.length ? (
+            principales.map((documento) => (
+              <DocumentCard
+                key={`${documento.documentoId}-${documento.tipoRelacion}`}
+                documento={documento}
+              />
+            ))
+          ) : documentoPrincipalLegacy ? (
+            <div className="space-y-2">
+              <p className="text-xs text-muted-foreground">
+                Este expediente usa un documento principal directo.
+              </p>
+              <DocumentCard documento={documentoPrincipalLegacy} />
+            </div>
           ) : (
             <div className="rounded-xl border border-dashed p-5 text-sm text-muted-foreground">
               {principalFromClave(expediente)}

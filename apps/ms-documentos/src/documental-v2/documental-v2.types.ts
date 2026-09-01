@@ -6,6 +6,7 @@ export type ContenedorOperativoRow = {
   id: number;
   empresaCodigo: string;
   clienteDestinoId: number | null;
+  expedienteV1Id: number | null;
   tipoContexto: string;
   codigo: string;
   nombre: string | null;
@@ -27,6 +28,7 @@ export type ContenedorOperativoRow = {
 export type CrearContenedorOperativoInput = {
   empresaCodigo: string;
   clienteDestinoId?: number | null;
+  expedienteV1Id?: number | null;
   tipoContexto: string;
   codigo: string;
   nombre?: string | null;
@@ -67,6 +69,9 @@ export type DocumentoOperativoPrincipalRow = {
   documentoId: number;
   tipoPrincipal: string;
   esPrincipalActivo: boolean;
+  proveedorId?: number | null;
+  rucProveedor?: string | null;
+  razonSocialProveedor?: string | null;
   estado: string;
   metadata: JsonObject;
   creadoPor: number | null;
@@ -83,6 +88,9 @@ export type CrearDocumentoOperativoPrincipalInput = {
   documentoId: number;
   tipoPrincipal: string;
   esPrincipalActivo?: boolean;
+  proveedorId?: number | null;
+  rucProveedor?: string | null;
+  razonSocialProveedor?: string | null;
   estado?: string;
   metadata?: JsonObject;
   creadoPor?: number | null;

@@ -35,6 +35,61 @@ Filtros mínimos:
 
 No se agregan filtros por proveedor en 2.0B.
 
+## Estado requerido de la Factura fundadora
+
+La carga física de una Factura y su habilitación funcional como documento fundador son momentos distintos:
+
+```text
+Archivo cargado y persistido
+≠
+Factura apta para fundar Grupo de Factura
+```
+
+Una Factura puede ingresar correctamente mediante Carga Segura y quedar en estado `pendiente_ocr`. Ese estado no impide la persistencia del archivo ni del documento, pero todavía no permite crear un Grupo de Factura.
+
+La política oficial es:
+
+```text
+FACTURA confirmado:
+apta para fundar Grupo de Factura
+
+FACTURA pendiente_ocr:
+no apta
+
+FACTURA observada:
+no apta
+
+FACTURA anulada:
+no apta
+```
+
+El endpoint de candidatas mantiene el filtro:
+
+```sql
+tipo_documental = 'FACTURA'
+AND estado = 'confirmado'
+```
+
+El endpoint `POST /api/v1/documental-v2/grupos-factura/asociar` debe aplicar la misma regla y rechazar cualquier Factura cuyo estado no sea `confirmado`.
+
+Flujo aprobado:
+
+```text
+Carga Segura
+  ↓
+documento = pendiente_ocr
+  ↓
+OCR o validación manual
+  ↓
+documento = confirmado
+  ↓
+aparece en facturas-candidatas
+  ↓
+puede fundar Grupo de Factura
+```
+
+No se implementa confirmación automática ni OCR nuevo dentro de esta operación.
+
 ## Asociación
 
 ```json
@@ -105,8 +160,40 @@ PRINCIPAL_NO_PERTENECE_AL_CONTEXTO_AUTORIZADO     403
 CONTEXTO_OPERATIVO_INACTIVO                       409
 FACTURA_NO_ENCONTRADA                             404
 DOCUMENTO_NO_ES_FACTURA                           409
+FACTURA_NO_CONFIRMADA                             409
+FACTURA_ANULADA                                   409
 FACTURA_YA_TIENE_GRUPO_ACTIVO                     409
 ```
+
+### Factura no confirmada
+
+```json
+{
+  "message": "La Factura debe estar confirmada antes de crear un Grupo de Factura.",
+  "code": "FACTURA_NO_CONFIRMADA",
+  "details": {
+    "facturaDocumentoId": 910002,
+    "estado": "pendiente_ocr"
+  }
+}
+```
+
+Este código aplica también cuando el estado sea `observada`.
+
+### Factura anulada
+
+```json
+{
+  "message": "Una Factura anulada no puede fundar un Grupo de Factura.",
+  "code": "FACTURA_ANULADA",
+  "details": {
+    "facturaDocumentoId": 910002,
+    "estado": "anulado"
+  }
+}
+```
+
+Si una Factura fundadora es anulada posteriormente, no se anula, elimina ni reemplaza automáticamente el Grupo de Factura. Ese tratamiento queda fuera del Sprint 2.0B.
 
 ## Auditoría backend
 

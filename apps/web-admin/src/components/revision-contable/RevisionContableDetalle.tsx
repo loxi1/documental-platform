@@ -28,6 +28,9 @@ import {
   EmptyTitle,
 } from "@/components/ui/empty";
 import { DocumentoPreviewModal } from "@/components/revision-contable/DocumentoPreviewModal";
+import { ContabilidadDocumentoPrincipalOperativoCard } from "@/components/revision-contable/ContabilidadDocumentoPrincipalOperativoCard";
+import { ContabilidadGrupoFacturaSoloLecturaPanel } from "@/components/revision-contable/ContabilidadGrupoFacturaSoloLecturaPanel";
+import { getContexto } from "@/lib/auth-storage";
 import {
   useExpediente,
   useExpedienteAlertas,
@@ -38,10 +41,35 @@ import type { Expediente, ExpedienteDocumento } from "@/types/expediente";
 
 type Props = {
   expedienteId: string | number;
-  empresa?: string | null;
   anio?: string | null;
   mes?: string | null;
+  facturaDocumentoId?: string | null;
 };
+
+
+function formatDateOnlyLocal(value: unknown) {
+  if (!value) return "-";
+
+  const text = String(value).trim();
+  const dateOnly = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
+
+  if (dateOnly) {
+    const [, year, month, day] = dateOnly;
+    return `${day}/${month}/${year}`;
+  }
+
+  const date = new Date(text);
+
+  if (Number.isNaN(date.getTime())) {
+    return text.slice(0, 10);
+  }
+
+  return new Intl.DateTimeFormat("es-PE", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date);
+}
 
 function asRecord<T extends object>(value: T | null | undefined) {
   return value as unknown as Record<string, unknown> | null | undefined;
@@ -73,19 +101,7 @@ function asText(value: unknown, fallback = "-") {
 }
 
 function formatDate(value: unknown) {
-  if (!value) return "-";
-
-  const date = new Date(String(value));
-
-  if (Number.isNaN(date.getTime())) {
-    return String(value).slice(0, 10);
-  }
-
-  return new Intl.DateTimeFormat("es-PE", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(date);
+  return formatDateOnlyLocal(value);
 }
 
 function formatMoney(moneda: unknown, monto: unknown) {
@@ -217,10 +233,9 @@ function alertaFecha(value: unknown) {
   return formatDate(value);
 }
 
-function buildBackHref(empresa?: string | null, anio?: string | null, mes?: string | null) {
+function buildBackHref(anio?: string | null, mes?: string | null) {
   const params = new URLSearchParams();
 
-  if (empresa) params.set("empresa", empresa);
   if (anio) params.set("anio", anio);
   if (mes) params.set("mes", mes);
 
@@ -250,7 +265,7 @@ function DocumentoCard({
       <div className="min-w-0 space-y-2">
         <div className="flex flex-wrap items-center gap-2">
           <Badge variant={principal ? "secondary" : "outline"}>
-            {principal ? "Principal" : "Adjunto"}
+            {principal ? "Principal legacy" : "Adjunto legacy"}
           </Badge>
           <Badge variant="outline">{documentoEstado(documento)}</Badge>
         </div>
@@ -301,7 +316,7 @@ function ExpedienteResumenCard({
       <CardHeader className="border-b">
         <CardTitle className="flex items-center gap-2">
           <FileText className="h-5 w-5" />
-          Detalles del expediente
+          Detalles del contexto operativo
         </CardTitle>
       </CardHeader>
       <CardContent className="grid gap-4 p-4 sm:grid-cols-2">
@@ -310,7 +325,7 @@ function ExpedienteResumenCard({
           <div className="font-semibold">{getExpedienteEmpresa(expediente, empresa)}</div>
         </div>
         <div>
-          <div className="text-xs font-medium uppercase text-muted-foreground">Expediente</div>
+          <div className="text-xs font-medium uppercase text-muted-foreground">Contexto operativo / Centro de costo</div>
           <div className="font-semibold">{getExpedienteCodigo(expediente)}</div>
         </div>
         <div>
@@ -347,58 +362,21 @@ function AlertasExpediente({
   alertas: DocumentoAlerta[];
   isLoading: boolean;
 }) {
-  return (
-    <Card>
-      <CardHeader className="border-b">
-        <CardTitle className="flex items-center gap-2">
-          <AlertTriangle className="h-5 w-5" />
-          Alertas del expediente
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="p-4">
-        {isLoading ? (
-          <div className="text-sm text-muted-foreground">Cargando alertas...</div>
-        ) : alertas.length ? (
-          <div className="space-y-3">
-            {alertas.map((alerta) => (
-              <div key={String(alerta.id)} className="rounded-xl border p-3">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="font-medium">{alertaTipo(alerta)}</div>
-                  <Badge variant={alertaEstado(alerta) === "resuelta" ? "outline" : "destructive"}>
-                    {alertaEstado(alerta)}
-                  </Badge>
-                </div>
-                <div className="mt-1 text-sm text-muted-foreground">
-                  {asText(alerta.mensaje, "Sin mensaje")}
-                </div>
-                <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                  <span>Creada: {alertaFecha(alerta.creadoEn ?? alerta.creado_en)}</span>
-                  <span>Resuelta: {alertaFecha(alerta.resueltoEn ?? alerta.resuelto_en)}</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <Empty className="py-6">
-            <EmptyHeader>
-              <EmptyMedia variant="icon">
-                <CheckCircle2 className="h-5 w-5" />
-              </EmptyMedia>
-              <EmptyTitle>No hay alertas registradas</EmptyTitle>
-              <EmptyDescription>
-                No hay alertas registradas para este expediente.
-              </EmptyDescription>
-            </EmptyHeader>
-          </Empty>
-        )}
-      </CardContent>
-    </Card>
-  );
+  return null;
 }
 
-export function RevisionContableDetalle({ expedienteId, empresa, anio, mes }: Props) {
+export function RevisionContableDetalle({
+  expedienteId,
+  anio,
+  mes,
+  facturaDocumentoId,
+}: Props) {
   const [documentoSeleccionado, setDocumentoSeleccionado] =
     useState<ExpedienteDocumento | null>(null);
+  const [documentoLogicoSeleccionado, setDocumentoLogicoSeleccionado] =
+    useState<ExpedienteDocumento | null>(null);
+  const contexto = getContexto();
+  const workspaceEmpresa = asText(contexto?.empresa, "-");
 
   const expedienteQuery = useExpediente(expedienteId);
   const documentosQuery = useExpedienteDocumentos(expedienteId);
@@ -416,6 +394,37 @@ export function RevisionContableDetalle({ expedienteId, empresa, anio, mes }: Pr
       (expediente as unknown as Record<string, unknown> | undefined)?.documentos,
     );
   }, [documentosQuery.data, expediente]);
+  function abrirDocumentoPreview(documentoFisico: ExpedienteDocumento) {
+    const documentoId = String(
+      pickDocumento(documentoFisico, ["documentoId", "documento_id", "id"]) ?? "",
+    ).trim();
+
+    if (!documentoId) return;
+
+    const documentoLogico =
+      documentos.find(
+        (documento) =>
+          String(
+            pickDocumento(documento, ["documentoId", "documento_id", "id"]) ?? "",
+          ) === documentoId,
+      ) ?? null;
+
+    if (!documentoLogico) return;
+
+    setDocumentoLogicoSeleccionado(documentoLogico);
+    setDocumentoSeleccionado(documentoFisico);
+  }
+
+  function abrirDocumentoPreviewConLogico(
+    documentoFisico: ExpedienteDocumento,
+    documentoLogico: Record<string, unknown>,
+  ) {
+    setDocumentoLogicoSeleccionado(
+      documentoLogico as unknown as ExpedienteDocumento,
+    );
+    setDocumentoSeleccionado(documentoFisico);
+  }
+
   const alertas = useMemo(
     () => normalizeAlertas(alertasQuery.data),
     [alertasQuery.data],
@@ -430,11 +439,25 @@ export function RevisionContableDetalle({ expedienteId, empresa, anio, mes }: Pr
     [documentos],
   );
   const facturaAncla = useMemo(() => getFacturaAncla(documentos), [documentos]);
-  const backHref = buildBackHref(empresa, anio, mes);
-  const periodo = anio && mes ? `${anio}-${String(mes).padStart(2, "0")}` : "-";
+  const backHref = buildBackHref(anio, mes);
+  const periodo = useMemo(() => {
+    const fechaFactura = facturaAncla
+      ? pickDocumento(facturaAncla, ["fechaEmision", "fecha_emision"])
+      : null;
+
+    const fechaTexto = fechaFactura ? String(fechaFactura).trim() : "";
+    const fechaSolo = fechaTexto.match(/^(\d{4})-(\d{2})-(\d{2})/);
+
+    if (fechaSolo) {
+      const [, year, month] = fechaSolo;
+      return `${year}-${month}`;
+    }
+
+    return anio && mes ? `${anio}-${String(mes).padStart(2, "0")}` : "-";
+  }, [anio, mes, facturaAncla]);
 
   if (expedienteQuery.isLoading || (documentosQuery.isLoading && !expediente)) {
-    return <div className="p-6 text-sm text-muted-foreground">Cargando revisión contable...</div>;
+    return <div className="p-6 text-sm text-muted-foreground">Cargando revisión documental...</div>;
   }
 
   if (expedienteQuery.error || !expediente) {
@@ -443,12 +466,12 @@ export function RevisionContableDetalle({ expedienteId, empresa, anio, mes }: Pr
         <Button asChild variant="outline">
           <Link href={backHref}>
             <ArrowLeft className="mr-1 h-4 w-4" />
-            Volver a Revisión Contable
+            Volver a Revisión Documental
           </Link>
         </Button>
         <Card>
           <CardContent className="p-6 text-sm text-red-600">
-            No se pudo cargar el expediente para revisión contable.
+            No se pudo cargar el contexto operativo para revisión documental.
           </CardContent>
         </Card>
       </main>
@@ -457,31 +480,85 @@ export function RevisionContableDetalle({ expedienteId, empresa, anio, mes }: Pr
 
   return (
     <main className="space-y-4">
-      <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <Button asChild className="mb-3" size="sm" variant="ghost">
-            <Link href={backHref}>
-              <ArrowLeft className="mr-1 h-4 w-4" />
-              Volver a bandeja contable
-            </Link>
-          </Button>
-          <h1 className="text-2xl font-bold">Revisión contable del expediente</h1>
+          <div className="flex flex-wrap items-center gap-2">
+            <h1 className="text-2xl font-bold">Revisión contable</h1>
+            <Badge variant="secondary">Solo lectura</Badge>
+          </div>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {getExpedienteCodigo(expediente)} · {getExpedienteEmpresa(expediente, workspaceEmpresa)} · {periodo}
+          </p>
           <p className="text-sm text-muted-foreground">
-            Vista de solo lectura para verificar evidencia documental.
+            {asText(expediente.descripcion, "Sin descripción")}
           </p>
         </div>
 
-        <Badge variant="secondary" className="w-fit">
-          Solo lectura
-        </Badge>
+        <Button asChild variant="outline" size="sm" className="h-8 shrink-0 px-3">
+          <Link href={backHref}>Volver</Link>
+        </Button>
       </div>
 
-      <section className="grid gap-4 lg:grid-cols-2">
+      <section>
+        <ContabilidadDocumentoPrincipalOperativoCard
+          id={expedienteId}
+          facturaDocumentoId={facturaDocumentoId}
+          documentos={documentos as unknown as Array<Record<string, unknown>>}
+          onVer={(documentoId) => {
+            const documentoPrincipal = documentos.find(
+              (documento) =>
+                String(
+                  pickDocumento(documento, ["documentoId", "documento_id", "id"]) ?? "",
+                ) === String(documentoId),
+            );
+
+            if (documentoPrincipal) {
+              abrirDocumentoPreview(documentoPrincipal);
+            }
+          }}
+        />
+      </section>
+
+      <section>
+        <ContabilidadGrupoFacturaSoloLecturaPanel
+          id={expedienteId}
+          facturaDocumentoId={facturaDocumentoId}
+          documentos={
+            documentos as unknown as Array<Record<string, unknown>>
+          }
+          onVer={(documentoId, documentoLogicoGrupo) => {
+            const documentoFisico = documentos.find(
+              (item) =>
+                String(
+                  pickDocumento(item, ["documentoId", "documento_id", "id"]) ?? "",
+                ) === String(documentoId),
+            );
+
+            if (!documentoFisico) return;
+
+            if (documentoLogicoGrupo) {
+              abrirDocumentoPreviewConLogico(
+                documentoFisico,
+                documentoLogicoGrupo,
+              );
+              return;
+            }
+
+            abrirDocumentoPreview(documentoFisico);
+          }}
+        />
+      </section>
+
+      <div className="hidden" aria-hidden="true">
+        Vista técnica auxiliar.
+      </div>
+
+      <section className="hidden" aria-hidden="true">
         <Card className="h-full">
           <CardHeader className="border-b">
             <CardTitle className="flex items-center gap-2">
               <ReceiptText className="h-5 w-5" />
-              Documento principal
+              Documento principal legacy / diagnóstico
             </CardTitle>
           </CardHeader>
           <CardContent className="p-4">
@@ -505,17 +582,17 @@ export function RevisionContableDetalle({ expedienteId, empresa, anio, mes }: Pr
 
         <ExpedienteResumenCard
           expediente={expediente}
-          empresa={empresa}
+          empresa={workspaceEmpresa}
           periodo={periodo}
           facturaAncla={facturaAncla}
         />
       </section>
 
-      <Card>
+      <Card className="hidden" aria-hidden="true">
         <CardHeader className="border-b">
           <CardTitle className="flex items-center gap-2">
             <CalendarDays className="h-5 w-5" />
-            Documentos adjuntos
+            Información técnica
           </CardTitle>
         </CardHeader>
         <CardContent className="p-4">
@@ -538,7 +615,7 @@ export function RevisionContableDetalle({ expedienteId, empresa, anio, mes }: Pr
                 </EmptyMedia>
                 <EmptyTitle>Sin documentos adjuntos</EmptyTitle>
                 <EmptyDescription>
-                  No se encontraron documentos adjuntos para este expediente.
+                  No se encontraron documentos adjuntos para este contexto operativo.
                 </EmptyDescription>
               </EmptyHeader>
             </Empty>
@@ -550,8 +627,13 @@ export function RevisionContableDetalle({ expedienteId, empresa, anio, mes }: Pr
 
       <DocumentoPreviewModal
         documento={documentoSeleccionado}
+        documentoLogico={documentoLogicoSeleccionado}
+        ocultarClaveDocumental
         open={Boolean(documentoSeleccionado)}
-        onClose={() => setDocumentoSeleccionado(null)}
+        onClose={() => {
+          setDocumentoSeleccionado(null);
+          setDocumentoLogicoSeleccionado(null);
+        }}
       />
     </main>
   );

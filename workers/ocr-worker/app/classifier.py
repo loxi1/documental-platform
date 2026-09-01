@@ -59,7 +59,7 @@ def classify_document(text: str, filename: str = "") -> TipoDocumento:
         or "N° DE OPERACION" in t
         or re.search(r"\bPAGO[_\-\s]?\d+", f)
     ):
-        return "PAGO_TRANSFERENCIA"
+        return "TRANSFERENCIA"
 
     if (
         "ORDEN DE COMPRA" in t

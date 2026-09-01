@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { sql } from '@documental/database';
+import type { SqlExecutor } from './sql-executor';
 
 import type {
   ActualizarContenedorOperativoInput,
@@ -10,11 +11,12 @@ import type {
 
 @Injectable()
 export class ContenedorOperativoRepository {
-  async crear(input: CrearContenedorOperativoInput): Promise<ContenedorOperativoRow> {
-    const rows = await sql`
+  async crear(input: CrearContenedorOperativoInput, executor: SqlExecutor = sql): Promise<ContenedorOperativoRow> {
+    const rows = await executor`
       INSERT INTO documentos.contenedores_operativos (
         empresa_codigo,
         cliente_destino_id,
+        expediente_v1_id,
         tipo_contexto,
         codigo,
         nombre,
@@ -29,6 +31,7 @@ export class ContenedorOperativoRepository {
       VALUES (
         ${input.empresaCodigo}::text,
         ${input.clienteDestinoId ?? null}::bigint,
+        ${input.expedienteV1Id ?? null}::bigint,
         ${input.tipoContexto}::text,
         ${input.codigo}::text,
         ${input.nombre ?? null}::text,
@@ -44,6 +47,7 @@ export class ContenedorOperativoRepository {
         id,
         empresa_codigo AS "empresaCodigo",
         cliente_destino_id AS "clienteDestinoId",
+        expediente_v1_id AS "expedienteV1Id",
         tipo_contexto AS "tipoContexto",
         codigo,
         nombre,
@@ -65,12 +69,72 @@ export class ContenedorOperativoRepository {
     return rows[0] as unknown as ContenedorOperativoRow;
   }
 
-  async buscarPorId(id: number): Promise<ContenedorOperativoRow | null> {
-    const rows = await sql`
+  async crearSiNoExistePorClave(input: CrearContenedorOperativoInput, executor: SqlExecutor = sql): Promise<ContenedorOperativoRow | null> {
+    const rows = await executor`
+      INSERT INTO documentos.contenedores_operativos (
+        empresa_codigo,
+        cliente_destino_id,
+        expediente_v1_id,
+        tipo_contexto,
+        codigo,
+        nombre,
+        descripcion,
+        centro_costo_codigo,
+        orden_produccion_codigo,
+        proyecto_codigo,
+        estado,
+        metadata,
+        creado_por
+      )
+      VALUES (
+        ${input.empresaCodigo}::text,
+        ${input.clienteDestinoId ?? null}::bigint,
+        ${input.expedienteV1Id ?? null}::bigint,
+        ${input.tipoContexto}::text,
+        ${input.codigo}::text,
+        ${input.nombre ?? null}::text,
+        ${input.descripcion ?? null}::text,
+        ${input.centroCostoCodigo ?? null}::text,
+        ${input.ordenProduccionCodigo ?? null}::text,
+        ${input.proyectoCodigo ?? null}::text,
+        ${input.estado ?? 'activo'}::text,
+        ${JSON.stringify(input.metadata ?? {})}::jsonb,
+        ${input.creadoPor ?? null}::bigint
+      )
+      ON CONFLICT DO NOTHING
+      RETURNING
+        id,
+        empresa_codigo AS "empresaCodigo",
+        cliente_destino_id AS "clienteDestinoId",
+        expediente_v1_id AS "expedienteV1Id",
+        tipo_contexto AS "tipoContexto",
+        codigo,
+        nombre,
+        descripcion,
+        centro_costo_codigo AS "centroCostoCodigo",
+        orden_produccion_codigo AS "ordenProduccionCodigo",
+        proyecto_codigo AS "proyectoCodigo",
+        estado,
+        metadata,
+        creado_por AS "creadoPor",
+        creado_en AS "creadoEn",
+        actualizado_por AS "actualizadoPor",
+        actualizado_en AS "actualizadoEn",
+        anulado_por AS "anuladoPor",
+        anulado_en AS "anuladoEn",
+        motivo_anulacion AS "motivoAnulacion"
+    `;
+
+    return (rows[0] as unknown as ContenedorOperativoRow | undefined) ?? null;
+  }
+
+  async buscarPorId(id: number, executor: SqlExecutor = sql): Promise<ContenedorOperativoRow | null> {
+    const rows = await executor`
       SELECT
         id,
         empresa_codigo AS "empresaCodigo",
         cliente_destino_id AS "clienteDestinoId",
+        expediente_v1_id AS "expedienteV1Id",
         tipo_contexto AS "tipoContexto",
         codigo,
         nombre,
@@ -99,12 +163,15 @@ export class ContenedorOperativoRepository {
     empresaCodigo: string;
     tipoContexto: string;
     codigo: string;
-  }): Promise<ContenedorOperativoRow | null> {
-    const rows = await sql`
+  },
+    executor: SqlExecutor = sql,
+  ): Promise<ContenedorOperativoRow | null> {
+    const rows = await executor`
       SELECT
         id,
         empresa_codigo AS "empresaCodigo",
         cliente_destino_id AS "clienteDestinoId",
+        expediente_v1_id AS "expedienteV1Id",
         tipo_contexto AS "tipoContexto",
         codigo,
         nombre,
@@ -131,7 +198,70 @@ export class ContenedorOperativoRepository {
     return (rows[0] as unknown as ContenedorOperativoRow | undefined) ?? null;
   }
 
-  async listar(filtro: BuscarContenedoresOperativosFiltro = {}): Promise<{
+  async buscarExpedienteV1Activo(params: {
+    empresaCodigo: string;
+    clienteDestinoId: number;
+    expedienteV1Id: number;
+  },
+    executor: SqlExecutor = sql,
+  ): Promise<ContenedorOperativoRow | null> {
+    const rows = await executor`
+      SELECT
+        id,
+        empresa_codigo AS "empresaCodigo",
+        cliente_destino_id AS "clienteDestinoId",
+        expediente_v1_id AS "expedienteV1Id",
+        tipo_contexto AS "tipoContexto",
+        codigo,
+        nombre,
+        descripcion,
+        centro_costo_codigo AS "centroCostoCodigo",
+        orden_produccion_codigo AS "ordenProduccionCodigo",
+        proyecto_codigo AS "proyectoCodigo",
+        estado,
+        metadata,
+        creado_por AS "creadoPor",
+        creado_en AS "creadoEn",
+        actualizado_por AS "actualizadoPor",
+        actualizado_en AS "actualizadoEn",
+        anulado_por AS "anuladoPor",
+        anulado_en AS "anuladoEn",
+        motivo_anulacion AS "motivoAnulacion"
+      FROM documentos.contenedores_operativos
+      WHERE empresa_codigo = ${params.empresaCodigo}::text
+        AND cliente_destino_id = ${params.clienteDestinoId}::bigint
+        AND tipo_contexto = 'expediente_v1'
+        AND expediente_v1_id = ${params.expedienteV1Id}::bigint
+        AND estado = 'activo'
+      ORDER BY id DESC
+      LIMIT 1
+    `;
+
+    return (rows[0] as unknown as ContenedorOperativoRow | undefined) ?? null;
+  }
+
+  async listarHistoricosExpedienteV1(params: {
+    empresaCodigo: string;
+    clienteDestinoId: number;
+    expedienteV1Id: number;
+  },
+    executor: SqlExecutor = sql,
+  ): Promise<number[]> {
+    const rows = await executor`
+      SELECT id
+      FROM documentos.contenedores_operativos
+      WHERE empresa_codigo = ${params.empresaCodigo}::text
+        AND cliente_destino_id = ${params.clienteDestinoId}::bigint
+        AND tipo_contexto = 'expediente_v1'
+        AND expediente_v1_id = ${params.expedienteV1Id}::bigint
+        AND estado = 'anulado'
+      ORDER BY creado_en ASC, id ASC
+    `;
+
+    return rows.map((row: any) => Number(row.id));
+  }
+
+  async listar(filtro: BuscarContenedoresOperativosFiltro = {}, executor: SqlExecutor = sql): Promise<{
     items: ContenedorOperativoRow[];
     total: number;
     limit: number;
@@ -142,11 +272,12 @@ export class ContenedorOperativoRepository {
     const q = filtro.q?.trim() || null;
     const like = q ? `%${q}%` : null;
 
-    const rows = await sql`
+    const rows = await executor`
       SELECT
         id,
         empresa_codigo AS "empresaCodigo",
         cliente_destino_id AS "clienteDestinoId",
+        expediente_v1_id AS "expedienteV1Id",
         tipo_contexto AS "tipoContexto",
         codigo,
         nombre,
@@ -182,7 +313,7 @@ export class ContenedorOperativoRepository {
       OFFSET ${offset}
     `;
 
-    const countRows = await sql`
+    const countRows = await executor`
       SELECT COUNT(*)::int AS total
       FROM documentos.contenedores_operativos
       WHERE (${filtro.empresaCodigo ?? null}::text IS NULL OR empresa_codigo = ${filtro.empresaCodigo ?? null}::text)
@@ -208,8 +339,8 @@ export class ContenedorOperativoRepository {
     };
   }
 
-  async actualizar(input: ActualizarContenedorOperativoInput): Promise<ContenedorOperativoRow | null> {
-    const rows = await sql`
+  async actualizar(input: ActualizarContenedorOperativoInput, executor: SqlExecutor = sql): Promise<ContenedorOperativoRow | null> {
+    const rows = await executor`
       UPDATE documentos.contenedores_operativos
       SET
         nombre = COALESCE(${input.nombre ?? null}::text, nombre),
@@ -226,6 +357,7 @@ export class ContenedorOperativoRepository {
         id,
         empresa_codigo AS "empresaCodigo",
         cliente_destino_id AS "clienteDestinoId",
+        expediente_v1_id AS "expedienteV1Id",
         tipo_contexto AS "tipoContexto",
         codigo,
         nombre,
@@ -247,8 +379,8 @@ export class ContenedorOperativoRepository {
     return (rows[0] as unknown as ContenedorOperativoRow | undefined) ?? null;
   }
 
-  async anular(params: { id: number; usuarioId?: number | null; motivo?: string | null }): Promise<ContenedorOperativoRow | null> {
-    const rows = await sql`
+  async anular(params: { id: number; usuarioId?: number | null; motivo?: string | null }, executor: SqlExecutor = sql): Promise<ContenedorOperativoRow | null> {
+    const rows = await executor`
       UPDATE documentos.contenedores_operativos
       SET
         estado = 'anulado',
@@ -262,6 +394,7 @@ export class ContenedorOperativoRepository {
         id,
         empresa_codigo AS "empresaCodigo",
         cliente_destino_id AS "clienteDestinoId",
+        expediente_v1_id AS "expedienteV1Id",
         tipo_contexto AS "tipoContexto",
         codigo,
         nombre,

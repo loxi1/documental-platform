@@ -78,7 +78,7 @@ def extract_pago_from_filename(filename: str | None, tipo_documental: str) -> di
     if tipo == "PAGO_DETRACCION" and "PAGO DETRACCION" not in text:
         return {}
 
-    if tipo == "PAGO_TRANSFERENCIA" and "PAGO TRANSFERENCIA" not in text:
+    if tipo in ["TRANSFERENCIA", "PAGO_TRANSFERENCIA"] and "PAGO TRANSFERENCIA" not in text:
         return {}
 
     banco = None
@@ -99,7 +99,7 @@ def extract_pago_from_filename(filename: str | None, tipo_documental: str) -> di
 
     numero_operacion = None
 
-    if tipo == "PAGO_TRANSFERENCIA":
+    if tipo in ["TRANSFERENCIA", "PAGO_TRANSFERENCIA"]:
         match = re.search(r"PAGO\s+TRANSFERENCIA\s+(?:[A-Z]+\s+)?([0-9][0-9\-]{3,20})\b", text)
         if match:
             numero_operacion = match.group(1)

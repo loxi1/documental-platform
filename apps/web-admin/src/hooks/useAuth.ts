@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import { validateToken } from "@/services/auth";
 import {
   clearAuthSession,
@@ -15,6 +16,7 @@ import type { AuthContext, AuthSession } from "@/types/auth";
 
 export function useAuth() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [session, setSession] = useState<AuthSession | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -29,11 +31,13 @@ export function useAuth() {
     refreshSession();
   }, [refreshSession]);
 
-  const logout = useCallback(() => {
+  const logout = useCallback(async (): Promise<void> => {
+    await queryClient.cancelQueries();
+    queryClient.clear();
     clearAuthSession();
     setSession(null);
     router.replace("/login");
-  }, [router]);
+  }, [queryClient, router]);
 
   const validateCurrentSession = useCallback(async () => {
     const current = getAuthSession();

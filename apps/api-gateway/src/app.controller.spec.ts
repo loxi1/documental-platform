@@ -5,18 +5,42 @@ import { AppService } from './app.service';
 describe('AppController', () => {
   let appController: AppController;
 
+  const appService = {
+    getHealth: jest.fn(),
+    getLive: jest.fn(),
+    getReady: jest.fn(),
+    getVersion: jest.fn(),
+  };
+
   beforeEach(async () => {
+    jest.clearAllMocks();
+
     const app: TestingModule = await Test.createTestingModule({
       controllers: [AppController],
-      providers: [AppService],
+      providers: [
+        {
+          provide: AppService,
+          useValue: appService,
+        },
+      ],
     }).compile();
 
     appController = app.get<AppController>(AppController);
   });
 
-  describe('root', () => {
-    it('should return "Hello World!"', () => {
-      expect(appController.getHello()).toBe('Hello World!');
-    });
+  it('delega live en AppService', () => {
+    const expected = { service: 'api-gateway', status: 'ok' };
+    appService.getLive.mockReturnValue(expected);
+
+    expect(appController.getLive()).toBe(expected);
+    expect(appService.getLive).toHaveBeenCalledTimes(1);
+  });
+
+  it('delega version en AppService', () => {
+    const expected = { service: 'api-gateway', version: 'test' };
+    appService.getVersion.mockReturnValue(expected);
+
+    expect(appController.getVersion()).toBe(expected);
+    expect(appService.getVersion).toHaveBeenCalledTimes(1);
   });
 });

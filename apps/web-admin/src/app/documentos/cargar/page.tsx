@@ -167,7 +167,7 @@ const ACCIONES: CargaGuiadaAccion[] = [
     area: "FINANZAS",
     titulo: "Transferencia",
     descripcion: "Comprobante bancario: BCP, BBVA, Interbank o Scotiabank.",
-    tipoEsperado: "PAGO_TRANSFERENCIA",
+    tipoEsperado: "TRANSFERENCIA",
     tipoRelacionSugerida: "adjunto_transferencia",
     documentoBaseLabel: "Factura pagada",
     requiereDocumentoBase: true,

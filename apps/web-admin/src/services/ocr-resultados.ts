@@ -20,11 +20,18 @@ function unwrap<T>(response: { data: { success?: boolean; data?: T } | T }): T {
   return payload as T;
 }
 
-export async function getOcrResultados() {
+export type OcrResultadosParams = {
+  estado?: string;
+  grupoFacturaId?: number;
+};
+
+export async function getOcrResultados(params: OcrResultadosParams = {}) {
   const response = await api.get<{
     success: boolean;
     data: OcrResultado[];
-  }>("/documentos/ocr-resultados");
+  }>("/documentos/ocr-resultados", {
+    params,
+  });
 
   return unwrap<OcrResultado[]>(response);
 }

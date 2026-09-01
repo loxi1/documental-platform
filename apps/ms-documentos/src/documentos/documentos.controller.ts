@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, ParseIntPipe, Query, Post, Patch, Put, UploadedFiles, UseInterceptors } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Headers, Param, ParseIntPipe, Query, Post, Patch, Put, UploadedFiles, UseInterceptors } from '@nestjs/common';
 import { ApiOperation, ApiQuery, ApiTags, ApiParam, ApiConsumes } from '@nestjs/swagger';
 import { FileFieldsInterceptor } from '@nestjs/platform-express';
 import { DocumentosService } from './documentos.service'; import { DocumentosPreviewService } from './documentos-preview.service';
@@ -120,14 +120,28 @@ export class DocumentosController {
     @Query('cliente') cliente?: string,
     @Query('limit') limit?: string,
     @Query('offset') offset?: string,
-    @Query('soloNoVinculados') soloNoVinculados?: string
+    @Query('soloNoVinculados') soloNoVinculados?: string,
+    @Query('grupoFacturaId') grupoFacturaId?: string,
   ) {
+    const grupoFacturaIdNumber =
+      grupoFacturaId === undefined || grupoFacturaId === ''
+        ? undefined
+        : Number(grupoFacturaId);
+
+    if (
+      grupoFacturaIdNumber !== undefined &&
+      (!Number.isInteger(grupoFacturaIdNumber) || grupoFacturaIdNumber <= 0)
+    ) {
+      throw new BadRequestException('grupoFacturaId debe ser un entero positivo');
+    }
+
     return this.service.findOcrResultados({
       estado,
       cliente,
       limit: limit ? Number(limit) : 20,
       offset: offset ? Number(offset) : 0,
       soloNoVinculados: soloNoVinculados === 'true',
+      grupoFacturaId: grupoFacturaIdNumber,
     });
   }
 
@@ -150,14 +164,33 @@ export class DocumentosController {
     @Param('id', ParseIntPipe) id: number,
     @Body() body: {
       expedienteId: number;
+      documentoBaseId?: number;
+      grupoFacturaId?: number | null;
       tipoRelacion?: string;
       esPrincipal?: boolean;
       orden?: number;
       metadata?: Record<string, any>;
       observacion?: string;
+      decisionCorrespondencia?: {
+        accion: 'ACEPTAR' | 'OBSERVAR' | 'AUTORIZAR_EXCEPCION';
+        motivo?: string | null;
+      };
     },
+    @Headers('x-user-id') userId?: string,
+    @Headers('x-request-id') requestId?: string,
+    @Headers('x-correlation-id') correlationId?: string,
+    @Headers('x-finanzas-correspondencia-autorizar-excepcion')
+    autorizarExcepcion?: string,
   ) {
-    return this.service.confirmarOcrResultadoConExpediente(id, body);
+    const usuarioId = Number(userId ?? NaN);
+
+    return this.service.confirmarOcrResultadoConExpediente(id, body, {
+      usuarioId: Number.isFinite(usuarioId) && usuarioId > 0 ? usuarioId : null,
+      requestId: requestId?.trim() || null,
+      correlationId: correlationId?.trim() || requestId?.trim() || null,
+      tienePermisoAutorizarExcepcion:
+        String(autorizarExcepcion ?? '').trim().toLowerCase() === 'true',
+    });
   }
 
 
@@ -176,7 +209,30 @@ export class DocumentosController {
     return this.service.findArchivosByDocumentoId(id);
   }
 
-  @Post(':documentoId/archivos/:archivoId/agregar-version')
+
+  @Post(':documentoId/archivos/subir-version')
+  @UseInterceptors(
+    FileFieldsInterceptor([
+      { name: 'file', maxCount: 1 },
+      { name: 'archivo', maxCount: 1 },
+    ]),
+  )
+  async subirVersionDocumentoExistente(
+    @Param('documentoId') documentoId: string,
+    @UploadedFiles()
+    files: Record<string, any[]>,
+    @Body() body: Record<string, unknown>,
+  ) {
+    const file = files?.file?.[0] ?? files?.archivo?.[0];
+
+    if (!file) {
+      throw new BadRequestException('ARCHIVO_REQUERIDO');
+    }
+
+    return this.upload.subirVersionDocumentoExistente(documentoId, file, body);
+  }
+
+@Post(':documentoId/archivos/:archivoId/agregar-version')
   agregarArchivoComoVersion(
     @Param('documentoId', ParseIntPipe) documentoId: number,
     @Param('archivoId', ParseIntPipe) archivoId: number,
@@ -256,11 +312,21 @@ export class DocumentosController {
     @Param('id', ParseIntPipe) id: number,
     @Body() body: {
       tipoDocumental?: string;
+      ocrResultadoId?: number;
       metadata?: Record<string, any>;
       observacion?: string;
+      motivo?: string;
+      origen?: string;
     },
+    @Headers('x-user-id') userId?: string,
   ) {
-    return this.service.actualizarDocumentoManual(id, body);
+    const usuarioId = Number(userId ?? NaN);
+
+    return this.service.actualizarDocumentoManual(
+      id,
+      body,
+      Number.isFinite(usuarioId) && usuarioId > 0 ? usuarioId : undefined,
+    );
   }
 
   @Post('ocr-resultados/:id/rechazar')

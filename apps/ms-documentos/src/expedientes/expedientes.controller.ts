@@ -135,29 +135,64 @@ export class ExpedientesController {
     return this.service.addDocumento(id, body);
   }
 
+  @Get('bandeja-compras')
+  getBandejaComprasOcos(
+    @Query('empresa') empresa: string,
+    @Query('estado') estado?: string,
+    @Query('q') q?: string,
+    @Query('limit') limit?: string,
+    @Query('offset') offset?: string,
+    @Query('incluirPendientesValidacion') incluirPendientesValidacion?: string,
+  ) {
+    return this.service.getBandejaComprasOcos({
+      empresa,
+      estado,
+      q,
+      limit: limit ? Number(limit) : undefined,
+      offset: offset ? Number(offset) : undefined,
+      incluirPendientesValidacion: incluirPendientesValidacion === 'true',
+    });
+  }
+
   @Get('bandeja-contable')
   getBandejaContable(
     @Query('empresa') empresa: string,
-    @Query('anio') anio: string,
-    @Query('mes') mes: string,
+    @Query('anio') anio?: string,
+    @Query('mes') mes?: string,
+    @Query('q') q?: string,
+    @Query('limit') limit?: string,
+    @Query('offset') offset?: string,
+    @Query('soloPendientesFinanzas') soloPendientesFinanzas?: string,
   ) {
     return this.service.getRevisionContable({
       empresa,
-      anio: Number(anio),
-      mes: Number(mes),
+      anio: anio ? Number(anio) : undefined,
+      mes: mes ? Number(mes) : undefined,
+      q,
+      limit: limit ? Number(limit) : undefined,
+      offset: offset ? Number(offset) : undefined,
+      soloPendientesFinanzas: soloPendientesFinanzas === 'true',
     });
   }
 
   @Get('revision-contable')
   getRevisionContable(
     @Query('empresa') empresa: string,
-    @Query('anio') anio: string,
-    @Query('mes') mes: string,
+    @Query('anio') anio?: string,
+    @Query('mes') mes?: string,
+    @Query('q') q?: string,
+    @Query('limit') limit?: string,
+    @Query('offset') offset?: string,
+    @Query('soloPendientesFinanzas') soloPendientesFinanzas?: string,
   ) {
     return this.service.getRevisionContable({
       empresa,
-      anio: Number(anio),
-      mes: Number(mes),
+      anio: anio ? Number(anio) : undefined,
+      mes: mes ? Number(mes) : undefined,
+      q,
+      limit: limit ? Number(limit) : undefined,
+      offset: offset ? Number(offset) : undefined,
+      soloPendientesFinanzas: soloPendientesFinanzas === 'true',
     });
   }
 

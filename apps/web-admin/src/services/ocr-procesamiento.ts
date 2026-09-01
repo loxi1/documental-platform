@@ -40,6 +40,10 @@ export type EditarOcrResultadoPayload = {
   tipoPropuesto?: string;
   metadata?: Record<string, unknown>;
   observacion?: string;
+  decisionCorrespondencia?: {
+    accion: "ACEPTAR" | "OBSERVAR" | "AUTORIZAR_EXCEPCION";
+    motivo?: string | null;
+  };
 };
 
 export type VincularOcrExpedientePayload = {
@@ -51,11 +55,17 @@ export type VincularOcrExpedientePayload = {
 
 export type ConfirmarOcrConExpedientePayload = {
   expedienteId: number | string;
+  documentoBaseId?: number | null;
+  grupoFacturaId?: number | null;
   tipoRelacion: string;
   esPrincipal?: boolean;
   orden?: number;
   metadata?: Record<string, unknown>;
   observacion?: string;
+  decisionCorrespondencia?: {
+    accion: "ACEPTAR" | "OBSERVAR" | "AUTORIZAR_EXCEPCION";
+    motivo?: string | null;
+  };
 };
 
 
@@ -220,8 +230,8 @@ function buildApiErrorMessage(error: unknown, fallback: string) {
   const principalInfo = findErrorInfo(payload, ["EXPEDIENTE_YA_TIENE_DOCUMENTO_PRINCIPAL"]);
   if (principalInfo) {
     return [
-      "Este centro de costo ya tiene un documento principal activo.",
-      "No se reemplazará automáticamente. Puedes cancelar o cerrar esta ventana.",
+      "El backend rechazó la asociación del documento principal.",
+      "Revisa si se trata de un duplicado documental real o de un documento ya vinculado.",
     ].filter(Boolean).join("\n");
   }
 
@@ -377,6 +387,7 @@ export async function confirmarOcrConExpediente(
       "CODIGO_EXPEDIENTE_NO_COINCIDE",
       "EXPEDIENTE_YA_TIENE_DOCUMENTO_PRINCIPAL",
       "ARCHIVO_DUPLICADO_EN_CARGA_GUIADA",
+      "DECISION_CORRESPONDENCIA_REQUERIDA",
     ]);
 
     throw new OcrApiError(message, {
@@ -385,4 +396,31 @@ export async function confirmarOcrConExpediente(
       details: conflictDetails ?? duplicateDetails ?? apiError?.details ?? payload,
     });
   }
+}
+
+export type ProveedorCatalogo = {
+  id?: number | string;
+  ruc: string;
+  razonSocial: string;
+  direccion?: string | null;
+  tipoPersona?: string | null;
+};
+
+export async function buscarProveedoresCatalogo(search: string, limit = 20): Promise<ProveedorCatalogo[]> {
+  const termino = search.trim();
+  if (!termino) return [];
+
+  const response = await api.get('/documentos/proveedores', {
+    params: { search: termino, limit, offset: 0 },
+  });
+  const payload = response.data?.data ?? response.data;
+  const rows = Array.isArray(payload?.data) ? payload.data : Array.isArray(payload) ? payload : [];
+
+  return rows.map((row: any) => ({
+    id: row?.id,
+    ruc: String(row?.ruc ?? '').trim(),
+    razonSocial: String(row?.razonSocial ?? row?.razon_social ?? '').trim(),
+    direccion: row?.direccion ?? null,
+    tipoPersona: row?.tipoPersona ?? row?.tipo_persona ?? null,
+  })).filter((row: ProveedorCatalogo) => row.ruc && row.razonSocial);
 }

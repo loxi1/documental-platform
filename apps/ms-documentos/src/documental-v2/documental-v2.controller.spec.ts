@@ -43,6 +43,14 @@ describe('DocumentalV2Controller', () => {
     construirDesdeExpedienteV1: jest.fn(),
   };
 
+  const materializarContextoOperativoV2UseCase = {
+    execute: jest.fn(),
+  };
+
+  const anularContenedorOperativoV2UseCase = {
+    execute: jest.fn(),
+  };
+
   const asociarDocumentoPrincipalV2UseCase = {
     execute: jest.fn(),
   };
@@ -75,6 +83,8 @@ describe('DocumentalV2Controller', () => {
       gruposFactura as any,
       grupoFacturaDocumentos as any,
       workspaceDocumentalV2 as any,
+      materializarContextoOperativoV2UseCase as any,
+      anularContenedorOperativoV2UseCase as any,
       asociarDocumentoPrincipalV2UseCase as any,
       asociarGrupoFacturaV2UseCase as any,
       asociarDocumentoGrupoFacturaV2UseCase as any,
@@ -83,6 +93,50 @@ describe('DocumentalV2Controller', () => {
     );
   });
 
+
+  it('materializa contexto operativo desde expediente V1 propagando headers confiables', async () => {
+    const esperado = {
+      expedienteId: 16,
+      contenedorOperativo: {
+        id: 10,
+        empresaCodigo: 'BBTI',
+        clienteDestinoId: 2,
+        tipoContexto: 'expediente_v1',
+        codigo: '0501',
+        estado: 'activo',
+      },
+      idempotente: false,
+      workspaceDebeRefrescar: true,
+    };
+    materializarContextoOperativoV2UseCase.execute.mockResolvedValue(esperado);
+
+    await expect(
+      controller.materializarContextoOperativoDesdeExpedienteV1(
+        16,
+        '1',
+        'admin@documental.local',
+        '1',
+        'BBTI',
+        '2',
+        'req-1',
+        'corr-1',
+      ),
+    ).resolves.toBe(esperado);
+
+    expect(materializarContextoOperativoV2UseCase.execute).toHaveBeenCalledWith({
+      expedienteId: 16,
+      usuario: {
+        id: 1,
+        email: 'admin@documental.local',
+        workspaceId: 1,
+        empresaCodigo: 'BBTI',
+        clienteDestinoId: 2,
+        requestId: 'req-1',
+        correlationId: 'corr-1',
+        origen: 'api-gateway',
+      },
+    });
+  });
 
   it('consulta trazabilidad canónica V2 por contenedor operativo', async () => {
     const esperado = {
@@ -318,6 +372,7 @@ describe('DocumentalV2Controller', () => {
       grupoFacturaId: 2,
       documentoId: 910007,
       tipoRelacion: 'adjunto_guia',
+      decisionCorrespondencia: undefined,
       usuario: {
         id: 1,
         email: 'admin@documental.local',
@@ -327,6 +382,7 @@ describe('DocumentalV2Controller', () => {
         requestId: 'req-2',
         correlationId: 'corr-2',
         origen: 'api-gateway',
+        tienePermisoAutorizarExcepcion: false,
       },
     });
   });
@@ -369,4 +425,54 @@ describe('DocumentalV2Controller', () => {
 
     expect(workspaceDocumentalV2.construirDesdeExpedienteV1).toHaveBeenCalledWith(41);
   });
+
+  it('propaga contexto autenticado al anular un Contenedor Operativo V2', async () => {
+    const esperado = {
+      contenedorOperativo: {
+        id: 4,
+        estado: 'anulado',
+        motivoAnulacion: 'Motivo controlado',
+      },
+      idempotente: false,
+      workspaceDebeRefrescar: true,
+    };
+
+    anularContenedorOperativoV2UseCase.execute.mockResolvedValue(esperado);
+
+    await expect(
+      controller.anularContenedor(
+        4,
+        { motivo: 'Motivo controlado' },
+        '1',
+        'admin@documental.local',
+        '1',
+        'BBTI',
+        '2',
+        'bc8faa7a-ff31-4fd9-9014-86c92db3c3fa',
+        'DOCUMENTAL',
+        'admin',
+        'b2ea3424-91c9-45d3-b12c-1f0fac78e6c6',
+        'b2ea3424-91c9-45d3-b12c-1f0fac78e6c6',
+      ),
+    ).resolves.toBe(esperado);
+
+    expect(anularContenedorOperativoV2UseCase.execute).toHaveBeenCalledWith({
+      contenedorOperativoId: 4,
+      motivo: 'Motivo controlado',
+      usuario: {
+        id: 1,
+        email: 'admin@documental.local',
+        workspaceId: 1,
+        empresaCodigo: 'BBTI',
+        clienteDestinoId: 2,
+        sessionContextId: 'bc8faa7a-ff31-4fd9-9014-86c92db3c3fa',
+        sistemaCodigo: 'DOCUMENTAL',
+        perfilCodigo: 'admin',
+        requestId: 'b2ea3424-91c9-45d3-b12c-1f0fac78e6c6',
+        correlationId: 'b2ea3424-91c9-45d3-b12c-1f0fac78e6c6',
+        origen: 'api-gateway',
+      },
+    });
+  });
+
 });

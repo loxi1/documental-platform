@@ -8,6 +8,7 @@ import type {
   ActualizarGrupoFacturaDocumentoDto,
   ActualizarGrupoFacturaDto,
   AnularDocumentalV2Dto,
+  AnularContenedorOperativoV2Dto,
   CrearContenedorOperativoDto,
   CrearDocumentoOperativoPrincipalDto,
   CrearGrupoFacturaDocumentoDto,
@@ -23,6 +24,9 @@ import { AsociarGrupoFacturaV2UseCase } from './use-cases/asociar-grupo-factura-
 import { AsociarDocumentoGrupoFacturaV2UseCase } from './use-cases/asociar-documento-grupo-factura-v2.usecase';
 import { DocumentoExistenteReadonlyRepository } from './documento-existente-readonly.repository';
 import { ConsultarTrazabilidadV2UseCase } from './use-cases/consultar-trazabilidad-v2.usecase';
+import { MaterializarContextoOperativoV2UseCase } from './use-cases/materializar-contexto-operativo-v2.usecase';
+import { AnularContenedorOperativoV2UseCase } from './use-cases/anular-contenedor-operativo-v2.usecase';
+import { EvaluarCorrespondenciaPagoFacturaUseCase } from './finanzas/evaluar-correspondencia-pago-factura.usecase';
 
 @ApiTags('documental-v2')
 @Controller('documental-v2')
@@ -33,19 +37,69 @@ export class DocumentalV2Controller {
     private readonly gruposFactura: GrupoFacturaService,
     private readonly grupoFacturaDocumentos: GrupoFacturaDocumentoService,
     private readonly workspaceDocumentalV2: WorkspaceDocumentalV2UseCase,
+    private readonly materializarContextoOperativoV2UseCase: MaterializarContextoOperativoV2UseCase,
+    private readonly anularContenedorOperativoV2UseCase: AnularContenedorOperativoV2UseCase,
     private readonly asociarDocumentoPrincipalV2UseCase: AsociarDocumentoPrincipalV2UseCase,
     private readonly asociarGrupoFacturaV2UseCase: AsociarGrupoFacturaV2UseCase,
     private readonly asociarDocumentoGrupoFacturaV2UseCase: AsociarDocumentoGrupoFacturaV2UseCase,
     private readonly consultarTrazabilidadV2UseCase: ConsultarTrazabilidadV2UseCase,
     private readonly documentoExistenteReadonlyRepository: DocumentoExistenteReadonlyRepository,
+    private readonly evaluarCorrespondenciaPagoFacturaUseCase: EvaluarCorrespondenciaPagoFacturaUseCase,
   ) {}
 
+
+  @ApiOperation({
+    summary: 'Evaluar correspondencia documental entre factura y sustento de pago',
+  })
+  @ApiQuery({ name: 'facturaDocumentoId', required: true, example: 26 })
+  @ApiQuery({ name: 'pagoDocumentoId', required: false, example: 29 })
+  @Get('finanzas/correspondencia/evaluar')
+  evaluarCorrespondenciaPagoFactura(
+    @Query('facturaDocumentoId', ParseIntPipe) facturaDocumentoId: number,
+    @Query('pagoDocumentoId') pagoDocumentoId?: string,
+  ) {
+    return this.evaluarCorrespondenciaPagoFacturaUseCase.execute({
+      facturaDocumentoId,
+      pagoDocumentoId:
+        pagoDocumentoId === undefined || pagoDocumentoId === ''
+          ? null
+          : Number(pagoDocumentoId),
+    });
+  }
 
   @ApiOperation({ summary: 'Construir vista interna Workspace Documental V2 desde Expediente V1' })
   @ApiParam({ name: 'expedienteId', example: 41 })
   @Get('workspace/expedientes-v1/:expedienteId')
   construirWorkspaceDesdeExpedienteV1(@Param('expedienteId', ParseIntPipe) expedienteId: number) {
     return this.workspaceDocumentalV2.construirDesdeExpedienteV1(expedienteId);
+  }
+
+  @ApiOperation({ summary: 'Materializar Contexto Operativo V2 desde Expediente V1 existente' })
+  @ApiParam({ name: 'expedienteId', example: 16 })
+  @Post('workspace/expedientes-v1/:expedienteId/materializar-contenedor')
+  materializarContextoOperativoDesdeExpedienteV1(
+    @Param('expedienteId', ParseIntPipe) expedienteId: number,
+    @Headers('x-user-id') userId?: string,
+    @Headers('x-user-email') userEmail?: string,
+    @Headers('x-workspace-id') workspaceId?: string,
+    @Headers('x-empresa-codigo') empresaCodigo?: string,
+    @Headers('x-cliente-destino-id') clienteDestinoId?: string,
+    @Headers('x-request-id') requestId?: string,
+    @Headers('x-correlation-id') correlationId?: string,
+  ) {
+    return this.materializarContextoOperativoV2UseCase.execute({
+      expedienteId,
+      usuario: {
+        id: userId ? Number(userId) : null,
+        email: userEmail ?? null,
+        workspaceId: workspaceId ? Number(workspaceId) : null,
+        empresaCodigo: empresaCodigo ?? null,
+        clienteDestinoId: clienteDestinoId ? Number(clienteDestinoId) : null,
+        requestId: requestId ?? null,
+        correlationId: correlationId ?? null,
+        origen: 'api-gateway',
+      },
+    });
   }
 
   @ApiOperation({ summary: 'Consultar trazabilidad canónica V2 por Contenedor Operativo' })
@@ -135,9 +189,37 @@ export class DocumentalV2Controller {
   @Post('contenedores/:id/anular')
   anularContenedor(
     @Param('id', ParseIntPipe) id: number,
-    @Body() body: AnularDocumentalV2Dto = {},
+    @Body() body: AnularContenedorOperativoV2Dto,
+    @Headers('x-user-id') userId?: string,
+    @Headers('x-user-email') userEmail?: string,
+    @Headers('x-workspace-id') workspaceId?: string,
+    @Headers('x-empresa-codigo') empresaCodigo?: string,
+    @Headers('x-cliente-destino-id') clienteDestinoId?: string,
+    @Headers('x-session-context-id') sessionContextId?: string,
+    @Headers('x-sistema-codigo') sistemaCodigo?: string,
+    @Headers('x-perfil-codigo') perfilCodigo?: string,
+    @Headers('x-request-id') requestId?: string,
+    @Headers('x-correlation-id') correlationId?: string,
   ) {
-    return this.contenedores.anular({ id, ...body });
+    return this.anularContenedorOperativoV2UseCase.execute({
+      contenedorOperativoId: id,
+      motivo: body?.motivo,
+      usuario: {
+        id: userId ? Number(userId) : null,
+        email: userEmail ?? null,
+        workspaceId: workspaceId ? Number(workspaceId) : null,
+        empresaCodigo: empresaCodigo ?? null,
+        clienteDestinoId: clienteDestinoId
+          ? Number(clienteDestinoId)
+          : null,
+        sessionContextId: sessionContextId ?? null,
+        sistemaCodigo: sistemaCodigo ?? null,
+        perfilCodigo: perfilCodigo ?? null,
+        requestId: requestId ?? null,
+        correlationId: correlationId ?? requestId ?? null,
+        origen: 'api-gateway',
+      },
+    });
   }
 
   @ApiOperation({ summary: 'Crear Documento Operativo Principal V2' })
@@ -445,11 +527,14 @@ export class DocumentalV2Controller {
     @Headers('x-cliente-destino-id') clienteDestinoId?: string,
     @Headers('x-request-id') requestId?: string,
     @Headers('x-correlation-id') correlationId?: string,
+    @Headers('x-finanzas-correspondencia-autorizar-excepcion')
+    permisoAutorizarExcepcion?: string,
   ) {
     return this.asociarDocumentoGrupoFacturaV2UseCase.execute({
       grupoFacturaId: Number(dto.grupoFacturaId),
       documentoId: Number(dto.documentoId),
       tipoRelacion: dto.tipoRelacion,
+      decisionCorrespondencia: dto.decisionCorrespondencia,
       usuario: {
         id: userId ? Number(userId) : null,
         email: userEmail ?? null,
@@ -459,6 +544,8 @@ export class DocumentalV2Controller {
         requestId: requestId ?? null,
         correlationId: correlationId ?? null,
         origen: 'api-gateway',
+        tienePermisoAutorizarExcepcion:
+          permisoAutorizarExcepcion === 'true',
       },
     });
   }

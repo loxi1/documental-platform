@@ -6,30 +6,26 @@ import { Button } from "@/components/ui/button";
 
 export function WorkspaceHeader({ id }: { id: string | number }) {
   return (
-    <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+    <div className="flex flex-wrap items-center justify-between gap-3">
       <div>
-        <Button asChild variant="ghost" className="mb-2 px-0">
-          <Link href="/compras">
-            <ArrowLeft className="mr-1 h-4 w-4" />
-            Volver a Compras
-          </Link>
-        </Button>
         <div className="flex flex-wrap items-center gap-2">
-          <h1 className="text-2xl font-bold tracking-tight">Workspace Documental V2</h1>
+          <h1 className="text-2xl font-bold tracking-tight">Contexto documental</h1>
           <Badge variant="secondary" className="gap-1">
             <BadgeCheck className="h-3 w-3" />
-            Operación controlada
+            Solo lectura
           </Badge>
         </div>
         <p className="mt-1 text-sm text-muted-foreground">
-          Vista experimental conectada únicamente al contrato oficial del API Gateway.
+          Documento principal, facturas y documentos asociados.
         </p>
       </div>
 
-      <div className="rounded-lg border bg-muted/30 px-4 py-3 text-sm">
-        <p className="text-xs uppercase tracking-wide text-muted-foreground">Contrato Gateway</p>
-        <p className="mt-1 font-mono text-xs">/documental-v2/workspace/expedientes-v1/{id}</p>
-      </div>
+      <Button asChild variant="outline" size="sm" className="h-8 shrink-0 px-3">
+        <Link href="/compras">
+          <ArrowLeft className="mr-1 h-4 w-4" />
+          Volver
+        </Link>
+      </Button>
     </div>
   );
 }

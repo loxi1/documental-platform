@@ -23,6 +23,12 @@ import { AuditoriaOperativaV2Repository } from './auditoria-operativa-v2.reposit
 import { TrazabilidadV2Repository } from './trazabilidad-v2.repository';
 import { TrazabilidadV2ProjectionMapper } from './trazabilidad-v2.projection.mapper';
 import { ConsultarTrazabilidadV2UseCase } from './use-cases/consultar-trazabilidad-v2.usecase';
+import { MaterializarContextoOperativoV2UseCase } from './use-cases/materializar-contexto-operativo-v2.usecase';
+import { AnularContenedorOperativoV2UseCase } from './use-cases/anular-contenedor-operativo-v2.usecase';
+import {
+  CorrespondenciaDocumentoReadonlyPort,
+  EvaluarCorrespondenciaPagoFacturaUseCase,
+} from './finanzas/evaluar-correspondencia-pago-factura.usecase';
 
 @Module({
   controllers: [DocumentalV2Controller],
@@ -41,6 +47,10 @@ import { ConsultarTrazabilidadV2UseCase } from './use-cases/consultar-trazabilid
     WorkspaceDocumentalV2ViewMapper,
     WorkspaceDocumentalV2UseCase,
     DocumentoExistenteReadonlyRepository,
+    {
+      provide: CorrespondenciaDocumentoReadonlyPort,
+      useExisting: DocumentoExistenteReadonlyRepository,
+    },
     AsociarDocumentoPrincipalV2UseCase,
     AsociarGrupoFacturaV2UseCase,
     AsociarDocumentoGrupoFacturaV2UseCase,
@@ -48,6 +58,9 @@ import { ConsultarTrazabilidadV2UseCase } from './use-cases/consultar-trazabilid
     TrazabilidadV2Repository,
     TrazabilidadV2ProjectionMapper,
     ConsultarTrazabilidadV2UseCase,
+    MaterializarContextoOperativoV2UseCase,
+    AnularContenedorOperativoV2UseCase,
+    EvaluarCorrespondenciaPagoFacturaUseCase,
   ],
   exports: [
     ContenedorOperativoRepository,
@@ -67,6 +80,11 @@ import { ConsultarTrazabilidadV2UseCase } from './use-cases/consultar-trazabilid
     TrazabilidadV2Repository,
     TrazabilidadV2ProjectionMapper,
     ConsultarTrazabilidadV2UseCase,
+    DocumentoExistenteReadonlyRepository,
+    MaterializarContextoOperativoV2UseCase,
+    AsociarDocumentoPrincipalV2UseCase,
+    AsociarGrupoFacturaV2UseCase,
+    AsociarDocumentoGrupoFacturaV2UseCase,
   ],
 })
 export class DocumentalV2Module {}

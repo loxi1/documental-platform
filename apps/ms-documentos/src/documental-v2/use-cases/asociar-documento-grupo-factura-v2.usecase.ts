@@ -1,4 +1,10 @@
-import { ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+  Optional,
+} from '@nestjs/common';
 
 import { ContenedorOperativoRepository } from '../contenedor-operativo.repository';
 import {
@@ -18,6 +24,17 @@ import type {
 } from '../documental-v2.types';
 import { tipoDocumentalLabel } from '../mappers/documental-v2-labels';
 import type { ContextoAutenticadoV2 } from './asociar-grupo-factura-v2.usecase';
+import {
+  aplicarDecisionCorrespondencia,
+  construirAuditoriaDecision,
+} from '../finanzas/correspondencia-pago-factura.evaluator';
+import type {
+  AccionDecisionCorrespondencia,
+  DecisionCorrespondenciaResult,
+  EvaluacionCorrespondenciaPagoFactura,
+} from '../finanzas/correspondencia-pago-factura.types';
+import { EvaluarCorrespondenciaPagoFacturaUseCase } from '../finanzas/evaluar-correspondencia-pago-factura.usecase';
+import type { SqlExecutor } from '../sql-executor';
 
 const TIPOS_RELACION_POR_TIPO_DOCUMENTAL: Record<string, string> = {
   GUIA_REMISION: 'adjunto_guia',
@@ -47,6 +64,10 @@ export type AsociarDocumentoGrupoFacturaV2Input = {
   grupoFacturaId: number;
   documentoId: number;
   tipoRelacion: string;
+  decisionCorrespondencia?: {
+    accion: AccionDecisionCorrespondencia;
+    motivo?: string | null;
+  };
   usuario?: ContextoAutenticadoV2;
 };
 
@@ -68,9 +89,10 @@ export type DocumentoGrupoFacturaOperativoV2 = {
 };
 
 export type AsociarDocumentoGrupoFacturaV2Result = {
-  documentoGrupoFactura: DocumentoGrupoFacturaOperativoV2;
+  documentoGrupoFactura: DocumentoGrupoFacturaOperativoV2 | null;
   idempotente: boolean;
   workspaceDebeRefrescar: boolean;
+  correspondencia?: DecisionCorrespondenciaResult;
 };
 
 function crearError(message: string, code: string, details?: JsonObject) {
@@ -119,6 +141,8 @@ export class AsociarDocumentoGrupoFacturaV2UseCase {
     private readonly grupoFacturaDocumentos: GrupoFacturaDocumentoRepository,
     private readonly documentos: DocumentoExistenteReadonlyRepository,
     private readonly auditoria: AuditoriaOperativaV2Repository,
+    @Optional()
+    private readonly evaluarCorrespondencia?: EvaluarCorrespondenciaPagoFacturaUseCase,
   ) {}
 
   async listarDocumentosCandidatos(input: {
@@ -128,9 +152,9 @@ export class AsociarDocumentoGrupoFacturaV2UseCase {
     pagina?: number | null;
     limite?: number | null;
     usuario?: ContextoAutenticadoV2;
-  }): Promise<DocumentoCandidatoGrupoFacturaV2[]> {
+  }, executor?: SqlExecutor): Promise<DocumentoCandidatoGrupoFacturaV2[]> {
     const grupoFacturaId = normalizarId(input.grupoFacturaId, 'grupoFacturaId');
-    const contexto = await this.obtenerContextoGrupo(grupoFacturaId, input.usuario);
+    const contexto = await this.obtenerContextoGrupo(grupoFacturaId, input.usuario, executor);
     const tipoDocumental = input.tipoDocumental?.trim().toUpperCase() || null;
 
     if (tipoDocumental && !TIPOS_DOCUMENTALES_PERMITIDOS.includes(tipoDocumental)) {
@@ -150,7 +174,7 @@ export class AsociarDocumentoGrupoFacturaV2UseCase {
       texto: input.texto ?? null,
       pagina: input.pagina ?? undefined,
       limite: input.limite ?? undefined,
-    });
+    }, executor);
 
     return candidatos.map((documento) => ({
       documentoId: documento.id,
@@ -167,15 +191,18 @@ export class AsociarDocumentoGrupoFacturaV2UseCase {
     }));
   }
 
-  async execute(input: AsociarDocumentoGrupoFacturaV2Input): Promise<AsociarDocumentoGrupoFacturaV2Result> {
+  async execute(
+    input: AsociarDocumentoGrupoFacturaV2Input,
+    executor?: SqlExecutor,
+  ): Promise<AsociarDocumentoGrupoFacturaV2Result> {
     const grupoFacturaId = normalizarId(input.grupoFacturaId, 'grupoFacturaId');
     const documentoId = normalizarId(input.documentoId, 'documentoId');
     const tipoRelacion = normalizarTexto(input.tipoRelacion);
 
-    const contexto = await this.obtenerContextoGrupo(grupoFacturaId, input.usuario);
+    const contexto = await this.obtenerContextoGrupo(grupoFacturaId, input.usuario, executor);
     this.validarTipoRelacionPermitido(tipoRelacion);
 
-    const documento = await this.documentos.buscarPorId(documentoId);
+    const documento = await this.documentos.buscarPorId(documentoId, executor);
     if (!documento) {
       throw new NotFoundException(crearError('Documento no encontrado', 'DOCUMENTO_NO_ENCONTRADO'));
     }
@@ -183,7 +210,7 @@ export class AsociarDocumentoGrupoFacturaV2UseCase {
     this.validarDocumentoAutorizado(documento, contexto.contenedor);
     this.validarDocumentoActivo(documento);
 
-    const existenteActivoDocumento = await this.grupoFacturaDocumentos.buscarActivoPorDocumentoId(documentoId);
+    const existenteActivoDocumento = await this.grupoFacturaDocumentos.buscarActivoPorDocumentoId(documentoId, executor);
     if (existenteActivoDocumento) {
       const mismoGrupo = Number(existenteActivoDocumento.grupoFacturaId) === grupoFacturaId;
       const mismaRelacion = existenteActivoDocumento.tipoRelacion === tipoRelacion;
@@ -224,22 +251,225 @@ export class AsociarDocumentoGrupoFacturaV2UseCase {
 
     this.validarCompatibilidadDocumentoRelacion(documento, tipoRelacion);
 
+    let evaluacionCorrespondencia:
+      | EvaluacionCorrespondenciaPagoFactura
+      | undefined;
+    let decisionCorrespondencia: DecisionCorrespondenciaResult | undefined;
+
+    if (tipoRelacion === 'adjunto_transferencia') {
+      if (!this.evaluarCorrespondencia) {
+        throw new ConflictException(
+          crearError(
+            'El evaluador de correspondencia financiera no está disponible',
+            'EVALUADOR_CORRESPONDENCIA_NO_DISPONIBLE',
+          ),
+        );
+      }
+
+      evaluacionCorrespondencia = await this.evaluarCorrespondencia.execute({
+        facturaDocumentoId: Number(contexto.grupo.facturaDocumentoId),
+        pagoDocumentoId: documentoId,
+      }, executor);
+
+      const montoFactura = Number(
+        evaluacionCorrespondencia.comparaciones.importe.factura ?? 0,
+      );
+      const montoPago = Number(
+        evaluacionCorrespondencia.comparaciones.importe.pago ?? 0,
+      );
+      const pagadoAcumulado =
+        (await this.grupoFacturaDocumentos.sumarMontoTransferenciasActivas?.(
+          grupoFacturaId,
+          executor,
+        )) ?? 0;
+      const saldoDisponible = Math.max(
+        Math.round((montoFactura - pagadoAcumulado) * 100) / 100,
+        0,
+      );
+
+      if (montoFactura > 0 && saldoDisponible <= 0.01) {
+        throw new ConflictException(
+          crearError(
+            'La factura ya se encuentra completamente pagada',
+            'FACTURA_PAGO_COMPLETO',
+            {
+              grupoFacturaId,
+              facturaDocumentoId: Number(contexto.grupo.facturaDocumentoId),
+              montoFactura,
+              pagadoAcumulado,
+              saldoDisponible,
+            },
+          ),
+        );
+      }
+
+      if (montoFactura > 0 && montoPago > 0) {
+        const sobrepago = montoPago > saldoDisponible + 0.01;
+
+        evaluacionCorrespondencia = {
+          ...evaluacionCorrespondencia,
+          estado: sobrepago
+            ? 'INCOMPATIBLE'
+            : evaluacionCorrespondencia.estado,
+          comparaciones: {
+            ...evaluacionCorrespondencia.comparaciones,
+            importe: {
+              estado: sobrepago ? 'NO_COINCIDE' : 'COINCIDE',
+              factura: saldoDisponible,
+              pago: montoPago,
+            },
+          },
+          requiereDecisionHumana:
+            sobrepago || evaluacionCorrespondencia.requiereDecisionHumana,
+          permiteAsociacionOrdinaria:
+            !sobrepago && evaluacionCorrespondencia.permiteAsociacionOrdinaria,
+          advertencias: sobrepago
+            ? Array.from(
+                new Set([
+                  ...evaluacionCorrespondencia.advertencias,
+                  'El importe del pago excede el saldo disponible de la factura. Requiere revisión humana.',
+                ]),
+              )
+            : evaluacionCorrespondencia.advertencias,
+        };
+      }
+
+      const requiereDecision =
+        evaluacionCorrespondencia.requiereDecisionHumana ||
+        !evaluacionCorrespondencia.permiteAsociacionOrdinaria;
+
+      if (requiereDecision) {
+        if (!input.decisionCorrespondencia) {
+          throw new ConflictException(
+            crearError(
+              'La transferencia requiere una decisión de correspondencia',
+              'DECISION_CORRESPONDENCIA_REQUERIDA',
+              {
+                estadoEvaluado: evaluacionCorrespondencia.estado,
+                facturaDocumentoId: evaluacionCorrespondencia.facturaDocumentoId,
+                pagoDocumentoId: evaluacionCorrespondencia.pagoDocumentoId,
+                evaluacion: evaluacionCorrespondencia,
+              },
+            ),
+          );
+        }
+
+        try {
+          decisionCorrespondencia = aplicarDecisionCorrespondencia(
+            evaluacionCorrespondencia,
+            {
+              accion: input.decisionCorrespondencia.accion,
+              motivo: input.decisionCorrespondencia.motivo,
+              usuarioId: Number(input.usuario?.id),
+              usuarioAutorizadoExcepcion:
+                input.usuario?.tienePermisoAutorizarExcepcion === true,
+            },
+          );
+        } catch (error: any) {
+          throw new ConflictException(
+            crearError(
+              error?.message ?? 'Decisión de correspondencia inválida',
+              'DECISION_CORRESPONDENCIA_INVALIDA',
+              {
+                estadoEvaluado: evaluacionCorrespondencia.estado,
+                accion: input.decisionCorrespondencia.accion,
+              },
+            ),
+          );
+        }
+
+        if (input.decisionCorrespondencia.accion === 'OBSERVAR') {
+          await this.registrarAuditoriaCorrespondencia({
+            contexto,
+            evaluacion: evaluacionCorrespondencia,
+            decision: decisionCorrespondencia,
+            documentoId,
+            asociacionCreada: false,
+            entidadId: `${grupoFacturaId}:${documentoId}`,
+            usuario: input.usuario,
+          }, executor);
+
+          return {
+            documentoGrupoFactura: null,
+            idempotente: false,
+            workspaceDebeRefrescar: false,
+            correspondencia: decisionCorrespondencia,
+          };
+        }
+
+        if (!decisionCorrespondencia.permiteAsociacionOrdinaria) {
+          throw new ConflictException(
+            crearError(
+              'La decisión no permite asociar la transferencia',
+              'CORRESPONDENCIA_NO_PERMITE_ASOCIACION',
+              {
+                estadoResultante: decisionCorrespondencia.estado,
+              },
+            ),
+          );
+        }
+      }
+    }
+
+    const documentosHistoricosIds =
+      await this.grupoFacturaDocumentos.listarHistoricosPorDocumentoId(
+        documentoId,
+        executor,
+      );
+
     const metadata = this.buildMetadataCreacion({
       contexto,
       documento,
       tipoRelacion,
       usuario: input.usuario,
-      resultadoOperacion: 'CREADO',
+      resultadoOperacion:
+        documentosHistoricosIds.length > 0 ? 'RECREADO' : 'CREADO',
+      documentosHistoricosIds,
     });
 
-    const creadoInicial = await this.grupoFacturaDocumentos.crear({
-      grupoFacturaId,
-      documentoId,
-      tipoRelacion,
-      estado: 'activo',
-      metadata,
-      creadoPor: input.usuario?.id ?? null,
-    });
+    let creadoInicial: GrupoFacturaDocumentoRow;
+    try {
+      creadoInicial = await this.grupoFacturaDocumentos.crear({
+        grupoFacturaId,
+        documentoId,
+        tipoRelacion,
+        estado: 'activo',
+        metadata,
+        creadoPor: input.usuario?.id ?? null,
+      }, executor);
+    } catch (error: any) {
+      if (error?.code !== '23505') throw error;
+
+      const recuperado =
+        await this.grupoFacturaDocumentos.buscarActivoPorDocumentoId(
+          documentoId,
+          executor,
+        );
+
+      if (
+        recuperado &&
+        Number(recuperado.grupoFacturaId) === grupoFacturaId &&
+        recuperado.tipoRelacion === tipoRelacion
+      ) {
+        return {
+          documentoGrupoFactura: this.enriquecerVista(recuperado, documento),
+          idempotente: true,
+          workspaceDebeRefrescar: false,
+        };
+      }
+
+      throw new ConflictException(
+        crearError(
+          'El documento ya está asociado a otro Grupo de Factura',
+          'DOCUMENTO_YA_ASOCIADO_A_OTRO_GRUPO',
+          {
+            documentoId,
+            grupoFacturaIdSolicitado: grupoFacturaId,
+            grupoFacturaIdExistente: recuperado?.grupoFacturaId ?? null,
+          },
+        ),
+      );
+    }
 
     const metadataFinal = {
       ...metadata,
@@ -251,7 +481,7 @@ export class AsociarDocumentoGrupoFacturaV2UseCase {
         id: Number(creadoInicial.id),
         metadata: metadataFinal,
         actualizadoPor: input.usuario?.id ?? null,
-      })) ?? creadoInicial;
+      }, executor)) ?? creadoInicial;
 
     await this.auditoria.registrarCreacion({
       accion: 'DOCUMENTO_GRUPO_FACTURA_ASOCIADO',
@@ -267,36 +497,110 @@ export class AsociarDocumentoGrupoFacturaV2UseCase {
         grupoFacturaDocumentoId: creado.id,
         facturaDocumentoId: contexto.grupo.facturaDocumentoId,
         documentoId,
+        documentosHistoricosIds,
+        recreacion: documentosHistoricosIds.length > 0,
         tipoDocumental: documento.tipoDocumental,
         tipoRelacion,
         empresaCodigo: contexto.contenedor.empresaCodigo,
         estado: creado.estado,
       },
-    });
+    }, executor);
+
+    if (evaluacionCorrespondencia && decisionCorrespondencia) {
+      await this.registrarAuditoriaCorrespondencia({
+        contexto,
+        evaluacion: evaluacionCorrespondencia,
+        decision: decisionCorrespondencia,
+        documentoId,
+        asociacionCreada: true,
+        entidadId: creado.id,
+        usuario: input.usuario,
+      }, executor);
+    }
 
     return {
       documentoGrupoFactura: this.enriquecerVista(creado, documento),
       idempotente: false,
       workspaceDebeRefrescar: true,
+      ...(decisionCorrespondencia
+        ? { correspondencia: decisionCorrespondencia }
+        : {}),
     };
   }
 
-  private async obtenerContextoGrupo(grupoFacturaId: number, usuario?: ContextoAutenticadoV2) {
-    const grupo = await this.gruposFactura.buscarPorId(grupoFacturaId);
+  private async registrarAuditoriaCorrespondencia(input: {
+    contexto: {
+      grupo: GrupoFacturaRow;
+      principal: DocumentoOperativoPrincipalRow;
+      contenedor: ContenedorOperativoRow;
+    };
+    evaluacion: EvaluacionCorrespondenciaPagoFactura;
+    decision: DecisionCorrespondenciaResult;
+    documentoId: number;
+    asociacionCreada: boolean;
+    entidadId: string | number;
+    usuario?: ContextoAutenticadoV2;
+  }, executor?: SqlExecutor): Promise<void> {
+    const auditoriaDecision = construirAuditoriaDecision(
+      input.evaluacion,
+      input.decision,
+    );
+
+    await this.auditoria.registrarDecisionCorrespondencia({
+      accion: 'CORRESPONDENCIA_PAGO_FACTURA_DECIDIDA',
+      entidad: 'grupo_factura_documento',
+      entidadId: input.entidadId,
+      descripcion:
+        'Decisión humana de correspondencia entre Factura y transferencia.',
+      empresaCodigo: input.contexto.contenedor.empresaCodigo,
+      usuario: input.usuario,
+      antes: {
+        estadoEvaluado: input.evaluacion.estado,
+        comparaciones: input.evaluacion.comparaciones,
+      },
+      despues: {
+        facturaDocumentoId: auditoriaDecision.facturaDocumentoId,
+        pagoDocumentoId: auditoriaDecision.pagoDocumentoId,
+        grupoFacturaId: input.contexto.grupo.id,
+        estadoEvaluado: auditoriaDecision.estadoAnterior,
+        comparaciones: auditoriaDecision.comparaciones,
+        accion: auditoriaDecision.accion,
+        estadoResultante: auditoriaDecision.estadoResultante,
+        motivo: auditoriaDecision.motivo,
+        usuario: input.usuario ?? null,
+        workspace: input.usuario?.workspaceId ?? null,
+        empresa: input.contexto.contenedor.empresaCodigo,
+        requestId: input.usuario?.requestId ?? null,
+        correlationId: input.usuario?.correlationId ?? null,
+        fecha: auditoriaDecision.fecha,
+        permisoExcepcionUtilizado:
+          auditoriaDecision.accion === 'AUTORIZAR_EXCEPCION',
+        asociacionCreada: input.asociacionCreada,
+        documentoId: input.documentoId,
+      },
+    }, executor);
+  }
+
+  private async obtenerContextoGrupo(
+    grupoFacturaId: number,
+    usuario?: ContextoAutenticadoV2,
+    executor?: SqlExecutor,
+  ) {
+    const grupo = await this.gruposFactura.buscarPorId(grupoFacturaId, executor);
     if (!grupo) {
       throw new NotFoundException(crearError('Grupo de Factura no encontrado', 'GRUPO_FACTURA_NO_ENCONTRADO'));
     }
 
     this.validarGrupoActivo(grupo);
 
-    const principal = await this.principales.buscarPorId(Number(grupo.documentoOperativoPrincipalId));
+    const principal = await this.principales.buscarPorId(Number(grupo.documentoOperativoPrincipalId), executor);
     if (!principal) {
       throw new NotFoundException(
         crearError('Documento Operativo Principal del Grupo no encontrado', 'GRUPO_FACTURA_NO_PERSISTIDO'),
       );
     }
 
-    const contenedor = await this.contenedores.buscarPorId(Number(principal.contenedorOperativoId));
+    const contenedor = await this.contenedores.buscarPorId(Number(principal.contenedorOperativoId), executor);
     if (!contenedor) {
       throw new NotFoundException(crearError('Contexto operativo del Grupo no encontrado', 'GRUPO_FACTURA_NO_PERSISTIDO'));
     }
@@ -384,7 +688,12 @@ export class AsociarDocumentoGrupoFacturaV2UseCase {
     documento: DocumentoExistenteV2;
     tipoRelacion: string;
     usuario?: ContextoAutenticadoV2;
-    resultadoOperacion: 'CREADO' | 'IDEMPOTENTE' | 'RECHAZADO';
+    resultadoOperacion:
+      | 'CREADO'
+      | 'RECREADO'
+      | 'IDEMPOTENTE'
+      | 'RECHAZADO';
+    documentosHistoricosIds: number[];
   }): JsonObject {
     return {
       tipoOperacion: 'DOCUMENTO_GRUPO_FACTURA_ASOCIADO',
@@ -395,6 +704,7 @@ export class AsociarDocumentoGrupoFacturaV2UseCase {
       entidad: 'grupo_factura_documento',
       origen: 'OPERACION_DOCUMENTAL_V2',
       sprint: '2.0C',
+      documentosHistoricosIds: input.documentosHistoricosIds,
       usuario: input.usuario ?? null,
       contexto: {
         grupoFacturaId: input.contexto.grupo.id,

@@ -18,6 +18,21 @@ export type ExpedientesQuery = {
   offset?: number;
 };
 
+export type ExpedientesPage = {
+  total: number;
+  limit: number;
+  offset: number;
+  data: Expediente[];
+  detailErrors: Array<number | string>;
+};
+
+type ExpedientesPagePayload = {
+  total?: number;
+  limit?: number;
+  offset?: number;
+  data?: Expediente[];
+};
+
 function unwrap<T>(payload: T | ApiEnvelope<T>): T {
   let current = payload as any;
 
@@ -32,6 +47,44 @@ function unwrap<T>(payload: T | ApiEnvelope<T>): T {
   }
 
   return current as T;
+}
+
+
+function unwrapEnvelopeOnce<T>(payload: ApiEnvelope<T> | T): T {
+  if (
+    payload &&
+    typeof payload === "object" &&
+    "data" in payload &&
+    (payload as ApiEnvelope<T>).data !== undefined
+  ) {
+    return (payload as ApiEnvelope<T>).data as T;
+  }
+
+  return payload as T;
+}
+
+export async function enriquecerExpedientes(
+  expedientes: Expediente[],
+): Promise<{ data: Expediente[]; detailErrors: Array<number | string> }> {
+  const results = await Promise.allSettled(
+    expedientes.map(async (expediente) => {
+      const detalle = await getExpediente(expediente.id);
+      return {
+        ...expediente,
+        ...detalle,
+      } as Expediente;
+    }),
+  );
+
+  const detailErrors: Array<number | string> = [];
+  const data = results.map((result, index) => {
+    if (result.status === "fulfilled") return result.value;
+
+    detailErrors.push(expedientes[index]?.id ?? `fila-${index}`);
+    return expedientes[index];
+  });
+
+  return { data, detailErrors };
 }
 
 
@@ -82,20 +135,39 @@ export async function buscarExpedientes(q: string, limit = 10) {
   return (unwrapped?.data ?? []) as ExpedienteSearchResult[];
 }
 
-export async function getExpedientes(params: ExpedientesQuery = {}) {
-  const { data } = await api.get<ApiEnvelope<Expediente[]> | Expediente[]>(
-    "/expedientes",
-    {
-      params: {
-        empresa: params.empresa ?? "BBTI",
-        estado: params.estado ?? "abierto",
-        limit: params.limit ?? 20,
-        offset: params.offset ?? 0,
-      },
-    },
-  );
+export async function getExpedientesPage(
+  params: ExpedientesQuery = {},
+): Promise<ExpedientesPage> {
+  const requestedLimit = params.limit ?? 20;
+  const requestedOffset = params.offset ?? 0;
 
-  return unwrap<Expediente[]>(data);
+  const { data } = await api.get<
+    ApiEnvelope<ExpedientesPagePayload> | ExpedientesPagePayload
+  >("/expedientes", {
+    params: {
+      empresa: params.empresa ?? "BBTI",
+      estado: params.estado ?? "abierto",
+      limit: requestedLimit,
+      offset: requestedOffset,
+    },
+  });
+
+  const page = unwrapEnvelopeOnce<ExpedientesPagePayload>(data);
+  const summaries = Array.isArray(page?.data) ? page.data : [];
+  const enriched = await enriquecerExpedientes(summaries);
+
+  return {
+    total: Number(page?.total ?? summaries.length),
+    limit: Number(page?.limit ?? requestedLimit),
+    offset: Number(page?.offset ?? requestedOffset),
+    data: enriched.data,
+    detailErrors: enriched.detailErrors,
+  };
+}
+
+export async function getExpedientes(params: ExpedientesQuery = {}) {
+  const page = await getExpedientesPage(params);
+  return page.data;
 }
 
 export async function getExpediente(id: number | string) {
@@ -174,4 +246,85 @@ function unwrapDeep<T = any>(payload: unknown): T {
   }
 
   return current as T;
+}
+
+// Compras: bandeja OC/OS-céntrica read-only.
+export type BandejaComprasQuery = {
+  empresa?: string;
+  estado?: string;
+  q?: string;
+  limit?: number;
+  offset?: number;
+  incluirPendientesValidacion?: boolean;
+};
+
+export type BandejaComprasFactura = {
+  documentoId: string | number;
+  serie?: string | null;
+  numero?: string | null;
+  grupoFacturaId: string | number;
+};
+
+export type BandejaComprasPrincipal = {
+  documentoId: string | number;
+  tipo?: string | null;
+  tipoDocumental?: string | null;
+  numero?: string | null;
+  proveedor?: string | null;
+  proveedorNombre?: string | null;
+  ruc?: string | null;
+  proveedorRuc?: string | null;
+};
+
+export type BandejaComprasProveedor = {
+  ruc?: string | null;
+  nombre?: string | null;
+};
+
+export type BandejaComprasFila = {
+  expedienteId: string | number;
+  codigoExpediente?: string | null;
+  descripcion?: string | null;
+  estado?: string | null;
+  principal: BandejaComprasPrincipal;
+  proveedor?: BandejaComprasProveedor | null;
+  facturas: BandejaComprasFactura[];
+};
+
+export type BandejaComprasPage = {
+  total: number;
+  limit: number;
+  offset: number;
+  data: BandejaComprasFila[];
+};
+
+export async function obtenerBandejaCompras(
+  params: BandejaComprasQuery = {},
+): Promise<BandejaComprasPage> {
+  const response = await api.get("/expedientes/bandeja-compras", { params });
+
+  let payload: unknown = response.data;
+
+  for (let depth = 0; depth < 4; depth += 1) {
+    if (
+      payload &&
+      typeof payload === "object" &&
+      "total" in payload &&
+      "limit" in payload &&
+      "offset" in payload &&
+      "data" in payload &&
+      Array.isArray((payload as { data?: unknown }).data)
+    ) {
+      return payload as BandejaComprasPage;
+    }
+
+    if (payload && typeof payload === "object" && "data" in payload) {
+      payload = (payload as { data?: unknown }).data;
+      continue;
+    }
+
+    break;
+  }
+
+  throw new Error("Respuesta inválida de GET /expedientes/bandeja-compras");
 }

@@ -246,6 +246,8 @@ export class V1V2CompatibilityAdapter {
       fechaEmision: this.normalizeDate(documento.fechaEmision),
       moneda: documento.moneda,
       montoTotal: documento.montoTotal,
+      metadata: documento.metadata ?? null,
+      banco: this.pickBanco(documento.metadata),
       archivoId: documento.archivoId,
       nombreArchivo: documento.nombreArchivo,
       storageProvider: documento.storageProvider,
@@ -362,5 +364,31 @@ export class V1V2CompatibilityAdapter {
     }
 
     return normalized;
+  }
+
+  private pickBanco(metadata: JsonObject | null | undefined): string | null {
+    if (!metadata) return null;
+
+    const direct = metadata.banco;
+    if (typeof direct === 'string' && direct.trim() !== '') {
+      return direct.trim();
+    }
+
+    const ocr = metadata.ocr;
+    if (!ocr || typeof ocr !== 'object' || Array.isArray(ocr)) {
+      return null;
+    }
+
+    const ocrMetadata = (ocr as JsonObject).metadata;
+    if (!ocrMetadata || typeof ocrMetadata !== 'object' || Array.isArray(ocrMetadata)) {
+      return null;
+    }
+
+    const nested = (ocrMetadata as JsonObject).banco;
+    if (typeof nested === 'string' && nested.trim() !== '') {
+      return nested.trim();
+    }
+
+    return null;
   }
 }

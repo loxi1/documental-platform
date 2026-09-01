@@ -10,6 +10,7 @@ import {
   sugerirExpedienteOcr,
   vincularOcrAExpediente,
 } from "@/services/ocr-resultados";
+import { confirmarOcrConExpediente } from "@/services/ocr-procesamiento";
 import type { OcrResultado, SugerenciaExpediente } from "@/types/ocr";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -234,10 +235,31 @@ function getEmpresaExpediente(item?: OcrResultadoView | null) {
   );
 }
 
+function estadoNormalizado(item?: OcrResultadoView | null) {
+  return String(item?.estado ?? "").trim().toLowerCase();
+}
+
+function estaConfirmado(item?: OcrResultadoView | null) {
+  return estadoNormalizado(item) === "confirmado";
+}
+
+function estaRechazado(item?: OcrResultadoView | null) {
+  return estadoNormalizado(item) === "rechazado";
+}
+
 function estadoVinculacion(item: OcrResultadoView) {
-  if (getExpedienteId(item)) return "Vinculado";
-  if (item.estado === "confirmado") return "Pendiente vínculo";
-  return "Pendiente revisión";
+  if (estaRechazado(item)) return "Rechazado";
+  if (estaConfirmado(item)) return "Confirmado";
+  if (getExpedienteId(item)) return "Expediente vinculado";
+  return "Pendiente de vinculación";
+}
+
+function estadoCierreHumano(item?: OcrResultadoView | null) {
+  if (!item) return "Selecciona un resultado OCR";
+  if (estaRechazado(item)) return "Rechazado";
+  if (estaConfirmado(item)) return "Confirmado";
+  if (getExpedienteId(item)) return "Pendiente de confirmación";
+  return "Pendiente de vinculación";
 }
 
 function defaultRelacion(item: OcrResultadoView | null) {
@@ -307,6 +329,15 @@ export default function OcrResultadosPage() {
   const selectedDescripcionExpediente = getDescripcionExpediente(selected);
   const selectedEmpresaExpediente = getEmpresaExpediente(selected);
   const selectedYaVinculado = Boolean(selectedExpedienteId);
+  const selectedConfirmado = estaConfirmado(selected);
+  const selectedRechazado = estaRechazado(selected);
+  const selectedEstadoCierre = estadoCierreHumano(selected);
+  const puedeVincularSelected = Boolean(
+    selected && expedienteId && !selectedYaVinculado && !selectedConfirmado && !selectedRechazado,
+  );
+  const puedeConfirmarSelected = Boolean(
+    selected && selectedExpedienteId && !selectedConfirmado && !selectedRechazado,
+  );
 
   const refreshList = () => {
     queryClient.invalidateQueries({ queryKey: ["ocr-resultados"] });
@@ -355,7 +386,7 @@ export default function OcrResultadosPage() {
       });
     },
     onSuccess: async () => {
-      setFeedback("OCR vinculado correctamente al expediente.");
+      setFeedback("Expediente vinculado correctamente. Ahora confirma el documento para completar el proceso.");
       refreshList();
 
       if (selected) {
@@ -364,6 +395,37 @@ export default function OcrResultadosPage() {
       }
     },
   });
+
+  const confirmarMutation = useMutation({
+    mutationFn: async () => {
+      if (!selected) throw new Error("Seleccione un OCR primero");
+
+      const expedienteIdConfirmacion = selectedExpedienteId ?? expedienteId;
+      if (!expedienteIdConfirmacion) throw new Error("El OCR no tiene expediente vinculado");
+
+      return confirmarOcrConExpediente(selected.id, {
+        expedienteId: Number(expedienteIdConfirmacion),
+        tipoRelacion,
+        esPrincipal: tipoRelacion.startsWith("principal_"),
+        orden: tipoRelacion.startsWith("principal_") ? 1 : 10,
+      });
+    },
+    onSuccess: async () => {
+      setFeedback("Documento confirmado correctamente. Ya está disponible en el Workspace documental.");
+      refreshList();
+
+      if (selected) {
+        const updated = await getOcrResultado(selected.id);
+        hydrateSelected(updated);
+      }
+    },
+  });
+
+  const hayOperacionPendiente =
+    detalleMutation.isPending ||
+    sugerirMutation.isPending ||
+    vincularMutation.isPending ||
+    confirmarMutation.isPending;
 
   const abrirDetalle = (item: OcrResultadoView) => {
     detalleMutation.mutate(item.id);
@@ -458,7 +520,7 @@ export default function OcrResultadosPage() {
                     </td>
                     <td className="px-3 py-3">{getTipo(item)}</td>
                     <td className="px-3 py-3">
-                      <Badge variant="outline">{texto(item.estado)}</Badge>
+                      <Badge variant="outline">{estadoCierreHumano(item)}</Badge>
                     </td>
                     <td className="px-3 py-3">
                       <Badge variant={vinculado ? "secondary" : "outline"}>
@@ -485,6 +547,12 @@ export default function OcrResultadosPage() {
                               {itemEmpresaExpediente}
                             </p>
                           ) : null}
+                          <Link
+                            href={`/workspace/expedientes-v1/${itemExpedienteId}`}
+                            className="text-xs font-semibold text-blue-600 underline-offset-4 hover:underline dark:text-blue-300"
+                          >
+                            Abrir Workspace
+                          </Link>
                         </div>
                       ) : (
                         <div className="space-y-1">
@@ -576,7 +644,7 @@ export default function OcrResultadosPage() {
                   ["Documento ID", getDocumentoId(selected)],
                   ["Archivo ID", getArchivoId(selected)],
                   ["Tipo", getTipo(selected)],
-                  ["Estado", selected.estado],
+                  ["Estado", selectedEstadoCierre],
                   ["Confianza", porcentaje(selected.confidence ?? selected.confianza)],
                   ["Número", metadata.numero],
                   ["Fecha emisión", metadata.fechaEmision],
@@ -631,11 +699,18 @@ export default function OcrResultadosPage() {
                       ) : null}
                     </div>
 
-                    <Button asChild size="sm" variant="outline">
-                      <Link href={`/compras/${selectedExpedienteId}/ver`}>
-                        Ver expediente
-                      </Link>
-                    </Button>
+                    <div className="flex flex-wrap gap-2">
+                      <Button asChild size="sm" variant="outline">
+                        <Link href={`/compras/${selectedExpedienteId}/ver`}>
+                          Ver expediente
+                        </Link>
+                      </Button>
+                      <Button asChild size="sm" variant="default">
+                        <Link href={`/workspace/expedientes-v1/${selectedExpedienteId}`}>
+                          Abrir Workspace
+                        </Link>
+                      </Button>
+                    </div>
                   </div>
                 ) : (
                   <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
@@ -693,13 +768,32 @@ export default function OcrResultadosPage() {
         <aside className="space-y-4">
           <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
             <h2 className="text-lg font-semibold text-slate-950 dark:text-slate-100">
-              Vincular a expediente
+              Cierre OCR
             </h2>
             <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-              Usa un expediente existente. No crea expedientes nuevos desde esta vista.
+              Vincula solo cuando no exista expediente. Si ya está vinculado, confirma el documento.
             </p>
 
             <div className="mt-4 space-y-3">
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm dark:border-slate-800 dark:bg-slate-950">
+                <p className="text-xs uppercase tracking-wide text-slate-400">
+                  Estado funcional
+                </p>
+                <p className="mt-1 font-semibold text-slate-950 dark:text-slate-100">
+                  {selectedEstadoCierre}
+                </p>
+                {selectedYaVinculado ? (
+                  <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                    Expediente vinculado: #{String(selectedExpedienteId)}
+                    {selectedCodigoExpediente ? ` · ${selectedCodigoExpediente}` : ""}
+                  </p>
+                ) : (
+                  <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                    No tiene expediente asociado.
+                  </p>
+                )}
+              </div>
+
               <div>
                 <label className="text-xs uppercase tracking-wide text-slate-400">
                   Expediente ID
@@ -707,7 +801,8 @@ export default function OcrResultadosPage() {
                 <Input
                   value={expedienteId}
                   onChange={(event) => setExpedienteId(event.target.value)}
-                  placeholder="Ejemplo: 41"
+                  placeholder="ID de expediente"
+                  disabled={hayOperacionPendiente || selectedYaVinculado || selectedConfirmado || selectedRechazado}
                 />
               </div>
 
@@ -716,9 +811,10 @@ export default function OcrResultadosPage() {
                   Relación documental
                 </label>
                 <select
-                  className="mt-1 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm dark:border-slate-800 dark:bg-slate-950"
+                  className="mt-1 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-800 dark:bg-slate-950"
                   value={tipoRelacion}
                   onChange={(event) => setTipoRelacion(event.target.value)}
+                  disabled={hayOperacionPendiente || selectedConfirmado || selectedRechazado}
                 >
                   {RELACIONES_DOCUMENTALES.map((relacion) => (
                     <option key={relacion} value={relacion}>
@@ -728,15 +824,39 @@ export default function OcrResultadosPage() {
                 </select>
               </div>
 
-              <Button
-                className="w-full"
-                disabled={
-                  vincularMutation.isPending || !selected || !expedienteId
-                }
-                onClick={() => vincularMutation.mutate()}
-              >
-                {vincularMutation.isPending ? "Vinculando..." : "Vincular OCR"}
-              </Button>
+              {!selectedYaVinculado && !selectedConfirmado && !selectedRechazado ? (
+                <Button
+                  className="w-full"
+                  disabled={!puedeVincularSelected || hayOperacionPendiente}
+                  onClick={() => vincularMutation.mutate()}
+                >
+                  {vincularMutation.isPending ? "Vinculando..." : "Vincular OCR"}
+                </Button>
+              ) : null}
+
+              {puedeConfirmarSelected ? (
+                <Button
+                  className="w-full"
+                  disabled={hayOperacionPendiente}
+                  onClick={() => confirmarMutation.mutate()}
+                >
+                  {confirmarMutation.isPending
+                    ? "Confirmando..."
+                    : "Confirmar con expediente"}
+                </Button>
+              ) : null}
+
+              {selectedConfirmado ? (
+                <p className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-200">
+                  Documento cerrado y disponible en Workspace.
+                </p>
+              ) : null}
+
+              {selectedRechazado ? (
+                <p className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200">
+                  Resultado rechazado; solo lectura.
+                </p>
+              ) : null}
             </div>
           </section>
 
@@ -745,13 +865,13 @@ export default function OcrResultadosPage() {
               Sugerencia de expediente
             </h2>
             <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-              Consulta la sugerencia del backend y completa el ID para vincular.
+              Consulta la sugerencia del backend cuando el OCR aún no tenga expediente.
             </p>
 
             <Button
               className="mt-4 w-full"
               variant="outline"
-              disabled={!selected || sugerirMutation.isPending}
+              disabled={!selected || hayOperacionPendiente || selectedYaVinculado || selectedConfirmado || selectedRechazado}
               onClick={() => selected && sugerirMutation.mutate(selected.id)}
             >
               {sugerirMutation.isPending
@@ -803,9 +923,9 @@ export default function OcrResultadosPage() {
             </section>
           ) : null}
 
-          {(detalleMutation.error || sugerirMutation.error || vincularMutation.error) ? (
+          {(detalleMutation.error || sugerirMutation.error || vincularMutation.error || confirmarMutation.error) ? (
             <section className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200">
-              Ocurrió un error ejecutando la acción. Revisa consola o backend.
+              No se pudo completar la operación. Revisa los datos e inténtalo nuevamente.
             </section>
           ) : null}
         </aside>

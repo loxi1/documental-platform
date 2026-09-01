@@ -3,6 +3,7 @@ export interface OcrResultado {
   archivo_id: number;
   documento_id: number | null;
   expediente_id?: number | null;
+  grupoFacturaId?: number | null;
 
   tipo_propuesto: string;
 

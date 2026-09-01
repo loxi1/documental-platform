@@ -82,6 +82,8 @@ function construirAdvertencias(params: {
 
 function normalizarTipo(value: string): TrazabilidadTipoV2 {
   if (
+    value === 'MATERIALIZAR_CONTEXTO_OPERATIVO' ||
+    value === 'ANULAR_CONTENEDOR_OPERATIVO' ||
     value === 'ASOCIAR_DOCUMENTO_PRINCIPAL' ||
     value === 'GRUPO_FACTURA_CREADO' ||
     value === 'DOCUMENTO_GRUPO_FACTURA_ASOCIADO'

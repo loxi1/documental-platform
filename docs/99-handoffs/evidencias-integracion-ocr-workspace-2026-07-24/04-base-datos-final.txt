@@ -1,0 +1,35 @@
+=== DOCUMENTO CONFIRMADO ===
+ id | cliente_abreviatura | tipo_documental |   estado   | ruc_emisor  |       razon_social_emisor        | serie | numero | fecha_emision |       moneda       | monto_total | clave_documental
+----+---------------------+-----------------+------------+-------------+----------------------------------+-------+--------+---------------+--------------------+-------------+------------------
+  3 | BBTI                | OC              | confirmado | 20370146994 | CORPORACION ACEROS AREQUIPA S.A. |       | 007950 | 2026-04-23    | DOLARES AMERICANOS |     4181.92 | BBTI|OC|007950
+(1 row)
+
+=== OCR CONFIRMADO ===
+ id | archivo_id | documento_id | tipo_propuesto |   estado   | clave_documental | expediente_id |        validado_en         | validado_por |        vinculado_en
+----+------------+--------------+----------------+------------+------------------+---------------+----------------------------+--------------+----------------------------
+  3 |          3 |            3 | OC             | confirmado | BBTI|OC|007950   |            17 | 2026-07-24 22:51:43.780375 |            1 | 2026-07-24 22:51:43.780375
+(1 row)
+
+=== VÍNCULO EXPEDIENTE ===
+ expediente_id | documento_id | tipo_relacion | es_principal | orden |         creado_en
+---------------+--------------+---------------+--------------+-------+----------------------------
+            17 |            3 | principal_oc  | t            |     1 | 2026-07-24 22:14:21.606452
+(1 row)
+
+=== EXPEDIENTE ===
+ id | empresa_codigo | codigo_expediente |     descripcion     | estado  | cliente_destino_id
+----+----------------+-------------------+---------------------+---------+--------------------
+ 17 | BBTI           | 050201            | ALMACEN Y LOGISTICA | abierto |                  2
+(1 row)
+
+=== EVENTOS ===
+     tipo_evento      | documento_id | archivo_id | expediente_id | usuario_id | origen |           creado_en
+----------------------+--------------+------------+---------------+------------+--------+-------------------------------
+ documento.creado     |            3 |            |            16 |            | api    | 2026-07-24 20:37:53.829852+00
+ archivo.subido       |            3 |          3 |            16 |            | api    | 2026-07-24 20:37:57.545326+00
+ ocr.procesado        |            3 |          3 |            16 |            | ocr    | 2026-07-24 20:38:01.735181+00
+ expediente.vinculado |            3 |            |            17 |            | api    | 2026-07-24 22:14:21.613126+00
+ expediente.vinculado |            3 |            |            17 |            | api    | 2026-07-24 22:32:09.408927+00
+ ocr.confirmado       |            3 |          3 |            17 |          1 | api    | 2026-07-24 22:51:43.793143+00
+ expediente.vinculado |            3 |          3 |            17 |          1 | api    | 2026-07-24 22:51:43.795681+00
+(7 rows)

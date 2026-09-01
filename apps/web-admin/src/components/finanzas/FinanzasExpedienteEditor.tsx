@@ -1,13 +1,19 @@
 "use client";
 
 import Link from "next/link";
-import { type ChangeEvent, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import {
+  type ChangeEvent,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
   Eye,
   FilePlus2,
-  FileText,
   Pencil,
   Save,
   Trash2,
@@ -19,6 +25,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import { FinanzasDocumentoPrincipalOperativoCard } from "@/components/finanzas/FinanzasDocumentoPrincipalOperativoCard";
+import { FinanzasGrupoFacturaPagoPanel } from "@/components/finanzas/FinanzasGrupoFacturaPagoPanel";
 import {
   OcrProcessingDialog,
   type OcrProcessingStep,
@@ -36,20 +44,31 @@ import {
 } from "@/constants/documentos";
 import { useExpediente } from "@/hooks/useExpedientes";
 import { api } from "@/services/api";
-import { subirDocumentoGuiado } from "@/services/carga-guiada";
 import {
-  agregarArchivoComoVersion,
-  actualizarDocumentoManual,
-} from "@/services/documentos";
+  prevalidarDocumentoGuiado,
+  subirDocumentoGuiado,
+} from "@/services/carga-guiada";
+import {
+  getDocumentoDetalleV2,
+  getWorkspaceDocumentalV2,
+} from "@/services/documental-v2-workspace";
+import { actualizarDocumentoManual } from "@/services/documentos";
 import { getDocumentoArchivoPreviewUrl } from "@/services/documentos-preview";
 import {
   confirmarOcrConExpediente,
+  OcrApiError,
   editarOcrResultado,
   procesarArchivoOcr,
   rechazarOcrResultado,
   type ProcesarOcrResultado,
 } from "@/services/ocr-procesamiento";
+import { getOcrResultado, getOcrResultados } from "@/services/ocr-resultados";
 import type { CargaGuiadaPayloadPreview } from "@/types/carga-guiada";
+import {
+  getGrupoDocumentoPrincipalDocumentoId,
+  getGrupoFacturaPersistidoId,
+  getGruposFactura,
+} from "@/components/documental-v2/workspace-v2-utils";
 
 type DocumentoVinculado = Record<string, any>;
 
@@ -61,6 +80,13 @@ type UploadYProcesarArgs = {
   accion: AccionFinanzas;
   file: File;
 };
+
+class DuplicadoHashFinanzasError extends Error {
+  constructor(public readonly documento: DocumentoVinculado) {
+    super("Este sustento ya fue registrado.");
+    this.name = "DuplicadoHashFinanzasError";
+  }
+}
 
 type PagoEditForm = {
   numeroOperacion: string;
@@ -80,6 +106,11 @@ const FINANZAS_TIPOS_DOCUMENTALES_PERMITIDOS = [
   "TRANSFERENCIA",
   "DETRACCION",
 ] as const;
+
+function positiveInteger(value: unknown) {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+}
 
 function normalizeCompare(value: unknown) {
   return String(value ?? "")
@@ -218,6 +249,28 @@ function getArchivoId(source: Record<string, unknown> | null | undefined) {
   return String(value);
 }
 
+function getDocumentoArchivoId(
+  source: Record<string, unknown> | null | undefined,
+) {
+  const value = source?.archivoId ?? source?.archivo_id;
+  if (value === null || value === undefined || value === "") return null;
+  return String(value);
+}
+
+function getOcrDocumentoId(
+  source: Record<string, unknown> | null | undefined,
+) {
+  const value = source?.documentoId ?? source?.documento_id;
+  if (value === null || value === undefined || value === "") return null;
+  return String(value);
+}
+
+function getOcrGrupoFacturaId(
+  source: Record<string, unknown> | null | undefined,
+) {
+  return positiveInteger(source?.grupoFacturaId ?? source?.grupo_factura_id);
+}
+
 function getOcrResultadoId(source: Record<string, unknown> | null | undefined) {
   const value =
     source?.ocrResultadoId ??
@@ -264,7 +317,7 @@ function normalizeTipoDocumentalParaBackend(tipoDocumental: string) {
   const tipo = String(tipoDocumental || "")
     .trim()
     .toUpperCase();
-  if (tipo === "TRANSFERENCIA") return "PAGO_TRANSFERENCIA";
+  if (tipo === "PAGO_TRANSFERENCIA") return "TRANSFERENCIA";
   if (tipo === "DETRACCION" || tipo === "DETRACCIÓN") return "PAGO_DETRACCION";
   return tipo;
 }
@@ -274,7 +327,9 @@ function getTipoRelacionPorTipoDocumental(
   fallback: string,
 ) {
   const tipo = normalizeTipoDocumentalParaBackend(tipoDocumental);
-  if (tipo === "PAGO_TRANSFERENCIA") return "adjunto_transferencia";
+  if (tipo === "TRANSFERENCIA" || tipo === "PAGO_TRANSFERENCIA") {
+    return "adjunto_transferencia";
+  }
   if (tipo === "PAGO_DETRACCION") return "adjunto_detraccion";
   return fallback || "adjunto_transferencia";
 }
@@ -318,6 +373,8 @@ function buildMetadataDesdeFormulario(
     emptyToUndefined(form.fechaPago) ?? emptyToUndefined(form.fechaEmision);
   const banco =
     emptyToUndefined(form.banco) ?? emptyToUndefined(form.cotizacion);
+  const esDocumentoPago =
+    tipo === "TRANSFERENCIA" || tipo === "PAGO_DETRACCION";
   const comprobante =
     emptyToUndefined(form.comprobante) ??
     emptyToUndefined(form.documentoRelacionado);
@@ -325,13 +382,13 @@ function buildMetadataDesdeFormulario(
   return {
     tipoDocumental: tipo,
     clienteAbreviatura: emptyToUndefined(context.clienteAbreviatura),
-    numero: tipo.startsWith("PAGO_")
+    numero: esDocumentoPago
       ? numeroOperacion
       : emptyToUndefined(form.numero),
     numeroOperacion,
     numeroConstancia: tipo === "PAGO_DETRACCION" ? numeroOperacion : undefined,
     serie: emptyToUndefined(form.serie),
-    fechaEmision: tipo.startsWith("PAGO_")
+    fechaEmision: esDocumentoPago
       ? fechaPago
       : emptyToUndefined(form.fechaEmision),
     fechaPago,
@@ -639,15 +696,40 @@ function DocumentosExistentes({
 
 export function FinanzasExpedienteEditor({ id }: { id: string | number }) {
   const queryClient = useQueryClient();
+  const searchParams = useSearchParams();
   const { data: expediente, isLoading, error } = useExpediente(id);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const decisionHumanaRef = useRef<HTMLDivElement | null>(null);
+  const expedienteContextoOcrRef = useRef<{
+    id: string | number;
+    codigo: string;
+    descripcion: string;
+    empresa: string;
+    rucComprador: string;
+  }>({
+    id,
+    codigo: "",
+    descripcion: "",
+    empresa: "",
+    rucComprador: "",
+  });
   const [modalAbierto, setModalAbierto] = useState(false);
   const [resultadoModal, setResultadoModal] =
     useState<ProcesarOcrResultado | null>(null);
   const [accionActual, setAccionActual] = useState<AccionFinanzas | null>(null);
+  const [decisionCorrespondencia, setDecisionCorrespondencia] = useState<{
+    accion: "ACEPTAR" | "OBSERVAR";
+    motivo: string;
+  } | null>(null);
+  const [decisionCorrespondenciaRequerida, setDecisionCorrespondenciaRequerida] =
+    useState(false);
+  const [ocrResultadoIdDecisionForzada, setOcrResultadoIdDecisionForzada] =
+    useState<number | null>(null);
   const [mensajeValidacion, setMensajeValidacion] = useState<string | null>(
     null,
   );
+  const [duplicadoHash, setDuplicadoHash] =
+    useState<DocumentoVinculado | null>(null);
   const [processingStep, setProcessingStep] =
     useState<OcrProcessingStep>("idle");
   const [processingFileName, setProcessingFileName] = useState<string | null>(
@@ -674,6 +756,178 @@ export function FinanzasExpedienteEditor({ id }: { id: string | number }) {
     observacion: "",
   });
 
+  useEffect(() => {
+    if (!decisionCorrespondenciaRequerida) return;
+
+    const frame = window.requestAnimationFrame(() => {
+      const node = decisionHumanaRef.current;
+      if (!node) return;
+
+      node.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
+      node.focus({ preventScroll: true });
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [decisionCorrespondenciaRequerida]);
+
+  const grupoFacturaId = positiveInteger(searchParams.get("grupoFacturaId"));
+  const ocrResultadoIdRecuperar = positiveInteger(
+    searchParams.get("ocrResultadoId"),
+  );
+
+  const workspaceQuery = useQuery({
+    queryKey: ["finanzas-editor-workspace-v2", String(id)],
+    enabled: Boolean(id),
+    queryFn: () => getWorkspaceDocumentalV2(id),
+  });
+
+  const gruposFactura = useMemo(
+    () => (workspaceQuery.data ? getGruposFactura(workspaceQuery.data) : []),
+    [workspaceQuery.data],
+  );
+
+  const grupoFacturaSeleccionado = useMemo(
+    () =>
+      grupoFacturaId === null
+        ? null
+        : gruposFactura.find(
+            (grupo) =>
+              positiveInteger(getGrupoFacturaPersistidoId(grupo)) ===
+              grupoFacturaId,
+          ) ?? null,
+    [grupoFacturaId, gruposFactura],
+  );
+
+  const documentoBaseId = positiveInteger(
+    grupoFacturaSeleccionado
+      ? getGrupoDocumentoPrincipalDocumentoId(grupoFacturaSeleccionado)
+      : null,
+  );
+
+  function requireContextoV2() {
+    if (grupoFacturaId === null) {
+      throw new Error(
+        "Falta grupoFacturaId. Vuelva a abrir Finanzas desde el Grupo de Factura correspondiente.",
+      );
+    }
+
+    if (workspaceQuery.isLoading) {
+      throw new Error("El Grupo de Factura todavía se está validando.");
+    }
+
+    if (workspaceQuery.isError || !grupoFacturaSeleccionado) {
+      throw new Error(
+        "No se pudo resolver el Grupo de Factura seleccionado en este expediente.",
+      );
+    }
+
+    if (documentoBaseId === null) {
+      throw new Error(
+        "No se pudo resolver el documento principal del Grupo de Factura.",
+      );
+    }
+
+    return { grupoFacturaId, documentoBaseId };
+  }
+
+  const ocrRecuperacionQuery = useQuery({
+    queryKey: ["finanzas-recuperar-ocr", ocrResultadoIdRecuperar],
+    enabled: ocrResultadoIdRecuperar !== null,
+    queryFn: () => getOcrResultado(ocrResultadoIdRecuperar!),
+  });
+
+  const ocrRecuperadoRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (
+      ocrResultadoIdRecuperar === null ||
+      !ocrRecuperacionQuery.data ||
+      ocrRecuperadoRef.current === ocrResultadoIdRecuperar
+    ) {
+      return;
+    }
+
+    const ocr = ocrRecuperacionQuery.data as unknown as Record<
+      string,
+      unknown
+    >;
+
+    const metadataPersistida =
+      ocr.metadata &&
+      typeof ocr.metadata === "object" &&
+      !Array.isArray(ocr.metadata)
+        ? (ocr.metadata as Record<string, unknown>)
+        : {};
+
+    const resultadoProcesamiento = {
+      ...metadataPersistida,
+      ocrResultadoId: ocr.id ?? ocrResultadoIdRecuperar,
+      archivoId: ocr.archivo_id ?? ocr.archivoId,
+      documentoId: ocr.documento_id ?? ocr.documentoId,
+      tipoDocumental:
+        metadataPersistida.tipoDocumental ??
+        ocr.tipo_propuesto ??
+        ocr.tipoPropuesto,
+      claveDocumental:
+        metadataPersistida.claveDocumental ??
+        ocr.clave_documental ??
+        ocr.claveDocumental,
+    } as unknown as ProcesarOcrResultado;
+
+    const tipoRecuperado = normalizeTipoDocumentalParaBackend(
+      String(
+        ocr.tipo_propuesto ??
+          ocr.tipoPropuesto ??
+          resultadoProcesamiento.tipoDocumental ??
+          "",
+      ),
+    );
+
+    const option = DOCUMENTO_FINANZAS_ADJUNTO_OPTIONS.find(
+      (candidate) =>
+        normalizeTipoDocumentalParaBackend(
+          String(candidate.tipoEsperado ?? ""),
+        ) === tipoRecuperado,
+    );
+
+    if (!option) {
+      setMensajeValidacion(
+        `No se pudo resolver la acción de Finanzas para el OCR ${ocrResultadoIdRecuperar}.`,
+      );
+      return;
+    }
+
+    const accion = { ...option, grupo: "adjunto" as const };
+
+    setAccionActual(accion);
+    setResultadoModal(
+      buildResultadoConContexto(resultadoProcesamiento, accion, {
+        archivoId: String(
+          ocr.archivo_id ?? ocr.archivoId ?? resultadoProcesamiento.archivoId,
+        ),
+        filename: String(
+          ocr.nombre_archivo ??
+            ocr.nombreArchivo ??
+            getRecordValue(metadataPersistida, ["archivo", "filename"]) ??
+            "documento.pdf",
+        ),
+        uploadResponse: {},
+      }),
+    );
+
+    setMensajeValidacion(
+      `OCR ${ocrResultadoIdRecuperar} recuperado para continuar su validación en Finanzas.`,
+    );
+    setModalAbierto(true);
+    ocrRecuperadoRef.current = ocrResultadoIdRecuperar;
+  }, [
+    ocrResultadoIdRecuperar,
+    ocrRecuperacionQuery.data,
+  ]);
+
   const documentosQuery = useQuery({
     queryKey: ["expediente-documentos", String(id)],
     enabled: Boolean(id),
@@ -689,6 +943,62 @@ export function FinanzasExpedienteEditor({ id }: { id: string | number }) {
     [documentos],
   );
   const principal = useMemo(() => pickPrincipal(documentos), [documentos]);
+  async function resolverOcrResultadoIdConfirmadoFinanzas(
+    documentoId: string,
+    archivoId: string,
+  ) {
+    const contextoActual = requireContextoV2();
+
+    const rows = (await getOcrResultados({
+      grupoFacturaId: contextoActual.grupoFacturaId,
+    })) as unknown as Array<Record<string, unknown>>;
+
+    const matches = rows.filter((row) => {
+      if (getOcrGrupoFacturaId(row) !== contextoActual.grupoFacturaId) {
+        return false;
+      }
+      if (getDocumentoArchivoId(row) !== archivoId) {
+        return false;
+      }
+      return getOcrDocumentoId(row) === documentoId;
+    });
+
+    if (matches.length !== 1) {
+      throw new Error(
+        `OCR_CONFIRMADO_NO_UNIVOCO: esperado 1 resultado para documento ${documentoId} / archivo ${archivoId}, encontrados ${matches.length}.`,
+      );
+    }
+
+    const ocrResultadoId = positiveInteger(getOcrResultadoId(matches[0]));
+    if (ocrResultadoId === null) {
+      throw new Error(
+        "OCR_RESULTADO_REQUERIDO: el resultado OCR encontrado no contiene un identificador válido.",
+      );
+    }
+
+    const detalle = (await getOcrResultado(
+      ocrResultadoId,
+    )) as unknown as Record<string, unknown>;
+
+    if (getOcrGrupoFacturaId(detalle) !== contextoActual.grupoFacturaId) {
+      throw new Error(
+        "OCR_CONFIRMADO_GROUP_MISMATCH: el OCR no pertenece al grupo seleccionado.",
+      );
+    }
+    if (getDocumentoArchivoId(detalle) !== archivoId) {
+      throw new Error(
+        "OCR_CONFIRMADO_ARCHIVO_MISMATCH: el OCR no pertenece al archivo del pago editado.",
+      );
+    }
+    if (getOcrDocumentoId(detalle) !== documentoId) {
+      throw new Error(
+        "OCR_CONFIRMADO_DOCUMENTO_MISMATCH: el OCR no pertenece al pago editado.",
+      );
+    }
+
+    return ocrResultadoId;
+  }
+
   const actualizarPagoMutation = useMutation({
     mutationFn: async ({
       doc,
@@ -700,7 +1010,26 @@ export function FinanzasExpedienteEditor({ id }: { id: string | number }) {
       const documentoId = getDocumentoId(doc);
       if (!documentoId) throw new Error("No se encontró documentoId del pago.");
 
-      const tipoDocumental = getTipoDocumentalDoc(doc) || "PAGO_TRANSFERENCIA";
+      const estadoDocumento = text(
+        doc.estado ?? doc.documentoEstado ?? doc.documento_estado,
+        "",
+      ).toLowerCase();
+      const esConfirmado = estadoDocumento === "confirmado";
+      const archivoId = getDocumentoArchivoId(doc);
+
+      if (esConfirmado && !archivoId) {
+        throw new Error(
+          "CORRECCION_CONFIRMADA_SIN_ARCHIVO: no se pudo resolver el archivo del pago.",
+        );
+      }
+
+      const ocrResultadoId = esConfirmado
+        ? await resolverOcrResultadoIdConfirmadoFinanzas(documentoId, archivoId!)
+        : undefined;
+
+      const tipoDocumental = normalizeTipoDocumentalParaBackend(
+        getTipoDocumentalDoc(doc) || "TRANSFERENCIA",
+      );
       const metadata = {
         tipoDocumental,
         clienteAbreviatura: empresa,
@@ -719,6 +1048,7 @@ export function FinanzasExpedienteEditor({ id }: { id: string | number }) {
         moneda: form.moneda,
         comprobante: form.comprobante,
         documentoRelacionado: form.comprobante,
+        documentoReferenciado: form.comprobante,
         rucComprador,
         codigoExpediente: codigo,
         contextoValidacion: {
@@ -732,8 +1062,13 @@ export function FinanzasExpedienteEditor({ id }: { id: string | number }) {
 
       return actualizarDocumentoManual(documentoId, {
         tipoDocumental,
+        ocrResultadoId,
         metadata,
         observacion: form.observacion || "Edición de pago desde Finanzas",
+        motivo: esConfirmado
+          ? "Corrección manual de datos del documento confirmado"
+          : undefined,
+        origen: esConfirmado ? "FINANZAS_EDITAR_DOCUMENTO" : undefined,
       });
     },
     onSuccess: () => {
@@ -748,12 +1083,219 @@ export function FinanzasExpedienteEditor({ id }: { id: string | number }) {
     },
   });
 
+  function normalizarMonedaFinanzas(value: unknown): string {
+    const raw = text(value, "")
+      .trim()
+      .toUpperCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/\s+/g, " ");
+
+    const compacta = raw
+      .replace(/\s+/g, "")
+      .replace(/\./g, "");
+
+    if (
+      [
+        "PEN",
+        "SOL",
+        "SOLES",
+        "S/",
+        "S/.",
+      ].includes(raw) ||
+      ["PEN", "SOL", "SOLES", "S/"].includes(compacta)
+    ) {
+      return "PEN";
+    }
+
+    if (
+      [
+        "USD",
+        "$",
+        "US$",
+        "DOLAR",
+        "DOLARES",
+        "DOLARES AMERICANOS",
+      ].includes(raw) ||
+      [
+        "USD",
+        "$",
+        "US$",
+        "DOLAR",
+        "DOLARES",
+        "DOLARESAMERICANOS",
+      ].includes(compacta)
+    ) {
+      return "USD";
+    }
+
+    return raw;
+  }
+
+  async function resolverOcrExistentePorArchivo(
+    documentoId: string,
+    archivoId: string,
+  ) {
+    const rows = (await getOcrResultados({} as any)) as unknown as Array<
+      Record<string, unknown>
+    >;
+
+    const matches = rows
+      .filter(
+        (row) =>
+          getDocumentoArchivoId(row) === archivoId &&
+          getOcrDocumentoId(row) === documentoId &&
+          positiveInteger(getOcrResultadoId(row)) !== null,
+      )
+      .sort((a, b) => {
+        const aId = positiveInteger(getOcrResultadoId(a)) ?? 0;
+        const bId = positiveInteger(getOcrResultadoId(b)) ?? 0;
+        return bId - aId;
+      });
+
+    if (matches.length === 0) return null;
+
+    const ocrResultadoId = positiveInteger(getOcrResultadoId(matches[0]));
+    if (ocrResultadoId === null) return null;
+
+    const row = (await getOcrResultado(
+      ocrResultadoId,
+    )) as unknown as Record<string, unknown>;
+
+    const resultadoPersistido =
+      row.metadata &&
+      typeof row.metadata === "object" &&
+      !Array.isArray(row.metadata)
+        ? (row.metadata as Record<string, unknown>)
+        : {};
+
+    const metadataDocumento =
+      resultadoPersistido.metadata &&
+      typeof resultadoPersistido.metadata === "object" &&
+      !Array.isArray(resultadoPersistido.metadata)
+        ? (resultadoPersistido.metadata as Record<string, unknown>)
+        : null;
+
+    const monedaNormalizada = normalizarMonedaFinanzas(
+      metadataDocumento?.moneda ??
+        resultadoPersistido.moneda ??
+        row.moneda,
+    );
+
+    const monedaCatalogo =
+      MONEDA_OPTIONS.find(
+        (option) =>
+          String(option.codigo).trim().toUpperCase() === monedaNormalizada,
+      )?.nombre ?? monedaNormalizada;
+
+    return {
+      ...resultadoPersistido,
+      metadata: metadataDocumento
+        ? {
+            ...metadataDocumento,
+            moneda: monedaCatalogo || metadataDocumento.moneda,
+          }
+        : resultadoPersistido.metadata,
+      moneda:
+        monedaCatalogo ||
+        resultadoPersistido.moneda ||
+        row.moneda,
+      id: ocrResultadoId,
+      ocrResultadoId,
+      archivoId:
+        resultadoPersistido.archivoId ??
+        resultadoPersistido.archivo_id ??
+        row.archivoId ??
+        row.archivo_id ??
+        archivoId,
+      archivo_id:
+        resultadoPersistido.archivo_id ??
+        row.archivo_id ??
+        row.archivoId ??
+        archivoId,
+      documentoId:
+        resultadoPersistido.documentoId ??
+        resultadoPersistido.documento_id ??
+        row.documentoId ??
+        row.documento_id ??
+        documentoId,
+      documento_id:
+        resultadoPersistido.documento_id ??
+        row.documento_id ??
+        row.documentoId ??
+        documentoId,
+      tipoDocumental:
+        resultadoPersistido.tipoDocumental ??
+        resultadoPersistido.tipo_documental ??
+        row.tipoDocumental ??
+        row.tipo_documental ??
+        row.tipo_propuesto,
+      estado: resultadoPersistido.estado ?? row.estado,
+      confidence: resultadoPersistido.confidence ?? row.confidence,
+      claveDocumental:
+        resultadoPersistido.claveDocumental ??
+        resultadoPersistido.clave_documental ??
+        row.claveDocumental ??
+        row.clave_documental,
+    };
+  }
+
+  async function assertArchivoDuplicadoReutilizable(documentoId: string) {
+    const detalle = (await getDocumentoDetalleV2(
+      documentoId,
+    )) as unknown as Record<string, unknown>;
+
+    const documentalV2 =
+      detalle.documentalV2 &&
+      typeof detalle.documentalV2 === "object" &&
+      !Array.isArray(detalle.documentalV2)
+        ? (detalle.documentalV2 as Record<string, unknown>)
+        : null;
+
+    const documentoGrupoFactura =
+      documentalV2?.documentoGrupoFactura &&
+      typeof documentalV2.documentoGrupoFactura === "object" &&
+      !Array.isArray(documentalV2.documentoGrupoFactura)
+        ? (documentalV2.documentoGrupoFactura as Record<string, unknown>)
+        : null;
+
+    const estadoGrupo = text(documentoGrupoFactura?.estado, "").toLowerCase();
+    const tipoRelacionGrupo = text(
+      documentoGrupoFactura?.tipoRelacion ??
+        documentoGrupoFactura?.tipo_relacion,
+      "",
+    ).toLowerCase();
+
+    if (
+      estadoGrupo === "activo" &&
+      tipoRelacionGrupo === "adjunto_transferencia"
+    ) {
+      const grupoExistente = positiveInteger(
+        documentoGrupoFactura?.grupoFacturaId ??
+          documentoGrupoFactura?.grupo_factura_id,
+      );
+
+      throw new Error(
+        grupoExistente
+          ? `Este sustento ya está asociado activamente al grupo de factura ${grupoExistente}.`
+          : "Este sustento ya está asociado activamente a otra factura.",
+      );
+    }
+  }
+
+  // Conservados temporalmente para no ampliar este patch a otros contratos OCR.
+  void normalizarMonedaFinanzas;
+  void resolverOcrExistentePorArchivo;
+  void assertArchivoDuplicadoReutilizable;
+
   const cargaRealMutation = useMutation<
     ProcesarOcrResultado,
     Error,
     UploadYProcesarArgs
   >({
     mutationFn: async ({ accion, file }) => {
+      const contextoV2 = requireContextoV2();
+
       setProcessingFileName(file.name);
       setProcessingError(null);
       setProcessingStep("uploading");
@@ -778,11 +1320,47 @@ export function FinanzasExpedienteEditor({ id }: { id: string | number }) {
         tipoEsperado:
           accion.tipoEsperado as CargaGuiadaPayloadPreview["tipoEsperado"],
         expedienteId: id,
+        documentoBaseId: contextoV2.documentoBaseId,
+        grupoFacturaId: contextoV2.grupoFacturaId,
         tipoRelacionSugerida:
           accion.tipoRelacionSugerida as CargaGuiadaPayloadPreview["tipoRelacionSugerida"],
         canalIngreso: "FINANZAS_EDITAR_UPLOAD",
         observacion: `Carga desde Finanzas: ${accion.label}`,
       };
+
+      const prevalidacion = await prevalidarDocumentoGuiado(uploadPayload, file);
+      const accionSugerida = text(prevalidacion.accionSugerida, "");
+      const duplicado =
+        Array.isArray(prevalidacion.duplicados) &&
+        prevalidacion.duplicados.length > 0
+          ? (prevalidacion.duplicados[0] as Record<string, unknown>)
+          : null;
+
+      if (accionSugerida === "abrir_existente" && duplicado) {
+        const archivoId = getArchivoId(duplicado);
+        const documentoId = getOcrDocumentoId(duplicado);
+
+        if (!archivoId || !documentoId) {
+          throw new Error(
+            "El archivo existente no tiene identificadores suficientes para reutilizarlo.",
+          );
+        }
+
+        const documentoPersistido = documentos.find(
+          (item) => String(getDocumentoId(item) ?? "") === documentoId,
+        );
+
+        throw new DuplicadoHashFinanzasError({
+          ...(documentoPersistido ?? {}),
+          ...duplicado,
+          documento_id: documentoId,
+          archivo_id: archivoId,
+          nombre_archivo: text(
+            duplicado.nombreArchivo ?? duplicado.nombre_archivo,
+            file.name,
+          ),
+        });
+      }
 
       const uploadResponse = await subirDocumentoGuiado(uploadPayload, file);
       const archivoId = getArchivoId(uploadResponse as Record<string, unknown>);
@@ -798,6 +1376,7 @@ export function FinanzasExpedienteEditor({ id }: { id: string | number }) {
         areaOrigen: "FINANZAS",
         clienteAbreviatura,
         expedienteId: id,
+        documentoBaseId: contextoV2.documentoBaseId,
         tipoRelacionSugerida: accion.tipoRelacionSugerida,
         canalIngreso: "FINANZAS_EDITAR_UPLOAD",
         reprocesar: true,
@@ -838,6 +1417,19 @@ export function FinanzasExpedienteEditor({ id }: { id: string | number }) {
       }, 450);
     },
     onError: (err, { accion }) => {
+      if (err instanceof DuplicadoHashFinanzasError) {
+        setAccionActual(accion);
+        setProcessingStep("idle");
+        setProcessingError(null);
+        setResultadoModal(null);
+        setModalAbierto(false);
+        setDuplicadoHash(err.documento);
+        setMensajeValidacion(
+          "Este sustento ya fue registrado. No se volvió a cargar ni se creó otro pago.",
+        );
+        return;
+      }
+
       const message = `No se pudo cargar/procesar OCR para ${accion.label}. ${err.message}`;
       setAccionActual(accion);
       setProcessingStep("error");
@@ -849,7 +1441,33 @@ export function FinanzasExpedienteEditor({ id }: { id: string | number }) {
   function iniciarSeleccionArchivo(option: DocumentoCargaOption) {
     setAccionActual({ ...option, grupo: "adjunto" });
     setMensajeValidacion(null);
+    setDuplicadoHash(null);
     fileInputRef.current?.click();
+  }
+
+  function iniciarAdjuntarTransferencia(grupoSolicitado: string | number) {
+    const contextoV2 = requireContextoV2();
+    const grupoSolicitadoId = positiveInteger(grupoSolicitado);
+
+    if (grupoSolicitadoId !== contextoV2.grupoFacturaId) {
+      throw new Error(
+        "La Factura seleccionada no coincide con el contexto documental abierto.",
+      );
+    }
+
+    const transferencia = DOCUMENTO_FINANZAS_ADJUNTO_OPTIONS.find(
+      (item) =>
+        String(item.tipoEsperado).toUpperCase() === "TRANSFERENCIA" ||
+        String(item.tipoRelacionSugerida).toLowerCase() === "adjunto_transferencia",
+    );
+
+    if (!transferencia) {
+      throw new Error(
+        "No se encontró la opción TRANSFERENCIA configurada para Finanzas.",
+      );
+    }
+
+    iniciarSeleccionArchivo(transferencia);
   }
 
   function onArchivoSeleccionado(event: ChangeEvent<HTMLInputElement>) {
@@ -885,6 +1503,13 @@ export function FinanzasExpedienteEditor({ id }: { id: string | number }) {
   );
   const descripcion = text((expediente as any).descripcion, "");
   const rucComprador = getRucComprador(expediente, empresa);
+
+  expedienteContextoOcrRef.current.id = id;
+  expedienteContextoOcrRef.current.codigo = codigo;
+  expedienteContextoOcrRef.current.descripcion = descripcion;
+  expedienteContextoOcrRef.current.empresa = empresa;
+  expedienteContextoOcrRef.current.rucComprador = rucComprador;
+
   const procesando = cargaRealMutation.isPending;
   const archivoIdModal =
     getArchivoId(resultadoModal as Record<string, unknown> | null) ?? undefined;
@@ -937,7 +1562,33 @@ export function FinanzasExpedienteEditor({ id }: { id: string | number }) {
     );
   }
 
+  function preservarFormularioCorregidoParaDecision(
+    metadataCorregida: Record<string, unknown>,
+  ) {
+    setResultadoModal((current) => {
+      if (!current) return current;
+
+      const raw = current as unknown as Record<string, unknown>;
+      const metadataActual =
+        raw.metadata &&
+        typeof raw.metadata === "object" &&
+        !Array.isArray(raw.metadata)
+          ? (raw.metadata as Record<string, unknown>)
+          : {};
+
+      return {
+        ...raw,
+        ...metadataCorregida,
+        metadata: {
+          ...metadataActual,
+          ...metadataCorregida,
+        },
+      } as unknown as ProcesarOcrResultado;
+    });
+  }
+
   async function confirmarOcrFinal(form: OcrValidationFormState) {
+    const contextoV2 = requireContextoV2();
     const resultadoActual = resultadoModal as Record<string, unknown> | null;
     const ocrResultadoId = getOcrResultadoId(resultadoActual);
 
@@ -983,15 +1634,67 @@ export function FinanzasExpedienteEditor({ id }: { id: string | number }) {
       },
     );
 
-    await confirmarOcrConExpediente(ocrResultadoId, {
-      expedienteId: id,
-      tipoRelacion: tipoRelacionFinal,
-      esPrincipal: false,
-      orden: 20,
-      metadata,
-      observacion: "Guardar y confirmar pago desde Finanzas",
-    });
+    try {
+      await confirmarOcrConExpediente(ocrResultadoId, {
+        expedienteId: id,
+        documentoBaseId: contextoV2.documentoBaseId,
+        grupoFacturaId: contextoV2.grupoFacturaId,
+        tipoRelacion: tipoRelacionFinal,
+        esPrincipal: false,
+        orden: 20,
+        metadata,
+        observacion: "Guardar y confirmar pago desde Finanzas",
+        ...(decisionCorrespondencia
+          ? {
+              decisionCorrespondencia: {
+                accion: decisionCorrespondencia.accion,
+                motivo: decisionCorrespondencia.motivo.trim(),
+              },
+            }
+          : {}),
+      });
+    } catch (error) {
+      if (
+        error instanceof OcrApiError &&
+        error.code === "DECISION_CORRESPONDENCIA_REQUERIDA"
+      ) {
+        preservarFormularioCorregidoParaDecision(
+          metadata as Record<string, unknown>,
+        );
+        setDecisionCorrespondenciaRequerida(true);
+        setOcrResultadoIdDecisionForzada(positiveInteger(ocrResultadoId));
+        setMensajeValidacion(
+          "La transferencia requiere una decisión humana de correspondencia antes de asociarse al grupo.",
+        );
 
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: ["ocr-resultados"] }),
+          queryClient.invalidateQueries({
+            queryKey: ["finanzas-ocr-pago-pendiente-grupo"],
+          }),
+          queryClient.invalidateQueries({
+            queryKey: ["finanzas-ocr-pago-pendiente-detalle"],
+          }),
+          queryClient.invalidateQueries({
+            queryKey: ["expediente-documentos", String(id)],
+          }),
+          queryClient.invalidateQueries({
+            queryKey: ["finanzas-v2-grupos-pago", String(id)],
+          }),
+          queryClient.invalidateQueries({
+            queryKey: ["finanzas-revision-canonica-grupo"],
+          }),
+        ]);
+
+        setModalAbierto(false);
+        return;
+      }
+      throw error;
+    }
+
+    setDecisionCorrespondenciaRequerida(false);
+    setOcrResultadoIdDecisionForzada(null);
+    setDecisionCorrespondencia(null);
     setModalAbierto(false);
     setMensajeValidacion(
       `Documento confirmado y vinculado al expediente ${codigo || id}.`,
@@ -1000,36 +1703,12 @@ export function FinanzasExpedienteEditor({ id }: { id: string | number }) {
     queryClient.invalidateQueries({
       queryKey: ["expediente-documentos", String(id)],
     });
-  }
-
-  async function agregarDuplicadoComoVersion(details: {
-    documentoIdExistente?: number | string;
-    archivoIdActual?: number | string;
-  }) {
-    const documentoIdExistente = details.documentoIdExistente;
-    const archivoIdActual = details.archivoIdActual;
-
-    if (!documentoIdExistente || !archivoIdActual) {
-      throw new Error(
-        "No se encontró el documento existente o el archivo nuevo para agregar como versión.",
-      );
-    }
-
-    await agregarArchivoComoVersion(documentoIdExistente, archivoIdActual, {
-      tipoVersion: "escaneado",
-      observacion: "Pago agregado como nueva versión desde Finanzas",
-      marcarComoActual: true,
-    });
-
-    setModalAbierto(false);
-    setMensajeValidacion(
-      `Archivo agregado como nueva versión del documento ${documentoIdExistente}.`,
-    );
-    queryClient.invalidateQueries({ queryKey: ["ocr-resultados"] });
-    queryClient.invalidateQueries({
-      queryKey: ["expediente-documentos", String(id)],
+    await queryClient.invalidateQueries({
+      queryKey: ["finanzas-v2-grupos-pago", String(id)],
     });
   }
+
+
 
   async function rechazarOcrFinal(form: OcrValidationFormState) {
     const resultadoActual = resultadoModal as Record<string, unknown> | null;
@@ -1052,6 +1731,47 @@ export function FinanzasExpedienteEditor({ id }: { id: string | number }) {
     queryClient.invalidateQueries({
       queryKey: ["expediente-documentos", String(id)],
     });
+  }
+
+  async function cancelarOcrFinanzas() {
+    const resultadoActual = resultadoModal as Record<string, unknown> | null;
+    const ocrResultadoId = getOcrResultadoId(resultadoActual);
+
+    if (!ocrResultadoId) {
+      setModalAbierto(false);
+      setResultadoModal(null);
+      setAccionActual(null);
+      setMensajeValidacion(
+        "Carga cancelada. No se creó ningún pago activo.",
+      );
+      return;
+    }
+
+    try {
+      await rechazarOcrResultado(
+        ocrResultadoId,
+        "Carga cancelada por el usuario desde Finanzas antes de confirmar.",
+      );
+
+      setModalAbierto(false);
+      setResultadoModal(null);
+      setAccionActual(null);
+      setDecisionCorrespondenciaRequerida(false);
+      setOcrResultadoIdDecisionForzada(null);
+      setDecisionCorrespondencia(null);
+      setMensajeValidacion(
+        "Carga cancelada. El sustento no fue asociado como pago.",
+      );
+
+      await queryClient.invalidateQueries();
+    } catch (error) {
+      setMensajeValidacion(
+        `No se pudo cancelar la carga. ${
+          error instanceof Error ? error.message : "Intente nuevamente."
+        }`,
+      );
+      throw error;
+    }
   }
 
   async function abrirPagoModal(
@@ -1120,14 +1840,8 @@ export function FinanzasExpedienteEditor({ id }: { id: string | number }) {
       />
 
       <main className="space-y-4">
-        <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
-          <div>
-            <Button asChild variant="ghost" size="sm" className="mb-1 px-0">
-              <Link href="/finanzas">
-                <ArrowLeft className="h-4 w-4" />
-                Volver
-              </Link>
-            </Button>
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <h1 className="text-2xl font-bold">Finanzas</h1>
               <span className="rounded-full border px-2 py-0.5 text-xs font-medium">
@@ -1145,7 +1859,81 @@ export function FinanzasExpedienteEditor({ id }: { id: string | number }) {
               ) : null}
             </div>
           </div>
+
+          <Button asChild variant="outline" size="sm" className="h-8 shrink-0 px-3">
+            <Link href="/finanzas">Volver</Link>
+          </Button>
         </div>
+
+        {false && decisionCorrespondenciaRequerida ? (
+          <div
+            ref={decisionHumanaRef}
+            tabIndex={-1}
+            className="mb-4 rounded-xl border p-4"
+          >
+            <p className="font-medium">
+              Revise la factura y el sustento de pago antes de confirmar.
+            </p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              La validación automática necesita su revisión para completar esta operación.
+            </p>
+
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Button
+                type="button"
+                variant={
+                  decisionCorrespondencia?.accion === "ACEPTAR"
+                    ? "default"
+                    : "outline"
+                }
+                size="sm"
+                onClick={() => {
+                  setDecisionCorrespondencia((current) => ({
+                    accion: "ACEPTAR",
+                    motivo: current?.motivo ?? "",
+                  }));
+                  setModalAbierto(true);
+                }}
+              >
+                Validar pago
+              </Button>
+
+              <Button
+                type="button"
+                variant={
+                  decisionCorrespondencia?.accion === "OBSERVAR"
+                    ? "default"
+                    : "outline"
+                }
+                size="sm"
+                onClick={() => {
+                  setDecisionCorrespondencia((current) => ({
+                    accion: "OBSERVAR",
+                    motivo: current?.motivo ?? "",
+                  }));
+                  setModalAbierto(true);
+                }}
+              >
+                Observar
+              </Button>
+            </div>
+
+            <div className="mt-3">
+              <label className="text-sm font-medium">Comentario</label>
+              <Input
+                className="mt-1"
+                value={decisionCorrespondencia?.motivo ?? ""}
+                onChange={(e) =>
+                  setDecisionCorrespondencia((current) => ({
+                    accion: current?.accion ?? "ACEPTAR",
+                    motivo: e.target.value,
+                  }))
+                }
+                placeholder="Agrega un comentario si es necesario"
+              />
+            </div>
+          </div>
+        ) : null}
 
         {mensajeValidacion ? (
           <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-300">
@@ -1153,62 +1941,60 @@ export function FinanzasExpedienteEditor({ id }: { id: string | number }) {
           </div>
         ) : null}
 
-        <section className="grid gap-4 lg:grid-cols-3">
-          <Card className="lg:col-span-2">
-            <CardHeader className="pb-2">
-              <CardTitle>Documento principal</CardTitle>
-              <Badge variant={principal ? "secondary" : "outline"}>
-                {principal ? "✓ Principal activo" : "Sin principal"}
-              </Badge>
-            </CardHeader>
-            <CardContent>
-              {principal ? (
-                <div className="rounded-xl border bg-primary/5 p-4">
-                  <div className="flex items-start gap-3">
-                    <FileText className="mt-0.5 h-5 w-5 text-primary" />
-                    <DocumentoResumen doc={principal} />
-                  </div>
-                </div>
-              ) : (
-                <div className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
-                  Este expediente no tiene documento principal activo. Finanzas
-                  no puede adjuntar pagos.
-                </div>
-              )}
-            </CardContent>
-          </Card>
+        <FinanzasGrupoFacturaPagoPanel
+          id={id}
+          editable
+          grupoFacturaId={grupoFacturaId}
+          documentos={documentos}
+          principalSlot={
+            <FinanzasDocumentoPrincipalOperativoCard
+              id={id}
+              onVer={(principalDocumentoId) => {
+                const documentoPrincipal = documentos.find((documento) => {
+                  const documentoId = positiveInteger(
+                    (documento as Record<string, unknown>).documento_id ??
+                      (documento as Record<string, unknown>).documentoId ??
+                      (documento as Record<string, unknown>).id,
+                  );
 
-          <Card>
-            <CardContent className="grid gap-3 p-4">
-              <div className="grid gap-3 md:grid-cols-2">
-                <div className="space-y-1">
-                  <label className="text-xs font-medium text-muted-foreground">
-                    Empresa
-                  </label>
-                  <Input value={empresa} readOnly />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-xs font-medium text-muted-foreground">
-                    Expediente
-                  </label>
-                  <Input value={codigo || "SIN EXPEDIENTE"} readOnly />
-                </div>
-              </div>
-              <div className="space-y-1">
-                <label className="text-xs font-medium text-muted-foreground">
-                  Descripción
-                </label>
-                <Input value={descripcion} readOnly />
-              </div>
-            </CardContent>
-          </Card>
-        </section>
+                  return (
+                    documentoId !== null &&
+                    documentoId === positiveInteger(principalDocumentoId)
+                  );
+                });
 
-        <Card>
+                if (!documentoPrincipal) {
+                  setMensajeValidacion(
+                    "No se encontró el archivo del documento principal para visualizar.",
+                  );
+                  return;
+                }
+
+                void abrirPagoModal(documentoPrincipal, "ver");
+              }}
+            />
+          }
+          ocrResultadoIdDecisionForzada={ocrResultadoIdDecisionForzada}
+          onDecisionResuelta={() => {
+            setOcrResultadoIdDecisionForzada(null);
+            setDecisionCorrespondenciaRequerida(false);
+          }}
+          onAdjuntarTransferencia={iniciarAdjuntarTransferencia}
+          onEditarPago={(doc) => abrirPagoModal(doc, "editar")}
+        />
+
+        <Card className="hidden border-dashed bg-muted/20">
           <CardHeader className="pb-2">
-            <CardTitle>Adjuntar pagos</CardTitle>
+            <CardTitle>Carga legacy de Finanzas</CardTitle>
+            <p className="text-sm text-muted-foreground">
+              Uso operativo auxiliar / diagnóstico. La asociación documental definitiva se realiza desde el grupo documental persistido superior mediante “Agregar pago”. No reemplaza el flujo V2.
+            </p>
           </CardHeader>
-          <CardContent className="grid gap-3 md:grid-cols-3">
+          <CardContent className="space-y-3">
+            <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-800 dark:text-amber-200">
+              Flujo legacy auxiliar. Para documentos de pago vigentes usa el grupo persistido de arriba y la acción “Agregar pago”.
+            </div>
+            <div className="grid gap-3 md:grid-cols-3">
             {DOCUMENTO_FINANZAS_ADJUNTO_OPTIONS.map((item) => {
               const documentosItem = documentosPorRelacion.get(
                 item.tipoRelacionSugerida,
@@ -1247,15 +2033,77 @@ export function FinanzasExpedienteEditor({ id }: { id: string | number }) {
                       item.tipoRelacionSugerida
                       ? "Subiendo/procesando..."
                       : documentosItem?.length
-                        ? "Adjuntar otro"
-                        : "Adjuntar"}
+                        ? "Adjuntar otro legacy"
+                        : "Adjuntar legacy"}
                   </Button>
                 </div>
               );
             })}
+            </div>
           </CardContent>
         </Card>
       </main>
+
+      {duplicadoHash ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-lg rounded-2xl border bg-background p-6 shadow-2xl">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h2 className="text-lg font-semibold">
+                  Este sustento ya fue registrado
+                </h2>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  El archivo coincide exactamente con un sustento existente. No
+                  se volvió a cargar, no se ejecutó OCR y no se creó otro pago.
+                </p>
+              </div>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                onClick={() => setDuplicadoHash(null)}
+              >
+                <X className="h-4 w-4" />
+                <span className="sr-only">Cerrar</span>
+              </Button>
+            </div>
+
+            <div className="mt-5 rounded-xl border bg-muted/30 p-4">
+              <p className="text-xs font-medium uppercase text-muted-foreground">
+                Sustento existente
+              </p>
+              <p className="mt-1 font-medium">
+                {getPagoResumen(duplicadoHash).numero}
+              </p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {getPagoResumen(duplicadoHash).archivo ||
+                  "Archivo previamente registrado"}
+              </p>
+            </div>
+
+            <div className="mt-5 flex justify-end gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setDuplicadoHash(null)}
+              >
+                Cerrar
+              </Button>
+              <Button
+                type="button"
+                onClick={() => {
+                  const existente = duplicadoHash;
+                  setDuplicadoHash(null);
+                  void abrirPagoModal(existente, "ver");
+                }}
+              >
+                <Eye className="h-4 w-4" />
+                Ver sustento existente
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {pagoModalDoc && pagoModalMode ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
@@ -1505,18 +2353,11 @@ export function FinanzasExpedienteEditor({ id }: { id: string | number }) {
         open={modalAbierto}
         resultado={resultadoModal}
         fallbackArchivoId={archivoIdModal}
-        expedienteContexto={{
-          id,
-          codigo,
-          descripcion,
-          empresa,
-          rucComprador,
-        }}
-        onClose={() => setModalAbierto(false)}
+        expedienteContexto={expedienteContextoOcrRef.current}
+        onClose={() => void cancelarOcrFinanzas()}
         onSave={guardarCambiosOcr}
         onConfirm={confirmarOcrFinal}
         onReject={rechazarOcrFinal}
-        onAgregarComoVersion={agregarDuplicadoComoVersion}
         tiposDocumentalesPermitidos={FINANZAS_TIPOS_DOCUMENTALES_PERMITIDOS}
         tipoDocumentalBloqueado={Boolean(accionActual?.tipoEsperado)}
         formularioContexto="FINANZAS"

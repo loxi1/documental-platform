@@ -5,11 +5,15 @@ function cleanUrl(value: string) {
 }
 
 function assertProductionUrl(value: string, variableName: string) {
+  const allowLocalApiForTests = process.env.NEXT_PUBLIC_ALLOW_LOCAL_API_FOR_TESTS === "true";
+
   if (process.env.NODE_ENV !== "production") return;
 
   if (!value) {
     throw new Error(`${variableName} es obligatorio en producción.`);
   }
+
+  if (allowLocalApiForTests) return;
 
   if (value.includes("localhost") || value.includes("127.0.0.1") || value.includes("192.168.")) {
     throw new Error(`${variableName} no puede apuntar a una URL local en producción: ${value}`);

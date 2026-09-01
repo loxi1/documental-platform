@@ -9,6 +9,7 @@ import {
   Post,
   Put,
   Query,
+  Res,
   UnauthorizedException,
   ForbiddenException,
   UploadedFiles,
@@ -18,11 +19,27 @@ import { ConfigService } from '@nestjs/config';
 import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
 import axios, { Method } from 'axios';
 import FormData from 'form-data';
-import { FileFieldsInterceptor } from '@nestjs/platform-express';
+import {
+  AnyFilesInterceptor,
+  FileFieldsInterceptor,
+} from '@nestjs/platform-express';
 import { firstValueFrom } from 'rxjs';
 import { ClientProxy } from '@nestjs/microservices';
 import { Inject } from '@nestjs/common';
 import { NatsSubjects, REQUEST_ID_HEADER } from '@documental/shared';
+import type { Response } from 'express';
+
+import { SECURE_UPLOAD } from './carga-segura.contract';
+import {
+  SecureUploadFile,
+  validateIdempotencyKey,
+  validateSecureUploadBody,
+  validateSecureUploadFile,
+} from './carga-segura.validation';
+import {
+  mapSecureUploadSuccess,
+  throwSecureUploadError,
+} from './carga-segura.mapper';
 
 import { NATS_CLIENT } from '../nats/nats-client.provider';
 
@@ -261,7 +278,32 @@ export class DocumentosGatewayController {
     }
 
     const scope = await this.fetchExpedienteScope(String(expedienteId), requestId);
-    return this.assertEmpresaPermitida(payload, scope.empresa, `expediente ${expedienteId}`);
+    this.assertEmpresaPermitida(payload, scope.empresa, `expediente ${expedienteId}`);
+
+    const clienteDestinoIdContexto = this.getClienteDestinoIdFromContext(payload);
+    const clienteDestinoIdExpediente = this.getClienteDestinoIdFromExpediente(
+      scope.expediente,
+    );
+
+    if (!clienteDestinoIdContexto) {
+      throw new ForbiddenException(
+        'El token no tiene cliente destino de workspace válido',
+      );
+    }
+
+    if (!clienteDestinoIdExpediente) {
+      throw new ForbiddenException(
+        'No se pudo validar el cliente destino del expediente solicitado',
+      );
+    }
+
+    if (clienteDestinoIdExpediente !== clienteDestinoIdContexto) {
+      throw new ForbiddenException(
+        'No tienes permiso para operar expedientes de otro cliente destino',
+      );
+    }
+
+    return scope;
   }
 
   private async assertOcrPermitido(
@@ -321,6 +363,29 @@ export class DocumentosGatewayController {
     };
   }
 
+  private buildAuditForwardHeaders(
+    authorization: string | undefined,
+    requestId: string | undefined,
+    contexto: any,
+  ): Record<string, string> {
+    const empresaCodigo = this.getEmpresaFromContext(contexto);
+    const clienteDestinoId = Number(contexto?.clienteDestinoId ?? NaN);
+
+    return {
+      ...this.buildForwardHeaders(authorization, requestId),
+      ...(contexto?.sub ? { 'x-user-id': String(contexto.sub) } : {}),
+      ...(contexto?.email ? { 'x-user-email': String(contexto.email) } : {}),
+      ...(contexto?.workspaceId
+        ? { 'x-workspace-id': String(contexto.workspaceId) }
+        : {}),
+      ...(empresaCodigo ? { 'x-empresa-codigo': empresaCodigo } : {}),
+      ...(Number.isFinite(clienteDestinoId) && clienteDestinoId > 0
+        ? { 'x-cliente-destino-id': String(clienteDestinoId) }
+        : {}),
+      ...(requestId ? { 'x-correlation-id': requestId } : {}),
+    };
+  }
+
   private unwrap(response: any) {
     return response?.data?.data ?? response?.data;
   }
@@ -352,6 +417,179 @@ export class DocumentosGatewayController {
     throw error;
   }
 
+  private asUnknownRecord(value: unknown): Record<string, unknown> | null {
+    return value !== null && typeof value === 'object' && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : null;
+  }
+
+  private readContextString(
+    source: Record<string, unknown>,
+    key: string,
+  ): string | null {
+    const value = source[key];
+
+    return typeof value === 'string' && value.trim() ? value.trim() : null;
+  }
+
+  private getSistemaFromContext(payload: unknown): string | null {
+    const context = this.asUnknownRecord(payload);
+
+    if (!context) {
+      return null;
+    }
+
+    const sistema = context.sistema;
+    const sistemaRecord = this.asUnknownRecord(sistema);
+
+    const direct =
+      this.readContextString(context, 'sistemaCodigo') ??
+      (typeof sistema === 'string'
+        ? sistema
+        : sistemaRecord
+          ? this.readContextString(sistemaRecord, 'codigo')
+          : null);
+
+    const normalized = direct?.trim().toUpperCase() ?? '';
+    return normalized || null;
+  }
+
+  private assertSecureUploadContext(contexto: unknown) {
+    if (this.getSistemaFromContext(contexto) !== SECURE_UPLOAD.system) {
+      throw new ForbiddenException(
+        'La carga documental segura requiere el sistema DOCUMENTAL',
+      );
+    }
+
+    this.assertAnyActionPermitida(
+      contexto,
+      [SECURE_UPLOAD.permission],
+      'realizar carga documental segura',
+    );
+
+    const context = this.asUnknownRecord(contexto);
+
+    if (!context) {
+      throw new ForbiddenException('El token no contiene un contexto válido');
+    }
+
+    const empresaCodigo = this.getEmpresaFromContext(contexto);
+    const clienteDestinoId = this.getClienteDestinoIdFromContext(contexto);
+
+    const workspaceValue = context.workspaceId;
+    const workspaceId =
+      typeof workspaceValue === 'number'
+        ? workspaceValue
+        : typeof workspaceValue === 'string'
+          ? Number(workspaceValue)
+          : Number.NaN;
+
+    const actorValue = context.sub;
+    const actorId =
+      typeof actorValue === 'string' || typeof actorValue === 'number'
+        ? String(actorValue)
+        : '';
+
+    if (!empresaCodigo) {
+      throw new ForbiddenException(
+        'El token no tiene empresa de workspace válida',
+      );
+    }
+
+    if (!clienteDestinoId) {
+      throw new ForbiddenException(
+        'El token no tiene cliente destino de workspace válido',
+      );
+    }
+
+    if (!Number.isSafeInteger(workspaceId) || workspaceId <= 0) {
+      throw new ForbiddenException('El token no tiene workspace válido');
+    }
+
+    if (!actorId.trim()) {
+      throw new ForbiddenException('El token no tiene actor válido');
+    }
+
+    return {
+      workspaceId,
+      empresaCodigo,
+      clienteDestinoId,
+      actorId,
+    };
+  }
+
+  private getClienteDestinoIdFromExpediente(
+    expediente: unknown,
+  ): number | null {
+    const source = this.asUnknownRecord(expediente);
+
+    if (!source) {
+      return null;
+    }
+
+    const nested = this.asUnknownRecord(source.expediente);
+
+    const value =
+      source.cliente_destino_id ??
+      source.clienteDestinoId ??
+      nested?.cliente_destino_id ??
+      nested?.clienteDestinoId;
+
+    const parsed =
+      typeof value === 'number'
+        ? value
+        : typeof value === 'string'
+          ? Number(value)
+          : Number.NaN;
+
+    return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
+  }
+
+  private async assertSecureUploadExpedienteScope(
+    expedienteId: number,
+    contexto: unknown,
+    requestId?: string,
+  ) {
+    const secureContext = this.assertSecureUploadContext(contexto);
+
+    const rawScope: unknown = await this.fetchExpedienteScope(
+      String(expedienteId),
+      requestId,
+    );
+
+    const scope = this.asUnknownRecord(rawScope);
+
+    if (!scope) {
+      throw new ForbiddenException(
+        'No se pudo determinar el scope del expediente',
+      );
+    }
+
+    const empresaValue = scope.empresa;
+    const empresa = typeof empresaValue === 'string' ? empresaValue : null;
+
+    this.assertEmpresaPermitida(
+      contexto,
+      empresa,
+      `expediente ${expedienteId}`,
+    );
+
+    const expedienteClienteDestinoId = this.getClienteDestinoIdFromExpediente(
+      scope.expediente,
+    );
+
+    if (
+      !expedienteClienteDestinoId ||
+      expedienteClienteDestinoId !== secureContext.clienteDestinoId
+    ) {
+      throw new ForbiddenException(
+        'El expediente no pertenece al cliente destino del contexto activo',
+      );
+    }
+
+    return secureContext;
+  }
+
   private async proxy(params: {
     method: Method;
     path: string;
@@ -359,6 +597,7 @@ export class DocumentosGatewayController {
     requestId?: string;
     query?: Record<string, any>;
     body?: unknown;
+    headers?: Record<string, string>;
   }) {
     await this.validateAuthorization(params.authorization);
 
@@ -368,10 +607,13 @@ export class DocumentosGatewayController {
         url: `${this.getBaseUrl()}${params.path}`,
         params: params.query,
         data: params.body,
-        headers: this.buildForwardHeaders(
-          params.authorization,
-          params.requestId,
-        ),
+        headers: {
+          ...(params.headers ?? {}),
+          ...this.buildForwardHeaders(
+            params.authorization,
+            params.requestId,
+          ),
+        },
       });
 
       return this.unwrap(response);
@@ -415,6 +657,11 @@ export class DocumentosGatewayController {
   ) {
     const contexto = await this.validateAuthorization(authorization);
     this.assertAnyActionPermitida(contexto, ['documentos.subir'], 'prevalidar carga de documentos');
+    await this.assertExpedientePermitido(
+      body?.expedienteId,
+      contexto,
+      requestId,
+    );
     const empresaContexto = this.getEmpresaFromContext(contexto);
 
     if (!empresaContexto) {
@@ -485,6 +732,11 @@ export class DocumentosGatewayController {
   ) {
     const contexto = await this.validateAuthorization(authorization);
     this.assertAnyActionPermitida(contexto, ['documentos.subir'], 'subir documentos');
+    await this.assertExpedientePermitido(
+      body?.expedienteId,
+      contexto,
+      requestId,
+    );
     const empresaContexto = this.getEmpresaFromContext(contexto);
 
     if (!empresaContexto) {
@@ -542,6 +794,110 @@ export class DocumentosGatewayController {
       return this.unwrap(response);
     } catch (error: any) {
       this.throwUpstreamHttpException(error);
+    }
+  }
+
+  @ApiOperation({ summary: 'Carga documental segura vía API Gateway' })
+  @ApiConsumes('multipart/form-data')
+  @Post('carga-segura')
+  @UseInterceptors(
+    AnyFilesInterceptor({
+      limits: {
+        fileSize: SECURE_UPLOAD.fileSizeBytes,
+        files: 1,
+        fields: SECURE_UPLOAD.maxFields,
+        parts: SECURE_UPLOAD.maxParts,
+        fieldSize: SECURE_UPLOAD.maxFieldSizeBytes,
+      },
+    }),
+  )
+  async cargaSegura(
+    @Headers('authorization') authorization: string | undefined,
+    @Headers(REQUEST_ID_HEADER) requestId: string | undefined,
+    @Headers('idempotency-key')
+    idempotencyKeyHeader: string | string[] | undefined,
+    @UploadedFiles() files: SecureUploadFile[],
+    @Body() body: Record<string, unknown>,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    const contexto: unknown = await this.validateAuthorization(authorization);
+    const validatedBody = validateSecureUploadBody(body ?? {});
+    const idempotencyKey = validateIdempotencyKey(idempotencyKeyHeader);
+
+    if (!Array.isArray(files) || files.length !== 1) {
+      throw new HttpException(
+        {
+          code: 'CARGA_SEGURA_SOLICITUD_INVALIDA',
+          message: 'Debe enviarse exactamente un archivo',
+          details: null,
+        },
+        422,
+      );
+    }
+
+    const file = validateSecureUploadFile(files[0]);
+    const secureContext = await this.assertSecureUploadExpedienteScope(
+      validatedBody.expedienteId,
+      contexto,
+      requestId,
+    );
+
+    const form = new FormData();
+
+    form.append('archivo', file.buffer, {
+      filename: file.originalname,
+      contentType: file.mimetype,
+      knownLength: file.size,
+    });
+    form.append('expedienteId', String(validatedBody.expedienteId));
+
+    if (validatedBody.documentoBaseId !== null) {
+      form.append('documentoBaseId', String(validatedBody.documentoBaseId));
+    }
+
+    if (validatedBody.grupoFacturaId !== null) {
+      form.append('grupoFacturaId', String(validatedBody.grupoFacturaId));
+    }
+    form.append('tipoDocumental', validatedBody.tipoDocumental);
+
+    if (validatedBody.tipoRelacion) {
+      form.append('tipoRelacion', validatedBody.tipoRelacion);
+    }
+
+    form.append('esPrincipal', String(validatedBody.esPrincipal));
+    form.append('canalIngreso', validatedBody.canalIngreso);
+
+    if (validatedBody.metadata) {
+      form.append('metadata', JSON.stringify(validatedBody.metadata));
+    }
+
+    try {
+      const upstreamResponse = await axios.request<unknown>({
+        method: 'POST',
+        url: `${this.getBaseUrl()}/documentos/carga-segura`,
+        data: form,
+        headers: {
+          ...form.getHeaders(),
+          ...(authorization ? { authorization } : {}),
+          'idempotency-key': idempotencyKey,
+          ...(requestId ? { [REQUEST_ID_HEADER]: requestId } : {}),
+          ...(requestId ? { 'x-correlation-id': requestId } : {}),
+          'x-workspace-id': String(secureContext.workspaceId),
+          'x-empresa-codigo': secureContext.empresaCodigo,
+          'x-cliente-destino-id': String(secureContext.clienteDestinoId),
+          'x-actor-id': secureContext.actorId,
+        },
+        timeout: SECURE_UPLOAD.timeoutMs,
+        maxBodyLength: SECURE_UPLOAD.multipartTotalBytes,
+        maxContentLength: SECURE_UPLOAD.multipartTotalBytes,
+      });
+
+      const mapped = mapSecureUploadSuccess(upstreamResponse.data);
+
+      response.status(mapped.status);
+      return mapped.data;
+    } catch (error: unknown) {
+      throwSecureUploadError(error);
     }
   }
 
@@ -648,6 +1004,11 @@ export class DocumentosGatewayController {
       authorization,
       requestId,
       body,
+      headers: this.buildAuditForwardHeaders(
+        authorization,
+        requestId,
+        contexto,
+      ),
     });
   }
 
@@ -866,6 +1227,96 @@ export class DocumentosGatewayController {
       authorization,
       requestId,
     });
+  }
+
+  @ApiOperation({ summary: 'Subir nueva versión física de un documento vía API Gateway' })
+  @ApiConsumes('multipart/form-data')
+  @Post(':documentoId/archivos/subir-version')
+  @UseInterceptors(
+    FileFieldsInterceptor([
+      { name: 'file', maxCount: 1 },
+      { name: 'archivo', maxCount: 1 },
+    ]),
+  )
+  async subirVersionArchivo(
+    @Headers('authorization') authorization: string | undefined,
+    @Headers(REQUEST_ID_HEADER) requestId: string | undefined,
+    @Param('documentoId') documentoId: string,
+    @UploadedFiles() files: Record<string, any[]>,
+    @Body() body: Record<string, any>,
+  ) {
+    const contexto = await this.validateAuthorization(authorization);
+    this.assertAnyActionPermitida(
+      contexto,
+      ['documentos.subir'],
+      'subir versiones de documentos',
+    );
+    await this.assertDocumentoPermitido(documentoId, contexto, requestId);
+
+    const empresaContexto = this.getEmpresaFromContext(contexto);
+
+    if (!empresaContexto) {
+      throw new ForbiddenException(
+        'El token no tiene empresa de workspace válida',
+      );
+    }
+
+    const file = files?.file?.[0] ?? files?.archivo?.[0];
+
+    if (!file?.buffer) {
+      throw new Error('Archivo requerido en el campo file o archivo');
+    }
+
+    const form = new FormData();
+    form.append('file', file.buffer, {
+      filename: file.originalname,
+      contentType: file.mimetype,
+      knownLength: file.size,
+    });
+
+    const forbiddenTenantFields = new Set([
+      'cliente',
+      'clienteAbreviatura',
+      'empresa',
+      'empresaCodigo',
+      'clienteDestinoId',
+      'workspaceId',
+    ]);
+
+    for (const [key, value] of Object.entries(body ?? {})) {
+      if (value === undefined || value === null) continue;
+      if (forbiddenTenantFields.has(key)) continue;
+
+      if (Array.isArray(value)) {
+        value.forEach((item) => form.append(key, String(item)));
+      } else {
+        form.append(key, String(value));
+      }
+    }
+
+    form.append('empresaCodigo', empresaContexto);
+
+    try {
+      const response = await axios.request({
+        method: 'POST',
+        url: `${this.getBaseUrl()}/documentos/${documentoId}/archivos/subir-version`,
+        data: form,
+        headers: {
+          ...this.buildAuditForwardHeaders(
+            authorization,
+            requestId,
+            contexto,
+          ),
+          ...form.getHeaders(),
+        },
+        maxBodyLength: Infinity,
+        maxContentLength: Infinity,
+      });
+
+      return this.unwrap(response);
+    } catch (error: any) {
+      this.throwUpstreamHttpException(error);
+    }
   }
 
   @ApiOperation({ summary: 'Agregar archivo existente como versión de un documento lógico vía API Gateway' })
