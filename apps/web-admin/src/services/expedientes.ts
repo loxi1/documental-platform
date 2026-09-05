@@ -286,6 +286,7 @@ export type BandejaComprasFila = {
   codigoExpediente?: string | null;
   descripcion?: string | null;
   estado?: string | null;
+  ocrResultadoId?: number | string | null;
   principal: BandejaComprasPrincipal;
   proveedor?: BandejaComprasProveedor | null;
   facturas: BandejaComprasFactura[];

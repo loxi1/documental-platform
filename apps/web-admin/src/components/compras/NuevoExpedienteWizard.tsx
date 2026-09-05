@@ -2,7 +2,7 @@
 
 import { ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   AlertTriangle,
   ArrowLeft,
@@ -34,6 +34,7 @@ import {
 import {
   buscarExpedientes,
   crearExpediente,
+  getExpediente,
   type ExpedienteSearchResult,
 } from "@/services/expedientes";
 import {
@@ -43,6 +44,7 @@ import {
   rechazarOcrResultado,
   type ProcesarOcrResultado,
 } from "@/services/ocr-procesamiento";
+import { getOcrResultado } from "@/services/ocr-resultados";
 import type { CargaGuiadaPayloadPreview, CargaGuiadaPrevalidacionResponse } from "@/types/carga-guiada";
 
 type TipoInicio = "OC" | "OS" | "FACTURA";
@@ -412,6 +414,8 @@ function buildResultadoConContexto(
 
 export function NuevoExpedienteWizard() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const recuperacionPendienteIniciadaRef = useRef(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [selectedTipo, setSelectedTipo] = useState<TipoInicio>("OC");
   const [query, setQuery] = useState("");
@@ -452,6 +456,111 @@ export function NuevoExpedienteWizard() {
     selectedOption.codigoPrefix && codigoNormalizado && !codigoNormalizado.startsWith(selectedOption.codigoPrefix)
       ? `Para ${selectedOption.title}, el código normalmente inicia con ${selectedOption.codigoPrefix}.`
       : null;
+
+  useEffect(() => {
+    if (recuperacionPendienteIniciadaRef.current) return;
+
+    const ocrResultadoIdParam = searchParams.get("ocrResultadoId");
+    const expedienteIdParam = searchParams.get("expedienteId");
+
+    if (!ocrResultadoIdParam && !expedienteIdParam) return;
+
+    const ocrResultadoId = Number(ocrResultadoIdParam);
+
+    if (
+      !Number.isInteger(ocrResultadoId) ||
+      ocrResultadoId <= 0 ||
+      !expedienteIdParam
+    ) {
+      recuperacionPendienteIniciadaRef.current = true;
+      setError("No se pudo recuperar la validación pendiente.");
+      return;
+    }
+
+    recuperacionPendienteIniciadaRef.current = true;
+
+    void (async () => {
+      try {
+        setError(null);
+        setAccionError(null);
+
+        const [detalleOcr, expediente] = await Promise.all([
+          getOcrResultado(ocrResultadoId),
+          getExpediente(expedienteIdParam),
+        ]);
+
+        const codigo = String(
+          expediente.codigoExpediente ??
+            expediente.codigo_expediente ??
+            "",
+        ).trim();
+
+        const empresaCodigo = String(
+          expediente.empresaCodigo ??
+            expediente.empresa_codigo ??
+            "",
+        ).trim();
+
+        const tipo = String(detalleOcr.tipo_propuesto ?? "")
+          .trim()
+          .toUpperCase();
+
+        if (!codigo || !empresaCodigo) {
+          throw new Error("Expediente incompleto para continuar la validación.");
+        }
+
+        if (tipo !== "OC" && tipo !== "OS") {
+          throw new Error("Tipo documental pendiente no soportado en Compras.");
+        }
+
+        const expedienteRecuperado: ExpedienteSearchResult = {
+          id: expediente.id,
+          codigoExpediente: codigo,
+          empresaCodigo,
+          descripcion: expediente.descripcion ?? null,
+          estado: expediente.estado ?? null,
+        };
+
+        const metadataPersistida =
+          detalleOcr.metadata &&
+          typeof detalleOcr.metadata === "object" &&
+          !Array.isArray(detalleOcr.metadata)
+            ? (detalleOcr.metadata as Record<string, unknown>)
+            : {};
+
+        const metadataInterna = metadataPersistida.metadata;
+
+        const camposOcr =
+          metadataInterna &&
+          typeof metadataInterna === "object" &&
+          !Array.isArray(metadataInterna)
+            ? (metadataInterna as Record<string, unknown>)
+            : {};
+
+        const resultadoRecuperado: ProcesarOcrResultado = {
+          ...detalleOcr,
+          ...metadataPersistida,
+          metadata: camposOcr,
+          ocrResultadoId: detalleOcr.id,
+          archivoId: detalleOcr.archivo_id,
+          tipoDocumental: detalleOcr.tipo_propuesto,
+        };
+
+        setSelectedTipo(tipo);
+        setExpedienteSeleccionado(expedienteRecuperado);
+        setArchivoIdModal(detalleOcr.archivo_id);
+        setOcrResultadoIdModal(String(detalleOcr.id));
+        setResultadoModal(resultadoRecuperado);
+        setValidacionAbierta(true);
+      } catch (err) {
+        setError(
+          err instanceof Error
+            ? err.message
+            : "No se pudo recuperar la validación pendiente.",
+        );
+      }
+    })();
+  }, [searchParams]);
 
   useEffect(() => {
     const term = query.trim();

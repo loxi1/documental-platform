@@ -1175,6 +1175,7 @@ export class ExpedientesRepository {
     const rows = await sql`
       SELECT DISTINCT ON (d.id) e.id AS "expedienteId", e.codigo_expediente AS "codigoExpediente",
         e.descripcion, 'pendiente_validacion'::text AS estado,
+        ocr.id AS "ocrResultadoId",
         jsonb_build_object('documentoId', d.id, 'tipo', d.tipo_documental,
           'numero', COALESCE(d.numero, ocr.metadata->'metadata'->>'numero')) AS principal,
         CASE WHEN COALESCE(d.razon_social_emisor, ocr.metadata->'metadata'->>'proveedor') IS NULL

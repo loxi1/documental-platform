@@ -209,6 +209,15 @@ export function ComprasBandeja() {
                   const href = `/compras/${fila.expedienteId}/ver?${params.toString()}`;
                   const proveedor = text(fila.proveedor?.nombre, "");
                   const ruc = text(fila.proveedor?.ruc, "");
+                  const esPendienteValidacion = fila.estado === "pendiente_validacion";
+                  const puedeContinuarValidacion =
+                    esPendienteValidacion && fila.ocrResultadoId != null;
+
+                  const hrefAccion = esPendienteValidacion
+                    ? puedeContinuarValidacion
+                      ? `/compras/nuevo?ocrResultadoId=${encodeURIComponent(String(fila.ocrResultadoId))}&expedienteId=${encodeURIComponent(String(fila.expedienteId))}`
+                      : null
+                    : `/compras/${fila.expedienteId}/editar?principalId=${fila.principal.documentoId}`;
                   return <tr key={`${fila.expedienteId}-${fila.principal.documentoId}`} className="border-b align-top hover:bg-muted/30">
                     <td className="px-4 py-2.5 font-semibold">{principalLabel(fila)}</td>
                     <td className="px-4 py-2.5"><div className="font-mono font-semibold">{text(fila.codigoExpediente)}</div><div className="mt-1 max-w-[280px] text-xs text-muted-foreground">{text(fila.descripcion)}</div></td>
@@ -220,11 +229,17 @@ export function ComprasBandeja() {
                         <Button asChild size="sm" variant="outline">
                           <Link href={href}><Eye className="mr-2 h-4 w-4" />Ver</Link>
                         </Button>
-                        <Button asChild size="sm">
-                          <Link href={`/compras/${fila.expedienteId}/editar?principalId=${fila.principal.documentoId}`}>
-                            {incluirPendientesValidacion ? "Continuar validación" : "Adjuntar"}
-                          </Link>
-                        </Button>
+                        {hrefAccion ? (
+                          <Button asChild size="sm">
+                            <Link href={hrefAccion}>
+                              {esPendienteValidacion ? "Continuar validación" : "Adjuntar"}
+                            </Link>
+                          </Button>
+                        ) : (
+                          <Button size="sm" disabled>
+                            Continuar validación
+                          </Button>
+                        )}
                       </div>
                     </td>
                   </tr>;
