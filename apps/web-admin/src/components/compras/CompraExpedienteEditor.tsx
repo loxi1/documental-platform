@@ -27,6 +27,7 @@ import {
   subirDocumentoCargaSegura,
 } from "@/services/carga-segura";
 import { api } from "@/services/api";
+import { getOcrResultado } from "@/services/ocr-resultados";
 import { buscarProveedoresCatalogo } from "@/services/ocr-procesamiento";
 import {
   actualizarDocumentoManual,
@@ -83,6 +84,15 @@ type PrevalidacionExistenteUI = {
 type UploadYProcesarArgs = {
   accion: AccionCargaGuiada;
   file: File;
+};
+
+type OcrUploadRecovery = {
+  archivoId: string;
+  documentoId: string | null;
+  filename: string;
+  accion: AccionCargaGuiada;
+  ocrPayload: Parameters<typeof procesarArchivoOcr>[1];
+  uploadResponse: Record<string, unknown>;
 };
 
 type DocumentoVinculado = Record<string, any>;
@@ -1139,6 +1149,8 @@ export function CompraExpedienteEditor({
   const [processingStep, setProcessingStep] = useState<OcrProcessingStep>("idle");
   const [processingFileName, setProcessingFileName] = useState<string | null>(null);
   const [processingError, setProcessingError] = useState<string | null>(null);
+  const [ocrUploadRecovery, setOcrUploadRecovery] = useState<OcrUploadRecovery | null>(null);
+  const ocrUploadRecoveryRef = useRef<OcrUploadRecovery | null>(null);
   const [versionesModal, setVersionesModal] = useState<VersionesDocumentoModalState | null>(null);
   const [versionesLoading, setVersionesLoading] = useState(false);
   const [versionesError, setVersionesError] = useState<string | null>(null);
@@ -1258,6 +1270,12 @@ export function CompraExpedienteEditor({
   const seleccionPrincipalRequerida =
     documentosPrincipales.length > 1 && !principalSeleccionado;
 
+  const principalIdNavegacion =
+    principalIdSeleccionado ??
+    (documentosPrincipales.length === 1
+      ? getDocumentoId(documentosPrincipales[0])
+      : null);
+
   const principalActual = useMemo(() => {
     if (!principalSeleccionado) return null;
 
@@ -1298,6 +1316,58 @@ export function CompraExpedienteEditor({
     principalSeleccionado?.razonSocialEmisor ??
     principalSeleccionado?.razon_social_emisor ??
     undefined;
+
+  async function recuperarOcrTardioDesdeUpload(
+    recovery: OcrUploadRecovery,
+  ): Promise<ProcesarOcrResultado | null> {
+    if (!recovery.documentoId) {
+      return null;
+    }
+
+    const ocrResultadoId = await resolverOcrHistoricoDocumento(
+      recovery.documentoId,
+      recovery.archivoId,
+      true,
+    );
+
+    if (!ocrResultadoId) {
+      return null;
+    }
+
+    const numericOcrResultadoId = Number(ocrResultadoId);
+    if (!Number.isInteger(numericOcrResultadoId) || numericOcrResultadoId <= 0) {
+      throw new Error(
+        `OCR_RESULTADO_ID_INVALIDO: ${ocrResultadoId}`,
+      );
+    }
+
+    const detalle = await getOcrResultado(numericOcrResultadoId);
+    const estadoOcr = text(
+      (detalle as unknown as Record<string, unknown>).estado,
+      "",
+    ).toLowerCase();
+
+    if (estadoOcr !== "pendiente_validacion") {
+      throw new Error(
+        `OCR_RESULTADO_ESTADO_NO_RECUPERABLE: ${estadoOcr || "sin_estado"}`,
+      );
+    }
+
+    return buildResultadoConContexto(
+      {
+        ...(detalle as unknown as ProcesarOcrResultado),
+        ocrResultadoId,
+        archivoId: recovery.archivoId,
+        documentoId: recovery.documentoId,
+      },
+      recovery.accion,
+      {
+        archivoId: recovery.archivoId,
+        filename: recovery.filename,
+        uploadResponse: recovery.uploadResponse,
+      },
+    );
+  }
 
   const cargaRealMutation = useMutation<
     ProcesarOcrResultado,
@@ -1340,9 +1410,42 @@ export function CompraExpedienteEditor({
       const prevalidacion = await prevalidarDocumentoGuiado(uploadPayload, file);
 
       if (prevalidacion.accionSugerida !== "cargar_nuevo") {
+        const existente = getPrevalidacionExistente(prevalidacion);
+
+        if (existente?.archivoId) {
+          const recovery: OcrUploadRecovery = {
+            archivoId: String(existente.archivoId),
+            documentoId:
+              existente.documentoId !== null &&
+              existente.documentoId !== undefined
+                ? String(existente.documentoId)
+                : null,
+            filename: file.name,
+            accion,
+            ocrPayload: {
+              tipoEsperado: accion.tipoEsperado,
+              areaOrigen: "COMPRAS",
+              clienteAbreviatura,
+              expedienteId: id,
+              documentoBaseId: uploadPayload.documentoBaseId ?? null,
+              tipoRelacionSugerida: accion.tipoRelacionSugerida,
+              canalIngreso: "COMPRAS_EDITAR_UPLOAD",
+              reprocesar: false,
+            },
+            uploadResponse: {
+              archivoId: existente.archivoId,
+              documentoId: existente.documentoId ?? null,
+              expedienteId: existente.expedienteId ?? id,
+            },
+          };
+
+          ocrUploadRecoveryRef.current = recovery;
+          setOcrUploadRecovery(recovery);
+        }
+
         throw new PrevalidacionDetuvoCarga(
           prevalidacionCargaMessage(prevalidacion),
-          getPrevalidacionExistente(prevalidacion),
+          existente,
         );
       }
 
@@ -1372,6 +1475,21 @@ export function CompraExpedienteEditor({
         reprocesar: true,
       };
 
+      const documentoId =
+        getDocumentoId(uploadResponse as Record<string, unknown>) ?? null;
+
+      const recovery: OcrUploadRecovery = {
+        archivoId: String(archivoId),
+        documentoId: documentoId !== null ? String(documentoId) : null,
+        filename: file.name,
+        accion,
+        ocrPayload,
+        uploadResponse: uploadResponse as Record<string, unknown>,
+      };
+
+      ocrUploadRecoveryRef.current = recovery;
+      setOcrUploadRecovery(recovery);
+
       const resultado = await procesarArchivoOcr(archivoId, ocrPayload);
       setProcessingStep("preparing_preview");
 
@@ -1394,7 +1512,7 @@ export function CompraExpedienteEditor({
         setModalAbierto(true);
       }, 450);
     },
-    onError: (err, { accion }) => {
+    onError: async (err, { accion }) => {
       setAccionActual(accion);
 
       if (err instanceof PrevalidacionDetuvoCarga) {
@@ -1405,6 +1523,70 @@ export function CompraExpedienteEditor({
         return;
       }
 
+      const recovery = ocrUploadRecoveryRef.current;
+
+      if (recovery) {
+        await queryClient.invalidateQueries({
+          queryKey: ["expediente-documentos", String(id)],
+        });
+
+        setProcessingStep("processing_ocr");
+        setProcessingError(null);
+        setMensajeValidacion(
+          `El archivo ${recovery.filename} ya fue cargado. No vuelvas a subirlo mientras verificamos si el OCR terminó en segundo plano.`,
+        );
+
+        for (let attempt = 1; attempt <= 3; attempt += 1) {
+          try {
+            const resultadoRecuperado =
+              await recuperarOcrTardioDesdeUpload(recovery);
+
+            if (resultadoRecuperado) {
+              setResultadoModal(resultadoRecuperado);
+              setAccionActual(recovery.accion);
+              setModalSoloLectura(false);
+              setMensajeValidacion(null);
+              setProcessingError(null);
+              setProcessingStep("ready");
+
+              window.setTimeout(() => {
+                setProcessingStep("idle");
+                setModalAbierto(true);
+              }, 450);
+
+              return;
+            }
+          } catch (recoveryError) {
+            const recoveryMessage =
+              recoveryError instanceof Error
+                ? recoveryError.message
+                : String(recoveryError);
+
+            setProcessingStep("error");
+            setProcessingError(recoveryMessage);
+            setMensajeValidacion(
+              `El archivo ya fue cargado, pero no se pudo recuperar su OCR. No vuelvas a subirlo. ${recoveryMessage}`,
+            );
+            return;
+          }
+
+          if (attempt < 3) {
+            await new Promise<void>((resolve) => {
+              window.setTimeout(resolve, 1500);
+            });
+          }
+        }
+
+        const message =
+          `El archivo ${recovery.filename} ya fue cargado, pero el OCR todavía no aparece. ` +
+          "No vuelvas a subir el PDF; se conservará esta carga para recuperación.";
+
+        setProcessingStep("error");
+        setProcessingError(message);
+        setMensajeValidacion(message);
+        return;
+      }
+
       const message = `No se pudo cargar/procesar OCR para ${accion.label}. Revisa Gateway, ms-documentos, R2 o NATS. ${err.message}`;
       setProcessingStep("error");
       setProcessingError(message);
@@ -1412,7 +1594,72 @@ export function CompraExpedienteEditor({
     },
   });
 
+  async function reanudarOcrUploadPendiente() {
+    const recovery = ocrUploadRecoveryRef.current;
+    if (!recovery) return;
+
+    setProcessingFileName(recovery.filename);
+    setProcessingStep("processing_ocr");
+    setProcessingError(null);
+    setMensajeValidacion(
+      `Reanudando OCR de ${recovery.filename} sobre el archivo ya cargado. No vuelvas a subir el PDF.`,
+    );
+
+    try {
+      const resultadoTardio = await recuperarOcrTardioDesdeUpload(recovery);
+
+      const resultado =
+        resultadoTardio ??
+        buildResultadoConContexto(
+          await procesarArchivoOcr(recovery.archivoId, {
+            ...recovery.ocrPayload,
+            reprocesar: false,
+          }),
+          recovery.accion,
+          {
+            archivoId: recovery.archivoId,
+            filename: recovery.filename,
+            uploadResponse: recovery.uploadResponse,
+          },
+        );
+
+      setResultadoModal(resultado);
+      setAccionActual(recovery.accion);
+      setModalSoloLectura(false);
+      setMensajeValidacion(null);
+      setProcessingError(null);
+      setProcessingStep("ready");
+
+      await queryClient.invalidateQueries({
+        queryKey: ["expediente-documentos", String(id)],
+      });
+
+      window.setTimeout(() => {
+        setProcessingStep("idle");
+        setModalAbierto(true);
+      }, 450);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : String(error);
+
+      setProcessingStep("error");
+      setProcessingError(message);
+      setMensajeValidacion(
+        `El archivo ${recovery.filename} sigue cargado y pendiente de recuperación OCR. No vuelvas a subirlo. ${message}`,
+      );
+    }
+  }
+
   function iniciarSeleccionArchivo(option: DocumentoCargaOption, grupo: AccionCargaGuiada["grupo"]) {
+    const recovery = ocrUploadRecoveryRef.current;
+
+    if (recovery) {
+      setMensajeValidacion(
+        `El archivo ${recovery.filename} ya fue cargado y tiene una recuperación OCR pendiente. Reanuda esa carga antes de seleccionar otro archivo.`,
+      );
+      return;
+    }
+
     if (grupo === "adjunto" && !principalSeleccionado) {
       setMensajeValidacion(
         "Selecciona la orden de compra o servicio a la que corresponde este documento.",
@@ -2151,6 +2398,9 @@ export function CompraExpedienteEditor({
         : "Guardar y confirmar adjunto desde Compras > Editar",
     });
 
+    ocrUploadRecoveryRef.current = null;
+    setOcrUploadRecovery(null);
+
     setModalAbierto(false);
     setMensajeValidacion(`OCR confirmado y vinculado al expediente ${codigoExpedienteFinal}.`);
     queryClient.invalidateQueries({ queryKey: ["ocr-resultados"] });
@@ -2171,6 +2421,9 @@ export function CompraExpedienteEditor({
       ocrResultadoId,
       `Rechazado desde Compras > Editar. Tipo: ${form.tipoDocumental}. Documento: ${form.serie ? `${form.serie}-` : ""}${form.numero || "sin número"}`,
     );
+
+    ocrUploadRecoveryRef.current = null;
+    setOcrUploadRecovery(null);
 
     setModalAbierto(false);
     setMensajeValidacion(`OCR rechazado para ${accionActual?.label ?? "documento"}.`);
@@ -2241,15 +2494,39 @@ export function CompraExpedienteEditor({
         {mensajeValidacion ? (
           <div className="space-y-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-300">
             <p className="whitespace-pre-line">{mensajeValidacion}</p>
+            {ocrUploadRecovery ? (
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={
+                    cargaRealMutation.isPending ||
+                    processingStep === "processing_ocr"
+                  }
+                  onClick={() => void reanudarOcrUploadPendiente()}
+                >
+                  Reanudar OCR
+                </Button>
+              </div>
+            ) : null}
             {prevalidacionExistente ? (
               <div className="flex flex-wrap gap-2">
                 {prevalidacionExistente.expedienteId ? (
                   <>
                     <Button asChild size="sm" variant="outline">
-                      <Link href={`/compras/${prevalidacionExistente.expedienteId}/ver`}>Ver</Link>
+                      <Link
+                        href={`/compras/${prevalidacionExistente.expedienteId}/ver?returnTo=%2Fcompras&principalId=${principalIdNavegacion}`}
+                      >
+                        Ver
+                      </Link>
                     </Button>
                     <Button asChild size="sm" variant="outline">
-                      <Link href={`/compras/${prevalidacionExistente.expedienteId}/editar`}>Editar</Link>
+                      <Link
+                        href={`/compras/${prevalidacionExistente.expedienteId}/editar?principalId=${principalIdNavegacion}`}
+                      >
+                        Editar
+                      </Link>
                     </Button>
                   </>
                 ) : null}
@@ -2938,7 +3215,16 @@ export function CompraExpedienteEditor({
           rucProveedor:principalProveedorRuc,
           razonSocialProveedor:principalProveedorNombre,
         }}
-        onClose={() => setModalAbierto(false)}
+        onClose={() => {
+          setModalAbierto(false);
+
+          const recovery = ocrUploadRecoveryRef.current;
+          if (recovery) {
+            setMensajeValidacion(
+              `El archivo ${recovery.filename} ya fue cargado y tiene una validación OCR pendiente. Reanuda esa carga; no vuelvas a subir el PDF.`,
+            );
+          }
+        }}
         onSave={guardarCambiosOcr}
         onConfirm={confirmarOcrFinal}
         onReject={rechazarOcrFinal}
