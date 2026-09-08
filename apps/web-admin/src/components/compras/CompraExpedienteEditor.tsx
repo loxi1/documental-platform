@@ -2441,7 +2441,7 @@ export function CompraExpedienteEditor({
       if (String(detalle.id) !== String(fila.ocrResultadoId) ||
           String(detalle.documento_id) !== String(fila.documentoId) ||
           String(detalle.archivo_id) !== String(fila.archivoId) ||
-          detalle.estado !== "pendiente_validacion") {
+          !["pendiente_validacion", "editado"].includes(detalle.estado)) {
         throw new Error("El OCR cambió o no corresponde al documento seleccionado. Se actualizarán los pendientes.");
       }
       const option = DOCUMENTO_ADJUNTO_OPTIONS.find(item => item.tipoRelacionSugerida === "adjunto_factura");

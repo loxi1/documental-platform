@@ -1958,7 +1958,7 @@ export class ExpedientesRepository {
       const codigo = inconsistente ? 'CONTEXTO_CARGA_INCONSISTENTE'
         : row.actuales !== 1 ? 'VERSION_ACTUAL_AMBIGUA'
         : ocr.length > 1 ? 'OCR_MULTIPLE'
-        : ocr.length === 1 && ocr[0].estado !== 'pendiente_validacion' ? 'OCR_NO_RECUPERABLE' : null;
+        : ocr.length === 1 && !['pendiente_validacion', 'editado'].includes(ocr[0].estado) ? 'OCR_NO_RECUPERABLE' : null;
       if (codigo) {
         conflictos.push({ documentoId: row.documentoId, archivoId: row.archivoId, codigo });
         continue;

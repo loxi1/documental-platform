@@ -392,7 +392,14 @@ function buildInitialForm(resultado: unknown, expedienteContexto?: OcrValidation
         (esFactura ? expedienteContexto?.razonSocialProveedor : undefined),
       "",
     ),
-    montoTotal: texto(raw.montoTotal ?? raw.monto_total ?? metadata.montoTotal ?? metadata.monto_total, ""),
+    // GET OCR preserves the persisted extraction envelope: metadata.metadata.
+    // Edited source data takes precedence over the original extraction fields.
+    montoTotal: texto(
+      getRecord(metadata, "metadata")?.montoTotal ??
+        getRecord(metadata, "metadata")?.monto_total ??
+        metadata.montoTotal ?? metadata.monto_total ?? raw.montoTotal ?? raw.monto_total,
+      "",
+    ),
     moneda: normalizarMonedaOcr(
       raw.moneda ?? metadata.moneda,
       textoOcr?.preview ?? raw.texto ?? metadata.texto,

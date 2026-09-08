@@ -27,6 +27,7 @@ describe('Facturas pendientes persistidas', () => {
     expect(result.contexto).toEqual({ expedienteId: 1, principalId: 2 });
   });
   it.each([
+    [{ ocr: [{ id: 20, estado: 'pendiente_validacion' }, { id: 21, estado: 'editado' }] }, 'OCR_MULTIPLE'],
     [{ ocr: [{ id: 20, estado: 'pendiente_validacion' }, { id: 21, estado: 'pendiente_validacion' }] }, 'OCR_MULTIPLE'],
     [{ ocr: [{ id: 20, estado: 'confirmado' }] }, 'OCR_NO_RECUPERABLE'],
     [{ ocr: [{ id: 20, estado: 'rechazado' }] }, 'OCR_NO_RECUPERABLE'],
@@ -37,6 +38,17 @@ describe('Facturas pendientes persistidas', () => {
     const result = await consultar([candidato(override)]);
     expect(result.data).toEqual([]);
     expect(result.conflictos).toEqual([{ documentoId: 10, archivoId: 11, codigo }]);
+  });
+  it('conserva varias pendientes cuando una se edita sin confirmar', async () => {
+    const result = await consultar([
+      candidato({ ocr: [{ id: 20, estado: 'editado' }] }),
+      candidato({ documentoId: 12, archivoId: 13, ocr: [{ id: 21, estado: 'pendiente_validacion' }] }),
+    ]);
+    expect(result.data).toHaveLength(2);
+    expect(result.data[0]).toMatchObject({ documentoId: 10, archivoId: 11,
+      ocrResultadoId: 20, estadoOcr: 'editado', accionSugerida: 'VALIDAR_OCR' });
+    expect(result.data[1]).toMatchObject({ estadoOcr: 'pendiente_validacion', accionSugerida: 'VALIDAR_OCR' });
+    expect(result.conflictos).toEqual([]);
   });
   it('rechaza principal fuera del contexto autorizado', async () => {
     sqlMock.mockResolvedValue([{ autorizado: false, candidatos: [] }]);
