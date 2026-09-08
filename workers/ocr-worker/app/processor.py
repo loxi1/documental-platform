@@ -4,11 +4,7 @@ from app.schemas import OcrProcesarArchivoPayload
 from app.storage import resolve_local_path, file_exists
 from app.extractors.text_extractor import extract_text
 from app.extractors.type_metadata_extractor import extract_metadata_by_type
-from app.extractors.qr_extractor import extract_qr_data
-from app.extractors.qr_sunat_extractor import (
-    build_initial_metadata_source,
-    merge_qr_metadata,
-)
+from app.extractors.qr_sunat_extractor import build_initial_metadata_source
 from app.result_builder import build_ocr_result
 from app.r2_storage import download_from_r2
 from app.legacy_core.document_enricher import enrich_page
@@ -75,43 +71,6 @@ def resolve_file_path(payload: OcrProcesarArchivoPayload) -> Path | dict:
     }
 
 
-def should_use_qr(
-    tipo_documental: str,
-    metadata: dict,
-    confidence: float,
-    text: str = "",
-) -> bool:
-    tipo = normalize_document_type(tipo_documental)
-
-    # Solo comprobantes donde QR realmente aporta valor.
-    if tipo in ["FACTURA", "GUIA_REMISION", "NOTA_CREDITO"]:
-        return bool(get_missing_metadata(tipo, metadata)) or confidence < 0.90
-
-    # Fallback automático solo cuando no se sabe el tipo.
-    if tipo == "OTRO" and len((text or "").strip()) < 80:
-        return True
-
-    # No intentar QR en OC, OS, NI, RH, pagos ni detracciones.
-    return False
-
-
-def infer_tipo_from_qr(tipo_documental: str, qr_data: dict | None) -> str:
-    tipo = normalize_document_type(tipo_documental)
-
-    if tipo != "OTRO" or not qr_data:
-        return tipo
-
-    codigo = str(qr_data.get("tipoComprobanteCodigo") or "").strip()
-
-    sunat_map = {
-        "01": "FACTURA",
-        "07": "NOTA_CREDITO",
-        "09": "GUIA_REMISION",
-        "R1": "RECIBO_HONORARIO",
-    }
-
-    return normalize_document_type(sunat_map.get(codigo, tipo))
-
 
 def resolve_cliente_for_key(payload_cliente: str, metadata: dict) -> str:
     detected = metadata.get("clienteAbreviatura")
@@ -166,31 +125,8 @@ async def process_file(payload: OcrProcesarArchivoPayload) -> dict:
     metadata_source = build_initial_metadata_source(metadata)
     confidence = calculate_confidence(tipo_documental, metadata)
 
+    # QR automático deshabilitado: la metadata incompleta se completa en validación humana.
     qr_data = None
-
-    if should_use_qr(tipo_documental, metadata, confidence, text):
-        qr_data = extract_qr_data(file_path)
-
-        if not expected_type:
-            tipo_documental = infer_tipo_from_qr(tipo_documental, qr_data)
-
-        metadata = extract_metadata_by_type(
-            tipo_documental=tipo_documental,
-            text=text,
-            enriched=enriched,
-            filename=file_path.name,
-        )
-
-        cliente_for_key = resolve_cliente_for_key(payload_cliente, metadata)
-        metadata_source = build_initial_metadata_source(metadata)
-
-        metadata, metadata_source = merge_qr_metadata(
-            metadata,
-            qr_data,
-            metadata_source,
-        )
-
-        confidence = calculate_confidence(tipo_documental, metadata)
 
     clave_documental = build_document_key(
         cliente=cliente_for_key,
@@ -214,7 +150,7 @@ async def process_file(payload: OcrProcesarArchivoPayload) -> dict:
 
         if len((text or "").strip()) < 80 and not qr_data:
             mensaje = (
-                "PDF escaneado sin texto digital y sin QR legible. "
+                "PDF escaneado con texto insuficiente para extracción automática. "
                 "Requiere revisión manual o reescaneo con mejor calidad."
             )
         else:
