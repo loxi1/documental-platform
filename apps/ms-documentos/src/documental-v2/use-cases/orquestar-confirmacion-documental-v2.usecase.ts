@@ -57,7 +57,47 @@ export class OrquestarConfirmacionDocumentalV2UseCase {
     input: ConfirmacionDocumentalIntegradaInput,
     audit: ConfirmacionDocumentalAudit = {},
   ) {
+    return sql.begin((tx) =>
+      this.confirmarConExecutor(tx, ocrResultadoId, input, audit),
+    );
+  }
+
+  executeManualFactura(
+    params: {
+      documentoId: number;
+      archivoId: number;
+    },
+    input: ConfirmacionDocumentalIntegradaInput,
+    audit: ConfirmacionDocumentalAudit = {},
+  ) {
     return sql.begin(async (tx) => {
+      const validacionManual =
+        await this.documentosLegacy.crearValidacionManualFacturaConExecutor(
+          tx,
+          params,
+        );
+
+      return this.confirmarConExecutor(
+        tx,
+        Number(validacionManual.id),
+        {
+          ...input,
+          metadata: {
+            ...(input.metadata ?? {}),
+            tipoDocumental: 'FACTURA',
+          },
+        },
+        audit,
+      );
+    });
+  }
+
+  private async confirmarConExecutor(
+    tx: SqlExecutor,
+    ocrResultadoId: number,
+    input: ConfirmacionDocumentalIntegradaInput,
+    audit: ConfirmacionDocumentalAudit,
+  ) {
       const confirmado = await this.documentosLegacy.confirmarOcrResultadoConExpedienteConExecutor(
         tx,
         ocrResultadoId,
@@ -201,7 +241,6 @@ export class OrquestarConfirmacionDocumentalV2UseCase {
           correspondencia: documentoGrupoFactura?.correspondencia ?? null,
         },
       };
-    });
   }
 
   private async resolverGrupoFacturaId(

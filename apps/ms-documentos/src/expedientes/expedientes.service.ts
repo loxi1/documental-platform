@@ -508,6 +508,11 @@ export class ExpedientesService {
     };
   }
 
+  async findFacturasPendientes(expedienteId: number, principalId: number,
+    scope: { workspaceId: number; clienteDestinoId: number; empresa: string }) {
+    return this.repo.findFacturasPendientes(expedienteId, principalId, scope);
+  }
+
   async findDocumentos(id: number) {
     await this.findById(id);
     return this.repo.findDocumentosByExpedienteId(id);

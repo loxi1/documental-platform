@@ -27,6 +27,7 @@ import {
   subirDocumentoCargaSegura,
 } from "@/services/carga-segura";
 import { api } from "@/services/api";
+import { getFacturasPendientes, type FacturaPendienteValidacion } from "@/services/expedientes";
 import { getOcrResultado } from "@/services/ocr-resultados";
 import { buscarProveedoresCatalogo } from "@/services/ocr-procesamiento";
 import {
@@ -35,6 +36,7 @@ import {
   type DocumentoArchivoVersion,
 } from "@/services/documentos";
 import {
+  confirmarFacturaManualConExpediente,
   confirmarOcrConExpediente,
   editarOcrResultado,
   procesarArchivoOcr,
@@ -649,6 +651,45 @@ function DocumentoHumanoCard({
   );
 }
 
+function FacturaPendienteCard({ pendiente, readOnly, loading, onValidar }: {
+  pendiente: FacturaPendienteValidacion;
+  readOnly: boolean;
+  loading: boolean;
+  onValidar: () => void;
+}) {
+  const tieneOcr = pendiente.accionSugerida === "VALIDAR_OCR";
+  return (
+    <div className="rounded-xl border bg-background p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="break-words font-semibold">{pendiente.filename}</div>
+          {pendiente.fechaCarga ? (
+            <div className="mt-1 text-xs text-muted-foreground">
+              Cargado: {formatFechaHumana(pendiente.fechaCarga)}
+            </div>
+          ) : null}
+        </div>
+        <span className="rounded-full border px-2.5 py-1 text-xs text-muted-foreground">
+          {tieneOcr ? "Pendiente de validación OCR" : "Sin resultado OCR"}
+        </span>
+      </div>
+      <div className="mt-4 space-y-2">
+        <Button type="button" variant="outline" size="sm" disabled={readOnly || loading} onClick={onValidar}>
+          {tieneOcr ? "Validar OCR" : "Validar manualmente"}
+        </Button>
+        <p className="text-xs text-muted-foreground">
+          {readOnly
+            ? "Vista de solo lectura."
+            : tieneOcr
+              ? "Revisa los datos y el PDF ya guardados."
+              : "Completa manualmente los datos de la factura sobre el PDF ya guardado."}
+          {" "}El PDF ya está guardado; no vuelvas a cargarlo.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 type VersionesDocumentoModalState = {
   documentoId: string;
   titulo: string;
@@ -1141,6 +1182,20 @@ export function CompraExpedienteEditor({
   const { data: expediente, isLoading, error } = useExpediente(id);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [modalAbierto, setModalAbierto] = useState(false);
+  const [pendienteOcrAbierto, setPendienteOcrAbierto] = useState<{
+    fila: FacturaPendienteValidacion;
+    expedienteId: string | number;
+    principalId: number;
+  } | null>(null);
+  const [pendienteManualAbierto, setPendienteManualAbierto] = useState<{
+    fila: FacturaPendienteValidacion;
+    expedienteId: string | number;
+    principalId: number;
+  } | null>(null);
+  const [abriendoPendiente, setAbriendoPendiente] = useState(false);
+  const aperturaPendienteRef = useRef(0);
+  const aperturaEnCursoRef = useRef(false);
+
   const [modalSoloLectura, setModalSoloLectura] = useState(false);
   const [resultadoModal, setResultadoModal] = useState<ProcesarOcrResultado | null>(null);
   const [accionActual, setAccionActual] = useState<AccionCargaGuiada | null>(null);
@@ -1222,6 +1277,46 @@ export function CompraExpedienteEditor({
       ) ?? null,
     [documentosPrincipales, principalIdSeleccionado],
   );
+
+  const principalPendientesId = getDocumentoId(principalSeleccionado);
+  const contextoPendienteRef = useRef({ expedienteId: String(id), principalId: principalPendientesId, readOnly: modoSoloLectura });
+  contextoPendienteRef.current = { expedienteId: String(id), principalId: principalPendientesId, readOnly: modoSoloLectura };
+  useEffect(() => {
+    return () => { aperturaPendienteRef.current += 1; aperturaEnCursoRef.current = false; };
+  }, [id, principalPendientesId, modoSoloLectura]);
+  useEffect(() => {
+    setAbriendoPendiente(false);
+    if (pendienteOcrAbierto && (String(pendienteOcrAbierto.expedienteId) !== String(id) ||
+        pendienteOcrAbierto.principalId !== principalPendientesId || modoSoloLectura)) {
+      setModalAbierto(false);
+      setPendienteOcrAbierto(null);
+    }
+    if (pendienteManualAbierto && (String(pendienteManualAbierto.expedienteId) !== String(id) ||
+        pendienteManualAbierto.principalId !== principalPendientesId || modoSoloLectura)) {
+      setModalAbierto(false);
+      setPendienteManualAbierto(null);
+    }
+  }, [id, principalPendientesId, modoSoloLectura, pendienteOcrAbierto, pendienteManualAbierto]);
+
+  const facturasPendientesQuery = useQuery({
+    queryKey: ["compras-facturas-pendientes", String(id), principalPendientesId],
+    enabled: Boolean(principalPendientesId),
+    queryFn: () => getFacturasPendientes(id, principalPendientesId!),
+    placeholderData: undefined,
+    refetchOnMount: "always",
+  });
+  useEffect(() => {
+    if (principalPendientesId) {
+      void queryClient.invalidateQueries({
+        queryKey: ["compras-facturas-pendientes", String(id), principalPendientesId],
+      });
+    }
+  }, [documentosQuery.dataUpdatedAt, id, principalPendientesId, queryClient]);
+  const pendientesContexto = facturasPendientesQuery.data;
+  const facturasPendientes = !facturasPendientesQuery.isError && principalPendientesId &&
+    String(pendientesContexto?.contexto?.expedienteId) === String(id) &&
+    pendientesContexto?.contexto?.principalId === principalPendientesId
+      ? pendientesContexto.data : [];
 
   const documentosAdjuntos = useMemo(
     () =>
@@ -2329,6 +2424,254 @@ export function CompraExpedienteEditor({
     }
   }
 
+  async function abrirOcrPendiente(fila: FacturaPendienteValidacion) {
+    if (modoSoloLectura || !principalPendientesId || aperturaEnCursoRef.current || modalAbierto ||
+        fila.accionSugerida !== "VALIDAR_OCR" || !fila.ocrResultadoId) return;
+    const contexto = { fila, expedienteId: id, principalId: principalPendientesId };
+    const generation = ++aperturaPendienteRef.current;
+    aperturaEnCursoRef.current = true;
+    setAbriendoPendiente(true);
+    setMensajeValidacion(null);
+    const sigueVigente = () => generation === aperturaPendienteRef.current &&
+      contextoPendienteRef.current.expedienteId === String(contexto.expedienteId) &&
+      contextoPendienteRef.current.principalId === contexto.principalId && !contextoPendienteRef.current.readOnly;
+    try {
+      const detalle = await getOcrResultado(fila.ocrResultadoId);
+      if (!sigueVigente()) return;
+      if (String(detalle.id) !== String(fila.ocrResultadoId) ||
+          String(detalle.documento_id) !== String(fila.documentoId) ||
+          String(detalle.archivo_id) !== String(fila.archivoId) ||
+          detalle.estado !== "pendiente_validacion") {
+        throw new Error("El OCR cambió o no corresponde al documento seleccionado. Se actualizarán los pendientes.");
+      }
+      const option = DOCUMENTO_ADJUNTO_OPTIONS.find(item => item.tipoRelacionSugerida === "adjunto_factura");
+      if (!option) throw new Error("No se encontró la configuración de factura.");
+      const persistida = parseRecordLocal(detalle.metadata) ?? {};
+      const campos = parseRecordLocal(persistida.metadata) ?? persistida;
+      setAccionActual({ ...option, grupo: "adjunto" });
+      setResultadoModal(buildResultadoConContexto({
+        ...persistida,
+        metadata: campos,
+        ocrResultadoId: fila.ocrResultadoId,
+        documentoId: fila.documentoId,
+        archivoId: fila.archivoId,
+        tipoDocumental: detalle.tipo_propuesto ?? "FACTURA",
+      } as ProcesarOcrResultado, { ...option, grupo: "adjunto" }, {
+        archivoId: String(fila.archivoId), filename: fila.filename,
+        uploadResponse: { documentoId: fila.documentoId, archivoId: fila.archivoId },
+      }));
+      setPendienteOcrAbierto(contexto);
+      setModalSoloLectura(false);
+      setModalAbierto(true);
+    } catch (error) {
+      if (sigueVigente()) setMensajeValidacion(error instanceof Error ? error.message : "No se pudo abrir el OCR persistido.");
+      void queryClient.invalidateQueries({ queryKey: ["compras-facturas-pendientes", String(contexto.expedienteId), contexto.principalId] });
+    } finally {
+      if (generation === aperturaPendienteRef.current) {
+        aperturaEnCursoRef.current = false;
+        setAbriendoPendiente(false);
+      }
+    }
+  }
+
+  function abrirFacturaManualPendiente(fila: FacturaPendienteValidacion) {
+    if (
+      modoSoloLectura ||
+      !principalPendientesId ||
+      aperturaEnCursoRef.current ||
+      modalAbierto ||
+      fila.accionSugerida !== "VALIDAR_MANUAL"
+    ) {
+      return;
+    }
+
+    const option = DOCUMENTO_ADJUNTO_OPTIONS.find(
+      (item) => item.tipoRelacionSugerida === "adjunto_factura",
+    );
+    if (!option) {
+      setMensajeValidacion("No se encontró la configuración de factura.");
+      return;
+    }
+
+    const contexto = {
+      fila,
+      expedienteId: id,
+      principalId: principalPendientesId,
+    };
+
+    setMensajeValidacion(null);
+    setAccionActual({ ...option, grupo: "adjunto" });
+    setResultadoModal(
+      buildResultadoConContexto(
+        {
+          documentoId: fila.documentoId,
+          archivoId: fila.archivoId,
+          tipoDocumental: "FACTURA",
+        } as ProcesarOcrResultado,
+        { ...option, grupo: "adjunto" },
+        {
+          archivoId: String(fila.archivoId),
+          filename: fila.filename,
+          uploadResponse: {
+            documentoId: fila.documentoId,
+            archivoId: fila.archivoId,
+          },
+        },
+      ),
+    );
+    setPendienteOcrAbierto(null);
+    setPendienteManualAbierto(contexto);
+    setModalSoloLectura(false);
+    setModalAbierto(true);
+  }
+
+  async function confirmarFacturaManualPendiente(
+    form: OcrValidationFormState,
+  ) {
+    const contexto = pendienteManualAbierto;
+
+    if (
+      !contexto ||
+      contextoPendienteRef.current.readOnly ||
+      contextoPendienteRef.current.expedienteId !==
+        String(contexto.expedienteId) ||
+      contextoPendienteRef.current.principalId !== contexto.principalId
+    ) {
+      throw new Error(
+        "El contexto cambió. Vuelve a abrir la factura desde sus pendientes.",
+      );
+    }
+
+    if (
+      normalizeTipoDocumentalParaBackend(String(form.tipoDocumental)) !==
+      "FACTURA"
+    ) {
+      throw new Error(
+        "La validación manual debe conservar el tipo FACTURA.",
+      );
+    }
+
+    const metadata: Record<string, unknown> = {
+      ...buildMetadataDesdeFormulario(form, {}),
+    };
+
+    // En modo manual estos campos son autoridad exclusiva del backend.
+    delete metadata.claveDocumental;
+    delete metadata.clienteAbreviatura;
+    delete metadata.codigoExpediente;
+    delete metadata.rucComprador;
+    delete metadata.contextoValidacion;
+
+    try {
+      await confirmarFacturaManualConExpediente(
+        contexto.fila.documentoId,
+        contexto.fila.archivoId,
+        {
+          expedienteId: contexto.expedienteId,
+          documentoBaseId: contexto.principalId,
+          tipoRelacion: "adjunto_factura",
+          esPrincipal: false,
+          orden: 10,
+          metadata,
+          observacion:
+            "Confirmación manual de factura persistida sin resultado OCR desde Compras",
+        },
+      );
+    } catch (error) {
+      const code = String(
+        (error as any)?.code ??
+          (error as any)?.details?.code ??
+          "",
+      );
+
+      if (code === "OCR_DISPONIBLE_PARA_VALIDACION") {
+        setModalAbierto(false);
+        setPendienteManualAbierto(null);
+
+        await Promise.all([
+          queryClient.invalidateQueries({
+            queryKey: [
+              "compras-facturas-pendientes",
+              String(contexto.expedienteId),
+              contexto.principalId,
+            ],
+          }),
+          queryClient.invalidateQueries({
+            queryKey: ["ocr-resultados"],
+          }),
+        ]);
+
+        setMensajeValidacion(
+          "Ya existe un resultado OCR para esta factura. Actualiza los pendientes y usa Validar OCR.",
+        );
+        return;
+      }
+
+      throw error;
+    }
+
+    setModalAbierto(false);
+    setPendienteManualAbierto(null);
+    setMensajeValidacion("Factura confirmada manualmente.");
+
+    await Promise.all([
+      queryClient.invalidateQueries({
+        queryKey: [
+          "compras-facturas-pendientes",
+          String(contexto.expedienteId),
+          contexto.principalId,
+        ],
+      }),
+      queryClient.invalidateQueries({
+        queryKey: ["expediente-documentos", String(contexto.expedienteId)],
+      }),
+      queryClient.invalidateQueries({
+        queryKey: ["ocr-resultados"],
+      }),
+    ]);
+  }
+
+  async function validarOcrPersistido(form: OcrValidationFormState, accion: "guardar" | "confirmar" | "rechazar") {
+    const contexto = pendienteOcrAbierto;
+    if (!contexto || contextoPendienteRef.current.readOnly ||
+        contextoPendienteRef.current.expedienteId !== String(contexto.expedienteId) ||
+        contextoPendienteRef.current.principalId !== contexto.principalId) {
+      throw new Error("El contexto cambió. Vuelve a abrir la factura desde sus pendientes.");
+    }
+    if (normalizeTipoDocumentalParaBackend(String(form.tipoDocumental)) !== "FACTURA") {
+      throw new Error("La validación pendiente debe conservar el tipo FACTURA.");
+    }
+    const metadata = buildMetadataDesdeFormulario(form, {
+      codigoExpediente: codigo, rucComprador, clienteAbreviatura: empresa,
+      expedienteId: contexto.expedienteId, documentoBaseId: contexto.principalId,
+      tipoRelacion: "adjunto_factura",
+    });
+    // Canonical identity remains the responsibility of the existing backend confirmation.
+    delete metadata.claveDocumental;
+    if (accion === "guardar") {
+      await editarOcrResultado(contexto.fila.ocrResultadoId!, { tipoPropuesto: "FACTURA", metadata,
+        observacion: "Edición desde factura pendiente de Compras" });
+      return;
+    }
+    if (accion === "confirmar") {
+      await confirmarOcrConExpediente(contexto.fila.ocrResultadoId!, {
+        expedienteId: contexto.expedienteId, documentoBaseId: contexto.principalId,
+        tipoRelacion: "adjunto_factura", esPrincipal: false, orden: 10, metadata,
+        observacion: "Confirmación desde factura pendiente de Compras",
+      });
+    } else {
+      await rechazarOcrResultado(contexto.fila.ocrResultadoId!, "Rechazado desde factura pendiente de Compras");
+    }
+    // Errors (including duplicates) propagate to the modal without removing the card.
+    setModalAbierto(false);
+    setPendienteOcrAbierto(null);
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["compras-facturas-pendientes", String(contexto.expedienteId), contexto.principalId] }),
+      queryClient.invalidateQueries({ queryKey: ["expediente-documentos", String(contexto.expedienteId)] }),
+      queryClient.invalidateQueries({ queryKey: ["ocr-resultados"] }),
+    ]);
+  }
+
   async function guardarCambiosOcr(form: OcrValidationFormState) {
     await persistirEdicionOcr(form, "Edición manual desde Compras > Editar");
     setMensajeValidacion(`Cambios OCR guardados para ${accionActual?.label ?? "documento"}.`);
@@ -2807,6 +3150,39 @@ export function CompraExpedienteEditor({
           </CardContent>
         </Card>
 
+        {principalPendientesId && facturasPendientesQuery.isError ? (
+          <p role="alert" className="text-sm text-red-600">
+            No se pudieron consultar las facturas pendientes de validación.
+          </p>
+        ) : null}
+        {principalPendientesId && facturasPendientes.length > 0 ? (
+          <Card>
+            <CardHeader>
+              <CardTitle>Facturas pendientes de validación</CardTitle>
+              <p className="text-sm text-muted-foreground">
+                Archivos guardados para esta OC/OS que todavía no son facturas operativas.
+              </p>
+            </CardHeader>
+            <CardContent className="grid gap-3 md:grid-cols-3">
+              {facturasPendientes.map((pendiente) => (
+                <FacturaPendienteCard
+                  key={`${pendiente.documentoId}:${pendiente.archivoId}`}
+                  pendiente={pendiente}
+                  readOnly={modoSoloLectura}
+                  loading={abriendoPendiente || modalAbierto}
+                  onValidar={() => {
+                    if (pendiente.accionSugerida === "VALIDAR_OCR") {
+                      void abrirOcrPendiente(pendiente);
+                      return;
+                    }
+                    abrirFacturaManualPendiente(pendiente);
+                  }}
+                />
+              ))}
+            </CardContent>
+          </Card>
+        ) : null}
+
         {documentosSinPrincipal.length ? (
           <Card>
             <CardHeader>
@@ -3217,6 +3593,14 @@ export function CompraExpedienteEditor({
         }}
         onClose={() => {
           setModalAbierto(false);
+          if (pendienteOcrAbierto) {
+            setPendienteOcrAbierto(null);
+            return;
+          }
+          if (pendienteManualAbierto) {
+            setPendienteManualAbierto(null);
+            return;
+          }
 
           const recovery = ocrUploadRecoveryRef.current;
           if (recovery) {
@@ -3225,10 +3609,30 @@ export function CompraExpedienteEditor({
             );
           }
         }}
-        onSave={guardarCambiosOcr}
-        onConfirm={confirmarOcrFinal}
-        onReject={rechazarOcrFinal}
+        onSave={
+          pendienteManualAbierto
+            ? undefined
+            : pendienteOcrAbierto
+              ? (form) => validarOcrPersistido(form, "guardar")
+              : guardarCambiosOcr
+        }
+        onConfirm={
+          pendienteManualAbierto
+            ? confirmarFacturaManualPendiente
+            : pendienteOcrAbierto
+              ? (form) => validarOcrPersistido(form, "confirmar")
+              : confirmarOcrFinal
+        }
+        onReject={
+          pendienteManualAbierto
+            ? undefined
+            : pendienteOcrAbierto
+              ? (form) => validarOcrPersistido(form, "rechazar")
+              : rechazarOcrFinal
+        }
         formularioContexto="COMPRAS"
+        modo={pendienteManualAbierto ? "pendiente_manual" : "ocr"}
+        tipoDocumentalBloqueado={Boolean(pendienteManualAbierto)}
         readOnly={modalSoloLectura}
       />
     </>

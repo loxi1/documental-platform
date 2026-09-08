@@ -80,6 +80,7 @@ type OcrValidationModalProps = {
    * o desde catálogos, para mantener el modal compacto.
    */
   formularioContexto?: "ALMACEN" | "COMPRAS" | "FINANZAS";
+  modo?: "ocr" | "pendiente_manual";
   readOnly?: boolean;
 };
 
@@ -478,11 +479,24 @@ function buildInitialFormParaModo(
   resultado: unknown,
   expedienteContexto: OcrValidationExpedienteContexto | undefined,
   metadataVigente?: Partial<FormState>,
+  modo: "ocr" | "pendiente_manual" = "ocr",
 ) {
-  return mergeFormConMetadataVigente(
+  const form = mergeFormConMetadataVigente(
     buildInitialForm(resultado, expedienteContexto),
     metadataVigente,
   );
+
+  if (modo === "pendiente_manual") {
+    return {
+      ...form,
+      tipoDocumental: "FACTURA",
+      claveDocumental: "",
+      rucComprador: "",
+      codigoExpediente: "",
+    };
+  }
+
+  return form;
 }
 
 function normalizeComparacionVersion(value: unknown) {
@@ -761,6 +775,7 @@ export function OcrValidationModal({
   tiposDocumentalesPermitidos,
   tipoDocumentalBloqueado = false,
   formularioContexto,
+  modo = "ocr",
   readOnly = false,
 }: OcrValidationModalProps) {
   const esModoVersionDocumentoExistente = Boolean(
@@ -771,6 +786,7 @@ export function OcrValidationModal({
       resultado,
       expedienteContexto,
       modoVersionDocumentoExistente?.metadataVigente,
+      modo,
     ),
   );
   const [localMessage, setLocalMessage] = useState<string | null>(null);
@@ -789,6 +805,7 @@ export function OcrValidationModal({
           resultado,
           expedienteContexto,
           modoVersionDocumentoExistente?.metadataVigente,
+          modo,
         ),
       );
       setLocalMessage(null);
@@ -799,7 +816,7 @@ export function OcrValidationModal({
       setProveedorEstado("SIN_CONSULTAR");
       setProveedorOrigen("");
     }
-  }, [open, resultado, expedienteContexto, modoVersionDocumentoExistente]);
+  }, [open, resultado, expedienteContexto, modoVersionDocumentoExistente, modo]);
 
   useEffect(() => {
     if (!open) return;
@@ -862,10 +879,15 @@ export function OcrValidationModal({
 
     return Array.from(new Set([...base, normalizeTipoParaUi(form.tipoDocumental)])).filter(Boolean);
   }, [form.tipoDocumental, tiposDocumentalesPermitidos]);
-  const campos = useMemo(
-    () => camposPorTipo(form.tipoDocumental, formularioContexto),
-    [form.tipoDocumental, formularioContexto],
-  );
+  const campos = useMemo(() => {
+    const base = camposPorTipo(form.tipoDocumental, formularioContexto);
+
+    if (modo === "pendiente_manual" && formularioContexto === "COMPRAS") {
+      return base.filter((campo) => campo !== "rucComprador");
+    }
+
+    return base;
+  }, [form.tipoDocumental, formularioContexto, modo]);
   const ocultarTipoDocumental =
     (formularioContexto === "ALMACEN" || formularioContexto === "FINANZAS") &&
     tipoDocumentalBloqueado;
@@ -1458,7 +1480,8 @@ const esFactura = tipoProveedor === "FACTURA";
               </button>
             ) : (
               <>
-                {formularioContexto !== "FINANZAS" ? (
+                {formularioContexto !== "FINANZAS" &&
+                modo !== "pendiente_manual" ? (
                   <button
                     type="button"
                     onClick={handleReject}
@@ -1477,7 +1500,8 @@ const esFactura = tipoProveedor === "FACTURA";
                 </button>
                 {!duplicadoDetails ? (
                   <>
-                    {formularioContexto !== "FINANZAS" ? (
+                    {formularioContexto !== "FINANZAS" &&
+                    modo !== "pendiente_manual" ? (
                       <button
                         type="button"
                         onClick={handleSave}

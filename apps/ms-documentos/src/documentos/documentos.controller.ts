@@ -194,6 +194,42 @@ export class DocumentosController {
   }
 
 
+  @Post(':documentoId/archivos/:archivoId/confirmar-factura-manual')
+  confirmarFacturaManualConExpediente(
+    @Param('documentoId', ParseIntPipe) documentoId: number,
+    @Param('archivoId', ParseIntPipe) archivoId: number,
+    @Body() body: {
+      expedienteId: number;
+      documentoBaseId?: number;
+      grupoFacturaId?: number | null;
+      tipoRelacion?: string;
+      esPrincipal?: boolean;
+      orden?: number;
+      metadata?: Record<string, any>;
+      observacion?: string;
+    },
+    @Headers('x-user-id') userId?: string,
+    @Headers('x-request-id') requestId?: string,
+    @Headers('x-correlation-id') correlationId?: string,
+  ) {
+    const usuarioId = Number(userId ?? NaN);
+
+    return this.service.confirmarFacturaManualConExpediente(
+      {
+        documentoId,
+        archivoId,
+      },
+      body,
+      {
+        usuarioId:
+          Number.isFinite(usuarioId) && usuarioId > 0 ? usuarioId : null,
+        requestId: requestId?.trim() || null,
+        correlationId: correlationId?.trim() || requestId?.trim() || null,
+      },
+    );
+  }
+
+
 
   @ApiOperation({ summary: 'Listar eventos documentales de un documento' })
   @ApiParam({ name: 'id', example: 3747 })

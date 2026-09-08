@@ -96,6 +96,25 @@ export class DocumentosService {
     return this.repo.getProveedores(search, limit, offset);
   }
 
+  private resultadoOcrPersistido(ocr: Record<string, any>) {
+    const persistida = ocr.metadata && typeof ocr.metadata === 'object' && !Array.isArray(ocr.metadata)
+      ? ocr.metadata : {};
+    return {
+      ...persistida,
+      ...ocr,
+      ok: true,
+      documentoId: ocr.documento_id,
+      archivoId: ocr.archivo_id,
+      ocrResultadoId: ocr.id,
+      tipoDocumental: ocr.tipo_propuesto,
+      claveDocumental: ocr.clave_documental,
+      estado: ocr.estado,
+      ocrResultadoYaExistia: true,
+      ocrResultadoMotivo: 'MISMO_DOCUMENTO_ARCHIVO',
+      requiereValidacionUsuario: ocr.estado === 'pendiente_validacion' || ocr.estado === 'editado',
+    };
+  }
+
   async procesarOcrArchivo(
     archivoId: number,
     contexto: {
@@ -122,6 +141,24 @@ export class DocumentosService {
       throw new BadRequestException(
         `El archivo ${archivoId} no tiene cliente_abreviatura. No se puede procesar OCR sin empresa destino.`,
       );
+    }
+
+    if (contexto.reprocesar !== true && archivo.documento_id != null) {
+      const existentes = await this.repo.findOcrReutilizablesByDocumentoArchivo(
+        archivo.documento_id,
+        archivo.id,
+      );
+      if (existentes.length > 1) {
+        throw new ConflictException({
+          code: 'OCR_REUTILIZACION_AMBIGUA',
+          message: 'Existen múltiples resultados OCR reutilizables para el documento y archivo.',
+          details: { documentoId: archivo.documento_id, archivoId: archivo.id,
+            ocrResultadoIds: existentes.map((ocr) => ocr.id) },
+        });
+      }
+      if (existentes.length === 1) {
+        return this.resultadoOcrPersistido(existentes[0]);
+      }
     }
 
     const payload = {
@@ -156,7 +193,21 @@ export class DocumentosService {
         claveDocumental: result.claveDocumental ?? null,
         metadata: result,
         forceReprocess: contexto.reprocesar === true,
+      }).catch((error) => {
+        const conflictosPersistencia = [
+          'OCR_ARCHIVO_DOCUMENTO_INVALIDO', 'OCR_ARCHIVO_NO_ELEGIBLE',
+          'OCR_DOCUMENTO_NO_ELEGIBLE', 'OCR_REUTILIZACION_AMBIGUA',
+          'OCR_CONFIRMACION_INCONSISTENTE', 'OCR_DOCUMENTO_YA_CONFIRMADO',
+        ];
+        if (contexto.reprocesar !== true && conflictosPersistencia.includes(error?.code)) {
+          throw new ConflictException({ code: error.code, message: error.message, details: error.details });
+        }
+        throw error;
       });
+
+      if (saved?.yaExistia && saved.row) {
+        return this.resultadoOcrPersistido(saved.row);
+      }
 
       if (saved?.row?.id) {
         await this.documentoEventos.registrarEvento({
@@ -423,6 +474,7 @@ export class DocumentosService {
       if (
         [
           'DOCUMENTO_DUPLICADO_EN_EXPEDIENTE',
+          'OCR_CONTEXTO_MODIFICADO',
           'DOCUMENTO_YA_VINCULADO_A_OTRO_EXPEDIENTE',
           'CODIGO_EXPEDIENTE_NO_COINCIDE',
           'EXPEDIENTE_YA_TIENE_DOCUMENTO_PRINCIPAL',
@@ -455,6 +507,126 @@ export class DocumentosService {
     }
   }
 
+
+  async confirmarFacturaManualConExpediente(
+    params: {
+      documentoId: number;
+      archivoId: number;
+    },
+    input: {
+      expedienteId: number;
+      documentoBaseId?: number;
+      grupoFacturaId?: number | null;
+      tipoRelacion?: string;
+      esPrincipal?: boolean;
+      orden?: number;
+      metadata?: Record<string, any>;
+      observacion?: string;
+    },
+    audit?: {
+      usuarioId?: number | null;
+      requestId?: string | null;
+      correlationId?: string | null;
+      tienePermisoAutorizarExcepcion?: boolean;
+    },
+  ) {
+    if (!input?.expedienteId) {
+      throw new BadRequestException(
+        'El expediente es obligatorio para confirmar la factura manual',
+      );
+    }
+
+    const metadataManual = input.metadata ?? {};
+    const camposAutoridadProhibidos = [
+      'claveDocumental',
+      'clienteAbreviatura',
+      'codigoExpediente',
+      'rucComprador',
+      'documentoBaseId',
+      'contextoValidacion',
+    ];
+    const recibidos = camposAutoridadProhibidos.filter(
+      (campo) => Object.prototype.hasOwnProperty.call(metadataManual, campo),
+    );
+
+    if (recibidos.length > 0) {
+      throw new BadRequestException({
+        code: 'METADATA_MANUAL_AUTORIDAD_PROHIBIDA',
+        message:
+          'La metadata manual contiene campos que deben ser derivados por el backend.',
+        details: { campos: recibidos },
+      });
+    }
+
+    const confirmado = await this.orquestarConfirmacionV2.executeManualFactura(
+      params,
+      input,
+      audit,
+    );
+
+    if (!confirmado) {
+      throw new NotFoundException(
+        `No se pudo confirmar manualmente el documento ${params.documentoId}`,
+      );
+    }
+
+    const documentoId = Number(confirmado.documento?.id ?? params.documentoId);
+    const archivoId = Number(
+      confirmado.ocrResultado?.archivo_id ?? params.archivoId,
+    );
+    const expedienteId = Number(confirmado.expediente?.id ?? input.expedienteId);
+    const ocrResultadoId = Number(confirmado.ocrResultado?.id ?? NaN);
+    const usuarioId = audit?.usuarioId ?? null;
+    const requestId = audit?.requestId ?? null;
+    const correlationId = audit?.correlationId ?? requestId;
+
+    await this.documentoEventos.registrarEvento({
+      documentoId: Number.isFinite(documentoId) ? documentoId : null,
+      archivoId: Number.isFinite(archivoId) ? archivoId : null,
+      expedienteId: Number.isFinite(expedienteId) ? expedienteId : null,
+      tipoEvento: 'ocr.confirmado',
+      entidadTipo: 'ocr_resultado',
+      entidadId: Number.isFinite(ocrResultadoId) ? ocrResultadoId : null,
+      descripcion:
+        'Factura confirmada manualmente sobre archivo persistido sin reprocesar OCR.',
+      metadata: {
+        tipoPropuesto: confirmado.tipoDocumental ?? 'FACTURA',
+        claveDocumental: confirmado.claveDocumental ?? null,
+        tipoRelacion: confirmado.tipoRelacion ?? null,
+        esPrincipal: confirmado.vinculo?.es_principal ?? false,
+        origenValidacion: 'manual_sin_ocr',
+      },
+      usuarioId,
+      origen: 'api',
+      requestId,
+      correlationId,
+    });
+
+    await this.documentoEventos.registrarEvento({
+      documentoId: Number.isFinite(documentoId) ? documentoId : null,
+      archivoId: Number.isFinite(archivoId) ? archivoId : null,
+      expedienteId: Number.isFinite(expedienteId) ? expedienteId : null,
+      tipoEvento: 'expediente.vinculado',
+      entidadTipo: 'expediente',
+      entidadId: Number.isFinite(expedienteId) ? expedienteId : null,
+      descripcion: 'Factura manual vinculada a expediente.',
+      metadata: {
+        ocrResultadoId: Number.isFinite(ocrResultadoId)
+          ? ocrResultadoId
+          : null,
+        tipoRelacion: confirmado.tipoRelacion ?? null,
+        esPrincipal: confirmado.vinculo?.es_principal ?? false,
+        orden: confirmado.vinculo?.orden ?? null,
+        origenValidacion: 'manual_sin_ocr',
+      },
+      usuarioId,
+      origen: 'api',
+      requestId,
+      correlationId,
+    });
+
+    return confirmado;
+  }
 
   async agregarArchivoComoVersion(
     documentoId: number,

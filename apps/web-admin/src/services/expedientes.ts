@@ -329,3 +329,52 @@ export async function obtenerBandejaCompras(
 
   throw new Error("Respuesta inválida de GET /expedientes/bandeja-compras");
 }
+
+export type FacturaPendienteValidacion = {
+  documentoId: number;
+  archivoId: number;
+  ocrResultadoId: number | null;
+  filename: string;
+  estadoDocumento: string;
+  estadoOcr: string | null;
+  fechaCarga: string | null;
+  tipoVersion: string;
+  esActual: boolean;
+  accionSugerida: "VALIDAR_OCR" | "VALIDAR_MANUAL";
+};
+
+export type FacturasPendientesResponse = {
+  data: FacturaPendienteValidacion[];
+  contexto: { expedienteId: number; principalId: number };
+  conflictos: Array<{ documentoId: number; archivoId: number; codigo: string }>;
+};
+
+export async function getFacturasPendientes(
+  expedienteId: string | number,
+  principalId: number,
+): Promise<FacturasPendientesResponse> {
+  const { data } = await api.get(
+    `/expedientes/${expedienteId}/principales/${principalId}/facturas-pendientes`,
+  );
+  // ms-documentos and the gateway each add one ApiResponseInterceptor envelope.
+  // Stop at the collection itself: its `data` array must not be unwrapped.
+  let payload: unknown = data;
+  for (let depth = 0; depth < 2; depth += 1) {
+    if (!payload || typeof payload !== "object" || !("success" in payload) ||
+        payload.success !== true || !("data" in payload)) break;
+    payload = payload.data;
+  }
+  if (payload && typeof payload === "object" && !("success" in payload) &&
+      "data" in payload && Array.isArray(payload.data) &&
+      "conflictos" in payload && Array.isArray(payload.conflictos) &&
+      "contexto" in payload && payload.contexto && typeof payload.contexto === "object" &&
+      "expedienteId" in payload.contexto && "principalId" in payload.contexto &&
+      Number.isSafeInteger(payload.contexto.expedienteId) &&
+      Number.isSafeInteger(payload.contexto.principalId) &&
+      Number(payload.contexto.expedienteId) > 0 && Number(payload.contexto.principalId) > 0 &&
+      payload.contexto.expedienteId === Number(expedienteId) &&
+      payload.contexto.principalId === principalId) {
+    return payload as FacturasPendientesResponse;
+  }
+  throw new Error("Respuesta inválida de GET /expedientes/:id/principales/:principalId/facturas-pendientes");
+}

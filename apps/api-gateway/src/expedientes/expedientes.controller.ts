@@ -646,6 +646,24 @@ export class ExpedientesGatewayController {
     });
   }
 
+  @ApiOperation({ summary: 'Listar facturas pendientes de validación por expediente y principal vía API Gateway' })
+  @Get(':id/principales/:principalId/facturas-pendientes')
+  async findFacturasPendientes(
+    @Headers('authorization') authorization: string | undefined,
+    @Headers(REQUEST_ID_HEADER) requestId: string | undefined,
+    @Param('id') id: string,
+    @Param('principalId') principalId: string,
+  ) {
+    const contexto = await this.validateAuthorization(authorization);
+    await this.assertExpedienteWorkspaceAccess({ id, payload: contexto, authorization, requestId });
+    return this.proxy({
+      method: 'GET',
+      path: `/expedientes/${encodeURIComponent(id)}/principales/${encodeURIComponent(principalId)}/facturas-pendientes`,
+      authorization,
+      requestId,
+    });
+  }
+
   @ApiOperation({ summary: 'Listar documentos de expediente vía API Gateway' })
   @Get(':id/documentos')
   async findDocumentos(

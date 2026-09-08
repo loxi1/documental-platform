@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { sql } from '@documental/database';
 
 type ExpedienteAuditContext = {
@@ -1892,6 +1892,83 @@ export class ExpedientesRepository {
     `;
 
     return rows[0];
+  }
+
+  async findFacturasPendientes(expedienteId: number, principalId: number,
+    scope: { workspaceId: number; clienteDestinoId: number; empresa: string }) {
+    // One statement keeps scope validation and candidates in the same snapshot.
+    const rows = await sql`
+      WITH principal AS (
+        SELECT dop.id
+        FROM documentos.documentos_operativos_principales dop
+        JOIN documentos.contenedores_operativos co ON co.id = dop.contenedor_operativo_id
+        JOIN documentos.expedientes e ON e.id = co.expediente_v1_id
+        JOIN documentos.documentos p ON p.id = dop.documento_id
+        WHERE e.id = ${expedienteId} AND e.empresa_codigo = ${scope.empresa}
+          AND e.cliente_destino_id = ${scope.clienteDestinoId}
+          AND co.tipo_contexto = 'expediente_v1' AND co.estado = 'activo'
+          AND dop.documento_id = ${principalId} AND dop.estado = 'activo'
+          AND dop.es_principal_activo = true
+          AND p.tipo_documental IN ('OC', 'OS') AND p.estado = 'confirmado'
+      ), candidatos AS (
+        SELECT d.id AS "documentoId", da.id AS "archivoId",
+          da.nombre_archivo AS filename, d.estado AS "estadoDocumento",
+          da.creado_en AS "fechaCarga", da.tipo_version AS "tipoVersion",
+          da.es_version_actual AS "esActual", d.metadata AS "documentoMetadata",
+          (SELECT COUNT(*)::int FROM documentos.documentos_archivos actual
+            WHERE actual.documento_id = d.id AND actual.es_version_actual = true) AS "actuales",
+          (SELECT COALESCE(jsonb_agg(jsonb_build_object('id', o.id, 'estado', o.estado)
+              ORDER BY o.id), '[]'::jsonb)
+           FROM documentos.ocr_resultados o
+           WHERE o.documento_id = d.id AND o.archivo_id = da.id) AS ocr
+        FROM documentos.documentos_archivos da
+        JOIN documentos.documentos d ON d.id = da.documento_id
+        WHERE EXISTS (SELECT 1 FROM principal)
+          AND da.workspace_id = ${scope.workspaceId} AND da.empresa_codigo = ${scope.empresa}
+          AND da.cliente_destino_id = ${scope.clienteDestinoId} AND da.expediente_id = ${expedienteId}
+          AND d.cliente_abreviatura = ${scope.empresa}
+          AND da.metadata->>'documentoBaseId' = ${String(principalId)}
+          AND da.metadata->>'tipoRelacion' = 'adjunto_factura'
+          AND da.metadata->>'tipoDocumental' = 'FACTURA'
+          AND d.tipo_documental = 'FACTURA'
+          AND da.es_version_actual = true AND da.tipo_version = 'original'
+          AND da.estado NOT IN ('duplicado_absorbido', 'anulado')
+          AND d.estado IN ('pendiente_ocr', 'pendiente_validacion')
+          AND d.estado NOT IN ('duplicado_versionado', 'anulado')
+          AND NOT EXISTS (SELECT 1 FROM documentos.grupos_factura gf
+            WHERE gf.factura_documento_id = d.id AND gf.estado <> 'anulado')
+          AND NOT EXISTS (SELECT 1 FROM documentos.expediente_documentos ed
+            WHERE ed.documento_id = d.id AND ed.expediente_id <> ${expedienteId})
+      )
+      SELECT EXISTS (SELECT 1 FROM principal) AS autorizado,
+        COALESCE((SELECT jsonb_agg(c ORDER BY c."fechaCarga" DESC, c."archivoId" DESC)
+          FROM candidatos c), '[]'::jsonb) AS candidatos
+    `;
+    if (!rows[0]?.autorizado) throw new NotFoundException('Principal no disponible en el expediente autorizado');
+    const data: Record<string, unknown>[] = [];
+    const conflictos: Record<string, unknown>[] = [];
+    for (const row of rows[0].candidatos as Record<string, any>[]) {
+      const metadata = row.documentoMetadata ?? {};
+      const ocr = row.ocr as { id: number; estado: string }[];
+      const inconsistente = [
+        ['documentoBaseId', String(principalId)], ['expedienteId', String(expedienteId)],
+        ['tipoRelacion', 'adjunto_factura'], ['empresaCodigo', scope.empresa],
+        ['workspaceId', String(scope.workspaceId)], ['clienteDestinoId', String(scope.clienteDestinoId)],
+      ].some(([key, esperado]) => Object.prototype.hasOwnProperty.call(metadata, key) && String(metadata[key]) !== esperado);
+      const codigo = inconsistente ? 'CONTEXTO_CARGA_INCONSISTENTE'
+        : row.actuales !== 1 ? 'VERSION_ACTUAL_AMBIGUA'
+        : ocr.length > 1 ? 'OCR_MULTIPLE'
+        : ocr.length === 1 && ocr[0].estado !== 'pendiente_validacion' ? 'OCR_NO_RECUPERABLE' : null;
+      if (codigo) {
+        conflictos.push({ documentoId: row.documentoId, archivoId: row.archivoId, codigo });
+        continue;
+      }
+      const { documentoMetadata, actuales, ocr: resultados, ...item } = row;
+      data.push({ ...item, ocrResultadoId: ocr[0]?.id ?? null,
+        estadoOcr: ocr[0]?.estado ?? null,
+        accionSugerida: ocr.length === 1 ? 'VALIDAR_OCR' : 'VALIDAR_MANUAL' });
+    }
+    return { data, contexto: { expedienteId, principalId }, conflictos };
   }
 
   async findDocumentosByExpedienteId(id: number) {

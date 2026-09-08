@@ -1012,6 +1012,53 @@ export class DocumentosGatewayController {
     });
   }
 
+  @ApiOperation({ summary: 'Confirmar factura manual sobre archivo persistido vía API Gateway' })
+  @Post(':documentoId/archivos/:archivoId/confirmar-factura-manual')
+  async confirmarFacturaManualConExpediente(
+    @Headers('authorization') authorization: string | undefined,
+    @Headers(REQUEST_ID_HEADER) requestId: string | undefined,
+    @Param('documentoId') documentoId: string,
+    @Param('archivoId') archivoId: string,
+    @Body() body: unknown,
+  ) {
+    const contexto = await this.validateAuthorization(authorization);
+
+    this.assertAnyActionPermitida(
+      contexto,
+      ['documentos.confirmar_ocr', 'ocr.confirmar'],
+      'confirmar documentos',
+    );
+    this.assertAnyActionPermitida(
+      contexto,
+      ['documentos.vincular_expediente'],
+      'vincular documentos a expedientes',
+    );
+
+    await this.assertDocumentoPermitido(
+      documentoId,
+      contexto,
+      requestId,
+    );
+    await this.assertExpedientePermitido(
+      (body as any)?.expedienteId,
+      contexto,
+      requestId,
+    );
+
+    return this.proxy({
+      method: 'POST',
+      path: `/documentos/${documentoId}/archivos/${archivoId}/confirmar-factura-manual`,
+      authorization,
+      requestId,
+      body,
+      headers: this.buildAuditForwardHeaders(
+        authorization,
+        requestId,
+        contexto,
+      ),
+    });
+  }
+
   @ApiOperation({ summary: 'Rechazar resultado OCR vía API Gateway' })
   @Post('ocr-resultados/:id/rechazar')
   async rechazarOcrResultado(

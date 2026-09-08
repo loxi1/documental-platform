@@ -11,6 +11,17 @@ export type DocumentosFilters = {
   offset?: number;
 };
 
+type SaveOcrResultadoParams = {
+    archivoId: number;
+    documentoId: number | null;
+    tipoPropuesto: string | null;
+    estado: string;
+    confidence: number | null;
+    claveDocumental: string | null;
+    metadata: unknown;
+    forceReprocess?: boolean;
+};
+
 @Injectable()
 export class DocumentosRepository {
   async findAll(filters: DocumentosFilters) {
@@ -408,32 +419,76 @@ export class DocumentosRepository {
     return rows[0] ?? null;
   }
 
-  async saveOcrResultado(params: {
-    archivoId: number;
-    documentoId: number | null;
-    tipoPropuesto: string | null;
-    estado: string;
-    confidence: number | null;
-    claveDocumental: string | null;
-    metadata: unknown;
-    forceReprocess?: boolean;
-  }) {
-    if (!params.forceReprocess) {
-      const sameArchivo = await sql`
-        SELECT *
-        FROM documentos.ocr_resultados
-        WHERE archivo_id = ${params.archivoId}
-          AND estado IN ('pendiente_validacion', 'confirmado', 'editado')
-        ORDER BY id DESC
-        LIMIT 1
-      `;
+  async findOcrReutilizablesByDocumentoArchivo(documentoId: number, archivoId: number) {
+    return sql`
+      SELECT o.*
+      FROM documentos.ocr_resultados o
+      WHERE o.documento_id = ${documentoId}
+        AND o.archivo_id = ${archivoId}
+        AND o.estado IN ('pendiente_validacion', 'confirmado', 'editado')
+    `;
+  }
 
-      if (sameArchivo[0]) {
-        return {
-          row: sameArchivo[0],
-          yaExistia: true,
-          motivo: 'MISMO_ARCHIVO',
-        };
+  async saveOcrResultado(params: SaveOcrResultadoParams) {
+    // R2 only serializes non-forced persistence. Forced reprocessing retains
+    // its legacy semantics and does not promise deduplication.
+    if (params.forceReprocess === true) {
+      return this.saveOcrResultadoConExecutor(sql, params);
+    }
+    return sql.begin((tx) => this.saveOcrResultadoConExecutor(tx, params));
+  }
+
+  async saveOcrResultadoConExecutor(tx: SqlExecutor, params: SaveOcrResultadoParams) {
+    if (params.forceReprocess !== true) {
+      // Contractual order: archivo -> documento -> OCR. Never held during extraction.
+      const archivos = await tx`
+        SELECT id, documento_id, estado FROM documentos.documentos_archivos
+        WHERE id = ${params.archivoId} FOR UPDATE
+      `;
+      const archivo = archivos[0];
+      if (!archivo || params.documentoId == null ||
+          Number(archivo.documento_id) !== Number(params.documentoId)) {
+        this.throwDomainError('OCR_ARCHIVO_DOCUMENTO_INVALIDO',
+          'El archivo no existe o ya no pertenece al documento esperado',
+          { documentoId: params.documentoId, archivoId: params.archivoId });
+      }
+      if (['duplicado_absorbido', 'anulado'].includes(String(archivo.estado))) {
+        this.throwDomainError('OCR_ARCHIVO_NO_ELEGIBLE', 'El archivo no admite persistencia OCR',
+          { archivoId: params.archivoId, estado: archivo.estado });
+      }
+      const documentos = await tx`
+        SELECT id, estado FROM documentos.documentos
+        WHERE id = ${params.documentoId} FOR UPDATE
+      `;
+      const documento = documentos[0];
+      if (!documento || ['anulado', 'duplicado_versionado'].includes(String(documento.estado))) {
+        this.throwDomainError('OCR_DOCUMENTO_NO_ELEGIBLE', 'El documento no admite persistencia OCR',
+          { documentoId: params.documentoId, estado: documento?.estado });
+      }
+      const existentes = await tx`
+        SELECT * FROM documentos.ocr_resultados
+        WHERE documento_id = ${params.documentoId} AND archivo_id = ${params.archivoId}
+          AND estado IN ('pendiente_validacion', 'confirmado', 'editado')
+        FOR UPDATE
+      `;
+      if (existentes.length > 1) {
+        this.throwDomainError('OCR_REUTILIZACION_AMBIGUA',
+          'Existen múltiples resultados OCR reutilizables para el documento y archivo',
+          { documentoId: params.documentoId, archivoId: params.archivoId });
+      }
+      if (existentes.length === 1) {
+        const row = existentes[0];
+        if (documento.estado === 'confirmado' && row.estado !== 'confirmado') {
+          this.throwDomainError('OCR_CONFIRMACION_INCONSISTENTE',
+            'El documento confirmado no tiene un OCR confirmado coherente',
+            { documentoId: params.documentoId, archivoId: params.archivoId });
+        }
+        return { row, yaExistia: true, motivo: 'MISMO_DOCUMENTO_ARCHIVO', expediente: null };
+      }
+      if (documento.estado === 'confirmado') {
+        this.throwDomainError('OCR_DOCUMENTO_YA_CONFIRMADO',
+          'No se puede crear un OCR pendiente para un documento confirmado',
+          { documentoId: params.documentoId, archivoId: params.archivoId });
       }
     }
 
@@ -441,7 +496,7 @@ export class DocumentosRepository {
     // pendientes. Esto cubre PDFs reexportados cuyo hash cambió antes de que
     // el primer documento haya sido confirmado y promovido canónicamente.
     const documentoExistente = params.claveDocumental && params.documentoId
-      ? await sql`
+      ? await tx`
           SELECT candidato.id
           FROM documentos.documentos candidato
           JOIN documentos.documentos actual
@@ -486,7 +541,7 @@ export class DocumentosRepository {
         : null,
     };
 
-    const rows = await sql`
+    const rows = await tx`
       INSERT INTO documentos.ocr_resultados (
         archivo_id,
         documento_id,
@@ -773,6 +828,31 @@ export class DocumentosRepository {
     },
     usuarioId?: number,
   ) {
+      // Discovery only: no business decisions use this unlocked snapshot.
+      // The V2 caller owns tx through canonicalization and association.
+      const identidadRows = await tx`
+        SELECT archivo_id, documento_id FROM documentos.ocr_resultados
+        WHERE id = ${id}::int
+      `;
+      const identidad = identidadRows[0];
+      if (!identidad) return null;
+
+      // Same mutex and order as saveOcrResultado: archivo -> documento -> OCR.
+      const archivoRows = await tx`
+        SELECT * FROM documentos.documentos_archivos
+        WHERE id = ${identidad.archivo_id}::int FOR UPDATE
+      `;
+      const archivo = archivoRows[0];
+      if (!archivo || !identidad.documento_id ||
+          Number(archivo.documento_id) !== Number(identidad.documento_id)) {
+        this.throwDomainError('OCR_CONTEXTO_MODIFICADO',
+          'El archivo ya no pertenece al documento esperado', { ocrResultadoId: id });
+      }
+      const documentoBloqueadoRows = await tx`
+        SELECT * FROM documentos.documentos
+        WHERE id = ${archivo.documento_id}::int FOR UPDATE
+      `;
+      const documentoBloqueado = documentoBloqueadoRows[0];
       const ocrRows = await tx`
         SELECT *
         FROM documentos.ocr_resultados
@@ -783,7 +863,19 @@ export class DocumentosRepository {
 
       const ocr = ocrRows[0];
 
-      if (!ocr) return null;
+      if (!ocr || !documentoBloqueado ||
+          Number(ocr.archivo_id) !== Number(archivo.id) ||
+          Number(ocr.documento_id) !== Number(documentoBloqueado.id)) {
+        this.throwDomainError('OCR_CONTEXTO_MODIFICADO',
+          'La asociación OCR-documento-archivo cambió durante la confirmación',
+          { ocrResultadoId: id });
+      }
+      // Use only locked state; do not revive records invalidated while waiting.
+      if (['anulado', 'duplicado_absorbido'].includes(String(archivo.estado)) ||
+          ['anulado', 'duplicado_versionado'].includes(String(documentoBloqueado.estado))) {
+        this.throwDomainError('OCR_CONTEXTO_MODIFICADO',
+          'El documento o archivo ya no admite confirmación', { ocrResultadoId: id });
+      }
 
       if (!ocr.documento_id) {
         this.throwDomainError(
@@ -2327,6 +2419,137 @@ export class DocumentosRepository {
     `;
 
     return insertedRows[0] ?? null;
+  }
+
+
+  async crearValidacionManualFacturaConExecutor(
+    tx: SqlExecutor,
+    params: {
+      documentoId: number;
+      archivoId: number;
+    },
+  ) {
+    // 2B: mismo mutex contractual que R2/R2.1.
+    // La validación manual solo puede nacer sobre un archivo persistido
+    // que siga perteneciendo al documento esperado.
+    const archivos = await tx`
+      SELECT id, documento_id, estado
+      FROM documentos.documentos_archivos
+      WHERE id = ${params.archivoId}::bigint
+      FOR UPDATE
+    `;
+
+    const archivo = archivos[0];
+
+    if (
+      !archivo ||
+      Number(archivo.documento_id) !== Number(params.documentoId)
+    ) {
+      this.throwDomainError(
+        'MANUAL_ARCHIVO_DOCUMENTO_INVALIDO',
+        'El archivo ya no pertenece al documento esperado.',
+        {
+          documentoId: params.documentoId,
+          archivoId: params.archivoId,
+        },
+      );
+    }
+
+    if (
+      ['duplicado_absorbido', 'anulado'].includes(String(archivo.estado))
+    ) {
+      this.throwDomainError(
+        'MANUAL_ARCHIVO_NO_ELEGIBLE',
+        'El archivo no admite validación manual.',
+        {
+          archivoId: params.archivoId,
+          estado: archivo.estado,
+        },
+      );
+    }
+
+    const documentos = await tx`
+      SELECT id, estado
+      FROM documentos.documentos
+      WHERE id = ${params.documentoId}::bigint
+      FOR UPDATE
+    `;
+
+    const documento = documentos[0];
+
+    if (
+      !documento ||
+      ['anulado', 'duplicado_versionado'].includes(String(documento.estado))
+    ) {
+      this.throwDomainError(
+        'MANUAL_DOCUMENTO_NO_ELEGIBLE',
+        'El documento no admite validación manual.',
+        {
+          documentoId: params.documentoId,
+          estado: documento?.estado,
+        },
+      );
+    }
+
+    if (String(documento.estado) === 'confirmado') {
+      this.throwDomainError(
+        'MANUAL_DOCUMENTO_YA_CONFIRMADO',
+        'El documento ya se encuentra confirmado.',
+        {
+          documentoId: params.documentoId,
+        },
+      );
+    }
+
+    // El archivo bloqueado actúa como mutex. Cualquier persistencia OCR R2
+    // para este archivo debe esperar antes de llegar a esta lectura.
+    const ocrExistentes = await tx`
+      SELECT id, estado
+      FROM documentos.ocr_resultados
+      WHERE documento_id = ${params.documentoId}::bigint
+        AND archivo_id = ${params.archivoId}::bigint
+        AND estado IN ('pendiente_validacion', 'confirmado', 'editado')
+      FOR UPDATE
+    `;
+
+    if (ocrExistentes.length > 0) {
+      this.throwDomainError(
+        'OCR_DISPONIBLE_PARA_VALIDACION',
+        'Ya existe un resultado OCR disponible para validar.',
+        {
+          documentoId: params.documentoId,
+          archivoId: params.archivoId,
+          ocrResultadoIds: ocrExistentes.map((row) => Number(row.id)),
+        },
+      );
+    }
+
+    const rows = await tx`
+      INSERT INTO documentos.ocr_resultados (
+        archivo_id,
+        documento_id,
+        tipo_propuesto,
+        estado,
+        confidence,
+        clave_documental,
+        metadata
+      )
+      VALUES (
+        ${params.archivoId}::bigint,
+        ${params.documentoId}::bigint,
+        'FACTURA',
+        'pendiente_validacion',
+        NULL,
+        NULL,
+        ${JSON.stringify({
+          origenValidacion: 'manual_sin_ocr',
+          metadata: {},
+        })}::jsonb
+      )
+      RETURNING *
+    `;
+
+    return rows[0];
   }
 
 

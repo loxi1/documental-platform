@@ -398,6 +398,60 @@ export async function confirmarOcrConExpediente(
   }
 }
 
+export type ConfirmarFacturaManualConExpedientePayload = Omit<
+  ConfirmarOcrConExpedientePayload,
+  "decisionCorrespondencia"
+>;
+
+export async function confirmarFacturaManualConExpediente(
+  documentoId: number | string,
+  archivoId: number | string,
+  payload: ConfirmarFacturaManualConExpedientePayload,
+) {
+  try {
+    const { data } = await api.post(
+      `/documentos/${documentoId}/archivos/${archivoId}/confirmar-factura-manual`,
+      payload,
+    );
+    return unwrapDeep(data);
+  } catch (error) {
+    const responsePayload = getApiErrorPayload(error);
+    const apiError = responsePayload?.error;
+    const duplicateDetails = getDocumentoDuplicadoDetailsFromError(error);
+    const message = buildApiErrorMessage(
+      error,
+      "No se pudo confirmar la factura manual.",
+    );
+
+    const conflictDetails = findErrorInfo(responsePayload, [
+      "OCR_DISPONIBLE_PARA_VALIDACION",
+      "MANUAL_ARCHIVO_DOCUMENTO_INVALIDO",
+      "MANUAL_ARCHIVO_NO_ELEGIBLE",
+      "MANUAL_DOCUMENTO_NO_ELEGIBLE",
+      "MANUAL_DOCUMENTO_YA_CONFIRMADO",
+      "DOCUMENTO_YA_VINCULADO_A_OTRO_EXPEDIENTE",
+      "CODIGO_EXPEDIENTE_NO_COINCIDE",
+      "EXPEDIENTE_YA_TIENE_DOCUMENTO_PRINCIPAL",
+      "ARCHIVO_DUPLICADO_EN_CARGA_GUIADA",
+    ]);
+
+    throw new OcrApiError(message, {
+      code: String(
+        conflictDetails?.code ??
+          duplicateDetails?.code ??
+          apiError?.code ??
+          "",
+      ),
+      status: (error as any)?.response?.status,
+      details:
+        conflictDetails ??
+        duplicateDetails ??
+        apiError?.details ??
+        responsePayload,
+    });
+  }
+}
+
 export type ProveedorCatalogo = {
   id?: number | string;
   ruc: string;

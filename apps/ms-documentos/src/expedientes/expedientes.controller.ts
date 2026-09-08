@@ -1,5 +1,10 @@
 import {  
   Body,
+  Headers,
+  Inject,
+  UnauthorizedException,
+  ForbiddenException,
+  BadRequestException,
   Controller,
   Get,
   Param,
@@ -9,12 +14,19 @@ import {
   Query,
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
+import { ClientProxy } from '@nestjs/microservices';
+import { firstValueFrom, timeout } from 'rxjs';
+import { NatsSubjects } from '@documental/shared';
+import { NATS_CLIENT } from '../nats/nats-client.provider';
 import { ExpedientesService } from './expedientes.service';
 
 @ApiTags('expedientes')
 @Controller('expedientes')
 export class ExpedientesController {
-  constructor(private readonly service: ExpedientesService) {}
+  constructor(
+    private readonly service: ExpedientesService,
+    @Inject(NATS_CLIENT) private readonly nats: ClientProxy,
+  ) {}
 
   @Get()
   findAll(
@@ -120,6 +132,35 @@ export class ExpedientesController {
     return this.service.getTimeline(id);
   }
   
+  @Get(':id/principales/:principalId/facturas-pendientes')
+  async findFacturasPendientes(
+    @Param('id', ParseIntPipe) id: number,
+    @Param('principalId', ParseIntPipe) principalId: number,
+    @Headers('authorization') authorization?: string,
+  ) {
+    if (!Number.isSafeInteger(id) || id <= 0 || !Number.isSafeInteger(principalId) || principalId <= 0) {
+      throw new BadRequestException('Identificadores inválidos');
+    }
+    if (!authorization?.startsWith('Bearer ')) throw new UnauthorizedException('Token requerido');
+    let auth: any;
+    try {
+      auth = await firstValueFrom(this.nats.send(NatsSubjects.AuthValidateToken, {
+        token: authorization.slice(7).trim(),
+      }).pipe(timeout(10000)));
+    } catch {
+      throw new UnauthorizedException('No se pudo validar el token');
+    }
+    if (!auth?.valid) throw new UnauthorizedException('Token inválido');
+    const workspaceId = Number(auth.payload?.workspaceId);
+    const clienteDestinoId = Number(auth.payload?.clienteDestinoId);
+    const empresa = String(auth.payload?.empresa ?? auth.payload?.empresaCodigo ?? '').trim().toUpperCase();
+    if (!Number.isSafeInteger(workspaceId) || workspaceId <= 0 ||
+        !Number.isSafeInteger(clienteDestinoId) || clienteDestinoId <= 0 || !empresa) {
+      throw new ForbiddenException('Workspace autenticado incompleto');
+    }
+    return this.service.findFacturasPendientes(id, principalId, { workspaceId, clienteDestinoId, empresa });
+  }
+
   @Get(':id/documentos')
   findDocumentos(
     @Param('id', ParseIntPipe) id: number,
