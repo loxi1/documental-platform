@@ -1,3 +1,5 @@
+import { identidadFacturaPendiente } from '../documentos/identidad-documental';
+import type { SqlExecutor } from '../documental-v2/sql-executor';
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { sql } from '@documental/database';
 
@@ -1895,9 +1897,9 @@ export class ExpedientesRepository {
   }
 
   async findFacturasPendientes(expedienteId: number, principalId: number,
-    scope: { workspaceId: number; clienteDestinoId: number; empresa: string }) {
+    scope: { workspaceId: number; clienteDestinoId: number; empresa: string }, executor: SqlExecutor = sql, incluirIdentidadInterna = false) {
     // One statement keeps scope validation and candidates in the same snapshot.
-    const rows = await sql`
+    const rows = await executor`
       WITH principal AS (
         SELECT dop.id
         FROM documentos.documentos_operativos_principales dop
@@ -1910,6 +1912,43 @@ export class ExpedientesRepository {
           AND dop.documento_id = ${principalId} AND dop.estado = 'activo'
           AND dop.es_principal_activo = true
           AND p.tipo_documental IN ('OC', 'OS') AND p.estado = 'confirmado'
+      ), destinos AS (
+        SELECT d.id, d.clave_documental,
+          COUNT(*) OVER (PARTITION BY d.id) AS vinculos
+        FROM principal p
+        JOIN documentos.grupos_factura gf ON gf.documento_operativo_principal_id = p.id
+        JOIN documentos.documentos d ON d.id = gf.factura_documento_id
+        WHERE gf.estado <> 'anulado' AND d.estado = 'confirmado' AND d.tipo_documental = 'FACTURA'
+          AND d.cliente_abreviatura = ${scope.empresa}
+          AND (d.metadata->>'documentoBaseId' IS NULL OR d.metadata->>'documentoBaseId' = ${String(principalId)})
+          AND (SELECT COUNT(*) FROM documentos.documentos_archivos a
+            WHERE a.documento_id = d.id AND a.es_version_actual = true) = 1
+          AND EXISTS (SELECT 1 FROM documentos.expediente_documentos ed
+            WHERE ed.documento_id = d.id AND ed.expediente_id = ${expedienteId}
+              AND ed.tipo_relacion = 'adjunto_factura' AND ed.es_principal = false)
+          AND NOT EXISTS (SELECT 1 FROM documentos.expediente_documentos ed
+            WHERE ed.documento_id = d.id AND (ed.expediente_id <> ${expedienteId}
+              OR ed.tipo_relacion <> 'adjunto_factura' OR ed.es_principal = true))
+          AND NOT EXISTS (SELECT 1 FROM documentos.grupos_factura otro
+            WHERE otro.factura_documento_id = d.id AND otro.estado <> 'anulado'
+              AND otro.documento_operativo_principal_id <> p.id)
+          AND NOT EXISTS (SELECT 1 FROM documentos.grupo_factura_documentos miembro
+            JOIN documentos.grupos_factura otro ON otro.id = miembro.grupo_factura_id
+            WHERE miembro.documento_id = d.id AND miembro.estado <> 'anulado' AND otro.estado <> 'anulado'
+              AND otro.documento_operativo_principal_id <> p.id)
+          AND EXISTS (SELECT 1 FROM documentos.documentos_archivos a
+            WHERE a.documento_id = d.id AND a.es_version_actual = true
+              AND a.workspace_id = ${scope.workspaceId} AND a.empresa_codigo = ${scope.empresa}
+              AND a.cliente_destino_id = ${scope.clienteDestinoId} AND a.expediente_id = ${expedienteId}
+              AND (a.metadata->>'documentoBaseId' IS NULL OR a.metadata->>'documentoBaseId' = ${String(principalId)})
+              AND (a.metadata->>'tipoRelacion' IS NULL OR a.metadata->>'tipoRelacion' = 'adjunto_factura')
+              AND a.estado NOT IN ('anulado', 'duplicado_absorbido'))
+          AND NOT EXISTS (SELECT 1 FROM documentos.documentos_archivos a
+            WHERE a.documento_id = d.id AND a.es_version_actual = true AND
+              (a.workspace_id IS DISTINCT FROM ${scope.workspaceId}
+               OR a.empresa_codigo IS DISTINCT FROM ${scope.empresa}
+               OR a.cliente_destino_id IS DISTINCT FROM ${scope.clienteDestinoId}
+               OR a.expediente_id IS DISTINCT FROM ${expedienteId}))
       ), candidatos AS (
         SELECT d.id AS "documentoId", da.id AS "archivoId",
           da.nombre_archivo AS filename, d.estado AS "estadoDocumento",
@@ -1917,7 +1956,7 @@ export class ExpedientesRepository {
           da.es_version_actual AS "esActual", d.metadata AS "documentoMetadata",
           (SELECT COUNT(*)::int FROM documentos.documentos_archivos actual
             WHERE actual.documento_id = d.id AND actual.es_version_actual = true) AS "actuales",
-          (SELECT COALESCE(jsonb_agg(jsonb_build_object('id', o.id, 'estado', o.estado)
+          (SELECT COALESCE(jsonb_agg(to_jsonb(o)
               ORDER BY o.id), '[]'::jsonb)
            FROM documentos.ocr_resultados o
            WHERE o.documento_id = d.id AND o.archivo_id = da.id) AS ocr
@@ -1937,10 +1976,13 @@ export class ExpedientesRepository {
           AND d.estado NOT IN ('duplicado_versionado', 'anulado')
           AND NOT EXISTS (SELECT 1 FROM documentos.grupos_factura gf
             WHERE gf.factura_documento_id = d.id AND gf.estado <> 'anulado')
+          AND NOT EXISTS (SELECT 1 FROM documentos.grupo_factura_documentos gfd
+            WHERE gfd.documento_id = d.id AND gfd.estado <> 'anulado')
           AND NOT EXISTS (SELECT 1 FROM documentos.expediente_documentos ed
             WHERE ed.documento_id = d.id AND ed.expediente_id <> ${expedienteId})
       )
       SELECT EXISTS (SELECT 1 FROM principal) AS autorizado,
+        COALESCE((SELECT jsonb_agg(destinos) FROM destinos), '[]'::jsonb) AS destinos,
         COALESCE((SELECT jsonb_agg(c ORDER BY c."fechaCarga" DESC, c."archivoId" DESC)
           FROM candidatos c), '[]'::jsonb) AS candidatos
     `;
@@ -1963,10 +2005,17 @@ export class ExpedientesRepository {
         conflictos.push({ documentoId: row.documentoId, archivoId: row.archivoId, codigo });
         continue;
       }
+      const identidad = identidadFacturaPendiente(scope.empresa, ocr[0]);
+      const destinos = identidad ? (rows[0].destinos ?? []).filter((d: any) =>
+        Number(d.id) !== Number(row.documentoId) && d.clave_documental === identidad) : [];
+      const destino = destinos.length === 1 && Number(destinos[0].vinculos) === 1 ? destinos[0] : null;
       const { documentoMetadata, actuales, ocr: resultados, ...item } = row;
       data.push({ ...item, ocrResultadoId: ocr[0]?.id ?? null,
         estadoOcr: ocr[0]?.estado ?? null,
-        accionSugerida: ocr.length === 1 ? 'VALIDAR_OCR' : 'VALIDAR_MANUAL' });
+        ...(incluirIdentidadInterna ? { identidadDocumental: identidad } : {}),
+        clasificacion: identidad ? 'IDENTIFICADO' : 'PENDIENTE_OCR',
+        documentoIdDestino: destino ? Number(destino.id) : null,
+        accionSugerida: destino ? 'AGREGAR_VERSION' : ocr.length === 1 ? 'VALIDAR_OCR' : 'VALIDAR_MANUAL' });
     }
     return { data, contexto: { expedienteId, principalId }, conflictos };
   }

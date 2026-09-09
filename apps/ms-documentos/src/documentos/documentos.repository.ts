@@ -1,3 +1,5 @@
+import { buildClaveDocumental } from './identidad-documental';
+import { ExpedientesRepository } from '../expedientes/expedientes.repository';
 import { Injectable } from '@nestjs/common';
 import { sql } from '@documental/database';
 import type { SqlExecutor } from '../documental-v2/sql-executor';
@@ -837,6 +839,27 @@ export class DocumentosRepository {
       const identidad = identidadRows[0];
       if (!identidad) return null;
 
+      const contextoRecovery = input.metadata?.contextoValidacion;
+      const esRecoveryCompras = contextoRecovery?.origen === 'COMPRAS_EDITAR_MODAL'
+        && contextoRecovery?.confirmadoDesde === 'compras_editar'
+        && input.tipoRelacion === 'adjunto_factura' && input.esPrincipal === false
+        && Number.isSafeInteger(input.documentoBaseId) && Number(input.documentoBaseId) > 0;
+      if (esRecoveryCompras) {
+        // Serialize recovery confirmations for the same persisted context before
+        // taking any document/OCR lock. Both provisional copies lock the same files
+        // in ascending order; the later caller rechecks the committed destination.
+        await tx`
+          SELECT a.id FROM documentos.documentos_archivos a
+          WHERE a.id = ${identidad.archivo_id}::int OR EXISTS (
+            SELECT 1 FROM documentos.documentos_archivos base
+            WHERE base.id = ${identidad.archivo_id}::int
+              AND a.workspace_id = base.workspace_id AND a.empresa_codigo = base.empresa_codigo
+              AND a.cliente_destino_id = base.cliente_destino_id AND a.expediente_id = base.expediente_id
+              AND a.metadata->>'documentoBaseId' = base.metadata->>'documentoBaseId'
+              AND a.metadata->>'tipoRelacion' = 'adjunto_factura'
+          ) ORDER BY a.id FOR UPDATE
+        `;
+      }
       // Same mutex and order as saveOcrResultado: archivo -> documento -> OCR.
       const archivoRows = await tx`
         SELECT * FROM documentos.documentos_archivos
@@ -1093,6 +1116,8 @@ export class DocumentosRepository {
         SELECT
           d.id AS documento_id,
           d.clave_documental,
+          d.estado,
+          d.tipo_documental,
           ed.expediente_id,
           ed.tipo_relacion,
           ed.es_principal
@@ -1128,10 +1153,32 @@ export class DocumentosRepository {
         ORDER BY
           CASE WHEN d.clave_documental = ${claveDocumental}::text THEN 0 ELSE 1 END,
           d.id ASC
-        LIMIT 1
+        LIMIT ${esRecoveryCompras ? null : 1}
       `;
 
-      if (duplicadoRows[0]) {
+      let permitirOtroProvisional = false;
+      if (esRecoveryCompras && tipoDocumental === 'FACTURA' && duplicadoRows.length === 1
+        && duplicadoRows[0].tipo_documental === 'FACTURA'
+        && ['pendiente_ocr', 'pendiente_validacion'].includes(String(duplicadoRows[0].estado))
+        && ['pendiente_ocr', 'pendiente_validacion'].includes(String(documentoBloqueado.estado))
+        && ['pendiente_validacion', 'editado'].includes(String(ocr.estado))
+        && archivo.metadata?.documentoBaseId != null
+        && String(archivo.metadata.documentoBaseId) === String(input.documentoBaseId)
+        && Number(archivo.expediente_id) === Number(input.expedienteId)
+        && archivo.empresa_codigo === clienteAbreviatura
+        && Number(archivo.cliente_destino_id) === Number(expediente.cliente_destino_id)
+        && Number.isSafeInteger(Number(archivo.workspace_id)) && Number(archivo.workspace_id) > 0) {
+        const pendientes = await new ExpedientesRepository().findFacturasPendientes(
+          Number(input.expedienteId), Number(input.documentoBaseId), {
+            workspaceId: Number(archivo.workspace_id), clienteDestinoId: Number(archivo.cliente_destino_id),
+            empresa: archivo.empresa_codigo,
+          }, tx, true);
+        const actual = pendientes.data.find((p: any) => Number(p.documentoId) === Number(ocr.documento_id)
+          && Number(p.archivoId) === Number(ocr.archivo_id) && Number(p.ocrResultadoId) === Number(ocr.id));
+        const otro = pendientes.data.find((p: any) => Number(p.documentoId) === Number(duplicadoRows[0].documento_id));
+        permitirOtroProvisional = Boolean(actual && otro && otro.identidadDocumental === claveDocumental);
+      }
+      if (duplicadoRows[0] && !permitirOtroProvisional) {
         this.throwDomainError(
           'DOCUMENTO_DUPLICADO_EN_EXPEDIENTE',
           'Ya existe un documento activo con la misma clave documental en la empresa',
@@ -1364,8 +1411,44 @@ export class DocumentosRepository {
     observacion?: string | null;
     marcarComoActual?: boolean;
     usuarioId?: number | null;
+    recuperacionCompras?: { expedienteId: number; principalId: number; documentoIdCandidato: number;
+      scope: { workspaceId: number; clienteDestinoId: number; empresa: string } };
   }) {
-    return sql.begin(async (tx) => {
+    const ejecutar = async (tx: SqlExecutor) => {
+      const recuperacion = params.recuperacionCompras;
+      if (recuperacion) {
+        // This fallback is serialized with changes to the candidate and target.
+        // Lock files first (including existing destination versions), then documents, then OCR.
+        const archivos = await tx`
+          SELECT * FROM documentos.documentos_archivos
+          WHERE id = ${params.archivoId} OR documento_id = ${params.documentoId}
+          ORDER BY id FOR UPDATE
+        `;
+        const candidato = archivos.find((a: any) => Number(a.id) === params.archivoId);
+        if (!candidato || Number(candidato.documento_id) !== recuperacion.documentoIdCandidato) {
+          this.throwDomainError('VERSION_CANDIDATO_CAMBIO', 'El archivo candidato cambió');
+        }
+        await tx`SELECT id FROM documentos.documentos
+          WHERE id IN (${recuperacion.documentoIdCandidato}, ${params.documentoId}) ORDER BY id FOR UPDATE`;
+        await tx`SELECT id FROM documentos.ocr_resultados
+          WHERE documento_id = ${recuperacion.documentoIdCandidato} AND archivo_id = ${params.archivoId}
+          ORDER BY id FOR UPDATE`;
+        await tx`SELECT gf.id FROM documentos.grupos_factura gf
+          JOIN documentos.documentos_operativos_principales dop ON dop.id = gf.documento_operativo_principal_id
+          JOIN documentos.contenedores_operativos co ON co.id = dop.contenedor_operativo_id
+          WHERE gf.factura_documento_id = ${params.documentoId}
+          ORDER BY gf.id FOR UPDATE OF gf, dop, co`;
+        await tx`SELECT documento_id FROM documentos.expediente_documentos
+          WHERE documento_id IN (${recuperacion.documentoIdCandidato}, ${params.documentoId})
+          ORDER BY documento_id FOR UPDATE`;
+        const pendientes = await new ExpedientesRepository().findFacturasPendientes(
+          recuperacion.expedienteId, recuperacion.principalId, recuperacion.scope, tx);
+        const fila = pendientes.data.find((p: any) => Number(p.documentoId) === recuperacion.documentoIdCandidato
+          && Number(p.archivoId) === params.archivoId);
+        if (!fila || fila.accionSugerida !== 'AGREGAR_VERSION' || Number(fila.documentoIdDestino) !== params.documentoId) {
+          this.throwDomainError('VERSION_CANDIDATO_CAMBIO', 'La identidad o el contexto ya no permite agregar esta versión');
+        }
+      }
       const documentoRows = await tx`
         SELECT *
         FROM documentos.documentos
@@ -1552,7 +1635,11 @@ export class DocumentosRepository {
         version: archivoActualizado?.version ?? siguienteVersion,
         esVersionActual: archivoActualizado?.es_version_actual ?? marcarComoActual,
       };
-    });
+    };
+    // Keep legacy Almacén semantics; only this guarded fallback uses serializable isolation.
+    return params.recuperacionCompras
+      ? sql.begin('isolation level serializable', ejecutar)
+      : sql.begin(ejecutar);
   }
 
 
@@ -2826,44 +2913,8 @@ export class DocumentosRepository {
     throw error;
   }
 
-  private buildClaveDocumental(
-    cliente: string,
-    tipo: string | null,
-    metadata: Record<string, any>,
-  ): string | null {
-    const clienteKey = String(cliente || 'BBTI').trim().toUpperCase();
-    const tipoKey = String(tipo || '').trim().toUpperCase();
-
-    const clean = (v: any) => {
-      if (v === null || v === undefined) return null;
-      const text = String(v).trim();
-      return text.length ? text : null;
-    };
-
-    const ruc = clean(metadata.ruc ?? metadata.rucProveedor ?? metadata.rucEmisor);
-    const serie = clean(metadata.serie);
-    const numero = clean(metadata.numero);
-    const numeroOperacion = clean(metadata.numeroOperacion);
-
-    if (['FACTURA', 'GUIA_REMISION', 'NOTA_CREDITO', 'RECIBO_HONORARIO'].includes(tipoKey)) {
-      if (clienteKey && ruc && serie && numero) {
-        return `${clienteKey}|${tipoKey}|${ruc}|${serie}|${numero}`;
-      }
-    }
-
-    if (['OC', 'OS', 'NOTA_INGRESO'].includes(tipoKey)) {
-      if (clienteKey && numero) {
-        return `${clienteKey}|${tipoKey}|${numero}`;
-      }
-    }
-
-    if (['TRANSFERENCIA', 'PAGO_TRANSFERENCIA', 'PAGO_DETRACCION'].includes(tipoKey)) {
-      if (clienteKey && numeroOperacion) {
-        return `${clienteKey}|${tipoKey}|${numeroOperacion}`;
-      }
-    }
-
-    return null;
+  private buildClaveDocumental(cliente: string, tipo: string | null, metadata: Record<string, any>) {
+    return buildClaveDocumental(cliente, tipo, metadata);
   }
 
 }

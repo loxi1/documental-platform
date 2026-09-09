@@ -340,7 +340,9 @@ export type FacturaPendienteValidacion = {
   fechaCarga: string | null;
   tipoVersion: string;
   esActual: boolean;
-  accionSugerida: "VALIDAR_OCR" | "VALIDAR_MANUAL";
+  clasificacion: "PENDIENTE_OCR" | "IDENTIFICADO";
+  documentoIdDestino: number | null;
+  accionSugerida: "VALIDAR_OCR" | "VALIDAR_MANUAL" | "AGREGAR_VERSION";
 };
 
 export type FacturasPendientesResponse = {

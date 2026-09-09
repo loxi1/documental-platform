@@ -1,7 +1,7 @@
 
-import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException, UnauthorizedException, ForbiddenException } from '@nestjs/common';
 import { ClientProxy } from '@nestjs/microservices';
-import { firstValueFrom } from 'rxjs';
+import { firstValueFrom, timeout } from 'rxjs';
 import { NatsSubjects } from '@documental/shared';
 import { NATS_CLIENT } from '../nats/nats-client.provider';
 import { DocumentoEventosService } from '../documento-eventos/documento-eventos.service';
@@ -635,12 +635,33 @@ export class DocumentosService {
       tipoVersion?: string;
       observacion?: string;
       marcarComoActual?: boolean;
+      recuperacionCompras?: { expedienteId: number; principalId: number; documentoIdCandidato: number };
     } = {},
     usuarioId?: number,
+    authorization?: string,
   ) {
+    let recuperacionCompras;
+    if (input.recuperacionCompras) {
+      const contexto = input.recuperacionCompras;
+      if (![contexto.expedienteId, contexto.principalId, contexto.documentoIdCandidato, documentoId, archivoId]
+        .every(v => Number.isSafeInteger(v) && v > 0)) throw new BadRequestException('Contexto de versión inválido');
+      if (!authorization?.startsWith('Bearer ')) throw new UnauthorizedException('Token requerido');
+      let auth: any;
+      try {
+        auth = await firstValueFrom(this.nats.send(NatsSubjects.AuthValidateToken,
+          { token: authorization.slice(7).trim() }).pipe(timeout(10000)));
+      } catch { throw new UnauthorizedException('No se pudo validar el token'); }
+      if (!auth?.valid) throw new UnauthorizedException('Token inválido');
+      const scope = { workspaceId: Number(auth.payload?.workspaceId), clienteDestinoId: Number(auth.payload?.clienteDestinoId),
+        empresa: String(auth.payload?.empresa ?? auth.payload?.empresaCodigo ?? '').trim().toUpperCase() };
+      if (![scope.workspaceId, scope.clienteDestinoId].every(v => Number.isSafeInteger(v) && v > 0) || !scope.empresa)
+        throw new ForbiddenException('Workspace autenticado incompleto');
+      recuperacionCompras = { ...contexto, scope };
+    }
     try {
       return await this.repo.agregarArchivoComoVersion({
         documentoId,
+        ...(recuperacionCompras ? { recuperacionCompras } : {}),
         archivoId,
         tipoVersion: input.tipoVersion ?? 'evidencia',
         observacion: input.observacion ?? null,
@@ -648,6 +669,10 @@ export class DocumentosService {
         usuarioId: usuarioId ?? null,
       });
     } catch (error: any) {
+      if (recuperacionCompras && (['VERSION_CANDIDATO_CAMBIO', '40001', '40P01'].includes(error?.code)
+        || error instanceof NotFoundException)) {
+        throw new ConflictException({ code: 'VERSION_CANDIDATO_CAMBIO', message: 'La factura cambió; actualiza los pendientes antes de agregar la versión.' });
+      }
       if (error?.code === 'DOCUMENTO_NO_ENCONTRADO') {
         throw new NotFoundException({
           code: error.code,

@@ -276,9 +276,11 @@ export class DocumentosController {
       tipoVersion?: string;
       observacion?: string;
       marcarComoActual?: boolean;
+      recuperacionCompras?: { expedienteId: number; principalId: number; documentoIdCandidato: number };
     } = {},
+    @Headers('authorization') authorization?: string,
   ) {
-    return this.service.agregarArchivoComoVersion(documentoId, archivoId, body);
+    return this.service.agregarArchivoComoVersion(documentoId, archivoId, body, undefined, authorization);
   }
 
   @Post('relaciones')

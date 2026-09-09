@@ -31,6 +31,7 @@ import { getFacturasPendientes, type FacturaPendienteValidacion } from "@/servic
 import { getOcrResultado } from "@/services/ocr-resultados";
 import { buscarProveedoresCatalogo } from "@/services/ocr-procesamiento";
 import {
+  agregarArchivoComoVersion,
   actualizarDocumentoManual,
   getDocumentoArchivos,
   type DocumentoArchivoVersion,
@@ -651,11 +652,13 @@ function DocumentoHumanoCard({
   );
 }
 
-function FacturaPendienteCard({ pendiente, readOnly, loading, onValidar }: {
+function FacturaPendienteCard({ pendiente, readOnly, loading, onValidar, onVer, onVersion }: {
   pendiente: FacturaPendienteValidacion;
   readOnly: boolean;
   loading: boolean;
   onValidar: () => void;
+  onVer: () => void;
+  onVersion: () => void;
 }) {
   const tieneOcr = pendiente.accionSugerida === "VALIDAR_OCR";
   return (
@@ -670,16 +673,22 @@ function FacturaPendienteCard({ pendiente, readOnly, loading, onValidar }: {
           ) : null}
         </div>
         <span className="rounded-full border px-2.5 py-1 text-xs text-muted-foreground">
-          {tieneOcr ? "Pendiente de validación OCR" : "Sin resultado OCR"}
+          {pendiente.accionSugerida === "AGREGAR_VERSION" ? "Posible copia de factura confirmada" : tieneOcr ? "OCR pendiente de confirmación" : "Sin resultado OCR"}
         </span>
       </div>
       <div className="mt-4 space-y-2">
-        <Button type="button" variant="outline" size="sm" disabled={readOnly || loading} onClick={onValidar}>
-          {tieneOcr ? "Validar OCR" : "Validar manualmente"}
-        </Button>
+        <div className="flex gap-2">
+          <Button type="button" variant="outline" size="sm" disabled={loading} onClick={onVer}>Ver</Button>
+          <Button type="button" variant="outline" size="sm" disabled={readOnly || loading}
+            onClick={pendiente.accionSugerida === "AGREGAR_VERSION" ? onVersion : onValidar}>
+            {pendiente.accionSugerida === "AGREGAR_VERSION" ? "Agregar versión" : "Editar"}
+          </Button>
+        </div>
         <p className="text-xs text-muted-foreground">
           {readOnly
             ? "Vista de solo lectura."
+            : pendiente.accionSugerida === "AGREGAR_VERSION"
+              ? "Revisa la copia antes de agregarla como versión de la factura existente."
             : tieneOcr
               ? "Revisa los datos y el PDF ya guardados."
               : "Completa manualmente los datos de la factura sobre el PDF ya guardado."}
@@ -1182,6 +1191,8 @@ export function CompraExpedienteEditor({
   const { data: expediente, isLoading, error } = useExpediente(id);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [modalAbierto, setModalAbierto] = useState(false);
+  const versionPendienteEnCursoRef = useRef(false);
+  const [versionPendienteEnCurso, setVersionPendienteEnCurso] = useState(false);
   const [pendienteOcrAbierto, setPendienteOcrAbierto] = useState<{
     fila: FacturaPendienteValidacion;
     expedienteId: string | number;
@@ -2424,9 +2435,42 @@ export function CompraExpedienteEditor({
     }
   }
 
-  async function abrirOcrPendiente(fila: FacturaPendienteValidacion) {
-    if (modoSoloLectura || !principalPendientesId || aperturaEnCursoRef.current || modalAbierto ||
-        fila.accionSugerida !== "VALIDAR_OCR" || !fila.ocrResultadoId) return;
+  async function refrescarPendientesCompras(expedienteId: string | number, principalId: number) {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["compras-facturas-pendientes", String(expedienteId), principalId] }),
+      queryClient.invalidateQueries({ queryKey: ["expediente-documentos", String(expedienteId)] }),
+      queryClient.invalidateQueries({ queryKey: ["ocr-resultados"] }),
+      queryClient.invalidateQueries({ queryKey: ["almacen-editor-workspace-v2", String(expedienteId)] }),
+      queryClient.invalidateQueries({ queryKey: ["almacen-documento-versiones-contador"] }),
+    ]);
+  }
+
+  async function agregarVersionPendiente(fila: FacturaPendienteValidacion) {
+    if (modoSoloLectura || modalAbierto || versionPendienteEnCursoRef.current || !principalPendientesId ||
+        fila.accionSugerida !== "AGREGAR_VERSION" || !fila.documentoIdDestino) return;
+    const expedienteId = id;
+    const principalId = principalPendientesId;
+    versionPendienteEnCursoRef.current = true;
+    setVersionPendienteEnCurso(true);
+    try {
+      await agregarArchivoComoVersion(fila.documentoIdDestino, fila.archivoId, {
+        tipoVersion: "evidencia", marcarComoActual: true,
+        observacion: "Copia pendiente recuperada desde Compras",
+        recuperacionCompras: { expedienteId: Number(expedienteId), principalId, documentoIdCandidato: fila.documentoId },
+      });
+      setMensajeValidacion("Archivo agregado como versión de la factura existente.");
+      await refrescarPendientesCompras(expedienteId, principalId);
+    } catch (error) {
+      setMensajeValidacion(error instanceof Error ? error.message : "No se pudo agregar la versión. Actualiza los pendientes.");
+    } finally {
+      versionPendienteEnCursoRef.current = false;
+      setVersionPendienteEnCurso(false);
+    }
+  }
+
+  async function abrirOcrPendiente(fila: FacturaPendienteValidacion, soloVer = false) {
+    if ((!soloVer && modoSoloLectura) || !principalPendientesId || aperturaEnCursoRef.current || modalAbierto ||
+        (!soloVer && fila.accionSugerida !== "VALIDAR_OCR") || !fila.ocrResultadoId) return;
     const contexto = { fila, expedienteId: id, principalId: principalPendientesId };
     const generation = ++aperturaPendienteRef.current;
     aperturaEnCursoRef.current = true;
@@ -2434,7 +2478,7 @@ export function CompraExpedienteEditor({
     setMensajeValidacion(null);
     const sigueVigente = () => generation === aperturaPendienteRef.current &&
       contextoPendienteRef.current.expedienteId === String(contexto.expedienteId) &&
-      contextoPendienteRef.current.principalId === contexto.principalId && !contextoPendienteRef.current.readOnly;
+      contextoPendienteRef.current.principalId === contexto.principalId && (soloVer || !contextoPendienteRef.current.readOnly);
     try {
       const detalle = await getOcrResultado(fila.ocrResultadoId);
       if (!sigueVigente()) return;
@@ -2461,7 +2505,7 @@ export function CompraExpedienteEditor({
         uploadResponse: { documentoId: fila.documentoId, archivoId: fila.archivoId },
       }));
       setPendienteOcrAbierto(contexto);
-      setModalSoloLectura(false);
+      setModalSoloLectura(soloVer);
       setModalAbierto(true);
     } catch (error) {
       if (sigueVigente()) setMensajeValidacion(error instanceof Error ? error.message : "No se pudo abrir el OCR persistido.");
@@ -2474,9 +2518,9 @@ export function CompraExpedienteEditor({
     }
   }
 
-  function abrirFacturaManualPendiente(fila: FacturaPendienteValidacion) {
+  function abrirFacturaManualPendiente(fila: FacturaPendienteValidacion, soloVer = false) {
     if (
-      modoSoloLectura ||
+      (!soloVer && modoSoloLectura) ||
       !principalPendientesId ||
       aperturaEnCursoRef.current ||
       modalAbierto ||
@@ -2521,7 +2565,7 @@ export function CompraExpedienteEditor({
     );
     setPendienteOcrAbierto(null);
     setPendienteManualAbierto(contexto);
-    setModalSoloLectura(false);
+    setModalSoloLectura(soloVer);
     setModalAbierto(true);
   }
 
@@ -2651,6 +2695,13 @@ export function CompraExpedienteEditor({
     if (accion === "guardar") {
       await editarOcrResultado(contexto.fila.ocrResultadoId!, { tipoPropuesto: "FACTURA", metadata,
         observacion: "Edición desde factura pendiente de Compras" });
+      const actualizado = await getOcrResultado(contexto.fila.ocrResultadoId!);
+      if (contextoPendienteRef.current.expedienteId === String(contexto.expedienteId) &&
+          contextoPendienteRef.current.principalId === contexto.principalId) {
+        const persistida = parseRecordLocal(actualizado.metadata) ?? {};
+        setResultadoModal(current => ({ ...current, metadata: parseRecordLocal(persistida.metadata) ?? persistida } as ProcesarOcrResultado));
+      }
+      await refrescarPendientesCompras(contexto.expedienteId, contexto.principalId);
       return;
     }
     if (accion === "confirmar") {
@@ -3155,33 +3206,29 @@ export function CompraExpedienteEditor({
             No se pudieron consultar las facturas pendientes de validación.
           </p>
         ) : null}
-        {principalPendientesId && facturasPendientes.length > 0 ? (
-          <Card>
-            <CardHeader>
-              <CardTitle>Facturas pendientes de validación</CardTitle>
-              <p className="text-sm text-muted-foreground">
-                Archivos guardados para esta OC/OS que todavía no son facturas operativas.
-              </p>
-            </CardHeader>
-            <CardContent className="grid gap-3 md:grid-cols-3">
-              {facturasPendientes.map((pendiente) => (
-                <FacturaPendienteCard
-                  key={`${pendiente.documentoId}:${pendiente.archivoId}`}
-                  pendiente={pendiente}
-                  readOnly={modoSoloLectura}
-                  loading={abriendoPendiente || modalAbierto}
-                  onValidar={() => {
-                    if (pendiente.accionSugerida === "VALIDAR_OCR") {
-                      void abrirOcrPendiente(pendiente);
-                      return;
-                    }
-                    abrirFacturaManualPendiente(pendiente);
-                  }}
-                />
-              ))}
-            </CardContent>
-          </Card>
-        ) : null}
+        {(["PENDIENTE_OCR", "IDENTIFICADO"] as const).map((clasificacion) => {
+          const filas = facturasPendientes.filter(p => p.clasificacion === clasificacion);
+          if (!principalPendientesId || !facturasPendientes.length) return null;
+          return (
+            <Card key={clasificacion}>
+              <CardHeader>
+                <CardTitle>{clasificacion === "PENDIENTE_OCR" ? "PENDIENTES DE OCR" : "DOCUMENTOS IDENTIFICADOS"}</CardTitle>
+                <p className="text-sm text-muted-foreground">Archivos persistidos de esta OC/OS pendientes de completar su flujo.</p>
+              </CardHeader>
+              <CardContent className="grid gap-3 md:grid-cols-3">
+                {!filas.length ? <p className="text-sm text-muted-foreground">No hay documentos en esta sección.</p> : null}
+                {filas.map(pendiente => (
+                  <FacturaPendienteCard key={`${pendiente.documentoId}:${pendiente.archivoId}`}
+                    pendiente={pendiente} readOnly={modoSoloLectura}
+                    loading={abriendoPendiente || modalAbierto || versionPendienteEnCurso}
+                    onVer={() => pendiente.ocrResultadoId ? void abrirOcrPendiente(pendiente, true) : abrirFacturaManualPendiente(pendiente, true)}
+                    onValidar={() => pendiente.ocrResultadoId ? void abrirOcrPendiente(pendiente) : abrirFacturaManualPendiente(pendiente)}
+                    onVersion={() => void agregarVersionPendiente(pendiente)} />
+                ))}
+              </CardContent>
+            </Card>
+          );
+        })}
 
         {documentosSinPrincipal.length ? (
           <Card>

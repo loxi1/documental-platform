@@ -89,6 +89,7 @@ export type AgregarArchivoComoVersionPayload = {
   tipoVersion?: string;
   observacion?: string;
   marcarComoActual?: boolean;
+  recuperacionCompras?: { expedienteId: number; principalId: number; documentoIdCandidato: number };
 };
 
 export async function agregarArchivoComoVersion(
@@ -99,6 +100,7 @@ export async function agregarArchivoComoVersion(
   const { data } = await api.post(
     `/documentos/${documentoId}/archivos/${archivoId}/agregar-version`,
     {
+      ...(payload.recuperacionCompras ? { recuperacionCompras: payload.recuperacionCompras } : {}),
       tipoVersion: payload.tipoVersion ?? "escaneado",
       observacion: payload.observacion ?? "Archivo agregado como versión desde Compras > Editar",
       marcarComoActual: payload.marcarComoActual ?? true,
