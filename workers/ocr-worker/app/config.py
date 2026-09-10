@@ -4,6 +4,8 @@ from pydantic_settings import BaseSettings
 class Settings(BaseSettings):
     app_name: str = "ocr-worker"
     nats_url: str = "nats://localhost:4222"
+    ocr_request_subject: str = "ocr.procesar-archivo"
+    ocr_classified_subject: str = "documento.clasificado"
 
     ocr_inbox_dir: str = "./storage/inbox"
     ocr_tmp_dir: str = "./storage/tmp"

@@ -1,3 +1,4 @@
+import { AlmacenContexto, AlmacenRecuperacionRepository } from './almacen-recuperacion.repository';
 
 import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException, UnauthorizedException, ForbiddenException } from '@nestjs/common';
 import { ClientProxy } from '@nestjs/microservices';
@@ -179,7 +180,7 @@ export class DocumentosService {
 
     const result = this.limpiarCamposLegacyOcr(
       await firstValueFrom(
-        this.nats.send(NatsSubjects.OcrProcesarArchivo, payload),
+        this.nats.send(process.env.OCR_REQUEST_SUBJECT?.trim() || NatsSubjects.OcrProcesarArchivo, payload),
       ),
     );
 
@@ -628,6 +629,39 @@ export class DocumentosService {
     return confirmado;
   }
 
+  private async scopeRecuperacionAlmacen(contexto: AlmacenContexto, authorization?: string) {
+    if (![contexto?.expedienteId, contexto?.grupoFacturaId, contexto?.documentoBaseId, contexto?.facturaDocumentoId]
+      .every(v => Number.isSafeInteger(v) && v > 0)) throw new BadRequestException('Contexto Almacén inválido');
+    if (!authorization?.startsWith('Bearer ')) throw new UnauthorizedException('Token requerido');
+    const auth: any = await firstValueFrom(this.nats.send(NatsSubjects.AuthValidateToken,
+      { token: authorization.slice(7).trim() }).pipe(timeout(10000)));
+    if (!auth?.valid) throw new UnauthorizedException('Token inválido');
+    const scope = { workspaceId: Number(auth.payload?.workspaceId), clienteDestinoId: Number(auth.payload?.clienteDestinoId),
+      empresa: String(auth.payload?.empresa ?? auth.payload?.empresaCodigo ?? '').trim().toUpperCase() };
+    if (![scope.workspaceId, scope.clienteDestinoId].every(v => Number.isSafeInteger(v) && v > 0) || !scope.empresa)
+      throw new ForbiddenException('Workspace incompleto');
+    return scope;
+  }
+
+  async listarRecuperacionAlmacen(contexto: AlmacenContexto, authorization?: string) {
+    return new AlmacenRecuperacionRepository().listar(contexto, await this.scopeRecuperacionAlmacen(contexto, authorization));
+  }
+
+  async confirmarRecuperacionAlmacen(documentoId: number, archivoId: number,
+    input: { contexto: AlmacenContexto; metadata: Record<string, any>; ocrResultadoId?: number | null }, authorization?: string) {
+    const scope = await this.scopeRecuperacionAlmacen(input.contexto, authorization);
+    if (![documentoId, archivoId].every(v => Number.isSafeInteger(v) && v > 0)
+      || (input.ocrResultadoId != null && (!Number.isSafeInteger(input.ocrResultadoId) || input.ocrResultadoId <= 0)))
+      throw new BadRequestException('Identidad del candidato inválida');
+    try {
+      return await this.orquestarConfirmacionV2.executeRecuperacionAlmacen(documentoId, archivoId, { ...input, scope });
+    } catch (error: any) {
+      if (error?.code === 'OCR_VALIDACION_INVALIDA') throw new BadRequestException({ code: error.code, message: error.message, details: error.details });
+      if (/^(ALMACEN_|OCR_|DOCUMENTO_|EXPEDIENTE_|GRUPO_)/.test(String(error?.code ?? '')) || ['40001','40P01'].includes(error?.code) || error instanceof NotFoundException) throw new ConflictException({ code: error.code ?? 'ALMACEN_RECOVERY_CONFLICTO', message: error.message, details: error.details });
+      throw error;
+    }
+  }
+
   async agregarArchivoComoVersion(
     documentoId: number,
     archivoId: number,
@@ -635,11 +669,17 @@ export class DocumentosService {
       tipoVersion?: string;
       observacion?: string;
       marcarComoActual?: boolean;
+      recuperacionAlmacen?: { contexto: AlmacenContexto; documentoIdCandidato: number };
       recuperacionCompras?: { expedienteId: number; principalId: number; documentoIdCandidato: number };
     } = {},
     usuarioId?: number,
     authorization?: string,
   ) {
+    const recuperacionAlmacen = input.recuperacionAlmacen ? {
+      ...input.recuperacionAlmacen, scope: await this.scopeRecuperacionAlmacen(input.recuperacionAlmacen.contexto, authorization),
+    } : undefined;
+    if (recuperacionAlmacen && (!Number.isSafeInteger(recuperacionAlmacen.documentoIdCandidato) || recuperacionAlmacen.documentoIdCandidato <= 0))
+      throw new BadRequestException('Documento candidato inválido');
     let recuperacionCompras;
     if (input.recuperacionCompras) {
       const contexto = input.recuperacionCompras;
@@ -661,6 +701,7 @@ export class DocumentosService {
     try {
       return await this.repo.agregarArchivoComoVersion({
         documentoId,
+        ...(recuperacionAlmacen ? { recuperacionAlmacen } : {}),
         ...(recuperacionCompras ? { recuperacionCompras } : {}),
         archivoId,
         tipoVersion: input.tipoVersion ?? 'evidencia',
@@ -669,7 +710,7 @@ export class DocumentosService {
         usuarioId: usuarioId ?? null,
       });
     } catch (error: any) {
-      if (recuperacionCompras && (['VERSION_CANDIDATO_CAMBIO', '40001', '40P01'].includes(error?.code)
+      if ((recuperacionCompras || recuperacionAlmacen) && (['VERSION_CANDIDATO_CAMBIO', '40001', '40P01'].includes(error?.code)
         || error instanceof NotFoundException)) {
         throw new ConflictException({ code: 'VERSION_CANDIDATO_CAMBIO', message: 'La factura cambió; actualiza los pendientes antes de agregar la versión.' });
       }

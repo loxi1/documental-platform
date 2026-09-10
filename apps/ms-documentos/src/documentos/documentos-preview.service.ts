@@ -157,9 +157,21 @@ export class DocumentosPreviewService {
       ? expiresIn
       : DEFAULT_PREVIEW_EXPIRES_IN_SECONDS;
 
+    const forcePathStyleConfig = firstNonEmpty(
+      this.config.get<string>('R2_FORCE_PATH_STYLE'),
+      process.env.R2_FORCE_PATH_STYLE,
+    );
+
+    const forcePathStyle =
+      forcePathStyleConfig?.toLowerCase() === 'true' ||
+      endpoint.includes('minio-lab') ||
+      endpoint.includes('localhost') ||
+      endpoint.includes('127.0.0.1');
+
     const client = new S3Client({
       region,
       endpoint,
+      forcePathStyle,
       credentials: {
         accessKeyId,
         secretAccessKey,

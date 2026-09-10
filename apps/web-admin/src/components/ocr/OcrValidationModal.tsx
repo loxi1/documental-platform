@@ -80,7 +80,7 @@ type OcrValidationModalProps = {
    * o desde catálogos, para mantener el modal compacto.
    */
   formularioContexto?: "ALMACEN" | "COMPRAS" | "FINANZAS";
-  modo?: "ocr" | "pendiente_manual";
+  modo?: "ocr" | "pendiente_manual" | "pendiente_manual_almacen";
   readOnly?: boolean;
 };
 
@@ -486,7 +486,7 @@ function buildInitialFormParaModo(
   resultado: unknown,
   expedienteContexto: OcrValidationExpedienteContexto | undefined,
   metadataVigente?: Partial<FormState>,
-  modo: "ocr" | "pendiente_manual" = "ocr",
+  modo: "ocr" | "pendiente_manual" | "pendiente_manual_almacen" = "ocr",
 ) {
   const form = mergeFormConMetadataVigente(
     buildInitialForm(resultado, expedienteContexto),
@@ -801,6 +801,7 @@ export function OcrValidationModal({
   const [duplicadoDetails, setDuplicadoDetails] = useState<DocumentoDuplicadoEnExpedienteDetails | null>(null);
   const [submittingAction, setSubmittingAction] = useState<null | "save" | "confirm" | "reject" | "version">(null);
   const [previewUrlFromApi, setPreviewUrlFromApi] = useState<string | null>(null);
+  const [previewArchivoIdFromApi, setPreviewArchivoIdFromApi] = useState<string | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [proveedorEstado, setProveedorEstado] = useState<"SIN_CONSULTAR" | "BUSCANDO" | "RESUELTO" | "NO_ENCONTRADO" | "ERROR_CONSULTA">("SIN_CONSULTAR");
   const [proveedorOrigen, setProveedorOrigen] = useState<string>("");
@@ -818,8 +819,6 @@ export function OcrValidationModal({
       setLocalMessage(null);
       setActionError(null);
       setDuplicadoDetails(null);
-      setPreviewUrlFromApi(null);
-      setPreviewError(null);
       setProveedorEstado("SIN_CONSULTAR");
       setProveedorOrigen("");
     }
@@ -831,12 +830,18 @@ export function OcrValidationModal({
     const rawArchivo = getArchivoInfo(resultado);
     if (rawArchivo.previewUrl) {
       setPreviewUrlFromApi(rawArchivo.previewUrl);
+      setPreviewArchivoIdFromApi(
+        fallbackArchivoId !== undefined && fallbackArchivoId !== null
+          ? String(fallbackArchivoId)
+          : null,
+      );
       setPreviewError(null);
       return;
     }
 
     if (!fallbackArchivoId) {
       setPreviewUrlFromApi(null);
+      setPreviewArchivoIdFromApi(null);
       return;
     }
 
@@ -856,10 +861,12 @@ export function OcrValidationModal({
 
         if (!cancelled) {
           setPreviewUrlFromApi(signedUrl ? String(signedUrl) : null);
+          setPreviewArchivoIdFromApi(String(fallbackArchivoId));
         }
       } catch (error) {
         if (!cancelled) {
           setPreviewUrlFromApi(null);
+          setPreviewArchivoIdFromApi(String(fallbackArchivoId));
           setPreviewError(
             error instanceof Error
               ? error.message
@@ -877,7 +884,14 @@ export function OcrValidationModal({
   }, [open, resultado, fallbackArchivoId]);
 
   const archivo = useMemo(() => getArchivoInfo(resultado), [resultado]);
-  const previewUrl = previewUrlFromApi ?? archivo.previewUrl;
+  const fallbackArchivoIdActual =
+    fallbackArchivoId !== undefined && fallbackArchivoId !== null
+      ? String(fallbackArchivoId)
+      : null;
+  const previewUrl =
+    previewArchivoIdFromApi === fallbackArchivoIdActual
+      ? previewUrlFromApi ?? archivo.previewUrl
+      : archivo.previewUrl;
   const expediente = useMemo(() => getExpedienteInfo(resultado, expedienteContexto), [resultado, expedienteContexto]);
   const tiposDisponibles = useMemo(() => {
     const base = (tiposDocumentalesPermitidos?.length ? tiposDocumentalesPermitidos : TIPOS_DOCUMENTALES)
@@ -1488,7 +1502,7 @@ const esFactura = tipoProveedor === "FACTURA";
             ) : (
               <>
                 {formularioContexto !== "FINANZAS" &&
-                modo !== "pendiente_manual" ? (
+                modo !== "pendiente_manual" && modo !== "pendiente_manual_almacen" ? (
                   <button
                     type="button"
                     onClick={handleReject}
@@ -1508,7 +1522,7 @@ const esFactura = tipoProveedor === "FACTURA";
                 {!duplicadoDetails ? (
                   <>
                     {formularioContexto !== "FINANZAS" &&
-                    modo !== "pendiente_manual" ? (
+                    modo !== "pendiente_manual" && modo !== "pendiente_manual_almacen" ? (
                       <button
                         type="button"
                         onClick={handleSave}

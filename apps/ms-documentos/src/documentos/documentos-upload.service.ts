@@ -880,9 +880,21 @@ export class DocumentosUploadService {
       throw new BadRequestException('Configuración R2 incompleta para upload');
     }
 
+    const forcePathStyleConfig = firstNonEmpty(
+      this.config.get<string>('R2_FORCE_PATH_STYLE'),
+      process.env.R2_FORCE_PATH_STYLE,
+    );
+
+    const forcePathStyle =
+      forcePathStyleConfig?.toLowerCase() === 'true' ||
+      endpoint.includes('minio-lab') ||
+      endpoint.includes('localhost') ||
+      endpoint.includes('127.0.0.1');
+
     return new S3Client({
       region: firstNonEmpty(this.config.get<string>('R2_REGION'), process.env.R2_REGION) ?? 'auto',
       endpoint,
+      forcePathStyle,
       credentials: {
         accessKeyId,
         secretAccessKey,

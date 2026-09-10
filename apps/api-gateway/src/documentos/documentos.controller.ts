@@ -1367,6 +1367,27 @@ export class DocumentosGatewayController {
   }
 
   @ApiOperation({ summary: 'Agregar archivo existente como versión de un documento lógico vía API Gateway' })
+  @Get('recuperacion-almacen')
+  async listarRecuperacionAlmacen(@Headers('authorization') authorization: string | undefined,
+    @Headers(REQUEST_ID_HEADER) requestId: string | undefined, @Query() query: Record<string, string>) {
+    const contexto = await this.validateAuthorization(authorization);
+    await this.assertExpedientePermitido(query.expedienteId, contexto, requestId);
+    return this.proxy({ method: 'GET', path: '/documentos/recuperacion-almacen', authorization, requestId, query });
+  }
+
+  @Post('recuperacion-almacen/:documentoId/archivos/:archivoId/confirmar')
+  async confirmarRecuperacionAlmacen(@Headers('authorization') authorization: string | undefined,
+    @Headers(REQUEST_ID_HEADER) requestId: string | undefined,
+    @Param('documentoId') documentoId: string, @Param('archivoId') archivoId: string, @Body() body: unknown) {
+    const contexto = await this.validateAuthorization(authorization);
+    this.assertAnyActionPermitida(contexto, ['documentos.confirmar_ocr', 'ocr.confirmar'], 'confirmar documento recuperado');
+    this.assertAnyActionPermitida(contexto, ['documentos.vincular_expediente'], 'vincular documento recuperado');
+    await this.assertExpedientePermitido((body as any)?.contexto?.expedienteId, contexto, requestId);
+    await this.assertDocumentoPermitido(documentoId, contexto, requestId);
+    await this.assertArchivoPermitido(archivoId, contexto, requestId);
+    return this.proxy({ method: 'POST', path: `/documentos/recuperacion-almacen/${documentoId}/archivos/${archivoId}/confirmar`, authorization, requestId, body });
+  }
+
   @Post(':documentoId/archivos/:archivoId/agregar-version')
   async agregarArchivoComoVersion(
     @Headers('authorization') authorization: string | undefined,

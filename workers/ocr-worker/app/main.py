@@ -17,7 +17,7 @@ async def main():
     await nc.connect(servers=[settings.nats_url])
 
     console.log(f"[cyan]{settings.app_name} conectado a NATS[/cyan]")
-    console.log("[yellow]Escuchando subject: ocr.procesar-archivo[/yellow]")
+    console.log(f"[yellow]Escuchando subject: {settings.ocr_request_subject}[/yellow]")
 
     async def handler(msg):
         try:
@@ -27,12 +27,17 @@ async def main():
                 raw = raw["data"]
 
             payload = OcrProcesarArchivoPayload(**raw)
+            console.log(json.dumps({
+                "archivoId": payload.archivoId,
+                "storage_key": payload.storageKey if "://" not in payload.storageKey else "[URL omitida]",
+                "subject": msg.subject,
+            }), markup=False)
 
             result = await process_file(payload)
 
             if result.get("ok"):
                 await nc.publish(
-                    "documento.clasificado",
+                    settings.ocr_classified_subject,
                     json.dumps(result).encode(),
                 )
 
@@ -58,7 +63,7 @@ async def main():
             if msg.reply:
                 await nc.publish(msg.reply, json.dumps(error).encode())
 
-    await nc.subscribe("ocr.procesar-archivo", cb=handler)
+    await nc.subscribe(settings.ocr_request_subject, cb=handler)
 
     while True:
         await asyncio.sleep(1)

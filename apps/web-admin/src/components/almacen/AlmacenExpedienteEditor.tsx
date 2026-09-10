@@ -1,5 +1,6 @@
 "use client";
 
+import { getRecuperacionAlmacen, confirmarRecuperacionAlmacen, type PendienteAlmacen, type ContextoRecuperacionAlmacen } from '@/services/almacen-recuperacion';
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { type ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
@@ -215,8 +216,14 @@ function getDocumentosPorRelacion(documentos: DocumentoVinculado[]) {
 
 function isArchivoVersionOperativa(
   archivo: Record<string, unknown> | null | undefined,
+  tipoDocumental?: string,
 ) {
-  return normalizeCompare(archivo?.estado) === "ACTIVO";
+  const estado = normalizeCompare(archivo?.estado);
+  // An operative invoice's original upload remains "subido" after confirmation.
+  // Unpromoted version uploads are not operative representations.
+  return estado === "ACTIVO" || (tipoDocumental === "FACTURA" && estado === "SUBIDO" &&
+    normalizeCompare(archivo?.tipo_version) === "ORIGINAL" &&
+    normalizeCompare(archivo?.origen_archivo) !== "UPLOAD_VERSION_CANDIDATA");
 }
 
 function getArchivoId(source: Record<string, unknown> | null | undefined) {
@@ -625,7 +632,7 @@ function DocumentoResumen({
   const archivosVersiones =
     versionesQuery.data?.data ?? versionesQuery.data?.archivos ?? [];
   const cantidadVersionesOperativas = archivosVersiones.filter((archivo) =>
-    isArchivoVersionOperativa(archivo as Record<string, unknown>),
+    isArchivoVersionOperativa(archivo as Record<string, unknown>, tipoDocumentalActual),
   ).length;
 
   if (!doc) {
@@ -1224,6 +1231,106 @@ export function AlmacenExpedienteEditor({ id }: { id: string | number }) {
     );
   }
 
+  const [recuperacionAbierta, setRecuperacionAbierta] = useState<{ fila: PendienteAlmacen; contexto: ContextoRecuperacionAlmacen; soloVer: boolean } | null>(null);
+  useEffect(() => {
+    if (recuperacionAbierta) { setRecuperacionAbierta(null); setModalAbierto(false); }
+  }, [id, grupoFacturaId]);
+  const recuperacionOcupadaRef = useRef(false);
+  const [recuperacionOcupada, setRecuperacionOcupada] = useState(false);
+  const contextoRecuperacion = contextoV2Listo && grupoFacturaId && documentoBaseId && facturaDocumentoId
+    ? { expedienteId: Number(id), grupoFacturaId, documentoBaseId, facturaDocumentoId } : null;
+  const contextoRecuperacionRef = useRef(contextoRecuperacion);
+  contextoRecuperacionRef.current = contextoRecuperacion;
+  const recuperacionQuery = useQuery({
+    queryKey: ['almacen-recuperacion', String(id), grupoFacturaId, documentoBaseId, facturaDocumentoId],
+    enabled: Boolean(contextoRecuperacion),
+    queryFn: () => getRecuperacionAlmacen(contextoRecuperacion!),
+  });
+  const pendientesRecuperacion = contextoRecuperacion && recuperacionQuery.data &&
+    Object.entries(contextoRecuperacion).every(([k,v]) => recuperacionQuery.data?.contexto[k as keyof ContextoRecuperacionAlmacen] === v)
+    ? recuperacionQuery.data.data : [];
+  function contextoRecuperacionVigente(contexto: ContextoRecuperacionAlmacen) {
+    return Object.entries(contexto).every(([k,v]) => contextoRecuperacionRef.current?.[k as keyof ContextoRecuperacionAlmacen] === v);
+  }
+  async function refrescarRecuperacionAlmacen(expedienteId: number) {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['almacen-recuperacion', String(expedienteId)] }),
+      queryClient.invalidateQueries({ queryKey: ['almacen-ocr-pendientes-grupo', String(expedienteId)] }),
+      queryClient.invalidateQueries({ queryKey: ['expediente-documentos', String(expedienteId)] }),
+      queryClient.invalidateQueries({ queryKey: ['almacen-editor-workspace-v2', String(expedienteId)] }),
+      queryClient.invalidateQueries({ queryKey: ['almacen-documento-versiones-contador'] }),
+      queryClient.invalidateQueries({ queryKey: ['ocr-resultados'] }),
+    ]);
+    // The history modal uses a direct GET, rather than a separate query cache.
+    if (versionesModalDoc) {
+      const documentoId = getDocumentoId(versionesModalDoc);
+      const response = await getDocumentoArchivos(documentoId);
+      setVersionesModal(current => current?.documentoId === documentoId ? { ...current, archivos: response.data ?? [] } : current);
+    }
+  }
+  async function abrirRecuperacionAlmacen(fila: PendienteAlmacen, soloVer = false) {
+    const contexto = contextoRecuperacionRef.current;
+    if (!contexto || recuperacionOcupadaRef.current || modalAbierto) return;
+    recuperacionOcupadaRef.current = true; setRecuperacionOcupada(true);
+    try {
+      const accion = DOCUMENTO_ALMACEN_ADJUNTO_OPTIONS.find(o => normalizeTipoDocumentalParaBackend(o.tipoEsperado) === fila.tipoDocumental);
+      if (!accion) throw new Error('Tipo recuperado inválido');
+      let metadata = {};
+      if (fila.ocrResultadoId) {
+        const detalle = await getOcrResultado(fila.ocrResultadoId);
+        if (!contextoRecuperacionVigente(contexto)) return;
+        const grupoOcr = getRecoveryGrupoFacturaId(detalle as unknown as OcrRecoveryRow);
+        const versionFacturaDelContexto = fila.tipoDocumental === 'FACTURA' && fila.documentoId === contexto.facturaDocumentoId;
+        if (Number(detalle.id) !== fila.ocrResultadoId || Number(detalle.documento_id) !== fila.documentoId || Number(detalle.archivo_id) !== fila.archivoId ||
+          !['pendiente_validacion','editado'].includes(detalle.estado) ||
+          (grupoOcr == null ? !versionFacturaDelContexto : grupoOcr !== contexto.grupoFacturaId))
+          throw new Error('El OCR cambió; actualiza los pendientes');
+        metadata = (detalle.metadata as any)?.metadata ?? detalle.metadata ?? {};
+      }
+      if (!contextoRecuperacionVigente(contexto)) return;
+      setAccionActual({ ...accion, grupo: "adjunto" }); setVersionDocumentoDestinoId(null); setVersionDocumentoDestinoDoc(null);
+      setResultadoModal({ ocrResultadoId: fila.ocrResultadoId ?? undefined, archivoId: fila.archivoId, documentoId: fila.documentoId,
+        tipoDocumental: fila.tipoDocumental, metadata } as ProcesarOcrResultado);
+      setRecuperacionAbierta({ fila, contexto, soloVer: soloVer || (fila.tipoDocumental === 'FACTURA' && !fila.ocrResultadoId) }); setModalAbierto(true);
+    } catch (error) {
+      setMensajeValidacion(error instanceof Error ? error.message : 'No se pudo abrir el pendiente');
+      await refrescarRecuperacionAlmacen(contexto.expedienteId);
+    } finally { recuperacionOcupadaRef.current = false; setRecuperacionOcupada(false); }
+  }
+  async function guardarRecuperacionAlmacen(form: OcrValidationFormState, confirmar = false) {
+    const abierto = recuperacionAbierta;
+    if (!abierto || abierto.soloVer || !contextoRecuperacionVigente(abierto.contexto)) throw new Error('El contexto cambió');
+    const metadata = buildMetadataDesdeFormulario(form, { codigoExpediente: codigo, rucComprador, clienteAbreviatura: empresa,
+      expedienteId: id, tipoRelacion: abierto.fila.tipoDocumental === 'FACTURA' ? 'adjunto_factura' : abierto.fila.tipoDocumental === 'GUIA_REMISION' ? 'adjunto_guia' : 'adjunto_nota_ingreso' });
+    delete metadata.claveDocumental;
+    if (confirmar) {
+      if (abierto.fila.tipoDocumental === 'FACTURA') throw new Error('Guarda los cambios y revisa la correspondencia en Documentos identificados. La versión se agrega desde su caja.');
+      await confirmarRecuperacionAlmacen(abierto.fila, abierto.contexto, metadata);
+      setModalAbierto(false); setRecuperacionAbierta(null);
+    } else {
+      if (!abierto.fila.ocrResultadoId) throw new Error('El documento manual solo permite confirmar');
+      await editarOcrResultado(abierto.fila.ocrResultadoId, { tipoPropuesto: abierto.fila.tipoDocumental, metadata });
+      const detalle = await getOcrResultado(abierto.fila.ocrResultadoId);
+      if (contextoRecuperacionVigente(abierto.contexto)) setResultadoModal(current => ({ ...current, metadata: (detalle.metadata as any)?.metadata ?? detalle.metadata } as ProcesarOcrResultado));
+    }
+    await refrescarRecuperacionAlmacen(abierto.contexto.expedienteId);
+  }
+  async function agregarVersionRecuperacionAlmacen(fila: PendienteAlmacen) {
+    const contexto = contextoRecuperacionRef.current;
+    if (!contexto || recuperacionOcupadaRef.current || modalAbierto || !['GUIA_REMISION','FACTURA'].includes(fila.tipoDocumental) ||
+      fila.accionSugerida !== 'AGREGAR_VERSION' || !fila.documentoIdDestino) return;
+    recuperacionOcupadaRef.current = true; setRecuperacionOcupada(true);
+    try {
+      await agregarArchivoComoVersion(fila.documentoIdDestino, fila.archivoId, { tipoVersion: 'evidencia', marcarComoActual: true,
+        recuperacionAlmacen: { contexto, documentoIdCandidato: fila.documentoId } });
+    } catch (error) { setMensajeValidacion(error instanceof Error ? error.message : 'No se pudo agregar la versión'); }
+    finally {
+      // A lost response is not proof of rollback. Reconcile before another user action.
+      try { await refrescarRecuperacionAlmacen(contexto.expedienteId); }
+      finally { recuperacionOcupadaRef.current = false; setRecuperacionOcupada(false); }
+    }
+  }
+
   const ocrPendientesGrupoQuery = useQuery({
     queryKey: ["almacen-ocr-pendientes-grupo", String(id), grupoFacturaId],
     enabled: contextoV2Listo && grupoFacturaId !== null,
@@ -1654,6 +1761,93 @@ const principalGrupoSeleccionado = grupoFacturaSeleccionado
     },
   });
 
+  const versionFacturaDirectaMutation = useMutation<
+    void,
+    Error,
+    UploadVersionYProcesarArgs
+  >({
+    mutationFn: async ({ accion, file, documentoId }) => {
+      const tipoEsperado = normalizeTipoDocumentalParaBackend(
+        accion.tipoEsperado,
+      );
+
+      if (tipoEsperado !== "FACTURA") {
+        throw new Error(
+          "La promoción directa de versión solo está habilitada para Factura.",
+        );
+      }
+
+      setProcessingFileName(file.name);
+      setProcessingError(null);
+      setProcessingStep("uploading");
+
+      const uploadResponse = await subirArchivoVersion(documentoId, file);
+      const archivoId = getArchivoId(
+        uploadResponse as Record<string, unknown>,
+      );
+
+      if (!archivoId) {
+        throw new Error(
+          "El upload directo de versión no devolvió archivoId.",
+        );
+      }
+
+      await resolverVersionAntiguaAlmacen(documentoId, archivoId, {
+        tipoVersion: "escaneado",
+        observacion:
+          "Archivo escaneado agregado directamente como versión de Factura desde Almacén.",
+        marcarComoActual: true,
+      });
+    },
+
+    onSuccess: async (_, { documentoId }) => {
+      setProcessingStep("idle");
+      setModalAbierto(false);
+      setVersionDocumentoDestinoId(null);
+      setVersionDocumentoDestinoDoc(null);
+
+      setMensajeValidacion(
+        `Archivo agregado como nueva versión de la Factura ${documentoId}.`,
+      );
+
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: ["expediente-documentos", String(id)],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ["almacen-editor-workspace-v2", String(id)],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ["almacen-documento-versiones-contador", documentoId],
+        }),
+      ]);
+    },
+
+    onError: async (err, { documentoId }) => {
+      setProcessingStep("error");
+      setProcessingError(
+        `No se pudo agregar la nueva versión de Factura. ${err.message}`,
+      );
+      setMensajeValidacion(
+        `No se pudo agregar la nueva versión de Factura. ${err.message}`,
+      );
+
+      // Una respuesta perdida no demuestra rollback:
+      // reconciliar antes de permitir otro intento.
+      await refrescarRecuperacionAlmacen(Number(id));
+
+      queryClient.invalidateQueries({
+        queryKey: ["expediente-documentos", String(id)],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["almacen-editor-workspace-v2", String(id)],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["almacen-documento-versiones-contador", documentoId],
+      });
+    },
+  });
+
   const versionRealMutation = useMutation<
     ProcesarOcrResultado,
     Error,
@@ -1781,6 +1975,7 @@ const principalGrupoSeleccionado = grupoFacturaSeleccionado
     }
 
     const tipo = normalizeTipoDocumentalParaBackend(option.tipoEsperado);
+
     if (tipo !== "FACTURA" && tipo !== "GUIA_REMISION") {
       setMensajeValidacion("Solo Factura y Guía admiten nuevas versiones en Almacén.");
       return;
@@ -1798,7 +1993,21 @@ const principalGrupoSeleccionado = grupoFacturaSeleccionado
     event.target.value = "";
     if (!file || !accionActual) return;
 
+
     if (versionDocumentoDestinoId) {
+      const tipoEsperado = normalizeTipoDocumentalParaBackend(
+        accionActual.tipoEsperado,
+      );
+
+      if (tipoEsperado === "FACTURA") {
+        versionFacturaDirectaMutation.mutate({
+          accion: accionActual,
+          file,
+          documentoId: versionDocumentoDestinoId,
+        });
+        return;
+      }
+
       versionRealMutation.mutate({
         accion: accionActual,
         file,
@@ -1921,6 +2130,20 @@ const principalGrupoSeleccionado = grupoFacturaSeleccionado
     setMensajeValidacion(`Documento confirmado y vinculado al expediente ${codigo || id}.`);
   }
 
+  async function resolverVersionAntiguaAlmacen(documentoId: string | number, archivoId: string | number, options: { tipoVersion: string; observacion: string; marcarComoActual: boolean }) {
+    try {
+      const response = await getDocumentoArchivos(documentoId);
+      const existente = (response.data ?? []).find(a => String(a.id) === String(archivoId));
+      if (
+        existente &&
+        existente.versionado?.accion === 'AGREGADO_COMO_VERSION'
+      ) return;
+      await agregarArchivoComoVersion(documentoId, archivoId, options);
+    } finally {
+      await refrescarRecuperacionAlmacen(Number(id));
+    }
+  }
+
   async function confirmarVersionDocumentoExistente() {
     const documentoIdDestino = versionDocumentoDestinoId;
     const archivoIdCandidato = archivoIdModal;
@@ -1931,7 +2154,7 @@ const principalGrupoSeleccionado = grupoFacturaSeleccionado
       );
     }
 
-    await agregarArchivoComoVersion(documentoIdDestino, archivoIdCandidato, {
+    await resolverVersionAntiguaAlmacen(documentoIdDestino, archivoIdCandidato, {
       tipoVersion: "escaneado",
       observacion:
         "Nueva representación física confirmada como versión desde Almacén tras validación humana.",
@@ -1966,7 +2189,7 @@ const principalGrupoSeleccionado = grupoFacturaSeleccionado
       throw new Error("No se encontró el documento existente o el archivo nuevo para agregar como versión.");
     }
 
-    await agregarArchivoComoVersion(documentoIdExistente, archivoIdActual, {
+    await resolverVersionAntiguaAlmacen(documentoIdExistente, archivoIdActual, {
       tipoVersion: "escaneado",
       observacion: "Archivo escaneado agregado como versión desde Almacén",
       marcarComoActual: true,
@@ -2162,44 +2385,27 @@ const principalGrupoSeleccionado = grupoFacturaSeleccionado
             </p>
           </CardHeader>
           <CardContent className="space-y-3">
-            {ocrPendientesGrupoQuery.isLoading ? (
-              <div className="rounded-lg border bg-muted/20 p-3 text-sm text-muted-foreground">
-                Revisando documentos pendientes de validación para esta Factura...
-              </div>
-            ) : (ocrPendientesGrupoQuery.data?.length ?? 0) > 0 ? (
-              <div className="rounded-lg border bg-muted/20 p-3">
-                <p className="text-sm font-medium">
-                  Documentos pendientes de validación de esta Factura
-                </p>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Reanude únicamente un documento asociado a la Factura seleccionada.
-                </p>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {ocrPendientesGrupoQuery.data?.map((row) => {
-                    const ocrResultadoId = positiveInteger(getOcrResultadoId(row));
-                    const archivo = text(
-                      row.nombreArchivo ?? row.nombre_archivo,
-                      ocrResultadoId
-                        ? `Documento pendiente ${ocrResultadoId}`
-                        : "Documento pendiente",
-                    );
-
-                    return (
-                      <Button
-                        key={String(ocrResultadoId ?? archivo)}
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        disabled={procesando || ocrResultadoId === null}
-                        onClick={() => void reanudarOcrPendienteGrupo(row)}
-                      >
-                        Reanudar {archivo}
-                      </Button>
-                    );
-                  })}
+            {(['PENDIENTE_OCR','IDENTIFICADO'] as const).map(clasificacion => (
+              <div key={clasificacion} className="mb-4 rounded-xl border p-4">
+                <h3 className="font-semibold">{clasificacion === 'PENDIENTE_OCR' ? 'PENDIENTES DE OCR' : 'DOCUMENTOS IDENTIFICADOS'}</h3>
+                <div className="mt-3 grid gap-3 md:grid-cols-3">
+                  {pendientesRecuperacion.filter(p => p.clasificacion === clasificacion).map(fila => (
+                    <div key={`${fila.documentoId}:${fila.archivoId}`} className="rounded-lg border p-3">
+                      <p className="break-words font-medium">{fila.filename}</p>
+                      <p className="text-xs text-muted-foreground">{fila.tipoDocumental === 'FACTURA' ? 'Factura' : fila.tipoDocumental === 'GUIA_REMISION' ? 'Guía' : 'Nota de ingreso'} · {fila.estadoOcr ?? 'Sin OCR'}</p>
+                      <div className="mt-2 flex gap-2">
+                        <Button disabled={recuperacionOcupada || modalAbierto} variant="outline" size="sm" onClick={() => void abrirRecuperacionAlmacen(fila, true)}>Ver</Button>
+                        {['GUIA_REMISION','FACTURA'].includes(fila.tipoDocumental) && fila.accionSugerida === 'AGREGAR_VERSION'
+                          ? <Button disabled={recuperacionOcupada || modalAbierto} size="sm" onClick={() => void agregarVersionRecuperacionAlmacen(fila)}>Agregar versión</Button>
+                          : <Button disabled={recuperacionOcupada || modalAbierto || (fila.tipoDocumental === 'FACTURA' && !fila.ocrResultadoId)} size="sm" onClick={() => void abrirRecuperacionAlmacen(fila)}>Editar</Button>}
+                      </div>
+                      {fila.tipoDocumental === 'FACTURA' && !fila.ocrResultadoId ? <p className="mt-2 text-xs text-muted-foreground">Archivo conservado. Sin OCR persistido no se puede verificar su identidad para versionarlo.</p> : null}
+                    </div>
+                  ))}
                 </div>
               </div>
-            ) : null}
+            ))}
+            {recuperacionQuery.isError ? <p className="text-sm text-red-600">No se pudieron consultar los pendientes.</p> : null}
 
             <div className="grid gap-3 md:grid-cols-3">
               {DOCUMENTO_ALMACEN_ADJUNTO_OPTIONS.map((item) => {
@@ -2423,7 +2629,9 @@ const principalGrupoSeleccionado = grupoFacturaSeleccionado
       />
 
       <OcrValidationModal
-        open={modalAbierto}
+        open={modalAbierto && (!recuperacionAbierta || contextoRecuperacionVigente(recuperacionAbierta.contexto))}
+        readOnly={recuperacionAbierta?.soloVer ?? false}
+        modo={recuperacionAbierta && !recuperacionAbierta.fila.ocrResultadoId ? 'pendiente_manual_almacen' : 'ocr'}
         resultado={resultadoModal}
         fallbackArchivoId={archivoIdModal}
         expedienteContexto={{
@@ -2435,14 +2643,21 @@ const principalGrupoSeleccionado = grupoFacturaSeleccionado
         }}
         onClose={() => {
           setModalAbierto(false);
+          setRecuperacionAbierta(null);
           setVersionDocumentoDestinoId(null);
           setVersionDocumentoDestinoDoc(null);
         }}
-        onSave={versionDocumentoDestinoId ? undefined : guardarCambiosOcr}
-        onConfirm={versionDocumentoDestinoId ? undefined : confirmarOcrFinal}
-        onReject={versionDocumentoDestinoId ? undefined : rechazarOcrFinal}
+        onSave={recuperacionAbierta ? (recuperacionAbierta.fila.ocrResultadoId ? form => guardarRecuperacionAlmacen(form) : undefined) : versionDocumentoDestinoId ? undefined : guardarCambiosOcr}
+        onConfirm={recuperacionAbierta ? form => guardarRecuperacionAlmacen(form, true) : versionDocumentoDestinoId ? undefined : confirmarOcrFinal}
+        onReject={recuperacionAbierta ? (recuperacionAbierta.fila.ocrResultadoId ? async form => {
+          const abierto = recuperacionAbierta;
+          if (abierto.soloVer || !contextoRecuperacionVigente(abierto.contexto)) throw new Error('El contexto cambió');
+          await rechazarOcrFinal(form);
+          setRecuperacionAbierta(null);
+          await refrescarRecuperacionAlmacen(abierto.contexto.expedienteId);
+        } : undefined) : versionDocumentoDestinoId ? undefined : rechazarOcrFinal}
         onAgregarComoVersion={
-          versionDocumentoDestinoId ? undefined : agregarDuplicadoComoVersion
+          recuperacionAbierta || versionDocumentoDestinoId ? undefined : agregarDuplicadoComoVersion
         }
         modoVersionDocumentoExistente={
           versionDocumentoDestinoId &&

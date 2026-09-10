@@ -16,6 +16,7 @@ export function buildClaveDocumental(
     const serie = clean(metadata.serie);
     const numero = clean(metadata.numero);
     const numeroOperacion = clean(metadata.numeroOperacion);
+    const banco = clean(metadata.banco);
 
     if (['FACTURA', 'GUIA_REMISION', 'NOTA_CREDITO', 'RECIBO_HONORARIO'].includes(tipoKey)) {
       if (clienteKey && ruc && serie && numero) {
@@ -31,7 +32,9 @@ export function buildClaveDocumental(
 
     if (['TRANSFERENCIA', 'PAGO_TRANSFERENCIA', 'PAGO_DETRACCION'].includes(tipoKey)) {
       if (clienteKey && numeroOperacion) {
-        return `${clienteKey}|${tipoKey}|${numeroOperacion}`;
+        return banco
+          ? `${clienteKey}|${tipoKey}|${banco}|${numeroOperacion}`
+          : `${clienteKey}|${tipoKey}|${numeroOperacion}`;
       }
     }
 

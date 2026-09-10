@@ -183,6 +183,17 @@ export class R2CargaSeguraStorage implements CargaSeguraStorage {
       );
     }
 
+    const forcePathStyleConfig = firstNonEmpty(
+      this.config.get<string>('R2_FORCE_PATH_STYLE'),
+      process.env.R2_FORCE_PATH_STYLE,
+    );
+
+    const forcePathStyle =
+      forcePathStyleConfig?.toLowerCase() === 'true' ||
+      endpoint.includes('minio-lab') ||
+      endpoint.includes('localhost') ||
+      endpoint.includes('127.0.0.1');
+
     this.client = new S3Client({
       region:
         firstNonEmpty(
@@ -190,6 +201,7 @@ export class R2CargaSeguraStorage implements CargaSeguraStorage {
           process.env.R2_REGION,
         ) ?? 'auto',
       endpoint,
+      forcePathStyle,
       credentials: {
         accessKeyId,
         secretAccessKey,

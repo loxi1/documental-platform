@@ -92,13 +92,24 @@ export class OrquestarConfirmacionDocumentalV2UseCase {
     });
   }
 
+  executeRecuperacionAlmacen(documentoId: number, archivoId: number, input: any, usuarioId?: number) {
+    return sql.begin(async tx => {
+      const confirmado = await this.documentosLegacy.confirmarRecuperacionAlmacenConExecutor(tx, documentoId, archivoId, input, usuarioId);
+      return this.confirmarConExecutor(tx, input.ocrResultadoId ?? 0, {
+        expedienteId: input.contexto.expedienteId, documentoBaseId: input.contexto.documentoBaseId,
+        grupoFacturaId: input.contexto.grupoFacturaId,
+      }, { usuarioId }, confirmado);
+    });
+  }
+
   private async confirmarConExecutor(
     tx: SqlExecutor,
     ocrResultadoId: number,
     input: ConfirmacionDocumentalIntegradaInput,
     audit: ConfirmacionDocumentalAudit,
+    confirmadoPrevio?: any,
   ) {
-      const confirmado = await this.documentosLegacy.confirmarOcrResultadoConExpedienteConExecutor(
+      const confirmado = confirmadoPrevio ?? await this.documentosLegacy.confirmarOcrResultadoConExpedienteConExecutor(
         tx,
         ocrResultadoId,
         input,

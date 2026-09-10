@@ -1,3 +1,4 @@
+import type { AlmacenContexto } from './almacen-recuperacion.repository';
 import { BadRequestException, Body, Controller, Get, Headers, Param, ParseIntPipe, Query, Post, Patch, Put, UploadedFiles, UseInterceptors } from '@nestjs/common';
 import { ApiOperation, ApiQuery, ApiTags, ApiParam, ApiConsumes } from '@nestjs/swagger';
 import { FileFieldsInterceptor } from '@nestjs/platform-express';
@@ -11,6 +12,20 @@ import type { DocumentosQueryDto } from '../common/schemas/documentos-query.sche
 @Controller('documentos')
 export class DocumentosController {
   constructor(private readonly service: DocumentosService, private readonly preview: DocumentosPreviewService, private readonly upload: DocumentosUploadService) {}
+
+  @Get('recuperacion-almacen')
+  listarRecuperacionAlmacen(@Query() query: Record<string, string>, @Headers('authorization') authorization?: string) {
+    return this.service.listarRecuperacionAlmacen({ expedienteId: Number(query.expedienteId), grupoFacturaId: Number(query.grupoFacturaId),
+      documentoBaseId: Number(query.documentoBaseId), facturaDocumentoId: Number(query.facturaDocumentoId) }, authorization);
+  }
+
+  @Post('recuperacion-almacen/:documentoId/archivos/:archivoId/confirmar')
+  confirmarRecuperacionAlmacen(@Param('documentoId', ParseIntPipe) documentoId: number,
+    @Param('archivoId', ParseIntPipe) archivoId: number,
+    @Body() body: { contexto: AlmacenContexto; metadata: Record<string, any>; ocrResultadoId?: number | null },
+    @Headers('authorization') authorization?: string) {
+    return this.service.confirmarRecuperacionAlmacen(documentoId, archivoId, body, authorization);
+  }
 
   @ApiOperation({ summary: 'Listar documentos con filtros y paginación' })
   @ApiQuery({ name: 'cliente', required: false, example: 'BBTI' })
@@ -276,6 +291,7 @@ export class DocumentosController {
       tipoVersion?: string;
       observacion?: string;
       marcarComoActual?: boolean;
+      recuperacionAlmacen?: { contexto: AlmacenContexto; documentoIdCandidato: number };
       recuperacionCompras?: { expedienteId: number; principalId: number; documentoIdCandidato: number };
     } = {},
     @Headers('authorization') authorization?: string,

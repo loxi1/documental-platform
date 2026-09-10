@@ -1,3 +1,4 @@
+import { AlmacenRecuperacionRepository, AlmacenContexto, AlmacenScope } from './almacen-recuperacion.repository';
 import { buildClaveDocumental } from './identidad-documental';
 import { ExpedientesRepository } from '../expedientes/expedientes.repository';
 import { Injectable } from '@nestjs/common';
@@ -827,6 +828,7 @@ export class DocumentosRepository {
       orden?: number;
       metadata?: Record<string, any>;
       observacion?: string;
+      recuperacionAlmacen?: { contexto: AlmacenContexto; scope: AlmacenScope };
     },
     usuarioId?: number,
   ) {
@@ -908,6 +910,11 @@ export class DocumentosRepository {
         );
       }
 
+      return this.confirmarDocumentoContextoConExecutor(tx, id, input, usuarioId, ocr, archivo, documentoBloqueado, esRecoveryCompras);
+  }
+
+  private async confirmarDocumentoContextoConExecutor(tx: SqlExecutor, id: number | null, input: any,
+    usuarioId: number | undefined, ocr: any, archivo: any, documentoBloqueado: any, esRecoveryCompras: boolean) {
       const expedienteRows = await tx`
         SELECT
           e.id,
@@ -1153,7 +1160,7 @@ export class DocumentosRepository {
         ORDER BY
           CASE WHEN d.clave_documental = ${claveDocumental}::text THEN 0 ELSE 1 END,
           d.id ASC
-        LIMIT ${esRecoveryCompras ? null : 1}
+        LIMIT ${esRecoveryCompras || input.recuperacionAlmacen ? null : 1}
       `;
 
       let permitirOtroProvisional = false;
@@ -1176,6 +1183,16 @@ export class DocumentosRepository {
         const actual = pendientes.data.find((p: any) => Number(p.documentoId) === Number(ocr.documento_id)
           && Number(p.archivoId) === Number(ocr.archivo_id) && Number(p.ocrResultadoId) === Number(ocr.id));
         const otro = pendientes.data.find((p: any) => Number(p.documentoId) === Number(duplicadoRows[0].documento_id));
+        permitirOtroProvisional = Boolean(actual && otro && otro.identidadDocumental === claveDocumental);
+      }
+      if (input.recuperacionAlmacen && duplicadoRows.length === 1
+        && duplicadoRows[0].tipo_documental === tipoDocumental
+        && ['GUIA_REMISION', 'NOTA_INGRESO'].includes(tipoDocumental)
+        && ['pendiente_ocr','pendiente_validacion'].includes(duplicadoRows[0].estado)) {
+        const recovery = input.recuperacionAlmacen;
+        const lista = await new AlmacenRecuperacionRepository().listar(recovery.contexto, recovery.scope, tx, true);
+        const actual = lista.data.find(p => p.documentoId === Number(ocr.documento_id) && p.archivoId === Number(ocr.archivo_id));
+        const otro = lista.data.find(p => p.documentoId === Number(duplicadoRows[0].documento_id));
         permitirOtroProvisional = Boolean(actual && otro && otro.identidadDocumental === claveDocumental);
       }
       if (duplicadoRows[0] && !permitirOtroProvisional) {
@@ -1259,7 +1276,7 @@ export class DocumentosRepository {
           clave_documental = ${claveDocumental}::text,
           metadata = COALESCE(d.metadata, '{}'::jsonb)
             || jsonb_build_object(
-              'ocr', ${JSON.stringify(metadataOcrFinal)}::jsonb,
+              ${id == null ? 'validacionManual' : 'ocr'}::text, ${JSON.stringify(metadataOcrFinal)}::jsonb,
               'rucComprador', ${metadataFinal.rucComprador ?? null}::text,
               'codigoExpediente', ${metadataFinal.codigoExpediente ?? null}::text,
               'tipoRelacion', ${tipoRelacion}::text
@@ -1353,7 +1370,7 @@ export class DocumentosRepository {
         vinculo = insertedRows[0] ?? null;
       }
 
-      const ocrUpdatedRows = await tx`
+      const ocrUpdatedRows = id == null ? [] : await tx`
         UPDATE documentos.ocr_resultados
         SET
           estado = 'confirmado',
@@ -1403,6 +1420,34 @@ export class DocumentosRepository {
       };
   }
 
+  async confirmarRecuperacionAlmacenConExecutor(tx: SqlExecutor, documentoId: number, archivoId: number,
+    input: { contexto: AlmacenContexto; scope: AlmacenScope; metadata: Record<string, any>; ocrResultadoId?: number | null }, usuarioId?: number) {
+    const recovery = new AlmacenRecuperacionRepository();
+    const locked = await recovery.bloquear(tx, input.contexto, documentoId, archivoId);
+    const lista = await recovery.listar(input.contexto, input.scope, tx, true);
+    const fila = lista.data.find(p => p.documentoId === documentoId && p.archivoId === archivoId);
+    if (!fila || fila.tipoDocumental === 'FACTURA' || fila.accionSugerida === 'AGREGAR_VERSION') {
+      this.throwDomainError('ALMACEN_RECOVERY_CONFLICTO', 'El candidato cambió o corresponde agregar una versión');
+    }
+    const metadata = { ...input.metadata, tipoDocumental: fila.tipoDocumental, clienteAbreviatura: input.scope.empresa };
+    delete metadata['claveDocumental'];
+    const relacion = fila.tipoDocumental === 'GUIA_REMISION' ? 'adjunto_guia' : 'adjunto_nota_ingreso';
+    const confirmacion = { expedienteId: input.contexto.expedienteId, documentoBaseId: input.contexto.documentoBaseId,
+      grupoFacturaId: input.contexto.grupoFacturaId, tipoRelacion: relacion, esPrincipal: false, metadata,
+      recuperacionAlmacen: { contexto: input.contexto, scope: input.scope } };
+    if (input.ocrResultadoId != null) {
+      if (locked.ocr.length !== 1 || Number(locked.ocr[0].id) !== input.ocrResultadoId)
+        this.throwDomainError('ALMACEN_RECOVERY_CONFLICTO', 'El OCR candidato cambió');
+      return this.confirmarOcrResultadoConExpedienteConExecutor(tx, input.ocrResultadoId, confirmacion, usuarioId);
+    }
+    if (locked.ocr.length) this.throwDomainError('ALMACEN_RECOVERY_CONFLICTO', 'Apareció un OCR; reabre el documento');
+    // Source carrier only: no OCR row/id is created for manual validation.
+    const fuente = { documento_id: documentoId, archivo_id: archivoId, tipo_propuesto: fila.tipoDocumental,
+      metadata: { metadata }, estado: 'manual' };
+    return this.confirmarDocumentoContextoConExecutor(tx, null, confirmacion, usuarioId, fuente,
+      locked.archivo, locked.documento, false);
+  }
+
 
   async agregarArchivoComoVersion(params: {
     documentoId: number;
@@ -1411,10 +1456,27 @@ export class DocumentosRepository {
     observacion?: string | null;
     marcarComoActual?: boolean;
     usuarioId?: number | null;
+    recuperacionAlmacen?: { contexto: AlmacenContexto; scope: AlmacenScope; documentoIdCandidato: number };
     recuperacionCompras?: { expedienteId: number; principalId: number; documentoIdCandidato: number;
       scope: { workspaceId: number; clienteDestinoId: number; empresa: string } };
   }) {
     const ejecutar = async (tx: SqlExecutor) => {
+      if (params.recuperacionAlmacen) {
+        const r = params.recuperacionAlmacen;
+        const recovery = new AlmacenRecuperacionRepository();
+        await recovery.bloquear(tx, r.contexto, r.documentoIdCandidato, params.archivoId, params.documentoId);
+        await tx`SELECT id FROM documentos.documentos WHERE id = ${params.documentoId} FOR UPDATE`;
+        await tx`SELECT id FROM documentos.grupo_factura_documentos WHERE documento_id = ${params.documentoId} ORDER BY id FOR UPDATE`;
+        await tx`SELECT gf.id FROM documentos.grupos_factura gf
+          JOIN documentos.documentos_operativos_principales dop ON dop.id = gf.documento_operativo_principal_id
+          JOIN documentos.contenedores_operativos co ON co.id = dop.contenedor_operativo_id
+          WHERE gf.id = ${r.contexto.grupoFacturaId} FOR UPDATE OF gf, dop, co`;
+        const lista = await recovery.listar(r.contexto, r.scope, tx);
+        const candidato = lista.data.find(p => p.documentoId === r.documentoIdCandidato && p.archivoId === params.archivoId);
+        if (!candidato || !['GUIA_REMISION','FACTURA'].includes(candidato.tipoDocumental) || candidato.accionSugerida !== 'AGREGAR_VERSION'
+          || candidato.documentoIdDestino !== params.documentoId)
+          this.throwDomainError('VERSION_CANDIDATO_CAMBIO', 'El candidato o el contexto de destino cambió');
+      }
       const recuperacion = params.recuperacionCompras;
       if (recuperacion) {
         // This fallback is serialized with changes to the candidate and target.
@@ -1637,7 +1699,7 @@ export class DocumentosRepository {
       };
     };
     // Keep legacy Almacén semantics; only this guarded fallback uses serializable isolation.
-    return params.recuperacionCompras
+    return params.recuperacionCompras || params.recuperacionAlmacen
       ? sql.begin('isolation level serializable', ejecutar)
       : sql.begin(ejecutar);
   }
