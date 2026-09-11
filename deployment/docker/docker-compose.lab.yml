@@ -1,0 +1,120 @@
+name: documental-lab
+
+services:
+  ms-auth:
+    container_name: dp_ms_auth
+    image: documental-ms-auth:lab-local
+    build:
+      context: ../..
+      dockerfile: deployment/docker/Dockerfile.nest
+      args:
+        APP_PATH: apps/ms-auth
+        APP_PACKAGE: "@documental/ms-auth"
+    restart: unless-stopped
+    env_file:
+      - ../env/.env.lab
+    environment:
+      PORT: ${MS_AUTH_PORT:-3001}
+      SERVICE_NAME: ms-auth
+      NATS_URL: nats://nats:4222
+    networks:
+      dp_net:
+        aliases:
+          - ms-auth
+
+  api-gateway:
+    container_name: dp_api_gateway_carga_segura_test
+    image: documental-api-gateway:lab-local
+    build:
+      context: ../..
+      dockerfile: deployment/docker/Dockerfile.nest
+      args:
+        APP_PATH: apps/api-gateway
+        APP_PACKAGE: "@documental/api-gateway"
+    restart: unless-stopped
+    env_file:
+      - ../env/.env.lab
+    environment:
+      PORT: ${API_GATEWAY_PORT:-3000}
+      SERVICE_NAME: api-gateway
+      NATS_URL: nats://nats:4222
+      MS_AUTH_URL: http://ms-auth:3001/api/v1
+      MS_DOCUMENTOS_URL: http://ms-documentos:3002/api/v1
+    ports:
+      - "3100:3000"
+    networks:
+      - dp_net
+
+  ms-documentos:
+    container_name: dp_ms_documentos_carga_segura_test
+    image: documental-ms-documentos:lab-local
+    build:
+      context: ../..
+      dockerfile: deployment/docker/Dockerfile.nest
+      args:
+        APP_PATH: apps/ms-documentos
+        APP_PACKAGE: "@documental/ms-documentos"
+    restart: unless-stopped
+    env_file:
+      - ../env/.env.lab
+    environment:
+      PORT: ${MS_DOCUMENTOS_PORT:-3002}
+      SERVICE_NAME: ms-documentos
+      NATS_URL: nats://nats:4222
+      OCR_REQUEST_SUBJECT: lab.ocr.procesar-archivo
+    ports:
+      - "3202:3002"
+    networks:
+      dp_net:
+        aliases:
+          - ms-documentos
+
+  web-admin:
+    container_name: dp_web_admin_audit_lab_3005
+    image: documental-web-admin:lab-local
+    build:
+      context: ../..
+      dockerfile: deployment/docker/Dockerfile.next
+      args:
+        APP_PATH: apps/web-admin
+        NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL}
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
+        NEXT_PUBLIC_AUTH_API_URL: ${NEXT_PUBLIC_AUTH_API_URL}
+        NEXT_PUBLIC_APP_NAME: ${NEXT_PUBLIC_APP_NAME}
+        NEXT_PUBLIC_ALLOW_LOCAL_API_FOR_TESTS: ${NEXT_PUBLIC_ALLOW_LOCAL_API_FOR_TESTS}
+    restart: unless-stopped
+    env_file:
+      - ../env/.env.lab
+    environment:
+      PORT: ${WEB_ADMIN_PORT:-3005}
+    ports:
+      - "3005:3005"
+    networks:
+      - dp_net
+
+  ocr-worker-lab:
+    container_name: dp_ocr_worker_lab
+    image: documental-ocr-worker:lab-local
+    build:
+      context: ../..
+      dockerfile: deployment/docker/Dockerfile.ocr-worker-lab
+    restart: unless-stopped
+    env_file:
+      - ../env/.env.lab
+    environment:
+      APP_NAME: ocr-worker-lab
+      OCR_REQUEST_SUBJECT: lab.ocr.procesar-archivo
+      OCR_CLASSIFIED_SUBJECT: lab.documento.clasificado
+      OCR_TMP_DIR: /tmp/ocr-lab
+      OCR_OUT_DIR: /tmp/ocr-out-lab
+      OCR_INBOX_DIR: /tmp/ocr-inbox-lab
+      PYTHONUNBUFFERED: "1"
+      PYTHONDONTWRITEBYTECODE: "1"
+    tmpfs:
+      - /tmp
+    networks:
+      - dp_net
+
+networks:
+  dp_net:
+    external: true

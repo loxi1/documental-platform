@@ -1,0 +1,29 @@
+name: documental-ocr-lab
+services:
+  ocr-worker-lab:
+    container_name: dp_ocr_worker_lab
+    build:
+      context: ../..
+      dockerfile: deployment/docker/Dockerfile.ocr-worker-lab
+    environment:
+      APP_NAME: ocr-worker-lab
+      NATS_URL: nats://nats:4222
+      OCR_REQUEST_SUBJECT: lab.ocr.procesar-archivo
+      OCR_CLASSIFIED_SUBJECT: lab.documento.clasificado
+      R2_ENDPOINT_URL: http://minio-lab:9000
+      R2_BUCKET: data-prod
+      R2_REGION: us-east-1
+      R2_ACCESS_KEY_ID: ${OCR_LAB_MINIO_ACCESS_KEY_ID:?Use the LAB launcher}
+      R2_SECRET_ACCESS_KEY: ${OCR_LAB_MINIO_SECRET_ACCESS_KEY:?Use the LAB launcher}
+      OCR_TMP_DIR: /tmp/ocr-lab
+      OCR_OUT_DIR: /tmp/ocr-out-lab
+      OCR_INBOX_DIR: /tmp/ocr-inbox-lab
+      PYTHONUNBUFFERED: "1"
+      PYTHONDONTWRITEBYTECODE: "1"
+    tmpfs:
+      - /tmp
+    networks:
+      - dp_net
+networks:
+  dp_net:
+    external: true
