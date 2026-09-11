@@ -26,8 +26,11 @@ import { useExpediente } from "@/hooks/useExpedientes";
 import { api } from "@/services/api";
 import {
   prevalidarDocumentoGuiado,
-  subirDocumentoGuiado,
 } from "@/services/carga-guiada";
+import {
+  crearCargaSeguraIdempotencyKey,
+  subirDocumentoCargaSegura,
+} from "@/services/carga-segura";
 import { agregarArchivoComoVersion, actualizarDocumentoManual, getDocumentoArchivos, subirArchivoVersion } from "@/services/documentos";
 import { getDocumentoArchivoPreviewUrl } from "@/services/documentos-preview";
 import { getWorkspaceDocumentalV2 } from "@/services/documental-v2-workspace";
@@ -1678,7 +1681,13 @@ const principalGrupoSeleccionado = grupoFacturaSeleccionado
       }
 
       setProcessingStep("uploading");
-      const uploadResponse = await subirDocumentoGuiado(uploadPayload, file);
+      const uploadResponse = await subirDocumentoCargaSegura(uploadPayload, file, {
+        idempotencyKey: crearCargaSeguraIdempotencyKey(
+          "editar",
+          id,
+          "almacen",
+        ),
+      });
       const uploadRecord = uploadResponse as Record<string, unknown>;
       const archivoId = getArchivoId(uploadRecord);
       const documentoId = getUploadDocumentoId(uploadRecord);

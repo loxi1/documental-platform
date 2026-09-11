@@ -46,8 +46,11 @@ import { useExpediente } from "@/hooks/useExpedientes";
 import { api } from "@/services/api";
 import {
   prevalidarDocumentoGuiado,
-  subirDocumentoGuiado,
 } from "@/services/carga-guiada";
+import {
+  crearCargaSeguraIdempotencyKey,
+  subirDocumentoCargaSegura,
+} from "@/services/carga-segura";
 import {
   getDocumentoDetalleV2,
   getWorkspaceDocumentalV2,
@@ -1362,7 +1365,13 @@ export function FinanzasExpedienteEditor({ id }: { id: string | number }) {
         });
       }
 
-      const uploadResponse = await subirDocumentoGuiado(uploadPayload, file);
+      const uploadResponse = await subirDocumentoCargaSegura(uploadPayload, file, {
+        idempotencyKey: crearCargaSeguraIdempotencyKey(
+          "editar",
+          id,
+          "finanzas",
+        ),
+      });
       const archivoId = getArchivoId(uploadResponse as Record<string, unknown>);
 
       if (!archivoId) {

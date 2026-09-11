@@ -36,8 +36,9 @@ function randomId() {
 export function crearCargaSeguraIdempotencyKey(
   origen: CargaSeguraOrigen,
   expedienteId: string | number,
+  areaOrigen: string = "compras",
 ) {
-  return `compras:${origen}:${expedienteId}:${randomId()}`;
+  return `${areaOrigen.toLowerCase()}:${origen}:${expedienteId}:${randomId()}`;
 }
 
 function normalizeCargaSeguraResponse(
@@ -71,7 +72,7 @@ export function buildCargaSeguraPayloadDesdeGuiada(
     metadata: {
       areaOrigen: payload.areaOrigen,
       observacion: payload.observacion ?? null,
-      origenFrontend: "web-admin-compras",
+      origenFrontend: `web-admin-${String(payload.areaOrigen).toLowerCase()}`,
       contratoOrigen: "carga-guiada-prevalidacion",
     },
   };
