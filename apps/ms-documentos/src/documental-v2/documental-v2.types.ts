@@ -108,7 +108,7 @@ export type ActualizarDocumentoOperativoPrincipalInput = {
 export type GrupoFacturaRow = {
   id: number;
   documentoOperativoPrincipalId: number;
-  facturaDocumentoId: number;
+  facturaDocumentoId: number | null;
   estado: string;
   metadata: JsonObject;
   creadoPor: number | null;

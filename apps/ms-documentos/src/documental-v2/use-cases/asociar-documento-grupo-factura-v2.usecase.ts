@@ -591,6 +591,9 @@ export class AsociarDocumentoGrupoFacturaV2UseCase {
       throw new NotFoundException(crearError('Grupo de Factura no encontrado', 'GRUPO_FACTURA_NO_ENCONTRADO'));
     }
 
+    if (grupo.facturaDocumentoId == null) {
+      throw new ConflictException(crearError('Adjuntos OP no habilitados en OP-01A', 'OP_ADJUNTOS_NO_HABILITADOS'));
+    }
     this.validarGrupoActivo(grupo);
 
     const principal = await this.principales.buscarPorId(Number(grupo.documentoOperativoPrincipalId), executor);

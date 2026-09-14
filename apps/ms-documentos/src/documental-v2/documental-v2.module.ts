@@ -1,3 +1,7 @@
+import { BuscarContextosOpService } from './finanzas/buscar-contextos-op.service';
+import { OrdenPagoController } from './finanzas/orden-pago.controller';
+import { OrdenPagoService } from './finanzas/orden-pago.service';
+import { ExpedientesRepository } from '../expedientes/expedientes.repository';
 import { Module } from '@nestjs/common';
 
 import { DocumentalV2Controller } from './documental-v2.controller';
@@ -31,8 +35,9 @@ import {
 } from './finanzas/evaluar-correspondencia-pago-factura.usecase';
 
 @Module({
-  controllers: [DocumentalV2Controller],
+  controllers: [DocumentalV2Controller, OrdenPagoController],
   providers: [
+    OrdenPagoService, BuscarContextosOpService, ExpedientesRepository,
     ContenedorOperativoRepository,
     DocumentoOperativoPrincipalRepository,
     GrupoFacturaRepository,

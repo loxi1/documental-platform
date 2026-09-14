@@ -17,7 +17,9 @@ import {
 } from "@/components/ui/empty";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useRevisionContable } from "@/hooks/useRevisionContable";
+import { useQuery } from '@tanstack/react-query';
+import { getFinanzasBandeja } from '@/services/finanzas';
+import { CrearOrdenPagoModal } from './CrearOrdenPagoModal';
 import { getContexto } from "@/lib/auth-storage";
 import type { RevisionContableItem } from "@/types/revision-contable";
 
@@ -498,21 +500,16 @@ export function FinanzasBandeja() {
   const queryEnabled = Boolean(empresa.trim() && hasOperationalQuery);
 
   const { data, isLoading, isFetching, error, refetch } =
-    useRevisionContable(params, queryEnabled);
+    useQuery({ queryKey: ['finanzas-bandeja', contexto?.workspaceId, empresa, params],
+      queryFn: () => getFinanzasBandeja(params), enabled: queryEnabled });
 
   const rows = useMemo(
-    () => (data?.items ?? []).filter(isFacturaRow),
+    () => (data?.items ?? []),
     [data?.items],
   );
 
-  const filteredRows = useMemo(() => {
-    if (!hasSearch) return rows;
-    const query = normalizeSearch(normalizedSearch);
-
-    return rows.filter((item) =>
-      normalizeSearch(searchText(item)).includes(query),
-    );
-  }, [hasSearch, normalizedSearch, rows]);
+  // El backend aplica búsqueda y paginación sobre el conjunto completo.
+  const filteredRows = rows;
 
   useEffect(() => {
     setPage(1);
@@ -530,15 +527,14 @@ export function FinanzasBandeja() {
       <div>
         <h1 className="text-2xl font-bold">Finanzas</h1>
         <p className="text-sm text-muted-foreground">
-          Bandeja por factura para consultar y adjuntar sustentos de pago.
+          Facturas y órdenes de pago en una sola bandeja de Finanzas.
         </p>
       </div>
 
       {error ? (
         <Card>
           <CardContent className="py-4 text-sm text-red-600">
-            No se pudo cargar la bandeja de Finanzas desde la fuente común por
-            factura.
+            No se pudo cargar la bandeja de Finanzas desde su fuente de datos.
           </CardContent>
         </Card>
       ) : null}
@@ -554,7 +550,7 @@ export function FinanzasBandeja() {
               <div className="flex w-full flex-col gap-2 lg:flex-row lg:items-center">
                 <Input
                   className="lg:min-w-[420px] lg:flex-1"
-                  placeholder="Buscar factura, OC/OS, centro de costo, proveedor o RUC..."
+                  placeholder="Buscar OP, factura, OC/OS, contexto, proveedor o RUC..."
                   value={search}
                   onChange={(event) => setSearch(event.target.value)}
                 />
@@ -579,6 +575,20 @@ export function FinanzasBandeja() {
                   <Search className="h-4 w-4" />
                   {isFetching ? "Actualizando" : "Actualizar"}
                 </Button>
+
+                {contexto?.permisos?.menus.includes('finanzas') &&
+                contexto.permisos.actions.includes('documentos.subir') && (
+                  <CrearOrdenPagoModal
+                    key={contexto.workspaceId}
+                    workspaceId={contexto.workspaceId}
+                    onCreated={(id) => {
+                      setSoloPendientesFinanzas(false);
+                      setSearch(`OP-${id}`);
+                      setPage(1);
+                      void refetch();
+                    }}
+                  />
+                )}
               </div>
 
               {search.trim().length > 0 && search.trim().length < 3 ? (
@@ -596,12 +606,12 @@ export function FinanzasBandeja() {
               <EmptyHeader>
                 <EmptyMedia variant="icon">💳</EmptyMedia>
                 <EmptyTitle>
-                  {hasSearch ? "Sin facturas para Finanzas" : "Buscar facturas para Finanzas"}
+                  {hasSearch ? "Sin resultados para Finanzas" : "Buscar documentos para Finanzas"}
                 </EmptyTitle>
                 <EmptyDescription>
                   {hasSearch
-                    ? "No se encontraron facturas para la búsqueda realizada."
-                    : "Ingrese factura, OC/OS, centro de costo, proveedor o RUC para consultar."}
+                    ? "No se encontraron documentos para la búsqueda realizada."
+                    : "Ingrese OP, factura, OC/OS, contexto, proveedor o RUC para consultar."}
                 </EmptyDescription>
               </EmptyHeader>
             </Empty>
@@ -611,14 +621,14 @@ export function FinanzasBandeja() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b bg-muted/40 text-left align-bottom">
-                      <th className="min-w-[105px] px-3 py-2.5">Factura</th>
+                      <th className="min-w-[105px] px-3 py-2.5">Documento</th>
                       <th className="min-w-[90px] px-3 py-2.5">OC/OS</th>
                       <th className="min-w-[110px] px-3 py-2.5">
                         <span className="block leading-tight">Centro de</span>
                         <span className="block leading-tight">costo</span>
                       </th>
                       <th className="w-[190px] min-w-[165px] max-w-[190px] px-3 py-2.5">
-                        Proveedor
+                        Proveedor / Tipo OP
                       </th>
                       <th className="min-w-[92px] px-3 py-2.5">
                         <span className="block leading-tight">Fecha de</span>
@@ -636,6 +646,19 @@ export function FinanzasBandeja() {
 
                   <tbody>
                     {pageRows.map((item) => {
+                      if (itemRecord(item).origen === 'ORDEN_PAGO') {
+                        const op = itemRecord(item);
+                        return <tr key={`op-${op.ordenPagoId}`} className="border-b align-middle hover:bg-muted/30">
+                          <td className="px-3 py-2.5 font-medium">{text(op.numero)}</td>
+                          <td className="px-3 py-2.5">Orden de Pago</td>
+                          <td className="px-3 py-2.5">{text(op.codigo_centro_costo)}<div className="text-xs text-muted-foreground">{text(op.contexto)}</div></td>
+                          <td className="px-3 py-2.5">{text(op.tipo).replaceAll('_', ' ')}<div className="text-xs text-muted-foreground">{text(op.subtipo, '').replaceAll('_', ' ')}</div></td>
+                          <td className="px-3 py-2.5">{fechaEmision(item)}</td>
+                          <td className="px-3 py-2.5">{montoFactura(item)}</td>
+                          <td className="px-3 py-2.5">{op.estado === 'activo' ? 'Activa' : text(op.estado)}</td>
+                          <td className="px-3 py-2.5" />
+                        </tr>;
+                      }
                       const expId = expedienteId(item);
                       const grupoId = grupoFacturaId(item);
                       const key = `${String(expId ?? "sin-exp")}-${String(

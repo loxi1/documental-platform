@@ -1200,7 +1200,7 @@ export class ExpedientesRepository {
     limit?: number;
     offset?: number;
     soloPendientesFinanzas?: boolean;
-  }) {
+  }, finanzas?: { workspaceId: number; clienteDestinoId: number | null }) {
     /**
      * Regla contable oficial:
      * - La FACTURA confirmada es la unidad de salida.
@@ -1266,7 +1266,7 @@ export class ExpedientesRepository {
         ? requestedOffset
         : 0;
 
-    return sql`
+    const consulta = sql`
       WITH facturas_periodo AS (
         SELECT
           ed.expediente_id,
@@ -1794,9 +1794,48 @@ export class ExpedientesRepository {
         finanzas_pendiente.requiere_revision_finanzas
 
       ORDER BY fp.fecha_emision ASC, e.codigo_expediente ASC, e.id ASC
-      LIMIT ${limit}
-      OFFSET ${offset}
+      LIMIT ${finanzas ? null : limit}
+      OFFSET ${finanzas ? 0 : offset}
     `;
+    if (!finanzas) return consulta;
+    // Ambas fuentes se combinan ANTES de paginar. Contabilidad conserva consulta y contrato.
+    const rows = await sql`
+      WITH facturas AS (${consulta}), bandeja AS (
+        SELECT to_jsonb(f) || jsonb_build_object('origen', 'OC_OS') AS item,
+          f.fecha_emision AS fecha, f.codigo_expediente AS contexto, f.expediente_id AS orden,
+          f.documento_id AS documento
+        FROM facturas f
+        UNION ALL
+        SELECT jsonb_build_object(
+          'origen', 'ORDEN_PAGO', 'ordenPagoId', p.id, 'documento_id', d.id,
+          'grupo_factura_id', g.id, 'tipo_documental', 'ORDEN_PAGO',
+          'numero', 'OP-' || p.id, 'fecha_emision', d.fecha_emision,
+          'monto_total', d.monto_total, 'moneda', d.moneda,
+          'codigo_centro_costo', COALESCE(c.centro_costo_codigo, c.codigo),
+          'contexto', c.codigo, 'estado', p.estado,
+          'tipo', d.metadata #>> '{ordenPago,tipo}',
+          'subtipo', d.metadata #>> '{ordenPago,subtipo}'
+        ), d.fecha_emision, c.codigo, c.id, d.id
+        FROM documentos.documentos_operativos_principales p
+        JOIN documentos.documentos d ON d.id = p.documento_id
+        JOIN documentos.contenedores_operativos c ON c.id = p.contenedor_operativo_id
+        JOIN documentos.grupos_factura g ON g.documento_operativo_principal_id = p.id
+        WHERE p.tipo_principal = 'ORDEN_PAGO' AND p.estado = 'activo'
+          AND ${soloPendientesFinanzas}::boolean = false
+          AND c.estado = 'activo' AND g.estado <> 'anulado' AND d.estado = 'confirmado'
+          AND c.empresa_codigo = ${filters.empresa}
+          AND c.cliente_destino_id IS NOT DISTINCT FROM ${finanzas.clienteDestinoId}::bigint
+          AND d.metadata->>'workspaceId' = ${String(finanzas.workspaceId)}
+          AND (${inicioPeriodo}::date IS NULL OR d.fecha_emision >= ${inicioPeriodo}::date)
+          AND (${finPeriodo}::date IS NULL OR d.fecha_emision < ${finPeriodo}::date)
+          AND (${like}::text IS NULL OR concat_ws(' ', 'OP-' || p.id, c.codigo, c.nombre,
+            c.centro_costo_codigo, d.metadata #>> '{ordenPago,tipo}',
+            d.metadata #>> '{ordenPago,subtipo}', d.metadata #>> '{ordenPago,observacion}') ILIKE ${like})
+      ) SELECT item FROM bandeja
+      ORDER BY fecha ASC, contexto ASC, orden ASC, documento ASC
+      LIMIT ${limit} OFFSET ${offset}
+    `;
+    return rows.map(row => row.item);
   }
 
   async getEstadoDocumental(expedienteId: number) {

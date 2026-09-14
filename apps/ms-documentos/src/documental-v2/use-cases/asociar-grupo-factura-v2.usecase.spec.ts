@@ -46,6 +46,7 @@ describe('AsociarGrupoFacturaV2UseCase', () => {
     documentoId: 100,
     estado: 'activo',
     esPrincipalActivo: true,
+    rucProveedor: '20123456789',
   };
 
   const contenedorActivo = {
@@ -103,7 +104,8 @@ describe('AsociarGrupoFacturaV2UseCase', () => {
       },
     });
 
-  it('permite crear Grupo de Factura cuando la Factura está confirmada', async () => {
+  it.each(['OC', 'OS'])('permite crear Grupo de Factura para %s con Factura confirmada', async (tipoPrincipal) => {
+    principales.buscarPorId.mockResolvedValue({ ...principalActivo, tipoPrincipal });
     documentos.buscarPorId.mockResolvedValue({
       ...facturaBase,
       estado: 'confirmado',

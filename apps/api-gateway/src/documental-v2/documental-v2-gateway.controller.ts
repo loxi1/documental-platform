@@ -815,6 +815,80 @@ export class DocumentalV2GatewayController {
     }
   }
 
+  private assertFinanzasOp(contexto: any, crear = false) {
+    const menus = contexto?.permisos?.menus ?? contexto?.permissions?.menus ?? [];
+    if (!Array.isArray(menus) || !menus.includes('finanzas') ||
+        (crear && !this.getWorkspaceActions(contexto).includes('documentos.subir'))) {
+      throw new ForbiddenException('Sin permiso de Finanzas para esta operación');
+    }
+  }
+
+  @Post('finanzas/ordenes-pago')
+  async crearOrdenPago(
+    @Headers('authorization') authorization: string | undefined,
+    @Headers(REQUEST_ID_HEADER) requestId: string | undefined,
+    @Headers('idempotency-key') key: string | undefined,
+    @Body() body: unknown,
+  ) {
+    const contexto = await this.validateAuthorization(authorization);
+    this.assertFinanzasOp(contexto, true);
+    try {
+      const response = await axios.post(`${this.getBaseUrl()}/documental-v2/finanzas/ordenes-pago`, body, {
+        headers: { ...this.buildDocumentosForwardHeaders(authorization, requestId, contexto), 'idempotency-key': key ?? '' },
+      });
+      return this.unwrap(response);
+    } catch (error: any) { this.throwUpstreamHttpException(error); }
+  }
+
+  @Get('finanzas/ordenes-pago/contextos')
+  async buscarContextosOrdenPago(
+    @Headers('authorization') authorization: string | undefined,
+    @Headers(REQUEST_ID_HEADER) requestId: string | undefined,
+    @Query() query: Record<string, string>,
+  ) {
+    const contexto = await this.validateAuthorization(authorization);
+    this.assertFinanzasOp(contexto, true);
+    try {
+      const response = await axios.get(`${this.getBaseUrl()}/documental-v2/finanzas/ordenes-pago/contextos`, {
+        params: { q: query.q, limit: query.limit },
+        headers: this.buildDocumentosForwardHeaders(authorization, requestId, contexto),
+      });
+      return this.unwrap(response);
+    } catch (error: any) { this.throwUpstreamHttpException(error); }
+  }
+
+  @Get('finanzas/ordenes-pago/opciones')
+  async opcionesOrdenPago(
+    @Headers('authorization') authorization: string | undefined,
+    @Headers(REQUEST_ID_HEADER) requestId: string | undefined,
+  ) {
+    const contexto = await this.validateAuthorization(authorization);
+    this.assertFinanzasOp(contexto, true);
+    try {
+      const response = await axios.get(`${this.getBaseUrl()}/documental-v2/finanzas/ordenes-pago/opciones`, {
+        headers: this.buildDocumentosForwardHeaders(authorization, requestId, contexto),
+      });
+      return this.unwrap(response);
+    } catch (error: any) { this.throwUpstreamHttpException(error); }
+  }
+
+  @Get('finanzas/bandeja')
+  async bandejaFinanzas(
+    @Headers('authorization') authorization: string | undefined,
+    @Headers(REQUEST_ID_HEADER) requestId: string | undefined,
+    @Query() query: Record<string, string>,
+  ) {
+    const contexto = await this.validateAuthorization(authorization);
+    this.assertFinanzasOp(contexto);
+    try {
+      const response = await axios.get(`${this.getBaseUrl()}/documental-v2/finanzas/bandeja`, {
+        params: { q: query.q, limit: query.limit, offset: query.offset, soloPendientesFinanzas: query.soloPendientesFinanzas },
+        headers: this.buildDocumentosForwardHeaders(authorization, requestId, contexto),
+      });
+      return this.unwrap(response);
+    } catch (error: any) { this.throwUpstreamHttpException(error); }
+  }
+
   private unwrap(response: any) {
     return response?.data?.data ?? response?.data;
   }

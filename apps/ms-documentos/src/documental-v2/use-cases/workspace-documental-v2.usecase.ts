@@ -307,7 +307,7 @@ export class WorkspaceDocumentalV2UseCase {
 
     const gruposPersistidos = gruposPorPrincipal
       .flat()
-      .filter(({ grupo }) => !facturasYaIncluidas.has(Number(grupo.facturaDocumentoId)));
+      .filter(({ grupo }) => grupo.facturaDocumentoId != null && !facturasYaIncluidas.has(Number(grupo.facturaDocumentoId)));
 
     return Promise.all(
       gruposPersistidos.map(({ grupo, principal }) =>
