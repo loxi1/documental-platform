@@ -11,6 +11,7 @@ import {
 } from "@/constants/catalogos";
 
 import { AdjuntarDocumento } from "@/components/common/AdjuntarDocumento";
+import { PreviewDocumento } from "@/components/common/PreviewDocumento";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -48,6 +49,7 @@ type DocumentoEconomico = {
 };
 
 type SustentoOrdenPago = {
+  archivoId?: number | null;
   nombre?: string | null;
   tipo?: string | null;
   visualizable?: boolean;
@@ -101,6 +103,7 @@ export function OrdenPagoAdjuntarPagoView({
   sustentoOrden = null,
   sustentos = [],
 }: Props) {
+  const [previewSustento, setPreviewSustento] = useState<{ archivoId: number; nombre: string } | null>(null);
   const [mostrarFormulario, setMostrarFormulario] = useState(false);
   const [archivo, setArchivo] = useState<File | null>(null);
   const [fechaPago, setFechaPago] = useState("");
@@ -218,16 +221,6 @@ export function OrdenPagoAdjuntarPagoView({
 
                     <div className="flex shrink-0 items-center gap-2">
                       <Badge variant="outline">Orden de pago</Badge>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="h-7 px-2.5"
-                        disabled
-                      >
-                        <Eye className="mr-1.5 h-3.5 w-3.5" />
-                        Ver
-                      </Button>
                     </div>
                   </div>
 
@@ -309,13 +302,13 @@ export function OrdenPagoAdjuntarPagoView({
                       </div>
                     </div>
 
-                    {sustentoOrden.visualizable ? (
+                    {sustentoOrden.visualizable && Number.isSafeInteger(sustentoOrden.archivoId) && (sustentoOrden.archivoId ?? 0) > 0 ? (
                       <Button
                         type="button"
                         variant="outline"
                         size="sm"
                         className="h-7 px-2.5"
-                        disabled
+                        onClick={() => setPreviewSustento({ archivoId: sustentoOrden.archivoId!, nombre: text(sustentoOrden.nombre, "Sustento de la orden") })}
                       >
                         <Eye className="mr-1.5 h-3.5 w-3.5" />
                         Ver
@@ -402,7 +395,7 @@ export function OrdenPagoAdjuntarPagoView({
 
             <div className="flex min-w-0 flex-col items-start gap-3 border-t pt-4 lg:border-l lg:border-t-0 lg:pl-5 lg:pt-0">
               <FinanzasPaymentPanel
-                estadoPago={resumen?.estadoPago ?? "PENDIENTE"}
+                estadoPago={resumen?.estadoPago ?? "No disponible"}
                 pagadoAcumuladoLabel={formatMonto(
                   resumen?.pagado,
                   resumen?.moneda,
@@ -595,6 +588,23 @@ export function OrdenPagoAdjuntarPagoView({
           </div>
         </CardContent>
       </Card>
+      {previewSustento ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label={`Vista previa de ${previewSustento.nombre}`}
+          onMouseDown={event => { if (event.target === event.currentTarget) setPreviewSustento(null); }}
+        >
+          <div className="relative w-full max-w-6xl rounded-2xl bg-background p-4 pt-12 shadow-2xl">
+            <Button type="button" variant="ghost" size="icon" className="absolute right-3 top-2 z-20"
+              aria-label="Cerrar vista previa" onClick={() => setPreviewSustento(null)}>
+              <X className="h-5 w-5" />
+            </Button>
+            <PreviewDocumento archivoId={previewSustento.archivoId} title={previewSustento.nombre} className="max-h-[80vh]" />
+          </div>
+        </div>
+      ) : null}
     </main>
   );
 }
