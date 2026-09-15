@@ -590,7 +590,7 @@ export function OrdenPagoAdjuntarPagoView({
                     </div>
                   ) : undefined
                 }
-              />              
+              />
             </div>
           </div>
         </CardContent>
