@@ -888,6 +888,22 @@ export class DocumentalV2GatewayController {
     } catch (error: any) { this.throwUpstreamHttpException(error); }
   }
 
+  @Get('finanzas/grupos-factura/:grupoFacturaId/resumen')
+  async obtenerResumenFinancieroGrupo(
+    @Headers('authorization') authorization: string | undefined,
+    @Headers(REQUEST_ID_HEADER) requestId: string | undefined,
+    @Param('grupoFacturaId') grupoFacturaId: string,
+  ) {
+    const contexto = await this.validateAuthorization(authorization);
+    this.assertFinanzasOp(contexto);
+    try {
+      const response = await axios.get(`${this.getBaseUrl()}/documental-v2/finanzas/grupos-factura/${encodeURIComponent(grupoFacturaId)}/resumen`, {
+        headers: this.buildDocumentosForwardHeaders(authorization, requestId, contexto),
+      });
+      return this.unwrap(response);
+    } catch (error: any) { this.throwUpstreamHttpException(error); }
+  }
+
   @Get('finanzas/bandeja')
   async bandejaFinanzas(
     @Headers('authorization') authorization: string | undefined,

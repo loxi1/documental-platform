@@ -1,6 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { sql } from '@documental/database';
 import type { SqlExecutor } from './sql-executor';
+import type { OrdenPagoActor } from './finanzas/orden-pago.dto';
+import type { ObligacionGrupoRow } from './finanzas/grupo-financiero.dto';
 
 import type {
   ActualizarGrupoFacturaInput,
@@ -10,6 +12,26 @@ import type {
 
 @Injectable()
 export class GrupoFacturaRepository {
+  async buscarObligacionScoped(id: number, actor: OrdenPagoActor, executor: SqlExecutor): Promise<ObligacionGrupoRow | null> {
+    const rows = await executor`
+      SELECT g.origen_obligacion AS "origenObligacion", g.factura_documento_id AS "facturaDocumentoId",
+        p.id AS "principalId", p.tipo_principal AS "tipoPrincipal", p.documento_id AS "documentoPrincipalId",
+        c.id AS "contenedorId", c.expediente_v1_id AS "expedienteId"
+      FROM documentos.grupos_factura g
+      JOIN documentos.documentos_operativos_principales p ON p.id=g.documento_operativo_principal_id
+      JOIN documentos.documentos pd ON pd.id=p.documento_id AND pd.estado <> 'anulado'
+        AND pd.tipo_documental=p.tipo_principal
+      JOIN documentos.contenedores_operativos c ON c.id=p.contenedor_operativo_id
+      WHERE g.id=${id}::bigint AND g.estado <> 'anulado'
+        AND p.estado='activo' AND p.es_principal_activo=true AND c.estado='activo'
+        AND c.empresa_codigo=${actor.empresaCodigo}
+        AND pd.cliente_abreviatura=c.empresa_codigo
+        AND c.cliente_destino_id IS NOT DISTINCT FROM ${actor.clienteDestinoId}::bigint
+      LIMIT 1
+    `;
+    return (rows[0] as unknown as ObligacionGrupoRow) ?? null;
+  }
+
   async crear(input: CrearGrupoFacturaInput, executor: SqlExecutor = sql): Promise<GrupoFacturaRow> {
     const rows = await executor`
       INSERT INTO documentos.grupos_factura (

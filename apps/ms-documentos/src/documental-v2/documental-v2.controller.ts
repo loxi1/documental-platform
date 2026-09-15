@@ -330,6 +330,18 @@ export class DocumentalV2Controller {
 
   @ApiOperation({ summary: 'Listar documentos de un Grupo de Factura V2' })
   @ApiParam({ name: 'grupoFacturaId', example: 1 })
+  @Get('finanzas/grupos-factura/:grupoFacturaId/resumen')
+  obtenerResumenFinanciero(
+    @Param('grupoFacturaId') id: string,
+    @Headers() headers: Record<string, string>,
+  ) {
+    return this.gruposFactura.obtenerResumenFinanciero(Number(id), {
+      id: Number(headers['x-user-id']), workspaceId: Number(headers['x-workspace-id']),
+      empresaCodigo: String(headers['x-empresa-codigo'] ?? '').trim().toUpperCase(),
+      clienteDestinoId: headers['x-cliente-destino-id'] ? Number(headers['x-cliente-destino-id']) : null,
+    });
+  }
+
   @Get('grupos-factura/:grupoFacturaId/documentos')
   listarDocumentosPorGrupoFactura(@Param('grupoFacturaId', ParseIntPipe) grupoFacturaId: number) {
     return this.grupoFacturaDocumentos.listarPorGrupoFactura(grupoFacturaId);

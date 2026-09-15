@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { sql } from '@documental/database';
 import type { SqlExecutor } from './sql-executor';
+import type { PagoGrupoReadRow } from './finanzas/grupo-financiero.dto';
 
 import type {
   ActualizarGrupoFacturaDocumentoInput,
@@ -10,6 +11,45 @@ import type {
 
 @Injectable()
 export class GrupoFacturaDocumentoRepository {
+  async listarSustentosFinancieros(grupoFacturaId: number, executor: SqlExecutor): Promise<PagoGrupoReadRow[]> {
+    const rows = await executor`
+      SELECT v.id AS "vinculoId", d.id AS "documentoId", a.id AS "archivoId",
+        v.estado AS "estadoVinculo", d.estado AS "estadoDocumento", d.metadata,
+        d.monto_total::text AS monto, d.moneda, d.numero, d.fecha_emision::text AS fecha,
+        v.motivo_anulacion AS motivo, v.anulado_en::text AS "fechaAnulacion"
+      FROM documentos.grupo_factura_documentos v
+      JOIN documentos.documentos d ON d.id=v.documento_id
+      LEFT JOIN LATERAL (
+        SELECT id FROM documentos.documentos_archivos WHERE documento_id=d.id AND es_version_actual=true
+        ORDER BY id DESC LIMIT 1
+      ) a ON true
+      WHERE v.grupo_factura_id=${grupoFacturaId}::bigint AND v.tipo_relacion='adjunto_transferencia'
+      ORDER BY v.id DESC
+    `;
+    return rows as unknown as PagoGrupoReadRow[];
+  }
+
+  async listarDecisionesObservadas(grupoFacturaId: number, empresa: string, executor: SqlExecutor): Promise<PagoGrupoReadRow[]> {
+    const rows = await executor`
+      SELECT NULL::bigint AS "vinculoId", d.id AS "documentoId", a.id AS "archivoId",
+        NULL::text AS "estadoVinculo", d.estado AS "estadoDocumento", d.metadata,
+        d.monto_total::text AS monto, d.moneda, d.numero, d.fecha_emision::text AS fecha,
+        o.metadata->'validacionPendientePago' AS decision, a.metadata->>'grupoFacturaId' AS "grupoArchivo"
+      FROM documentos.ocr_resultados o
+      JOIN documentos.documentos_archivos a ON a.id=o.archivo_id
+      JOIN documentos.documentos d ON d.id=o.documento_id AND a.documento_id=d.id
+      WHERE o.estado='confirmado' AND d.tipo_documental='TRANSFERENCIA'
+        AND d.cliente_abreviatura=${empresa}
+        AND o.metadata #>> '{validacionPendientePago,estado}'='CONSUMIDO'
+        AND o.metadata #>> '{validacionPendientePago,accion}'='OBSERVAR'
+        AND (a.metadata->>'grupoFacturaId'=${String(grupoFacturaId)}
+          OR COALESCE(o.metadata #>> '{validacionPendientePago,identidad,grupoFacturaId}',
+            o.metadata #>> '{validacionPendientePago,grupoFacturaId}')=${String(grupoFacturaId)})
+      ORDER BY o.id DESC
+    `;
+    return rows as unknown as PagoGrupoReadRow[];
+  }
+
   async crear(input: CrearGrupoFacturaDocumentoInput, executor: SqlExecutor = sql): Promise<GrupoFacturaDocumentoRow> {
     const rows = await executor`
       INSERT INTO documentos.grupo_factura_documentos (
