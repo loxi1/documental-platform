@@ -109,6 +109,7 @@ export type GrupoFacturaRow = {
   id: number;
   documentoOperativoPrincipalId: number;
   facturaDocumentoId: number | null;
+  origenObligacion: 'FACTURA' | 'ORDEN_PAGO';
   estado: string;
   metadata: JsonObject;
   creadoPor: number | null;

@@ -36,6 +36,7 @@ describe('AsociarDocumentoGrupoFacturaV2UseCase recreación', () => {
       id: 30,
       documentoOperativoPrincipalId: 20,
       facturaDocumentoId: 4,
+      origenObligacion: 'FACTURA',
       estado: 'pendiente_revision',
     });
     principales.buscarPorId.mockResolvedValue({

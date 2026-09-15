@@ -45,7 +45,7 @@ export type DatosPagoCorrespondencia = {
 
 export type EvaluacionCorrespondenciaPagoFactura = {
   estado: EstadoCorrespondenciaPagoFactura;
-  facturaDocumentoId: number;
+  facturaDocumentoId: number | null;
   pagoDocumentoId: number | null;
   comparaciones: {
     proveedor: ComparacionCampo;
@@ -76,7 +76,7 @@ export type DecisionCorrespondenciaResult = EvaluacionCorrespondenciaPagoFactura
 };
 
 export type AuditoriaDecisionCorrespondencia = {
-  facturaDocumentoId: number;
+  facturaDocumentoId: number | null;
   pagoDocumentoId: number | null;
   estadoAnterior: EstadoCorrespondenciaPagoFactura;
   estadoResultante: EstadoCorrespondenciaPagoFactura;

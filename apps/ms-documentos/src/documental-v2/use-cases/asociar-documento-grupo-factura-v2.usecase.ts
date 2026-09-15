@@ -27,7 +27,12 @@ import type { ContextoAutenticadoV2 } from './asociar-grupo-factura-v2.usecase';
 import {
   aplicarDecisionCorrespondencia,
   construirAuditoriaDecision,
+  evaluarCorrespondenciaPagoFactura,
 } from '../finanzas/correspondencia-pago-factura.evaluator';
+import {
+  adaptarFacturaCorrespondencia,
+  adaptarPagoCorrespondencia,
+} from '../finanzas/correspondencia-pago-factura.adapter';
 import type {
   AccionDecisionCorrespondencia,
   DecisionCorrespondenciaResult,
@@ -266,10 +271,45 @@ export class AsociarDocumentoGrupoFacturaV2UseCase {
         );
       }
 
-      evaluacionCorrespondencia = await this.evaluarCorrespondencia.execute({
-        facturaDocumentoId: Number(contexto.grupo.facturaDocumentoId),
-        pagoDocumentoId: documentoId,
-      }, executor);
+      if (contexto.grupo.origenObligacion === 'FACTURA') {
+        evaluacionCorrespondencia = await this.evaluarCorrespondencia.execute({
+          facturaDocumentoId: Number(contexto.grupo.facturaDocumentoId),
+          pagoDocumentoId: documentoId,
+        }, executor);
+      } else {
+        const documentoObligacion = await this.documentos.buscarPorId(
+          Number(contexto.principal.documentoId),
+          executor,
+        );
+
+        if (
+          !documentoObligacion ||
+          documentoObligacion.tipoDocumental !== 'ORDEN_PAGO' ||
+          documentoObligacion.estado === 'anulado' ||
+          normalizarEmpresa(documentoObligacion.clienteAbreviatura) !==
+            normalizarEmpresa(contexto.contenedor.empresaCodigo)
+        ) {
+          throw new ConflictException(
+            crearError(
+              'Documento principal de ORDEN_PAGO inconsistente',
+              'GRUPO_FACTURA_NO_PERSISTIDO',
+            ),
+          );
+        }
+
+        const evaluacionOp = evaluarCorrespondenciaPagoFactura(
+          {
+            ...adaptarFacturaCorrespondencia(documentoObligacion),
+            documento: null,
+          },
+          adaptarPagoCorrespondencia(documento),
+        );
+
+        evaluacionCorrespondencia = {
+          ...evaluacionOp,
+          facturaDocumentoId: null,
+        };
+      }
 
       const montoFactura = Number(
         evaluacionCorrespondencia.comparaciones.importe.factura ?? 0,
@@ -294,7 +334,7 @@ export class AsociarDocumentoGrupoFacturaV2UseCase {
             'FACTURA_PAGO_COMPLETO',
             {
               grupoFacturaId,
-              facturaDocumentoId: Number(contexto.grupo.facturaDocumentoId),
+              facturaDocumentoId: contexto.grupo.facturaDocumentoId,
               montoFactura,
               pagadoAcumulado,
               saldoDisponible,
@@ -591,15 +631,42 @@ export class AsociarDocumentoGrupoFacturaV2UseCase {
       throw new NotFoundException(crearError('Grupo de Factura no encontrado', 'GRUPO_FACTURA_NO_ENCONTRADO'));
     }
 
-    if (grupo.facturaDocumentoId == null) {
-      throw new ConflictException(crearError('Adjuntos OP no habilitados en OP-01A', 'OP_ADJUNTOS_NO_HABILITADOS'));
-    }
     this.validarGrupoActivo(grupo);
 
     const principal = await this.principales.buscarPorId(Number(grupo.documentoOperativoPrincipalId), executor);
     if (!principal) {
       throw new NotFoundException(
         crearError('Documento Operativo Principal del Grupo no encontrado', 'GRUPO_FACTURA_NO_PERSISTIDO'),
+      );
+    }
+
+    if (grupo.origenObligacion === 'FACTURA') {
+      if (grupo.facturaDocumentoId == null) {
+        throw new ConflictException(
+          crearError(
+            'Grupo FACTURA sin facturaDocumentoId',
+            'GRUPO_FACTURA_NO_PERSISTIDO',
+          ),
+        );
+      }
+    } else if (grupo.origenObligacion === 'ORDEN_PAGO') {
+      if (
+        grupo.facturaDocumentoId != null ||
+        principal.tipoPrincipal !== 'ORDEN_PAGO'
+      ) {
+        throw new ConflictException(
+          crearError(
+            'Grupo ORDEN_PAGO inconsistente',
+            'GRUPO_FACTURA_NO_PERSISTIDO',
+          ),
+        );
+      }
+    } else {
+      throw new ConflictException(
+        crearError(
+          'Origen de obligación no soportado',
+          'GRUPO_FACTURA_NO_PERSISTIDO',
+        ),
       );
     }
 

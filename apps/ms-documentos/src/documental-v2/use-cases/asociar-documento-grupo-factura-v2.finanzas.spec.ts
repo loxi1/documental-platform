@@ -41,25 +41,43 @@ function buildUseCase(options?: {
   existente?: any;
   evaluacion?: any;
   permiso?: boolean;
+  origenObligacion?: 'FACTURA' | 'ORDEN_PAGO';
+  facturaDocumentoId?: number | null;
+  tipoPrincipal?: string;
+  principalDocumentoId?: number;
+  empresaGrupo?: string;
+  empresaPago?: string;
+  documentoOp?: any;
+  pago?: any;
+  grupoFacturaId?: number;
+  clienteDestinoGrupo?: number;
 }) {
   const contenedores = {
     buscarPorId: jest.fn().mockResolvedValue({
       id: 10,
-      empresaCodigo: 'BBTI',
-      clienteDestinoId: 2,
+      empresaCodigo: options?.empresaGrupo ?? 'BBTI',
+      clienteDestinoId: options?.clienteDestinoGrupo ?? 2,
     }),
   };
   const principales = {
     buscarPorId: jest.fn().mockResolvedValue({
       id: 20,
       contenedorOperativoId: 10,
+      documentoId: options?.principalDocumentoId ?? 25,
+      tipoPrincipal: options?.tipoPrincipal ?? 'OC',
+      estado: 'activo',
+      esPrincipalActivo: true,
     }),
   };
   const gruposFactura = {
     buscarPorId: jest.fn().mockResolvedValue({
-      id: 4,
+      id: options?.grupoFacturaId ?? 4,
       documentoOperativoPrincipalId: 20,
-      facturaDocumentoId: 26,
+      facturaDocumentoId:
+        options?.facturaDocumentoId !== undefined
+          ? options.facturaDocumentoId
+          : 26,
+      origenObligacion: options?.origenObligacion ?? 'FACTURA',
       estado: 'activo',
       anuladoEn: null,
     }),
@@ -70,7 +88,7 @@ function buildUseCase(options?: {
       : 'adjunto_transferencia';
   const row = {
     id: 80,
-    grupoFacturaId: 4,
+    grupoFacturaId: options?.grupoFacturaId ?? 4,
     documentoId: 29,
     tipoRelacion,
     estado: 'activo',
@@ -85,21 +103,50 @@ function buildUseCase(options?: {
     actualizar: jest.fn().mockResolvedValue(row),
     sumarMontoTransferenciasActivas: jest.fn().mockResolvedValue(0),
   };
+  const pago = options?.pago ?? {
+    id: 29,
+    tipoDocumental: options?.tipoDocumental ?? 'TRANSFERENCIA',
+    clienteAbreviatura: options?.empresaPago ?? 'BBTI',
+    estado: 'pendiente',
+    rucEmisor: '201',
+    razonSocialEmisor: 'Proveedor',
+    serie: 'TR',
+    numero: '29',
+    claveDocumental: 'BBTI|TRANSFERENCIA|201|TR|29',
+    fechaEmision: '2026-08-01',
+    moneda: 'PEN',
+    montoTotal: 100,
+    nombreArchivo: 'transferencia.pdf',
+    metadata: {},
+  };
+
+  const documentoOp = options?.documentoOp ?? {
+    id: options?.principalDocumentoId ?? 25,
+    tipoDocumental: 'ORDEN_PAGO',
+    clienteAbreviatura: options?.empresaGrupo ?? 'BBTI',
+    estado: 'confirmado',
+    rucEmisor: '201',
+    razonSocialEmisor: 'Proveedor',
+    serie: null,
+    numero: null,
+    claveDocumental: null,
+    fechaEmision: '2026-08-01',
+    moneda: 'PEN',
+    montoTotal: 100,
+    nombreArchivo: 'op.pdf',
+    metadata: {},
+  };
+
   const documentos = {
-    buscarPorId: jest.fn().mockResolvedValue({
-      id: 29,
-      tipoDocumental: options?.tipoDocumental ?? 'TRANSFERENCIA',
-      clienteAbreviatura: 'BBTI',
-      estado: 'pendiente',
-      rucEmisor: '201',
-      razonSocialEmisor: 'Proveedor',
-      serie: 'TR',
-      numero: '29',
-      claveDocumental: 'BBTI|TRANSFERENCIA|201|TR|29',
-      fechaEmision: '2026-08-01',
-      moneda: 'PEN',
-      montoTotal: 100,
-      nombreArchivo: 'transferencia.pdf',
+    buscarPorId: jest.fn().mockImplementation(async (id: number) => {
+      if (id === pago.id) return pago;
+      if (
+        (options?.origenObligacion ?? 'FACTURA') === 'ORDEN_PAGO' &&
+        id === documentoOp.id
+      ) {
+        return documentoOp;
+      }
+      return null;
     }),
   };
   const auditoria = {
@@ -123,7 +170,7 @@ function buildUseCase(options?: {
   );
 
   const input = {
-    grupoFacturaId: 4,
+    grupoFacturaId: options?.grupoFacturaId ?? 4,
     documentoId: 29,
     tipoRelacion,
     usuario: {
@@ -145,6 +192,10 @@ function buildUseCase(options?: {
     grupoFacturaDocumentos,
     auditoria,
     evaluarCorrespondencia,
+    gruposFactura,
+    principales,
+    contenedores,
+    documentos,
   };
 }
 
@@ -402,6 +453,411 @@ describe('AsociarDocumentoGrupoFacturaV2UseCase - correspondencia financiera', (
       }),
     });
     expect(ctx.grupoFacturaDocumentos.crear).not.toHaveBeenCalled();
+  });
+
+
+  describe('R2 ORDEN_PAGO como obligación financiera', () => {
+    const op153 = () =>
+      buildUseCase({
+        grupoFacturaId: 116,
+        origenObligacion: 'ORDEN_PAGO',
+        facturaDocumentoId: null,
+        tipoPrincipal: 'ORDEN_PAGO',
+        principalDocumentoId: 443,
+        documentoOp: {
+          id: 443,
+          tipoDocumental: 'ORDEN_PAGO',
+          clienteAbreviatura: 'BBTI',
+          estado: 'confirmado',
+          rucEmisor: null,
+          razonSocialEmisor: null,
+          serie: null,
+          numero: null,
+          claveDocumental: null,
+          fechaEmision: '2026-09-15',
+          moneda: 'PEN',
+          montoTotal: 100,
+          nombreArchivo: 'OP-153',
+          metadata: {},
+        },
+        pago: {
+          id: 29,
+          tipoDocumental: 'TRANSFERENCIA',
+          clienteAbreviatura: 'BBTI',
+          estado: 'confirmado',
+          rucEmisor: null,
+          razonSocialEmisor: null,
+          serie: null,
+          numero: null,
+          claveDocumental: null,
+          fechaEmision: '2026-09-15',
+          moneda: 'PEN',
+          montoTotal: 100,
+          nombreArchivo: 'transferencia-op153.pdf',
+          metadata: {},
+        },
+      });
+
+    it('R2-01 OP153 acepta facturaDocumentoId NULL y usa documento principal real sin invocar evaluador FACTURA', async () => {
+      const ctx = op153();
+
+      const result = await ctx.useCase.execute(ctx.input);
+
+      expect(ctx.documentos.buscarPorId).toHaveBeenCalledWith(29, undefined);
+      expect(ctx.documentos.buscarPorId).toHaveBeenCalledWith(443, undefined);
+      expect(ctx.evaluarCorrespondencia.execute).not.toHaveBeenCalled();
+      expect(ctx.grupoFacturaDocumentos.crear).toHaveBeenCalledTimes(1);
+      expect(result.documentoGrupoFactura?.grupoFacturaId).toBe(116);
+
+      const creacion = ctx.grupoFacturaDocumentos.crear.mock.calls[0][0];
+      expect(creacion.grupoFacturaId).toBe(116);
+      expect(creacion.metadata.contexto.facturaDocumentoId).toBeNull();
+    });
+
+    it('R2-02 OP compatible por monto/moneda continúa por asociación ordinaria aunque proveedor no sea verificable', async () => {
+      const ctx = op153();
+
+      const result = await ctx.useCase.execute(ctx.input);
+
+      expect(ctx.grupoFacturaDocumentos.crear).toHaveBeenCalledTimes(1);
+      expect(result.correspondencia).toBeUndefined();
+      expect(ctx.grupoFacturaDocumentos.sumarMontoTransferenciasActivas)
+        .toHaveBeenCalledWith(116, undefined);
+    });
+
+    it('R2-03 OP con moneda incompatible exige decisión y no crea vínculo ordinario', async () => {
+      const ctx = op153();
+      ctx.documentos.buscarPorId.mockImplementation(async (id: number) => {
+        if (id === 29) {
+          return {
+            id: 29,
+            tipoDocumental: 'TRANSFERENCIA',
+            clienteAbreviatura: 'BBTI',
+            estado: 'confirmado',
+            moneda: 'USD',
+            montoTotal: 100,
+            metadata: {},
+          };
+        }
+        if (id === 443) {
+          return {
+            id: 443,
+            tipoDocumental: 'ORDEN_PAGO',
+            clienteAbreviatura: 'BBTI',
+            estado: 'confirmado',
+            moneda: 'PEN',
+            montoTotal: 100,
+            metadata: {},
+          };
+        }
+        return null;
+      });
+
+      await expect(ctx.useCase.execute(ctx.input)).rejects.toMatchObject({
+        response: expect.objectContaining({
+          code: 'DECISION_CORRESPONDENCIA_REQUERIDA',
+        }),
+      });
+
+      expect(ctx.grupoFacturaDocumentos.crear).not.toHaveBeenCalled();
+    });
+
+    it('R2-04 OP con pago mayor al monto exige decisión y protege sobrepago', async () => {
+      const ctx = op153();
+      ctx.documentos.buscarPorId.mockImplementation(async (id: number) => {
+        if (id === 29) {
+          return {
+            id: 29,
+            tipoDocumental: 'TRANSFERENCIA',
+            clienteAbreviatura: 'BBTI',
+            estado: 'confirmado',
+            moneda: 'PEN',
+            montoTotal: 110,
+            metadata: {},
+          };
+        }
+        if (id === 443) {
+          return {
+            id: 443,
+            tipoDocumental: 'ORDEN_PAGO',
+            clienteAbreviatura: 'BBTI',
+            estado: 'confirmado',
+            moneda: 'PEN',
+            montoTotal: 100,
+            metadata: {},
+          };
+        }
+        return null;
+      });
+
+      await expect(ctx.useCase.execute(ctx.input)).rejects.toMatchObject({
+        response: expect.objectContaining({
+          code: 'DECISION_CORRESPONDENCIA_REQUERIDA',
+        }),
+      });
+
+      expect(ctx.grupoFacturaDocumentos.crear).not.toHaveBeenCalled();
+    });
+
+    it('R2-05 multipago OP usa saldo del mismo grupo 116', async () => {
+      const ctx = op153();
+      ctx.grupoFacturaDocumentos.sumarMontoTransferenciasActivas
+        .mockResolvedValue(60);
+
+      ctx.documentos.buscarPorId.mockImplementation(async (id: number) => {
+        if (id === 29) {
+          return {
+            id: 29,
+            tipoDocumental: 'TRANSFERENCIA',
+            clienteAbreviatura: 'BBTI',
+            estado: 'confirmado',
+            moneda: 'PEN',
+            montoTotal: 40,
+            metadata: {},
+          };
+        }
+        if (id === 443) {
+          return {
+            id: 443,
+            tipoDocumental: 'ORDEN_PAGO',
+            clienteAbreviatura: 'BBTI',
+            estado: 'confirmado',
+            moneda: 'PEN',
+            montoTotal: 100,
+            metadata: {},
+          };
+        }
+        return null;
+      });
+
+      await ctx.useCase.execute(ctx.input);
+
+      expect(ctx.grupoFacturaDocumentos.sumarMontoTransferenciasActivas)
+        .toHaveBeenCalledWith(116, undefined);
+      expect(ctx.grupoFacturaDocumentos.crear).toHaveBeenCalledTimes(1);
+      expect(ctx.grupoFacturaDocumentos.crear.mock.calls[0][0].grupoFacturaId)
+        .toBe(116);
+    });
+
+    it('R2-06 multipago OP rechaza pago que excede saldo restante', async () => {
+      const ctx = op153();
+      ctx.grupoFacturaDocumentos.sumarMontoTransferenciasActivas
+        .mockResolvedValue(60);
+
+      ctx.documentos.buscarPorId.mockImplementation(async (id: number) => {
+        if (id === 29) {
+          return {
+            id: 29,
+            tipoDocumental: 'TRANSFERENCIA',
+            clienteAbreviatura: 'BBTI',
+            estado: 'confirmado',
+            moneda: 'PEN',
+            montoTotal: 50,
+            metadata: {},
+          };
+        }
+        if (id === 443) {
+          return {
+            id: 443,
+            tipoDocumental: 'ORDEN_PAGO',
+            clienteAbreviatura: 'BBTI',
+            estado: 'confirmado',
+            moneda: 'PEN',
+            montoTotal: 100,
+            metadata: {},
+          };
+        }
+        return null;
+      });
+
+      await expect(ctx.useCase.execute(ctx.input)).rejects.toMatchObject({
+        response: expect.objectContaining({
+          code: 'DECISION_CORRESPONDENCIA_REQUERIDA',
+        }),
+      });
+
+      expect(ctx.grupoFacturaDocumentos.crear).not.toHaveBeenCalled();
+    });
+
+    it('R2-07 excepción existente puede autorizar incompatibilidad OP y audita facturaDocumentoId NULL', async () => {
+      const ctx = buildUseCase({
+        grupoFacturaId: 116,
+        origenObligacion: 'ORDEN_PAGO',
+        facturaDocumentoId: null,
+        tipoPrincipal: 'ORDEN_PAGO',
+        principalDocumentoId: 443,
+        permiso: true,
+        documentoOp: {
+          id: 443,
+          tipoDocumental: 'ORDEN_PAGO',
+          clienteAbreviatura: 'BBTI',
+          estado: 'confirmado',
+          moneda: 'PEN',
+          montoTotal: 100,
+          metadata: {},
+        },
+        pago: {
+          id: 29,
+          tipoDocumental: 'TRANSFERENCIA',
+          clienteAbreviatura: 'BBTI',
+          estado: 'confirmado',
+          moneda: 'USD',
+          montoTotal: 100,
+          metadata: {},
+        },
+      });
+
+      const result = await ctx.useCase.execute({
+        ...ctx.input,
+        decisionCorrespondencia: {
+          accion: 'AUTORIZAR_EXCEPCION',
+          motivo: 'Excepción OP autorizada por responsable financiero.',
+        },
+      });
+
+      expect(result.correspondencia?.estado).toBe('EXCEPCION_AUTORIZADA');
+      expect(result.correspondencia?.facturaDocumentoId).toBeNull();
+      expect(ctx.auditoria.registrarDecisionCorrespondencia)
+        .toHaveBeenCalledWith(
+          expect.objectContaining({
+            despues: expect.objectContaining({
+              facturaDocumentoId: null,
+              grupoFacturaId: 116,
+              permisoExcepcionUtilizado: true,
+              asociacionCreada: true,
+            }),
+          }),
+          undefined,
+        );
+    });
+
+    it('R2-08 rechaza grupo OP cuyo principal no es ORDEN_PAGO', async () => {
+      const ctx = buildUseCase({
+        grupoFacturaId: 116,
+        origenObligacion: 'ORDEN_PAGO',
+        facturaDocumentoId: null,
+        tipoPrincipal: 'OC',
+        principalDocumentoId: 443,
+      });
+
+      await expect(ctx.useCase.execute(ctx.input)).rejects.toMatchObject({
+        response: expect.objectContaining({
+          code: 'GRUPO_FACTURA_NO_PERSISTIDO',
+        }),
+      });
+
+      expect(ctx.grupoFacturaDocumentos.crear).not.toHaveBeenCalled();
+    });
+
+    it('R2-09 rechaza documento principal que no es ORDEN_PAGO', async () => {
+      const ctx = op153();
+
+      ctx.documentos.buscarPorId.mockImplementation(async (id: number) => {
+        if (id === 29) {
+          return {
+            id: 29,
+            tipoDocumental: 'TRANSFERENCIA',
+            clienteAbreviatura: 'BBTI',
+            estado: 'confirmado',
+            moneda: 'PEN',
+            montoTotal: 100,
+            metadata: {},
+          };
+        }
+        if (id === 443) {
+          return {
+            id: 443,
+            tipoDocumental: 'FACTURA',
+            clienteAbreviatura: 'BBTI',
+            estado: 'confirmado',
+            moneda: 'PEN',
+            montoTotal: 100,
+            metadata: {},
+          };
+        }
+        return null;
+      });
+
+      await expect(ctx.useCase.execute(ctx.input)).rejects.toMatchObject({
+        response: expect.objectContaining({
+          code: 'GRUPO_FACTURA_NO_PERSISTIDO',
+        }),
+      });
+
+      expect(ctx.grupoFacturaDocumentos.crear).not.toHaveBeenCalled();
+    });
+
+    it('R2-10 rechaza documento principal OP de empresa ajena', async () => {
+      const ctx = op153();
+
+      ctx.documentos.buscarPorId.mockImplementation(async (id: number) => {
+        if (id === 29) {
+          return {
+            id: 29,
+            tipoDocumental: 'TRANSFERENCIA',
+            clienteAbreviatura: 'BBTI',
+            estado: 'confirmado',
+            moneda: 'PEN',
+            montoTotal: 100,
+            metadata: {},
+          };
+        }
+        if (id === 443) {
+          return {
+            id: 443,
+            tipoDocumental: 'ORDEN_PAGO',
+            clienteAbreviatura: 'OTRA',
+            estado: 'confirmado',
+            moneda: 'PEN',
+            montoTotal: 100,
+            metadata: {},
+          };
+        }
+        return null;
+      });
+
+      await expect(ctx.useCase.execute(ctx.input)).rejects.toMatchObject({
+        response: expect.objectContaining({
+          code: 'GRUPO_FACTURA_NO_PERSISTIDO',
+        }),
+      });
+
+      expect(ctx.grupoFacturaDocumentos.crear).not.toHaveBeenCalled();
+    });
+
+    it('R2-11 FACTURA con facturaDocumentoId NULL sigue rechazada', async () => {
+      const ctx = buildUseCase({
+        origenObligacion: 'FACTURA',
+        facturaDocumentoId: null,
+        tipoPrincipal: 'OC',
+      });
+
+      await expect(ctx.useCase.execute(ctx.input)).rejects.toMatchObject({
+        response: expect.objectContaining({
+          code: 'GRUPO_FACTURA_NO_PERSISTIDO',
+        }),
+      });
+
+      expect(ctx.evaluarCorrespondencia.execute).not.toHaveBeenCalled();
+      expect(ctx.grupoFacturaDocumentos.crear).not.toHaveBeenCalled();
+    });
+
+    it('R2-12 scope de empresa del token sigue bloqueando OP antes de asociar', async () => {
+      const ctx = op153();
+
+      await expect(
+        ctx.useCase.execute({
+          ...ctx.input,
+          usuario: {
+            ...ctx.input.usuario,
+            empresaCodigo: 'OTRA',
+          },
+        }),
+      ).rejects.toBeDefined();
+
+      expect(ctx.grupoFacturaDocumentos.crear).not.toHaveBeenCalled();
+      expect(ctx.documentos.buscarPorId).not.toHaveBeenCalled();
+    });
   });
 
 });
