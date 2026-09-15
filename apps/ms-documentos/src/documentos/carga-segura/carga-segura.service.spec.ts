@@ -27,7 +27,9 @@ const storage = {
   exists: jest.fn(),
   putObject: jest.fn(),
   deleteObject: jest.fn(),
-} as jest.Mocked<CargaSeguraStorage>;
+  statObject: jest.fn(),
+  copyObject: jest.fn(),
+} as unknown as jest.Mocked<CargaSeguraStorage>;
 
 const persistence = {
   persistir: jest.fn(),

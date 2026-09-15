@@ -237,3 +237,26 @@ export interface CargaSeguraPersistenciaResult {
   expedienteId: number | null;
   outboxEventKey: string;
 }
+
+export interface CargaSeguraStorageStatResult {
+  provider: string;
+  bucket: string;
+  key: string;
+  exists: boolean;
+  tamanoBytes: number | null;
+  hashSha256: string | null;
+}
+
+export interface CargaSeguraStorageCopyInput {
+  provider: string;
+  bucket: string;
+  sourceKey: string;
+  destinationKey: string;
+}
+
+export interface CargaSeguraStorageCopyResult {
+  provider: string;
+  bucket: string;
+  sourceKey: string;
+  destinationKey: string;
+}

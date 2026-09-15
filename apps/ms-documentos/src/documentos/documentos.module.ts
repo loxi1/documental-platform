@@ -1,3 +1,9 @@
+import { TmpController } from './tmp/tmp.controller';
+import { OrdenPagoCreacionController } from './orden-pago/orden-pago-creacion.controller';
+import { OrdenPagoArchivoService } from './orden-pago/orden-pago-archivo.service';
+import { OrdenPagoArchivoRepository } from './orden-pago/orden-pago-archivo.repository';
+import { TmpService } from './tmp/tmp.service';
+import { TmpRepository } from './tmp/tmp.repository';
 import { Module } from '@nestjs/common';
 
 import { DocumentoEventosModule } from '../documento-eventos/documento-eventos.module';
@@ -18,8 +24,10 @@ import { DocumentosUploadService } from './documentos-upload.service';
 
 @Module({
   imports: [DocumentoEventosModule, DocumentalV2Module],
-  controllers: [DocumentosController, CargaSeguraController],
+  controllers: [DocumentosController, CargaSeguraController, TmpController, OrdenPagoCreacionController],
   providers: [
+    TmpService, TmpRepository,
+    OrdenPagoArchivoService, OrdenPagoArchivoRepository,
     DocumentosService,
     DocumentosRepository,
     OrquestarConfirmacionDocumentalV2UseCase,

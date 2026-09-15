@@ -797,6 +797,57 @@ export class DocumentosGatewayController {
     }
   }
 
+  private async tmpHeaders(authorization: string | undefined, requestId: string | undefined, key?: string) {
+    const context = this.assertSecureUploadContext(await this.validateAuthorization(authorization));
+    return { authorization, 'x-request-id': requestId, 'x-correlation-id': requestId,
+      'x-workspace-id': String(context.workspaceId), 'x-empresa-codigo': context.empresaCodigo,
+      'x-cliente-destino-id': String(context.clienteDestinoId), 'x-actor-id': context.actorId,
+      ...(key === undefined ? {} : { 'idempotency-key': validateIdempotencyKey(key) }) };
+  }
+
+  @Post('tmp')
+  @UseInterceptors(AnyFilesInterceptor({ limits: { fileSize: SECURE_UPLOAD.fileSizeBytes, files: 1, fields: 0, parts: SECURE_UPLOAD.maxParts } }))
+  async reservarTmp(@Headers('authorization') authorization: string | undefined,
+    @Headers(REQUEST_ID_HEADER) requestId: string | undefined,
+    @Headers('idempotency-key') key: string, @UploadedFiles() files: SecureUploadFile[], @Body() body: Record<string, unknown>) {
+    const headers = await this.tmpHeaders(authorization, requestId, key);
+    if (Object.keys(body ?? {}).length || files?.length !== 1) throw new HttpException('TEMP requiere únicamente un archivo', 400);
+    const file = validateSecureUploadFile(files[0]);
+    const form = new FormData();
+    form.append('archivo', file.buffer, { filename: file.originalname, contentType: file.mimetype, knownLength: file.size });
+    return this.tmpRequest('POST', '/documentos/tmp', { ...headers, ...form.getHeaders() }, form);
+  }
+
+  @Get('tmp/:tempId')
+  async consultarTmp(@Headers('authorization') authorization: string | undefined,
+    @Headers(REQUEST_ID_HEADER) requestId: string | undefined, @Param('tempId') id: string) {
+    const headers = await this.tmpHeaders(authorization, requestId);
+    return this.tmpRequest('GET', `/documentos/tmp/${this.tmpId(id)}`, headers);
+  }
+
+  @Post('tmp/:tempId/promover')
+  async promoverTmp(@Headers('authorization') authorization: string | undefined,
+    @Headers(REQUEST_ID_HEADER) requestId: string | undefined, @Headers('idempotency-key') key: string,
+    @Param('tempId') id: string, @Body() body: Record<string, unknown>) {
+    const headers = await this.tmpHeaders(authorization, requestId, key);
+    return this.tmpRequest('POST', `/documentos/tmp/${this.tmpId(id)}/promover`, headers, body);
+  }
+
+  private tmpId(id: string) {
+    if (!/^\d+$/.test(id) || !Number.isSafeInteger(Number(id)) || Number(id) <= 0) throw new HttpException('tempId inválido', 400);
+    return id;
+  }
+  private async tmpRequest(method: Method, path: string, headers: Record<string, string | undefined>, data?: unknown) {
+    try {
+      const result = await axios.request({ method, url: `${this.getBaseUrl()}${path}`, headers, data,
+        timeout: SECURE_UPLOAD.timeoutMs, maxBodyLength: SECURE_UPLOAD.multipartTotalBytes });
+      return result.data?.data ?? result.data;
+    } catch (error) {
+      if (axios.isAxiosError(error) && error.response) throw new HttpException(error.response.data?.error ?? error.response.data, error.response.status);
+      throw new HttpException('Servicio TEMP no disponible', 502);
+    }
+  }
+
   @ApiOperation({ summary: 'Carga documental segura vía API Gateway' })
   @ApiConsumes('multipart/form-data')
   @Post('carga-segura')

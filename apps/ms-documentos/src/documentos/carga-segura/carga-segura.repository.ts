@@ -132,7 +132,7 @@ export class CargaSeguraRepository {
       SELECT
         ${this.selection()}
       FROM documentos.carga_operaciones
-      WHERE workspace_id = ${input.workspaceId}::integer
+      WHERE operacion_tipo = 'carga_segura' AND workspace_id = ${input.workspaceId}::integer
         AND empresa_codigo = ${input.empresaCodigo}::text
         AND idempotency_key = ${input.idempotencyKey}::text
       LIMIT 1
@@ -150,7 +150,7 @@ export class CargaSeguraRepository {
       SELECT
         ${this.selection()}
       FROM documentos.carga_operaciones
-      WHERE workspace_id = ${workspaceId}::integer
+      WHERE operacion_tipo = 'carga_segura' AND workspace_id = ${workspaceId}::integer
         AND empresa_codigo = ${empresaCodigo}::text
         AND hash_sha256 = ${hashSha256}::text
         AND estado IN (

@@ -3,6 +3,7 @@ import {
   HeadObjectCommand,
   PutObjectCommand,
   S3Client,
+  CopyObjectCommand
 } from '@aws-sdk/client-s3';
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -10,11 +11,14 @@ import path from 'node:path';
 
 import { CargaSeguraError } from './carga-segura.errors';
 import type {
+  CargaSeguraStorageCopyInput,
+  CargaSeguraStorageCopyResult,
   CargaSeguraStorageDeleteInput,
   CargaSeguraStorageKeyInput,
   CargaSeguraStorageObject,
   CargaSeguraStoragePutInput,
   CargaSeguraStoragePutResult,
+  CargaSeguraStorageStatResult,
 } from './carga-segura.types';
 
 export interface CargaSeguraStorage {
@@ -25,6 +29,14 @@ export interface CargaSeguraStorage {
   ): Promise<CargaSeguraStoragePutResult>;
 
   deleteObject(input: CargaSeguraStorageDeleteInput): Promise<void>;
+
+  statObject(
+    input: CargaSeguraStorageObject,
+  ): Promise<CargaSeguraStorageStatResult>;
+
+  copyObject(
+    input: CargaSeguraStorageCopyInput,
+  ): Promise<CargaSeguraStorageCopyResult>;
 }
 
 export function buildCargaSeguraStorageKey(
@@ -83,6 +95,77 @@ export class R2CargaSeguraStorage implements CargaSeguraStorage {
 
       throw this.storageError(
         'No se pudo comprobar la existencia del objeto R2',
+        error,
+      );
+    }
+  }
+
+  async statObject(
+    input: CargaSeguraStorageObject,
+  ): Promise<CargaSeguraStorageStatResult> {
+    try {
+      const result = await this.getClient().send(
+        new HeadObjectCommand({
+          Bucket: input.bucket,
+          Key: input.key,
+        }),
+      );
+
+      return {
+        provider: input.provider,
+        bucket: input.bucket,
+        key: input.key,
+        exists: true,
+        tamanoBytes:
+          typeof result.ContentLength === 'number'
+            ? result.ContentLength
+            : null,
+        hashSha256:
+          typeof result.Metadata?.sha256 === 'string'
+            ? result.Metadata.sha256.toLowerCase()
+            : null,
+      };
+    } catch (error) {
+      if (isObjectNotFound(error)) {
+        return {
+          provider: input.provider,
+          bucket: input.bucket,
+          key: input.key,
+          exists: false,
+          tamanoBytes: null,
+          hashSha256: null,
+        };
+      }
+
+      throw this.storageError(
+        'No se pudo consultar metadata del objeto R2',
+        error,
+      );
+    }
+  }
+
+  async copyObject(
+    input: CargaSeguraStorageCopyInput,
+  ): Promise<CargaSeguraStorageCopyResult> {
+    try {
+      await this.getClient().send(
+        new CopyObjectCommand({
+          Bucket: input.bucket,
+          Key: input.destinationKey,
+          CopySource: buildCopySource(input.bucket, input.sourceKey),
+          MetadataDirective: 'COPY',
+        }),
+      );
+
+      return {
+        provider: input.provider,
+        bucket: input.bucket,
+        sourceKey: input.sourceKey,
+        destinationKey: input.destinationKey,
+      };
+    } catch (error) {
+      throw this.storageError(
+        'No se pudo promover el objeto R2',
         error,
       );
     }
@@ -249,6 +332,15 @@ function sanitizePathSegment(value: string, fallback: string): string {
       .replace(/^_+|_+$/g, '')
       .slice(0, 60) || fallback
   );
+}
+
+function buildCopySource(bucket: string, key: string): string {
+  const encodedKey = key
+    .split('/')
+    .map((segment) => encodeURIComponent(segment))
+    .join('/');
+
+  return `${encodeURIComponent(bucket)}/${encodedKey}`;
 }
 
 function isObjectNotFound(error: unknown): boolean {

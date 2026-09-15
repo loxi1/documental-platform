@@ -16,6 +16,10 @@ jest.mock('@aws-sdk/client-s3', () => ({
     type: 'delete',
     input,
   })),
+  CopyObjectCommand: jest.fn().mockImplementation((input) => ({
+    type: 'copy',
+    input,
+  })),
 }));
 
 import {
@@ -157,4 +161,22 @@ describe('R2CargaSeguraStorage', () => {
 
     expect(sendMock).toHaveBeenCalledTimes(1);
   });
+  it('copia server-side conservando SHA-256 y escapando CopySource', async () => {
+    sendMock.mockResolvedValueOnce({});
+    await new R2CargaSeguraStorage(config).copyObject({ provider: 'r2', bucket: 'lab', sourceKey: 'tmp/pago 1.pdf', destinationKey: 'documentos/final.pdf' });
+    expect(sendMock).toHaveBeenCalledWith({ type: 'copy', input: {
+      Bucket: 'lab', Key: 'documentos/final.pdf', CopySource: 'lab/tmp/pago%201.pdf', MetadataDirective: 'COPY' } });
+  });
+  it('stat devuelve tamaño y hash de metadata del provider', async () => {
+    sendMock.mockResolvedValueOnce({ ContentLength: 42, Metadata: { sha256: 'A'.repeat(64) } });
+    expect(await new R2CargaSeguraStorage(config).statObject({ provider: 'r2', bucket: 'lab', key: 'tmp' }))
+      .toMatchObject({ exists: true, tamanoBytes: 42, hashSha256: 'a'.repeat(64) });
+  });
+  it('stat distingue ausencia de errores del provider', async () => {
+    sendMock.mockRejectedValueOnce({ name: 'NotFound' });
+    expect(await new R2CargaSeguraStorage(config).statObject({ provider: 'r2', bucket: 'lab', key: 'tmp' })).toMatchObject({ exists: false });
+    sendMock.mockRejectedValueOnce({ name: 'ServiceUnavailable' });
+    await expect(new R2CargaSeguraStorage(config).statObject({ provider: 'r2', bucket: 'lab', key: 'tmp' })).rejects.toMatchObject({ code: 'CARGA_SEGURA_STORAGE_FAILED' });
+  });
+
 });
