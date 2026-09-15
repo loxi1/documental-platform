@@ -3,6 +3,7 @@
 import { PagoGrupoResumenCell } from "@/components/finanzas/PagoGrupoResumenCell";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Eye, Search } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
@@ -473,6 +474,7 @@ export function FinanzasBandeja() {
   const [soloPendientesFinanzas, setSoloPendientesFinanzas] = useState(false);
   const [pageSize, setPageSize] = useState("50");
   const [page, setPage] = useState(1);
+  const router = useRouter();
 
   const normalizedSearch = search.trim();
   const hasSearch = normalizedSearch.length >= 3;
@@ -581,11 +583,12 @@ export function FinanzasBandeja() {
                   <CrearOrdenPagoModal
                     key={contexto.workspaceId}
                     workspaceId={contexto.workspaceId}
-                    onCreated={(id) => {
-                      setSoloPendientesFinanzas(false);
-                      setSearch(`OP-${id}`);
-                      setPage(1);
-                      void refetch();
+                    onCreated={(ordenPagoId) => {
+                      router.push(
+                        `/finanzas/ordenes-pago/${encodeURIComponent(
+                          String(ordenPagoId),
+                        )}/adjuntar-pago`,
+                      );
                     }}
                   />
                 )}
