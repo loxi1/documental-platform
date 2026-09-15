@@ -43,6 +43,11 @@ import {
   getGruposFactura,
   textValue,
 } from "@/components/documental-v2/workspace-v2-utils";
+import {
+  FinanzasPaymentPanel,
+  type FinanzasPaymentItem,
+  type FinanzasPaymentObservedItem,
+} from "@/components/finanzas/FinanzasPaymentPanel";
 
 function hasAdjunto(grupo: WorkspaceV2GrupoFactura, aliases: string[]) {
   const normalized = aliases.map((alias) => alias.toUpperCase());
@@ -1803,6 +1808,202 @@ function GrupoPagoCard({
     );
   }
 
+  const pagosPaymentPanel: FinanzasPaymentItem[] = pagosPersistidos.map(
+    (documento, index) => {
+      const documentoId =
+        documento.documento_id ??
+        documento.documentoId ??
+        documento.id ??
+        `pago-${index}`;
+
+      const monto = montoDocumentoFinanzas(documento);
+      const moneda = monedaFinanzas(documento);
+
+      const metadata =
+        documento.metadata &&
+        typeof documento.metadata === "object" &&
+        !Array.isArray(documento.metadata)
+          ? (documento.metadata as Record<string, unknown>)
+          : null;
+
+      const metadataCompatibilidad =
+        metadata?.compatibilidad &&
+        typeof metadata.compatibilidad === "object" &&
+        !Array.isArray(metadata.compatibilidad)
+          ? (metadata.compatibilidad as Record<string, unknown>)
+          : null;
+
+      const metadataDocumentoV1 =
+        metadataCompatibilidad?.documentoV1 &&
+        typeof metadataCompatibilidad.documentoV1 === "object" &&
+        !Array.isArray(metadataCompatibilidad.documentoV1)
+          ? (metadataCompatibilidad.documentoV1 as Record<string, unknown>)
+          : null;
+
+      const metadataOcr =
+        metadata?.ocr &&
+        typeof metadata.ocr === "object" &&
+        !Array.isArray(metadata.ocr)
+          ? (metadata.ocr as Record<string, unknown>)
+          : null;
+
+      const metadataOcrConfirmada =
+        metadataOcr?.metadata &&
+        typeof metadataOcr.metadata === "object" &&
+        !Array.isArray(metadataOcr.metadata)
+          ? (metadataOcr.metadata as Record<string, unknown>)
+          : null;
+
+      const draftPagoExterior =
+        metadata?.validacionPendientePago &&
+        typeof metadata.validacionPendientePago === "object" &&
+        !Array.isArray(metadata.validacionPendientePago)
+          ? (metadata.validacionPendientePago as Record<string, unknown>)
+          : null;
+
+      const draftPagoOcr =
+        metadataOcr?.validacionPendientePago &&
+        typeof metadataOcr.validacionPendientePago === "object" &&
+        !Array.isArray(metadataOcr.validacionPendientePago)
+          ? (metadataOcr.validacionPendientePago as Record<string, unknown>)
+          : null;
+
+      const draftPago = draftPagoExterior ?? draftPagoOcr;
+
+      const metadataDocumentoV1Interior =
+        metadataDocumentoV1?.metadata &&
+        typeof metadataDocumentoV1.metadata === "object" &&
+        !Array.isArray(metadataDocumentoV1.metadata)
+          ? (metadataDocumentoV1.metadata as Record<string, unknown>)
+          : null;
+
+      const metadataDocumentoV1Ocr =
+        metadataDocumentoV1Interior?.ocr &&
+        typeof metadataDocumentoV1Interior.ocr === "object" &&
+        !Array.isArray(metadataDocumentoV1Interior.ocr)
+          ? (metadataDocumentoV1Interior.ocr as Record<string, unknown>)
+          : null;
+
+      const metadataDocumentoV1OcrConfirmada =
+        metadataDocumentoV1Ocr?.metadata &&
+        typeof metadataDocumentoV1Ocr.metadata === "object" &&
+        !Array.isArray(metadataDocumentoV1Ocr.metadata)
+          ? (metadataDocumentoV1Ocr.metadata as Record<string, unknown>)
+          : null;
+
+      const banco = textValue(
+        metadataOcrConfirmada?.banco ??
+          metadata?.banco ??
+          metadataDocumentoV1?.banco ??
+          metadataDocumentoV1Interior?.banco ??
+          metadataDocumentoV1OcrConfirmada?.banco ??
+          documento.banco,
+        "",
+      );
+
+      const operacion = textValue(
+        metadataDocumentoV1?.numero ??
+          metadataOcrConfirmada?.numeroOperacion ??
+          metadataOcrConfirmada?.numero ??
+          metadata?.numeroOperacion ??
+          metadata?.numero_operacion ??
+          documento.numeroOperacion ??
+          documento.numero_operacion ??
+          documento.numero,
+        "",
+      );
+
+      const accionDecisionPago = String(
+        draftPago?.accion ?? "",
+      ).toUpperCase();
+
+      const pagoConExcepcionAutorizada =
+        String(draftPago?.estado ?? "").toUpperCase() === "CONSUMIDO" &&
+        accionDecisionPago === "AUTORIZAR_EXCEPCION";
+
+      const motivoDecisionPago = textValue(
+        draftPago?.motivo,
+        "Motivo no disponible en el registro histórico",
+      );
+
+      const fechaDecisionPago = textValue(
+        draftPago?.consumidoEn,
+        "Fecha no disponible",
+      );
+
+      return {
+        id: documentoId as string | number,
+        montoLabel:
+          monto === null
+            ? "Monto no disponible"
+            : formatMontoFinanzas(monto, moneda),
+        banco,
+        operacion,
+        visualizable: true,
+        contenidoExtra: pagoConExcepcionAutorizada ? (
+          <div className="mt-2 rounded-md border border-amber-200 bg-amber-50/60 px-2 py-1.5 text-amber-900">
+            <p className="font-semibold">Excepción autorizada</p>
+            <p className="mt-0.5">{motivoDecisionPago}</p>
+            <p className="mt-0.5 text-[11px] text-amber-800">
+              Decidido el{" "}
+              {fechaDecisionPago.replace("T", " ").slice(0, 16)}
+            </p>
+          </div>
+        ) : null,
+      };
+    },
+  );
+
+  const observadosPaymentPanel: FinanzasPaymentObservedItem[] =
+  sustentosObservados.map((documento, index) => {
+    const documentoId =
+      documento.documento_id ??
+      documento.documentoId ??
+      documento.id ??
+      `observado-${index}`;
+
+    const metadata =
+      documento.metadata &&
+      typeof documento.metadata === "object" &&
+      !Array.isArray(documento.metadata)
+        ? (documento.metadata as Record<string, unknown>)
+        : null;
+
+    const draft =
+      documento.validacionPendientePago &&
+      typeof documento.validacionPendientePago === "object" &&
+      !Array.isArray(documento.validacionPendientePago)
+        ? (documento.validacionPendientePago as Record<string, unknown>)
+        : null;
+
+    const monto = montoDocumentoFinanzas(documento);
+    const moneda = monedaFinanzas(documento);
+
+    return {
+      id: documentoId as string | number,
+      banco: textValue(metadata?.banco, "Banco no disponible"),
+      operacion: textValue(
+        metadata?.numeroOperacion ?? metadata?.numero,
+        "Operación no disponible",
+      ),
+      montoLabel:
+        monto === null
+          ? "Monto no disponible"
+          : formatMontoFinanzas(monto, moneda),
+      motivo: textValue(
+        draft?.motivo,
+        "Motivo no disponible en el registro histórico",
+      ),
+      fechaDecision: textValue(
+        draft?.consumidoEn,
+        "Fecha no disponible",
+      )
+        .replace("T", " ")
+        .slice(0, 16),
+      visualizable: true,
+    };
+  });
+
   return (
     <div className="rounded-xl border p-4">
       <div className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] lg:items-start">
@@ -1895,319 +2096,61 @@ function GrupoPagoCard({
         </div>
 
         <div className="flex min-w-0 flex-col items-start gap-3 border-t pt-4 lg:border-l lg:border-t-0 lg:pl-5 lg:pt-0">
-          <div className="flex w-full flex-wrap items-center justify-between gap-2">
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-              Pagos
-            </p>
-            {editable &&
-            grupoFacturaId &&
-            onAdjuntarTransferencia &&
-            puedeAdjuntarOtroPago ? (
-              <Button
-                type="button"
-                size="sm"
-                disabled={existeTransferenciaPendiente}
-                onClick={() => onAdjuntarTransferencia(grupoFacturaId)}
-              >
-                {pagosPersistidos.length > 0
-                  ? "Adjuntar otro pago"
-                  : "Adjuntar sustento de pago"}
-              </Button>
-            ) : null}
-          </div>
+          <FinanzasPaymentPanel
+            estadoPago={estadoPagoFactura}
+            pagadoAcumuladoLabel={formatMontoFinanzas(
+              pagadoAcumulado,
+              facturaMoneda,
+            )}
+            saldoLabel={
+              saldoPendiente === null
+                ? "No disponible"
+                : formatMontoFinanzas(saldoPendiente, facturaMoneda)
+            }
+            pagos={pagosPaymentPanel}
+            observados={observadosPaymentPanel}
+            puedeAdjuntar={Boolean(
+              editable &&
+                grupoFacturaId &&
+                onAdjuntarTransferencia &&
+                puedeAdjuntarOtroPago
+            )}
+            adjuntarLabel={
+              pagosPersistidos.length > 0
+                ? "Adjuntar otro pago"
+                : "Adjuntar sustento de pago"
+            }
+            adjuntarDisabled={existeTransferenciaPendiente}
+            adjuntarHint={
+              existeTransferenciaPendiente &&
+              editable &&
+              grupoFacturaId &&
+              onAdjuntarTransferencia &&
+              puedeAdjuntarOtroPago
+                ? "Resuelva la validación pendiente antes de adjuntar otro pago."
+                : undefined
+            }
+            previewLoadingId={previewPagoPersistidoLoading}
+            onAdjuntar={
+              grupoFacturaId && onAdjuntarTransferencia
+                ? () => onAdjuntarTransferencia(grupoFacturaId)
+                : undefined
+            }
+            onVerPago={(_, index) => {
+              const documento = pagosPersistidos[index];
 
-          {existeTransferenciaPendiente &&
-          editable &&
-          grupoFacturaId &&
-          onAdjuntarTransferencia &&
-          puedeAdjuntarOtroPago ? (
-            <p className="w-full text-right text-xs text-amber-700">
-              Resuelva la validación pendiente antes de adjuntar otro pago.
-            </p>
-          ) : null}
+              if (documento) {
+                void abrirPreviewPagoPersistido(documento, index);
+              }
+            }}
+            onVerObservado={(_, index) => {
+              const documento = sustentosObservados[index];
 
-          <div className="w-full rounded-lg border bg-muted/20 p-3">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                Estado de pago
-              </p>
-              <Badge variant={estadoPagoFactura === "COMPLETO" ? "secondary" : "outline"}>
-                {estadoPagoFactura}
-              </Badge>
-            </div>
-
-            <dl className="mt-3 grid grid-cols-2 gap-3 text-sm">
-              <div>
-                <dt className="text-xs text-muted-foreground">Pagado acumulado</dt>
-                <dd className="mt-1 font-semibold">
-                  {formatMontoFinanzas(pagadoAcumulado, facturaMoneda)}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-xs text-muted-foreground">Saldo</dt>
-                <dd className="mt-1 font-semibold">
-                  {saldoPendiente === null
-                    ? "No disponible"
-                    : formatMontoFinanzas(saldoPendiente, facturaMoneda)}
-                </dd>
-              </div>
-            </dl>
-          </div>
-
-          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-            Sustentos de pago {pagosPersistidos.length ? `(${pagosPersistidos.length})` : ""}
-          </p>
-
-          {pagosPersistidos.length > 0 ? (
-            <div className="w-full space-y-2">
-              {pagosPersistidos.map((documento, index) => {
-                const documentoId =
-                  documento.documento_id ??
-                  documento.documentoId ??
-                  documento.id;
-                const monto = montoDocumentoFinanzas(documento);
-                const moneda = monedaFinanzas(documento);
-                const metadata =
-                  documento.metadata &&
-                  typeof documento.metadata === "object" &&
-                  !Array.isArray(documento.metadata)
-                    ? (documento.metadata as Record<string, unknown>)
-                    : null;
-                const metadataCompatibilidad =
-                  metadata?.compatibilidad &&
-                  typeof metadata.compatibilidad === "object" &&
-                  !Array.isArray(metadata.compatibilidad)
-                    ? (metadata.compatibilidad as Record<string, unknown>)
-                    : null;
-                const metadataDocumentoV1 =
-                  metadataCompatibilidad?.documentoV1 &&
-                  typeof metadataCompatibilidad.documentoV1 === "object" &&
-                  !Array.isArray(metadataCompatibilidad.documentoV1)
-                    ? (metadataCompatibilidad.documentoV1 as Record<string, unknown>)
-                    : null;
-                const metadataOcr =
-                  metadata?.ocr &&
-                  typeof metadata.ocr === "object" &&
-                  !Array.isArray(metadata.ocr)
-                    ? (metadata.ocr as Record<string, unknown>)
-                    : null;
-                const metadataOcrConfirmada =
-                  metadataOcr?.metadata &&
-                  typeof metadataOcr.metadata === "object" &&
-                  !Array.isArray(metadataOcr.metadata)
-                    ? (metadataOcr.metadata as Record<string, unknown>)
-                    : null;
-                const draftPagoExterior =
-                  metadata?.validacionPendientePago &&
-                  typeof metadata.validacionPendientePago === "object" &&
-                  !Array.isArray(metadata.validacionPendientePago)
-                    ? (metadata.validacionPendientePago as Record<string, unknown>)
-                    : null;
-                const draftPagoOcr =
-                  metadataOcr?.validacionPendientePago &&
-                  typeof metadataOcr.validacionPendientePago === "object" &&
-                  !Array.isArray(metadataOcr.validacionPendientePago)
-                    ? (metadataOcr.validacionPendientePago as Record<string, unknown>)
-                    : null;
-                const draftPago = draftPagoExterior ?? draftPagoOcr;
-                const metadataDocumentoV1Interior =
-                  metadataDocumentoV1?.metadata &&
-                  typeof metadataDocumentoV1.metadata === "object" &&
-                  !Array.isArray(metadataDocumentoV1.metadata)
-                    ? (metadataDocumentoV1.metadata as Record<string, unknown>)
-                    : null;
-
-                const metadataDocumentoV1Ocr =
-                  metadataDocumentoV1Interior?.ocr &&
-                  typeof metadataDocumentoV1Interior.ocr === "object" &&
-                  !Array.isArray(metadataDocumentoV1Interior.ocr)
-                    ? (metadataDocumentoV1Interior.ocr as Record<string, unknown>)
-                    : null;
-
-                const metadataDocumentoV1OcrConfirmada =
-                  metadataDocumentoV1Ocr?.metadata &&
-                  typeof metadataDocumentoV1Ocr.metadata === "object" &&
-                  !Array.isArray(metadataDocumentoV1Ocr.metadata)
-                    ? (metadataDocumentoV1Ocr.metadata as Record<string, unknown>)
-                    : null;
-
-                const banco = textValue(
-                  metadataOcrConfirmada?.banco ??
-                    metadata?.banco ??
-                    metadataDocumentoV1?.banco ??
-                    metadataDocumentoV1Interior?.banco ??
-                    metadataDocumentoV1OcrConfirmada?.banco ??
-                    documento.banco,
-                  "",
-                );
-                const operacion = textValue(
-                  metadataDocumentoV1?.numero ??
-                    metadataOcrConfirmada?.numeroOperacion ??
-                    metadataOcrConfirmada?.numero ??
-                    metadata?.numeroOperacion ??
-                    metadata?.numero_operacion ??
-                    documento.numeroOperacion ??
-                    documento.numero_operacion ??
-                    documento.numero,
-                  "",
-                );
-                const accionDecisionPago = String(
-                  draftPago?.accion ?? "",
-                ).toUpperCase();
-                const pagoConExcepcionAutorizada =
-                  String(draftPago?.estado ?? "").toUpperCase() === "CONSUMIDO" &&
-                  accionDecisionPago === "AUTORIZAR_EXCEPCION";
-                const motivoDecisionPago = textValue(
-                  draftPago?.motivo,
-                  "Motivo no disponible en el registro histórico",
-                );
-                const fechaDecisionPago = textValue(
-                  draftPago?.consumidoEn,
-                  "Fecha no disponible",
-                );
-
-                return (
-                  <div
-                    key={String(documentoId ?? index)}
-                    className="rounded-lg border p-2 text-xs"
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium">Pago {index + 1}</span>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          className="h-7 px-2 text-xs"
-                          disabled={previewPagoPersistidoLoading === documentoId}
-                          onClick={() =>
-                            void abrirPreviewPagoPersistido(documento, index)
-                          }
-                        >
-                          <Eye className="mr-1 h-3.5 w-3.5" />
-                          {previewPagoPersistidoLoading === documentoId
-                            ? "Abriendo..."
-                            : "Ver"}
-                        </Button>
-                      </div>
-                      <span className="font-semibold">
-                        {monto === null
-                          ? "Monto no disponible"
-                          : formatMontoFinanzas(monto, moneda)}
-                      </span>
-                    </div>
-                    {banco || operacion ? (
-                      <p className="mt-1 text-muted-foreground">
-                        {[banco, operacion ? `Op. ${operacion}` : ""]
-                          .filter(Boolean)
-                          .join(" · ")}
-                      </p>
-                    ) : null}
-                    {pagoConExcepcionAutorizada ? (
-                      <div className="mt-2 rounded-md border border-amber-200 bg-amber-50/60 px-2 py-1.5 text-amber-900">
-                        <p className="font-semibold">Excepción autorizada</p>
-                        <p className="mt-0.5">{motivoDecisionPago}</p>
-                        <p className="mt-0.5 text-[11px] text-amber-800">
-                          Decidido el {fechaDecisionPago.replace("T", " ").slice(0, 16)}
-                        </p>
-                      </div>
-                    ) : null}
-                  </div>
-                );
-              })}
-            </div>
-          ) : null}
-
-          {sustentosObservados.length > 0 ? (
-            <details className="w-full rounded-lg border border-amber-200 bg-amber-50/40">
-              <summary className="cursor-pointer list-none px-3 py-2 text-xs font-semibold text-amber-900">
-                <span className="flex flex-wrap items-center justify-between gap-2">
-                  <span>Sustentos observados ({sustentosObservados.length})</span>
-                  <span className="font-normal text-amber-800">
-                    No afectan el pagado ni el saldo
-                  </span>
-                </span>
-              </summary>
-              <div className="border-t border-amber-200 p-3">
-                <div className="hidden grid-cols-[minmax(0,1.2fr)_minmax(0,1.8fr)_minmax(0,1fr)_minmax(0,0.8fr)_auto] gap-3 pb-2 text-[11px] font-semibold uppercase text-muted-foreground sm:grid">
-                  <span>Sustento</span>
-                  <span>Motivo de observación</span>
-                  <span>Fecha de decisión</span>
-                  <span>Importe</span>
-                  <span>Acción</span>
-                </div>
-                <div className="space-y-2">
-                  {sustentosObservados.map((documento, index) => {
-                    const documentoId =
-                      documento.documento_id ?? documento.documentoId ?? documento.id;
-                    const metadata =
-                      documento.metadata &&
-                      typeof documento.metadata === "object" &&
-                      !Array.isArray(documento.metadata)
-                        ? (documento.metadata as Record<string, unknown>)
-                        : null;
-                    const draft =
-                      documento.validacionPendientePago &&
-                      typeof documento.validacionPendientePago === "object" &&
-                      !Array.isArray(documento.validacionPendientePago)
-                        ? (documento.validacionPendientePago as Record<string, unknown>)
-                        : null;
-                    const banco = textValue(metadata?.banco, "Banco no disponible");
-                    const operacion = textValue(
-                      metadata?.numeroOperacion ?? metadata?.numero,
-                      "Operación no disponible",
-                    );
-                    const monto = montoDocumentoFinanzas(documento);
-                    const moneda = monedaFinanzas(documento);
-                    const motivoObservacion = textValue(
-                      draft?.motivo,
-                      "Motivo no disponible en el registro histórico",
-                    );
-                    const observadoEn = textValue(
-                      draft?.consumidoEn,
-                      "Fecha no disponible",
-                    );
-
-                    return (
-                      <div
-                        key={String(documentoId ?? index)}
-                        className="grid gap-2 rounded-md border bg-background p-2 text-xs sm:grid-cols-[minmax(0,1.2fr)_minmax(0,1.8fr)_minmax(0,1fr)_minmax(0,0.8fr)_auto] sm:items-center sm:gap-3"
-                      >
-                        <div>
-                          <span className="font-medium">{banco}</span>
-                          <span className="text-muted-foreground"> · Op. {operacion}</span>
-                        </div>
-                        <span className="text-muted-foreground">
-                          {motivoObservacion}
-                        </span>
-                        <span className="text-muted-foreground">
-                          {observadoEn.replace("T", " ").slice(0, 16)}
-                        </span>
-                        <span className="font-semibold">
-                          {monto === null
-                            ? "Monto no disponible"
-                            : formatMontoFinanzas(monto, moneda)}
-                        </span>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          className="h-7 px-2 text-xs"
-                          disabled={previewPagoPersistidoLoading === documentoId}
-                          onClick={() => void abrirPreviewPagoPersistido(documento, index)}
-                        >
-                          <Eye className="mr-1 h-3.5 w-3.5" />
-                          {previewPagoPersistidoLoading === documentoId
-                            ? "Abriendo..."
-                            : "Ver"}
-                        </Button>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            </details>
-          ) : null}
+              if (documento) {
+                void abrirPreviewPagoPersistido(documento, index);
+              }
+            }}
+          />
 
           {previewPagoPersistidoError ? (
             <p className="w-full text-xs text-amber-700">
