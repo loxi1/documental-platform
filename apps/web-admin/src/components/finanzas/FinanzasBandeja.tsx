@@ -661,15 +661,15 @@ export function FinanzasBandeja() {
                           <td className="px-3 py-2.5">{op.estado === 'activo' ? 'Activa' : text(op.estado)}</td>
                           <td className="px-3 py-2.5">
                             <div className="flex justify-end gap-2">
-                              <Button
-                                type="button"
-                                size="sm"
-                                variant="outline"
-                                disabled
-                                title="Vista de Orden de Pago pendiente de habilitación"
-                              >
-                                <Eye className="h-4 w-4" />
-                                Ver
+                              <Button asChild size="sm" variant="outline">
+                                <Link
+                                  href={`/finanzas/ordenes-pago/${encodeURIComponent(
+                                    String(op.ordenPagoId),
+                                  )}/ver`}
+                                >
+                                  <Eye className="h-4 w-4" />
+                                  Ver
+                                </Link>
                               </Button>
 
                               <Button
