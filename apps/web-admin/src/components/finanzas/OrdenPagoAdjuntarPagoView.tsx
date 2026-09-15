@@ -23,7 +23,7 @@ import {
   type FinanzasPaymentObservedItem,
 } from "@/components/finanzas/FinanzasPaymentPanel";
 
-type EstadoPago = "PENDIENTE" | "PARCIAL" | "COMPLETO";
+type EstadoPago = "PENDIENTE" | "PARCIAL" | "COMPLETO" | "PENDIENTE DE PAGO" | "SIN PAGOS";
 
 type OrdenPagoResumen = {
   codigo?: string | null;

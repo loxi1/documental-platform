@@ -11,29 +11,88 @@ const op = { ordenPagoId: 153, documentoId: 443, grupoFacturaId: 116, contenedor
   tipo: 'SERVICIOS_GENERALES', subtipo: 'OTROS', observacion: 'Pagar un servidcio',
   contexto: { codigo: '090101', nombre: 'CC Pruebas', centroCostoCodigo: null },
   archivoInicial: { archivoId: 444, nombreArchivo: 'imagen_correo.png', mime: 'image/png', tamanoBytes: 132400, storageKey: 'NO_ES_URL' } };
-function page({ id = '153', query = { data: op }, workspaceId = 13 } = {}) {
-  const exports = {}; let options; const calls = [];
+const financiero = {
+  grupoFacturaId: 116,
+  origenObligacion: 'ORDEN_PAGO',
+  obligacion: {
+    tipo: 'ORDEN_PAGO',
+    documentoId: 443,
+    referencia: 'OP-153',
+    monto: '100.00',
+    moneda: 'PEN',
+  },
+  pago: { pagado: '0.00', saldo: '100.00', estado: 'SIN PAGOS' },
+  sustentosActivos: [],
+  sustentosObservados: [],
+  sustentosAnulados: [],
+};
+
+function page({
+  id = '153',
+  query = { data: op },
+  resumenQuery = { data: financiero },
+  workspaceId = 13,
+} = {}) {
+  const exports = {};
+  const options = [];
+  const calls = { ordenPago: [], resumen: [] };
   const jsx = (type, props) => ({ type, props });
+
   vm.runInNewContext(code, { exports, require(name) {
     if (name === 'react/jsx-runtime') return { jsx, jsxs: jsx };
     if (name === 'next/navigation') return { useParams: () => ({ ordenPagoId: id }) };
-    if (name === '@tanstack/react-query') return { useQuery: config => { options = config; return query; } };
+    if (name === '@tanstack/react-query') return { useQuery: config => {
+      options.push(config);
+      return options.length === 1 ? query : resumenQuery;
+    } };
     if (name === '@/lib/auth-storage') return { getContexto: () => ({ workspaceId, sub: 6 }) };
-    if (name === '@/services/finanzas') return { getOrdenPago: async id => { calls.push(id); return op; } };
+    if (name === '@/services/finanzas') return {
+      getOrdenPago: async value => {
+        calls.ordenPago.push(value);
+        return op;
+      },
+      getResumenFinancieroGrupo: async value => {
+        calls.resumen.push(value);
+        return financiero;
+      },
+    };
     if (name === '@/components/finanzas/OrdenPagoAdjuntarPagoView') return { OrdenPagoAdjuntarPagoView: 'OPView' };
     throw new Error(`Import no autorizado: ${name}`);
   } });
-  return { node: exports.default(), options, calls };
+
+  return {
+    node: exports.default(),
+    queryOptions: options[0],
+    resumenOptions: options[1],
+    calls,
+  };
 }
-test('hidrata OP-153 real y conserva grupoFacturaId en respuesta/cache sin conectar pagos', async () => {
-  const p = page(); assert.equal(p.node.type, 'OPView');
-  assert.equal(p.options.enabled, true);
-  assert.equal((await p.options.queryFn()).grupoFacturaId, 116);
-  assert.deepEqual(p.calls, [153]);
-  assert.deepEqual(JSON.parse(JSON.stringify(p.node.props.resumen)), { codigo: 'OP-153', centroCostoCodigo: '090101',
-    centroCostoDescripcion: 'CC Pruebas', tipo: 'SERVICIOS_GENERALES', subtipo: 'OTROS', fechaEmision: '2026-09-15', moneda: 'PEN', monto: '100.00' });
-  assert.equal(p.node.props.documentoEconomico, undefined); assert.equal(p.node.props.sustentos, undefined);
+
+test('OP-153 usa grupoFacturaId 116 para R5-READ y consume resumen financiero canónico', async () => {
+  const p = page();
+
+  assert.equal(p.node.type, 'OPView');
+  assert.equal(p.queryOptions.enabled, true);
+  assert.equal(p.resumenOptions.enabled, true);
+
+  assert.equal((await p.queryOptions.queryFn()).grupoFacturaId, 116);
+  await p.resumenOptions.queryFn();
+
+  assert.deepEqual(p.calls.ordenPago, [153]);
+  assert.deepEqual(p.calls.resumen, [116]);
+  assert.equal(p.calls.resumen.includes(443), false);
+
+  const resumen = JSON.parse(JSON.stringify(p.node.props.resumen));
+  assert.equal(resumen.codigo, 'OP-153');
+  assert.equal(resumen.monto, '100.00');
+  assert.equal(resumen.moneda, 'PEN');
+  assert.equal(resumen.estadoPago, 'SIN PAGOS');
+  assert.equal(resumen.pagado, '0.00');
+  assert.equal(resumen.saldo, '100.00');
+
+  assert.equal(p.node.props.documentoEconomico, undefined);
 });
+
 test('archivo inicial preserva ID/nombre/MIME para preview; nunca URL', () => {
   const props = page().node.props;
   assert.deepEqual(JSON.parse(JSON.stringify(props.sustentoOrden)), { archivoId: 444, nombre: 'imagen_correo.png', tipo: 'image/png', visualizable: true });
@@ -56,11 +115,19 @@ for (const status of [404, 500]) test(`error ${status} no renderiza datos, inclu
   assert.equal(p.node.props.children.props.children, status === 404 ? 'Orden de Pago no disponible.' : 'No se pudo cargar la Orden de Pago.');
 });
 for (const id of ['0', '-1', 'abc', '1.5', '9007199254740992', ['153']]) test(`id inválido ${id} no habilita GET`, () => {
-  const p = page({ id }); assert.equal(p.options.enabled, false); assert.equal(p.node.type, 'main');
+  const p = page({ id });
+  assert.equal(p.queryOptions.enabled, false);
+  assert.equal(p.resumenOptions.enabled, false);
+  assert.equal(p.node.type, 'main');
 });
 test('sin contexto no habilita GET; cache aislado por workspace/actor', () => {
-  assert.equal(page({ workspaceId: null }).options.enabled, false);
-  assert.notDeepEqual(page({ workspaceId: 13 }).options.queryKey, page({ workspaceId: 14 }).options.queryKey);
+  const sinContexto = page({ workspaceId: null });
+  assert.equal(sinContexto.queryOptions.enabled, false);
+  assert.equal(sinContexto.resumenOptions.enabled, false);
+  assert.notDeepEqual(
+    page({ workspaceId: 13 }).queryOptions.queryKey,
+    page({ workspaceId: 14 }).queryOptions.queryKey,
+  );
 });
 function viewHarness(props) {
   const viewSource = fs.readFileSync(require.resolve('../../../../../components/finanzas/OrdenPagoAdjuntarPagoView.tsx'), 'utf8');
@@ -86,11 +153,11 @@ function viewHarness(props) {
   }
   return () => { cursor = 0; return nodes(exports.OrdenPagoAdjuntarPagoView(props)); };
 }
-test('la vista conserva pagos vacíos y estado/importes no disponibles', () => {
+test('la vista presenta estado, pagado y saldo recibidos de R5-READ sin cálculo local', () => {
   const panel = viewHarness(page().node.props)().find(n => n.type === 'FinanzasPaymentPanel');
-  assert.equal(panel.props.estadoPago, 'No disponible');
-  assert.equal(panel.props.pagadoAcumuladoLabel, 'No disponible');
-  assert.equal(panel.props.saldoLabel, 'No disponible');
+  assert.equal(panel.props.estadoPago, 'SIN PAGOS');
+  assert.equal(panel.props.pagadoAcumuladoLabel, 'S/ 0.00');
+  assert.equal(panel.props.saldoLabel, 'S/ 100.00');
   assert.equal(panel.props.pagos.length, 0);
 });
 test('solo Ver del sustento abre archivo 444 en PreviewDocumento y permite cerrar', () => {

@@ -40,6 +40,46 @@ export async function getOrdenPago(ordenPagoId: number) {
     (await api.get(`/documental-v2/finanzas/ordenes-pago/${encodeURIComponent(ordenPagoId)}`)).data,
   );
 }
+
+export type SustentoFinancieroGrupo = {
+  vinculoId: number | null;
+  documentoId: number;
+  archivoId: number | null;
+  banco: string | null;
+  fecha: string | null;
+  monto: string | null;
+  moneda: string | null;
+  numeroReferencia: string | null;
+  observacion: string | null;
+  estado: 'activo' | 'observado' | 'anulado';
+  motivo: string | null;
+};
+
+export type ResumenFinancieroGrupo = {
+  grupoFacturaId: number;
+  origenObligacion: 'FACTURA' | 'ORDEN_PAGO';
+  obligacion: {
+    tipo: 'FACTURA' | 'ORDEN_PAGO';
+    documentoId: number;
+    referencia: string | null;
+    monto: string;
+    moneda: string;
+  };
+  pago: {
+    pagado: string;
+    saldo: string;
+    estado: 'COMPLETO' | 'PENDIENTE DE PAGO' | 'SIN PAGOS';
+  };
+  sustentosActivos: SustentoFinancieroGrupo[];
+  sustentosObservados: SustentoFinancieroGrupo[];
+  sustentosAnulados: SustentoFinancieroGrupo[];
+};
+
+export async function getResumenFinancieroGrupo(grupoFacturaId: number) {
+  return unwrap<ResumenFinancieroGrupo>(
+    (await api.get(`/documental-v2/finanzas/grupos-factura/${encodeURIComponent(grupoFacturaId)}/resumen`)).data,
+  );
+}
 export async function buscarContextosOrdenPago(q: string, limit = 10) {
   const result = unwrap<{ items: ContextoOrdenPago[] }>(
     (
