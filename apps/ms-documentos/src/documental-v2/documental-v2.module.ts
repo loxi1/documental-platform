@@ -68,6 +68,7 @@ import {
     EvaluarCorrespondenciaPagoFacturaUseCase,
   ],
   exports: [
+    OrdenPagoService,
     ContenedorOperativoRepository,
     DocumentoOperativoPrincipalRepository,
     GrupoFacturaRepository,

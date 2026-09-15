@@ -12,6 +12,16 @@ describe('Gateway OP identidad autenticada', () => {
       { send: jest.fn(() => of({ valid: true, payload })) } as any);
   }
   beforeEach(() => jest.clearAllMocks());
+  it('OP-01B reenvía tempId opcional y conserva el resultado de integración', async () => {
+    const body = { contenedorOperativoId: 7, fechaEmision: '2026-09-15', monto: '10.00', moneda: 'PEN', tipo: 'SEGUROS', tempId: 50 };
+    const result = { ordenPagoId: 10, documentoId: 11, grupoFacturaId: 12, archivoInicial: { tempId: 50, archivoId: 20, estado: 'PROMOTED' } };
+    (axios.post as jest.Mock).mockResolvedValue({ data: { data: result } });
+    await expect(controller().crearOrdenPago('Bearer token', 'req', 'key', body)).resolves.toEqual(result);
+    expect(axios.post).toHaveBeenCalledWith(expect.stringContaining('/finanzas/ordenes-pago'), body, {
+      headers: expect.objectContaining({ 'x-user-id': '5', 'x-workspace-id': '7', 'x-empresa-codigo': 'LAB',
+        'x-cliente-destino-id': '2', 'idempotency-key': 'key' }),
+    });
+  });
   it('reenvía identidad del token y clave de reintento, no identidad del body', async () => {
     (axios.post as jest.Mock).mockResolvedValue({ data: { data: { ordenPagoId: 10 } } });
     await controller().crearOrdenPago('Bearer token', 'req', 'key', { actor: 999 });

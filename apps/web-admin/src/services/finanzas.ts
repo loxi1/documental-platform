@@ -1,7 +1,7 @@
 import { api } from './api';
 import type { RevisionContableItem } from '@/types/revision-contable';
 
-export type OrdenPagoPayload = { contenedorOperativoId: number; fechaEmision: string; monto: string;
+export type OrdenPagoPayload = { tempId?: number; contenedorOperativoId: number; fechaEmision: string; monto: string;
   moneda: string; tipo: string; subtipo: string | null; observacion: string | null };
 export type OpcionesOrdenPago = {
   contextos: { id: number | string; codigo: string; nombre: string | null; centroCostoCodigo: string | null }[];
@@ -45,4 +45,18 @@ export async function buscarContextosOrdenPago(q: string, limit = 10) {
 export async function crearOrdenPago(payload: OrdenPagoPayload, key: string) {
   return unwrap<{ ordenPagoId: number; documentoId: number; grupoFacturaId: number; idempotente: boolean }>(
     (await api.post('/documental-v2/finanzas/ordenes-pago', payload, { headers: { 'Idempotency-Key': key } })).data);
+}
+
+export type ArchivoInicialOrdenPagoTemp = { tempId: number; estado: 'STAGED'; nombreOriginal: string };
+
+export async function subirArchivoInicialOrdenPago(file: File, key: string) {
+  const form = new FormData();
+  form.append('archivo', file);
+  const result = unwrap<ArchivoInicialOrdenPagoTemp>(
+    (await api.post('/documentos/tmp', form, { headers: { 'Idempotency-Key': key } })).data,
+  );
+  if (!Number.isSafeInteger(result?.tempId) || result.tempId <= 0 || result.estado !== 'STAGED') {
+    throw new Error('El archivo no quedó preparado. Vuelva a seleccionarlo.');
+  }
+  return { tempId: result.tempId, estado: result.estado, nombreOriginal: result.nombreOriginal };
 }

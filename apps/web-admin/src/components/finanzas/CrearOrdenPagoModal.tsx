@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -8,10 +8,12 @@ import {
   buscarContextosOrdenPago,
   crearOrdenPago,
   getOpcionesOrdenPago,
+  subirArchivoInicialOrdenPago,
 } from '@/services/finanzas';
 import type {
   ContextoOrdenPago,
   OrdenPagoPayload,
+  ArchivoInicialOrdenPagoTemp,
 } from '@/services/finanzas';
 
 function fechaNegocio() {
@@ -23,12 +25,50 @@ export function CrearOrdenPagoModal({ workspaceId, onCreated }: { workspaceId: n
   const dialog = useRef<HTMLDialogElement>(null);
   const key = useRef<string | null>(null);
   const pendingPayload = useRef<OrdenPagoPayload | null>(null);
+  const submitting = useRef(false);
+  const uploadSequence = useRef(0);
+  const uploadingRef = useRef(false);
+  const fileInput = useRef<HTMLInputElement>(null);
+  const [archivoTemp, setArchivoTemp] = useState<ArchivoInicialOrdenPagoTemp | null>(null);
+  const [archivoNombre, setArchivoNombre] = useState('');
+  const [uploading, setUploading] = useState(false);
+  const [archivoError, setArchivoError] = useState('');
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [fecha, setFecha] = useState(fechaNegocio);
   const [tipo, setTipo] = useState('');
   const [retry, setRetry] = useState(false);
+
+  useEffect(() => () => { uploadSequence.current += 1; }, []);
+
+  function quitarArchivo() {
+    uploadSequence.current += 1;
+    uploadingRef.current = false;
+    setUploading(false);
+    setArchivoTemp(null);
+    setArchivoNombre('');
+    setArchivoError('');
+    if (fileInput.current) fileInput.current.value = '';
+  }
+
+  async function seleccionarArchivo(file?: File) {
+    if (!file || submitting.current || pendingPayload.current) return;
+    const sequence = ++uploadSequence.current;
+    uploadingRef.current = true;
+    setUploading(true);
+    setArchivoTemp(null);
+    setArchivoNombre(file.name);
+    setArchivoError('');
+    try {
+      const staged = await subirArchivoInicialOrdenPago(file, crypto.randomUUID());
+      if (sequence === uploadSequence.current) setArchivoTemp(staged);
+    } catch {
+      if (sequence === uploadSequence.current) setArchivoError('No se pudo preparar el archivo. Vuelva a seleccionarlo o quítelo para continuar sin archivo.');
+    } finally {
+      if (sequence === uploadSequence.current) { uploadingRef.current = false; setUploading(false); }
+    }
+  }
 
   const [contextoTexto, setContextoTexto] = useState('');
   const [contextoSeleccionado, setContextoSeleccionado] =
@@ -45,6 +85,7 @@ export function CrearOrdenPagoModal({ workspaceId, onCreated }: { workspaceId: n
   const opciones = useQuery({ queryKey: ['op-opciones', workspaceId], queryFn: getOpcionesOrdenPago, enabled: open });
 
   async function submit(form: HTMLFormElement) {
+    if (submitting.current || uploadingRef.current || (archivoNombre && !archivoTemp && !pendingPayload.current)) return;
     setError('');
 
     if (!contextoSeleccionado && !pendingPayload.current) {
@@ -61,8 +102,10 @@ export function CrearOrdenPagoModal({ workspaceId, onCreated }: { workspaceId: n
       monto: String(values.get('monto')), moneda: String(values.get('moneda')),
       tipo, subtipo: String(values.get('subtipo') ?? '') || null,
       observacion: String(values.get('observacion') ?? '').trim() || null,
+      ...(archivoTemp ? { tempId: archivoTemp.tempId } : {}),
     };
     key.current ??= crypto.randomUUID();
+    submitting.current = true;
     setBusy(true);
     try {
       const result = await crearOrdenPago(payload, key.current);
@@ -72,20 +115,25 @@ export function CrearOrdenPagoModal({ workspaceId, onCreated }: { workspaceId: n
       setFecha(fechaNegocio());
       setContextoTexto('');
       setContextoSeleccionado(null);
+      quitarArchivo();
       dialog.current?.close(); setOpen(false); onCreated(result.ordenPagoId);
     } catch (e: unknown) {
       const response = (e as { response?: { status?: number; data?: { message?: string | string[] } } }).response;
       const message = response?.data?.message;
       setError(Array.isArray(message) ? message.join(', ') : message || 'No se pudo confirmar la creación. Reintente con la misma solicitud.');
       // Un timeout puede ocurrir después del commit. Conserva clave y payload hasta resolverlo.
-      if (!response || (response.status ?? 500) >= 500) { pendingPayload.current = payload; setRetry(true); }
-    } finally { setBusy(false); }
+      // Con TEMP, incluso un 409 de verificación puede llegar después de T1.
+      if (payload.tempId || !response || (response.status ?? 500) >= 500) { pendingPayload.current = payload; setRetry(true); }
+    } finally { submitting.current = false; setBusy(false); }
   }
 
   return <>
     <Button onClick={() => { setOpen(true); dialog.current?.showModal(); }}>+ Agregar Orden de Pago</Button>
     <dialog ref={dialog} aria-labelledby="op-title" className="m-auto w-[min(95vw,560px)] rounded-xl border bg-background p-6 text-foreground shadow-xl backdrop:bg-black/40"
-      onCancel={e => { if (busy) e.preventDefault(); }} onClose={() => setOpen(false)}>
+      onCancel={e => { if (submitting.current) e.preventDefault(); }} onClose={() => {
+        setOpen(false);
+        if (!pendingPayload.current) quitarArchivo();
+      }}>
       <h2 id="op-title" className="mb-4 text-xl font-semibold">Agregar Orden de Pago</h2>
       <form onSubmit={e => { e.preventDefault(); void submit(e.currentTarget); }} className="space-y-3">
         <fieldset disabled={busy || retry} className="space-y-3">
@@ -205,6 +253,18 @@ export function CrearOrdenPagoModal({ workspaceId, onCreated }: { workspaceId: n
             ) : null}
           </div>
           <label className="block">Observación<textarea name="observacion" maxLength={2000} className="block w-full rounded border bg-background p-2" /></label>
+          <div className="space-y-2">
+            <label htmlFor="op-archivo-inicial" className="block">Archivo inicial / sustento (opcional)</label>
+            <Input id="op-archivo-inicial" ref={fileInput} type="file" accept="application/pdf,image/jpeg,image/png"
+              onChange={e => { const file = e.target.files?.[0]; e.target.value = ''; void seleccionarArchivo(file); }} />
+            <p className="text-xs text-muted-foreground">PDF, JPG o PNG. Máximo 15 MB.</p>
+            {archivoNombre && <p className="break-words text-sm">{archivoNombre}</p>}
+            <p role="status" className="text-sm text-muted-foreground">
+              {uploading ? 'Preparando archivo…' : archivoTemp ? 'Archivo preparado para guardar' : ''}
+            </p>
+            {archivoError && <p role="alert" className="text-sm text-red-600">{archivoError}</p>}
+            {archivoNombre && <Button type="button" variant="outline" onClick={quitarArchivo}>Quitar archivo</Button>}
+          </div>
         </fieldset>
         {opciones.isLoading && <p>Cargando opciones…</p>}
         {opciones.isError && <p role="alert">No se pudieron cargar las opciones. <button type="button" onClick={() => void opciones.refetch()}>Reintentar</button></p>}
@@ -215,6 +275,8 @@ export function CrearOrdenPagoModal({ workspaceId, onCreated }: { workspaceId: n
             type="submit"
             disabled={
               busy ||
+              uploading ||
+              (!!archivoNombre && !archivoTemp) ||
               (!retry && (!contextoSeleccionado || !opciones.data))
             }
           >

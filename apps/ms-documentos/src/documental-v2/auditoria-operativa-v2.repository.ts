@@ -5,6 +5,7 @@ import type { SqlExecutor } from './sql-executor';
 type JsonRecord = Record<string, unknown>;
 
 type AccionAuditoriaV2 =
+  | 'ASOCIAR_ARCHIVO_INICIAL_OP'
   | 'MATERIALIZAR_CONTEXTO_OPERATIVO'
   | 'ASOCIAR_DOCUMENTO_PRINCIPAL'
   | 'GRUPO_FACTURA_CREADO'
@@ -15,6 +16,7 @@ type AccionAuditoriaV2 =
 export interface RegistrarAuditoriaOperativaV2Input {
   accion: AccionAuditoriaV2;
   entidad:
+    | 'documento_archivo'
     | 'contenedor_operativo'
     | 'documento_operativo_principal'
     | 'grupo_factura'

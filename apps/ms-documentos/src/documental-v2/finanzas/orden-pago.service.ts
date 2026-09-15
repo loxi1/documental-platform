@@ -4,6 +4,7 @@ import { sql } from '@documental/database';
 import { AuditoriaOperativaV2Repository } from '../auditoria-operativa-v2.repository';
 import { validarActorOp, validarOrdenPago, TIPOS_OP } from './orden-pago.dto';
 import type { OrdenPagoActor } from './orden-pago.dto';
+import type { SqlExecutor } from '../sql-executor';
 
 @Injectable()
 export class OrdenPagoService {
@@ -23,13 +24,13 @@ export class OrdenPagoService {
     return { contextos, monedas, tipos: TIPOS_OP };
   }
 
-  async crear(body: unknown, key: string, actor: OrdenPagoActor) {
+  async crear(body: unknown, key: string, actor: OrdenPagoActor, executor?: SqlExecutor) {
     validarActorOp(actor);
     const input = validarOrdenPago(body, key);
     key = key.toLowerCase();
     const hash = createHash('sha256').update(JSON.stringify({ input, actorId: actor.id,
       workspaceId: actor.workspaceId, empresa: actor.empresaCodigo, cliente: actor.clienteDestinoId })).digest('hex');
-    return sql.begin(async tx => {
+    const create = async (tx: SqlExecutor) => {
       // Serializa reintentos, incluso simultáneos. La unicidad física es defensa adicional.
       await tx`SELECT pg_advisory_xact_lock(hashtextextended(${key}, 0))`;
       const anteriores = await tx`
@@ -96,6 +97,7 @@ export class OrdenPagoService {
           requestId: actor.requestId, correlationId: actor.correlationId },
       }, tx);
       return { ...ids, idempotente: false };
-    });
+    };
+    return executor ? create(executor) : sql.begin(create);
   }
 }

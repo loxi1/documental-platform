@@ -7,6 +7,7 @@ export const TIPOS_OP = {
 } as const;
 
 export type OrdenPagoInput = {
+  tempId?: number;
   contenedorOperativoId: number; fechaEmision: string; monto: string;
   moneda: string; tipo: string; subtipo: string | null; observacion: string | null;
 };
@@ -29,8 +30,9 @@ export function validarOrdenPago(body: unknown, key: string): OrdenPagoInput {
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(key)) fail('Idempotency-Key UUID requerido');
   if (!body || typeof body !== 'object' || Array.isArray(body)) fail('Solicitud OP inválida');
   const b = body as Record<string, unknown>;
-  const allowed = ['contenedorOperativoId', 'fechaEmision', 'monto', 'moneda', 'tipo', 'subtipo', 'observacion'];
+  const allowed = ['contenedorOperativoId', 'fechaEmision', 'monto', 'moneda', 'tipo', 'subtipo', 'observacion', 'tempId'];
   if (Object.keys(b).some(k => !allowed.includes(k))) fail('Campo no autorizado en OP');
+  if (b.tempId != null && (!Number.isSafeInteger(b.tempId) || Number(b.tempId) <= 0)) fail('tempId debe ser un entero positivo');
   if (!Number.isSafeInteger(b.contenedorOperativoId) || Number(b.contenedorOperativoId) <= 0) fail('Contexto requerido');
   const fecha = String(b.fechaEmision ?? '');
   if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha) || !Number.isFinite(Date.parse(fecha)) ||
@@ -48,6 +50,6 @@ export function validarOrdenPago(body: unknown, key: string): OrdenPagoInput {
   if (b.observacion != null && typeof b.observacion !== 'string') fail('Observación inválida');
   const observacion = String(b.observacion ?? '').trim() || null;
   if (observacion && observacion.length > 2000) fail('Observación demasiado extensa');
-  return { contenedorOperativoId: Number(b.contenedorOperativoId), fechaEmision: fecha,
+  return { ...(b.tempId == null ? {} : { tempId: Number(b.tempId) }), contenedorOperativoId: Number(b.contenedorOperativoId), fechaEmision: fecha,
     monto: `${BigInt(entero)}.${decimal.padEnd(2, '0')}`, moneda, tipo, subtipo, observacion };
 }
