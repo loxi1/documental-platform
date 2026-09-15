@@ -872,6 +872,22 @@ export class DocumentalV2GatewayController {
     } catch (error: any) { this.throwUpstreamHttpException(error); }
   }
 
+  @Get('finanzas/ordenes-pago/:ordenPagoId')
+  async obtenerOrdenPago(
+    @Headers('authorization') authorization: string | undefined,
+    @Headers(REQUEST_ID_HEADER) requestId: string | undefined,
+    @Param('ordenPagoId') ordenPagoId: string,
+  ) {
+    const contexto = await this.validateAuthorization(authorization);
+    this.assertFinanzasOp(contexto);
+    try {
+      const response = await axios.get(`${this.getBaseUrl()}/documental-v2/finanzas/ordenes-pago/${encodeURIComponent(ordenPagoId)}`, {
+        headers: this.buildDocumentosForwardHeaders(authorization, requestId, contexto),
+      });
+      return this.unwrap(response);
+    } catch (error: any) { this.throwUpstreamHttpException(error); }
+  }
+
   @Get('finanzas/bandeja')
   async bandejaFinanzas(
     @Headers('authorization') authorization: string | undefined,

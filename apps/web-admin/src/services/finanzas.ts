@@ -25,6 +25,21 @@ export async function getFinanzasBandeja(params: Record<string, unknown>) {
 export async function getOpcionesOrdenPago() {
   return unwrap<OpcionesOrdenPago>((await api.get('/documental-v2/finanzas/ordenes-pago/opciones')).data);
 }
+
+export type OrdenPagoDetalle = {
+  ordenPagoId: number; documentoId: number; grupoFacturaId: number; contenedorOperativoId: number;
+  numero: string; fechaEmision: string; monto: string; moneda: string; tipo: string | null;
+  subtipo: string | null; observacion: string | null; estado: string;
+  contexto: { codigo: string; nombre: string | null; centroCostoCodigo: string | null };
+  archivoInicial: null | { archivoId: number; nombreArchivo: string; mime: string | null;
+    tamanoBytes: number | null; hashSha256: string | null; storageKey: string | null };
+};
+
+export async function getOrdenPago(ordenPagoId: number) {
+  return unwrap<OrdenPagoDetalle>(
+    (await api.get(`/documental-v2/finanzas/ordenes-pago/${encodeURIComponent(ordenPagoId)}`)).data,
+  );
+}
 export async function buscarContextosOrdenPago(q: string, limit = 10) {
   const result = unwrap<{ items: ContextoOrdenPago[] }>(
     (

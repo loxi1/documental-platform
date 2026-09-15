@@ -12,6 +12,27 @@ describe('Gateway OP identidad autenticada', () => {
       { send: jest.fn(() => of({ valid: true, payload })) } as any);
   }
   beforeEach(() => jest.clearAllMocks());
+  it('detalle permite Finanzas lectura sin documentos.subir y reenvía scope del token', async () => {
+    (axios.get as jest.Mock).mockResolvedValue({ data: { data: { ordenPagoId: 151, archivoInicial: null } } });
+    const read = controller({ ...context, permisos: { menus: ['finanzas'], actions: [] } });
+    // Argumentos extra simulando body/query maliciosos no forman parte del handler.
+    const result = await (read.obtenerOrdenPago as any)('Bearer token', 'req', '151', { actor: 999, empresa: 'OTRA', clienteDestinoId: 999 });
+    expect(result).toEqual({ ordenPagoId: 151, archivoInicial: null });
+    expect(axios.get).toHaveBeenCalledWith('http://ms-documentos:3002/api/v1/documental-v2/finanzas/ordenes-pago/151', {
+      headers: expect.objectContaining({ 'x-user-id': '5', 'x-workspace-id': '7', 'x-empresa-codigo': 'LAB', 'x-cliente-destino-id': '2' }),
+    });
+    expect((axios.get as jest.Mock).mock.calls[0][1].params).toBeUndefined();
+    expect((axios.get as jest.Mock).mock.calls[0][1].data).toBeUndefined();
+  });
+  it('detalle rechaza acceso sin Finanzas', async () => {
+    await expect(controller({ ...context, permisos: { menus: ['compras'], actions: ['documentos.subir'] } })
+      .obtenerOrdenPago('Bearer token', 'req', '151')).rejects.toThrow('Sin permiso');
+    expect(axios.get).not.toHaveBeenCalled();
+  });
+  it('detalle exige autorización antes del passthrough', async () => {
+    await expect(controller().obtenerOrdenPago(undefined, 'req', '151')).rejects.toThrow('Token requerido');
+    expect(axios.get).not.toHaveBeenCalled();
+  });
   it('OP-01B reenvía tempId opcional y conserva el resultado de integración', async () => {
     const body = { contenedorOperativoId: 7, fechaEmision: '2026-09-15', monto: '10.00', moneda: 'PEN', tipo: 'SEGUROS', tempId: 50 };
     const result = { ordenPagoId: 10, documentoId: 11, grupoFacturaId: 12, archivoInicial: { tempId: 50, archivoId: 20, estado: 'PROMOTED' } };

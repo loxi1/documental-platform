@@ -10,6 +10,41 @@ import type { SqlExecutor } from '../sql-executor';
 export class OrdenPagoService {
   constructor(private readonly auditoria: AuditoriaOperativaV2Repository) {}
 
+  async obtenerDetalle(ordenPagoId: number, actor: OrdenPagoActor) {
+    validarActorOp(actor);
+    if (!Number.isSafeInteger(ordenPagoId) || ordenPagoId <= 0) throw new NotFoundException('Orden de Pago no disponible');
+    const [row] = await sql`
+      SELECT p.id AS "ordenPagoId", d.id AS "documentoId", g.id AS "grupoFacturaId",
+        c.id AS "contenedorOperativoId", d.fecha_emision::text AS "fechaEmision",
+        d.monto_total::text AS monto, d.moneda, d.estado,
+        d.metadata->'ordenPago'->>'tipo' AS tipo,
+        d.metadata->'ordenPago'->>'subtipo' AS subtipo,
+        d.metadata->'ordenPago'->>'observacion' AS observacion,
+        json_build_object('codigo', c.codigo, 'nombre', c.nombre,
+          'centroCostoCodigo', c.centro_costo_codigo) AS contexto,
+        CASE WHEN a.id IS NULL THEN NULL ELSE json_build_object(
+          'archivoId', a.id, 'nombreArchivo', a.nombre_archivo,
+          'mime', a.metadata->>'contentType', 'tamanoBytes', (a.metadata->>'tamanoBytes')::bigint,
+          'hashSha256', a.hash_sha256, 'storageKey', a.storage_key
+        ) END AS "archivoInicial"
+      FROM documentos.documentos_operativos_principales p
+      JOIN documentos.documentos d ON d.id=p.documento_id AND d.tipo_documental='ORDEN_PAGO'
+      JOIN documentos.contenedores_operativos c ON c.id=p.contenedor_operativo_id
+      JOIN documentos.grupos_factura g ON g.documento_operativo_principal_id=p.id
+        AND g.origen_obligacion='ORDEN_PAGO'
+      LEFT JOIN documentos.documentos_archivos a ON a.documento_id=d.id
+        AND a.origen_archivo='OP_INICIAL' AND a.es_version_actual=true
+      WHERE p.id=${ordenPagoId} AND p.tipo_principal='ORDEN_PAGO'
+        AND p.estado='activo' AND p.es_principal_activo=true AND c.estado='activo'
+        AND c.empresa_codigo=${actor.empresaCodigo}
+        AND c.cliente_destino_id IS NOT DISTINCT FROM ${actor.clienteDestinoId}::bigint
+    `;
+    if (!row) throw new NotFoundException('Orden de Pago no disponible');
+    return { ...row, ordenPagoId: Number(row.ordenPagoId), documentoId: Number(row.documentoId),
+      grupoFacturaId: Number(row.grupoFacturaId), contenedorOperativoId: Number(row.contenedorOperativoId),
+      numero: `OP-${row.ordenPagoId}` };
+  }
+
   async opciones(actor: OrdenPagoActor) {
     validarActorOp(actor);
     const contextos = await sql`
