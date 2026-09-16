@@ -109,7 +109,7 @@ export type GrupoFacturaDocumentoCompatibilidadView = {
 };
 
 export type GrupoFacturaCompatibilidadView = {
-  facturaDocumentoId: number;
+  facturaDocumentoId: number | null;
   documentoOperativoPrincipalDocumentoId: number | null;
   estado: 'pendiente_revision';
   facturaSerie?: string | null;

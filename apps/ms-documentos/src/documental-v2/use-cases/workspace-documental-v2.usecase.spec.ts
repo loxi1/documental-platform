@@ -252,20 +252,44 @@ describe('WorkspaceDocumentalV2UseCase', () => {
       },
     ]);
 
-    documentosExistentes.buscarPorId.mockResolvedValue({
-      id: 910001,
-      clienteAbreviatura: 'BBTI',
-      tipoDocumental: 'OC',
-      rucEmisor: '20100011111',
-      razonSocialEmisor: 'PROVEEDOR SANDBOX OC A S.A.C.',
-      serie: null,
-      numero: 'OC-900001',
-      claveDocumental: 'BBTI|OC|OC-900001',
-      estado: 'confirmado',
-      fechaEmision: '2026-07-01',
-      moneda: 'PEN',
-      montoTotal: 1200,
-      nombreArchivo: 'OC_OC-900001.pdf',
+    documentosExistentes.buscarPorId.mockImplementation(async (documentoId: number) => {
+      if (documentoId === 910001) {
+        return {
+          id: 910001,
+          clienteAbreviatura: 'BBTI',
+          tipoDocumental: 'OC',
+          rucEmisor: '20100011111',
+          razonSocialEmisor: 'PROVEEDOR SANDBOX OC A S.A.C.',
+          serie: null,
+          numero: 'OC-900001',
+          claveDocumental: 'BBTI|OC|OC-900001',
+          estado: 'confirmado',
+          fechaEmision: '2026-07-01',
+          moneda: 'PEN',
+          montoTotal: 1200,
+          nombreArchivo: 'OC_OC-900001.pdf',
+        };
+      }
+
+      if (documentoId === 910002) {
+        return {
+          id: 910002,
+          clienteAbreviatura: 'BBTI',
+          tipoDocumental: 'FACTURA',
+          rucEmisor: '20100011111',
+          razonSocialEmisor: 'PROVEEDOR SANDBOX OC A S.A.C.',
+          serie: 'F001',
+          numero: '900002',
+          claveDocumental: 'BBTI|FACTURA|F001|900002',
+          estado: 'confirmado',
+          fechaEmision: '2026-07-02',
+          moneda: 'PEN',
+          montoTotal: 1200,
+          nombreArchivo: 'FACTURA_F001-900002.pdf',
+        };
+      }
+
+      return null;
     });
 
     gruposFactura.buscarPorFacturaDocumentoId.mockResolvedValue(null);
@@ -329,6 +353,7 @@ describe('WorkspaceDocumentalV2UseCase', () => {
         id: 4,
         documentoOperativoPrincipalId: 3,
         facturaDocumentoId: 910002,
+        origenObligacion: 'FACTURA',
         estado: 'pendiente_revision',
         metadata: {},
         creadoPor: 1,
@@ -383,6 +408,267 @@ describe('WorkspaceDocumentalV2UseCase', () => {
     expect(result.resumen.gruposFactura).toBe(1);
     expect(result.resumen.gruposFacturaPersistidos).toBe(1);
     expect(result.resumen.documentosGrupoFactura).toBe(0);
+  });
+
+  describe('proyeccion persistida ORDEN_PAGO', () => {
+    const documentoOp = {
+      id: 443,
+      clienteAbreviatura: 'BBTI',
+      tipoDocumental: 'ORDEN_PAGO',
+      rucEmisor: null,
+      razonSocialEmisor: null,
+      serie: null,
+      numero: 'OP-153',
+      claveDocumental: 'BBTI|ORDEN_PAGO|OP-153',
+      estado: 'confirmado',
+      fechaEmision: '2026-09-15',
+      moneda: 'PEN',
+      montoTotal: 100,
+      nombreArchivo: 'OP-153.pdf',
+      metadata: {},
+    };
+
+    const principalOp = {
+      id: 153,
+      contenedorOperativoId: 1,
+      documentoId: 443,
+      tipoPrincipal: 'ORDEN_PAGO',
+      esPrincipalActivo: true,
+      estado: 'activo',
+      metadata: {},
+      creadoPor: 1,
+      creadoEn: '2026-09-15 00:00:00+00',
+      actualizadoPor: null,
+      actualizadoEn: null,
+      anuladoPor: null,
+      anuladoEn: null,
+      motivoAnulacion: null,
+    };
+
+    const grupoOp = {
+      id: 116,
+      documentoOperativoPrincipalId: 153,
+      facturaDocumentoId: null,
+      origenObligacion: 'ORDEN_PAGO' as const,
+      estado: 'pendiente_revision',
+      metadata: {},
+      creadoPor: 1,
+      creadoEn: '2026-09-15 00:00:00+00',
+      actualizadoPor: null,
+      actualizadoEn: null,
+      anuladoPor: null,
+      anuladoEn: null,
+      motivoAnulacion: null,
+    };
+
+    const compatibilidadOp = {
+      ...compatibilidadBase,
+      origen: {
+        ...compatibilidadBase.origen,
+        expedienteId: 118,
+      },
+      contenedorOperativo: {
+        ...compatibilidadBase.contenedorOperativo,
+        empresaCodigo: 'BBTI',
+        clienteDestinoId: 2,
+        codigo: '090101',
+        nombre: 'CC Pruebas',
+        descripcion: 'CC Pruebas',
+        origen: {
+          ...compatibilidadBase.contenedorOperativo.origen,
+          expedienteId: 118,
+        },
+      },
+      documentosOperativosPrincipales: [],
+      gruposFactura: [],
+      advertencias: [],
+    };
+
+    const prepararOp = ({
+      principal = principalOp,
+      grupo = grupoOp,
+      documento = documentoOp,
+      contenedorId = 1,
+    }: {
+      principal?: typeof principalOp;
+      grupo?: typeof grupoOp | {
+        id: number;
+        documentoOperativoPrincipalId: number;
+        facturaDocumentoId: number | null;
+        origenObligacion: 'FACTURA' | 'ORDEN_PAGO';
+        estado: string;
+        metadata: Record<string, unknown>;
+        creadoPor: number | null;
+        creadoEn: string;
+        actualizadoPor: number | null;
+        actualizadoEn: string | null;
+        anuladoPor: number | null;
+        anuladoEn: string | null;
+        motivoAnulacion: string | null;
+      };
+      documento?: typeof documentoOp | null;
+      contenedorId?: number;
+    } = {}) => {
+      adapter.construirVistaV2DesdeExpedienteV1.mockResolvedValue(compatibilidadOp);
+      contenedores.buscarPorClave.mockResolvedValue({
+        id: contenedorId,
+        empresaCodigo: 'BBTI',
+        clienteDestinoId: 2,
+        expedienteV1Id: 118,
+        tipoContexto: 'expediente_v1',
+        codigo: '090101',
+        estado: 'activo',
+      });
+      documentosOperativos.listarActivosPorContenedorOperativoId.mockResolvedValue([principal]);
+      gruposFactura.listarPorDocumentoOperativoPrincipal.mockResolvedValue([grupo]);
+      documentosExistentes.buscarPorId.mockResolvedValue(documento);
+    };
+
+    it('proyecta OP sin Factura y conserva grupo y documento base del principal', async () => {
+      prepararOp();
+
+      const result = await useCase.construirDesdeExpedienteV1(118);
+      const grupo = result.gruposFactura.find(
+        (item) => Number(item.persistido?.id) === 116,
+      );
+
+      expect(grupo).toBeDefined();
+      expect(grupo?.vista.facturaDocumentoId).toBeNull();
+      expect(grupo?.vista.documentoOperativoPrincipalDocumentoId).toBe(443);
+      expect(Number(grupo?.persistido?.id)).toBe(116);
+      expect(documentosExistentes.buscarPorId).toHaveBeenCalledWith(443);
+
+      expect(grupo?.vista.documentoOperativoPrincipalDocumentoId).not.toBe(153);
+      expect(grupo?.vista.documentoOperativoPrincipalDocumentoId).not.toBe(116);
+
+      expect(grupo?.vista.origen.tipoDocumentalV1).toBeNull();
+      expect(grupo?.vista.metadata).not.toMatchObject({
+        compatibilidad: {
+          documentoFundador: 'FACTURA',
+        },
+      });
+    });
+
+    it('mantiene Factura NULL fuera de la proyeccion persistida', async () => {
+      prepararOp({
+        grupo: {
+          ...grupoOp,
+          origenObligacion: 'FACTURA',
+          facturaDocumentoId: null,
+        },
+      });
+
+      const result = await useCase.construirDesdeExpedienteV1(118);
+
+      expect(result.gruposFactura).toHaveLength(0);
+    });
+
+    it('no infiere ORDEN_PAGO cuando origenObligacion esta ausente y Factura es NULL', async () => {
+      prepararOp({
+        grupo: {
+          ...grupoOp,
+          origenObligacion: undefined as unknown as 'FACTURA' | 'ORDEN_PAGO',
+          facturaDocumentoId: null,
+        },
+      });
+
+      const result = await useCase.construirDesdeExpedienteV1(118);
+
+      expect(result.gruposFactura).toHaveLength(0);
+    });
+
+    it('no proyecta OP con principal inactivo', async () => {
+      prepararOp({
+        principal: {
+          ...principalOp,
+          esPrincipalActivo: false,
+        },
+      });
+
+      const result = await useCase.construirDesdeExpedienteV1(118);
+
+      expect(result.gruposFactura).toHaveLength(0);
+    });
+
+    it('no proyecta OP cuando el grupo apunta a otro principal', async () => {
+      prepararOp({
+        grupo: {
+          ...grupoOp,
+          documentoOperativoPrincipalId: 999,
+        },
+      });
+
+      const result = await useCase.construirDesdeExpedienteV1(118);
+
+      expect(result.gruposFactura).toHaveLength(0);
+    });
+
+    it('no proyecta OP cuyo principal pertenece a otro contenedor', async () => {
+      prepararOp({
+        principal: {
+          ...principalOp,
+          contenedorOperativoId: 999,
+        },
+      });
+
+      const result = await useCase.construirDesdeExpedienteV1(118);
+
+      expect(result.gruposFactura).toHaveLength(0);
+    });
+
+    it('no proyecta OP cuando el contenedor no pertenece al expediente actual', async () => {
+      prepararOp();
+
+      contenedores.buscarPorClave.mockResolvedValue({
+        id: 1,
+        empresaCodigo: 'BBTI',
+        clienteDestinoId: 2,
+        expedienteV1Id: 999,
+        tipoContexto: 'expediente_v1',
+        codigo: '090101',
+        estado: 'activo',
+      });
+
+      const result = await useCase.construirDesdeExpedienteV1(118);
+
+      expect(result.gruposFactura).toHaveLength(0);
+    });
+
+    it('no proyecta OP cuando documento principal y empresa del contexto son incoherentes', async () => {
+      prepararOp({
+        documento: {
+          ...documentoOp,
+          clienteAbreviatura: 'OTRA_EMPRESA',
+        },
+      });
+
+      const result = await useCase.construirDesdeExpedienteV1(118);
+
+      expect(result.gruposFactura).toHaveLength(0);
+    });
+
+    it('no proyecta OP cuando falta el documento principal real', async () => {
+      prepararOp({
+        documento: null,
+      });
+
+      const result = await useCase.construirDesdeExpedienteV1(118);
+
+      expect(result.gruposFactura).toHaveLength(0);
+    });
+
+    it('caso OP153 equivalente expone grupo116 para validacion contextual de carga-segura', async () => {
+      prepararOp();
+
+      const result = await useCase.construirDesdeExpedienteV1(118);
+      const grupoSolicitado = result.gruposFactura.find(
+        (item) => Number(item.persistido?.id) === 116,
+      );
+
+      expect(grupoSolicitado).toBeDefined();
+      expect(Number(grupoSolicitado?.persistido?.id)).toBe(116);
+      expect(grupoSolicitado?.vista.documentoOperativoPrincipalDocumentoId).toBe(443);
+    });
   });
 
   it('rechaza expedienteId inválido', async () => {

@@ -162,6 +162,7 @@ export class GrupoFacturaRepository {
         id,
         documento_operativo_principal_id AS "documentoOperativoPrincipalId",
         factura_documento_id AS "facturaDocumentoId",
+        origen_obligacion AS "origenObligacion",
         estado,
         metadata,
         creado_por AS "creadoPor",

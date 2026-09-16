@@ -82,6 +82,11 @@ export class WorkspaceDocumentalV2UseCase {
       documentosOperativosPrincipales,
       gruposFacturaCompatibilidad,
       id,
+      contenedorPersistido?.id ? Number(contenedorPersistido.id) : null,
+      compatibilidad.contenedorOperativo.empresaCodigo,
+      contenedorPersistido?.expedienteV1Id != null
+        ? Number(contenedorPersistido.expedienteV1Id)
+        : null,
     );
 
     const gruposFactura = [
@@ -277,6 +282,9 @@ export class WorkspaceDocumentalV2UseCase {
     documentosOperativosPrincipales: DocumentoOperativoPrincipalWorkspaceV2[],
     gruposYaMapeados: GrupoFacturaWorkspaceV2[],
     expedienteId: number,
+    contenedorOperativoId: number | null,
+    empresaCodigo: string,
+    expedienteV1IdPersistido: number | null,
   ): Promise<GrupoFacturaWorkspaceV2[]> {
     const principalesPersistidos = documentosOperativosPrincipales
       .map((principal) => principal.persistido)
@@ -307,12 +315,53 @@ export class WorkspaceDocumentalV2UseCase {
 
     const gruposPersistidos = gruposPorPrincipal
       .flat()
-      .filter(({ grupo }) => grupo.facturaDocumentoId != null && !facturasYaIncluidas.has(Number(grupo.facturaDocumentoId)));
+      .filter(({ grupo, principal }) => {
+        if (grupo.estado === 'anulado') return false;
 
-    return Promise.all(
-      gruposPersistidos.map(({ grupo, principal }) =>
-        this.mapGrupoFacturaPersistido(grupo, principal, expedienteId),
-      ),
+        if (grupo.origenObligacion === 'FACTURA') {
+          return (
+            grupo.facturaDocumentoId != null &&
+            !facturasYaIncluidas.has(Number(grupo.facturaDocumentoId))
+          );
+        }
+
+        if (grupo.origenObligacion === 'ORDEN_PAGO') {
+          return (
+            grupo.facturaDocumentoId == null &&
+            contenedorOperativoId != null &&
+            expedienteV1IdPersistido === expedienteId &&
+            Number(grupo.documentoOperativoPrincipalId) === Number(principal.id) &&
+            Number(principal.contenedorOperativoId) === contenedorOperativoId &&
+            Boolean(principal.esPrincipalActivo) &&
+            principal.estado !== 'anulado' &&
+            String(principal.tipoPrincipal ?? '').trim().toUpperCase() === 'ORDEN_PAGO' &&
+            Number.isInteger(Number(principal.documentoId)) &&
+            Number(principal.documentoId) > 0
+          );
+        }
+
+        return false;
+      });
+
+    const proyectados = await Promise.all(
+      gruposPersistidos.map(async ({ grupo, principal }) => {
+        if (grupo.origenObligacion === 'ORDEN_PAGO') {
+          return this.mapGrupoOrdenPagoPersistido(
+            grupo,
+            principal,
+            expedienteId,
+            contenedorOperativoId,
+            empresaCodigo,
+            expedienteV1IdPersistido,
+          );
+        }
+
+        return this.mapGrupoFacturaPersistido(grupo, principal, expedienteId);
+      }),
+    );
+
+    return proyectados.filter(
+      (grupo): grupo is GrupoFacturaWorkspaceV2 => grupo !== null,
     );
   }
 
@@ -320,7 +369,11 @@ export class WorkspaceDocumentalV2UseCase {
     grupo: GrupoFacturaRow,
     principal: DocumentoOperativoPrincipalRow,
     expedienteId: number,
-  ): Promise<GrupoFacturaWorkspaceV2> {
+  ): Promise<GrupoFacturaWorkspaceV2 | null> {
+    if (grupo.origenObligacion !== 'FACTURA' || grupo.facturaDocumentoId == null) {
+      return null;
+    }
+
     const factura = await this.documentosExistentes.buscarPorId(Number(grupo.facturaDocumentoId));
 
     const documentos = await this.mapGrupoFacturaDocumentosPersistidos(
@@ -347,6 +400,100 @@ export class WorkspaceDocumentalV2UseCase {
     return {
       ...this.wrap(vista, grupo),
       documentos,
+    };
+  }
+
+  private async mapGrupoOrdenPagoPersistido(
+    grupo: GrupoFacturaRow,
+    principal: DocumentoOperativoPrincipalRow,
+    expedienteId: number,
+    contenedorOperativoId: number | null,
+    empresaCodigo: string,
+    expedienteV1IdPersistido: number | null,
+  ): Promise<GrupoFacturaWorkspaceV2 | null> {
+    if (
+      grupo.origenObligacion !== 'ORDEN_PAGO' ||
+      grupo.facturaDocumentoId != null ||
+      contenedorOperativoId == null ||
+      expedienteV1IdPersistido !== expedienteId ||
+      Number(grupo.documentoOperativoPrincipalId) !== Number(principal.id) ||
+      Number(principal.contenedorOperativoId) !== contenedorOperativoId ||
+      !principal.esPrincipalActivo ||
+      principal.estado === 'anulado' ||
+      String(principal.tipoPrincipal ?? '').trim().toUpperCase() !== 'ORDEN_PAGO'
+    ) {
+      return null;
+    }
+
+    const documentoPrincipalId = Number(principal.documentoId);
+    if (!Number.isInteger(documentoPrincipalId) || documentoPrincipalId <= 0) {
+      return null;
+    }
+
+    const documentoPrincipal = await this.documentosExistentes.buscarPorId(documentoPrincipalId);
+    if (!documentoPrincipal) return null;
+
+    if (
+      String(documentoPrincipal.clienteAbreviatura ?? '').trim().toUpperCase() !==
+      String(empresaCodigo ?? '').trim().toUpperCase()
+    ) {
+      return null;
+    }
+
+    const documentos = await this.mapGrupoFacturaDocumentosPersistidos(
+      Number(grupo.id),
+      [],
+      expedienteId,
+    );
+
+    const vista: GrupoFacturaCompatibilidadView = {
+      facturaDocumentoId: null,
+      documentoOperativoPrincipalDocumentoId: documentoPrincipalId,
+      estado: 'pendiente_revision',
+      metadata: this.buildMetadataGrupoOrdenPagoPersistido(grupo, principal, documentoPrincipal),
+      documentos: documentos.map((documento) => documento.vista),
+      origen: {
+        modelo: 'V1',
+        expedienteId,
+        modo: 'lectura',
+        tipoDocumentalV1: null,
+        tipoRelacionV1: null,
+      },
+    };
+
+    return {
+      ...this.wrap(vista, grupo),
+      documentos,
+    };
+  }
+
+  private buildMetadataGrupoOrdenPagoPersistido(
+    grupo: GrupoFacturaRow,
+    principal: DocumentoOperativoPrincipalRow,
+    documentoPrincipal: DocumentoExistenteV2,
+  ): JsonObject {
+    const metadataBase =
+      grupo.metadata && typeof grupo.metadata === 'object'
+        ? (grupo.metadata as JsonObject)
+        : {};
+
+    const compatibilidadBase =
+      metadataBase.compatibilidad &&
+      typeof metadataBase.compatibilidad === 'object' &&
+      !Array.isArray(metadataBase.compatibilidad)
+        ? (metadataBase.compatibilidad as JsonObject)
+        : {};
+
+    return {
+      ...metadataBase,
+      compatibilidad: {
+        ...compatibilidadBase,
+        origen: 'V2',
+        grupoFacturaId: grupo.id,
+        origenObligacion: 'ORDEN_PAGO',
+        documentoOperativoPrincipalId: principal.id,
+        documentoPrincipal: this.buildDocumentoV1Metadata(documentoPrincipal),
+      },
     };
   }
 
@@ -381,6 +528,12 @@ export class WorkspaceDocumentalV2UseCase {
   private async mapGrupoFactura(
     grupo: GrupoFacturaCompatibilidadView,
   ): Promise<GrupoFacturaWorkspaceV2> {
+    if (grupo.facturaDocumentoId == null) {
+      throw new BadRequestException(
+        'facturaDocumentoId es obligatorio para grupos de compatibilidad FACTURA',
+      );
+    }
+
     const persistido = await this.gruposFactura.buscarPorFacturaDocumentoId(grupo.facturaDocumentoId);
     const documentosCompatibilidad = await Promise.all(
       grupo.documentos.map((documento) => this.mapGrupoFacturaDocumento(documento)),
