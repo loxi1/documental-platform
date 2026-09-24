@@ -29,7 +29,47 @@ export class GrupoFacturaRepository {
         AND c.cliente_destino_id IS NOT DISTINCT FROM ${actor.clienteDestinoId}::bigint
       LIMIT 1
     `;
-    return (rows[0] as unknown as ObligacionGrupoRow) ?? null;
+    const row = rows[0] as Record<string, unknown> | undefined;
+    if (!row) return null;
+
+    const expedienteIdRaw = row.expedienteId;
+    let expedienteId: number | null = null;
+
+    if (expedienteIdRaw !== null) {
+      if (
+        typeof expedienteIdRaw !== 'string' &&
+        typeof expedienteIdRaw !== 'number' &&
+        typeof expedienteIdRaw !== 'bigint'
+      ) {
+        throw new Error(
+          'expedienteId persistido fuera del contrato numérico seguro',
+        );
+      }
+
+      if (
+        typeof expedienteIdRaw === 'string' &&
+        !/^-?[0-9]+$/.test(expedienteIdRaw)
+      ) {
+        throw new Error(
+          'expedienteId persistido fuera del contrato numérico seguro',
+        );
+      }
+
+      const expedienteIdNormalizado = Number(expedienteIdRaw);
+
+      if (!Number.isSafeInteger(expedienteIdNormalizado)) {
+        throw new Error(
+          'expedienteId persistido fuera del contrato numérico seguro',
+        );
+      }
+
+      expedienteId = expedienteIdNormalizado;
+    }
+
+    return {
+      ...(row as unknown as ObligacionGrupoRow),
+      expedienteId,
+    };
   }
 
   async crear(input: CrearGrupoFacturaInput, executor: SqlExecutor = sql): Promise<GrupoFacturaRow> {
