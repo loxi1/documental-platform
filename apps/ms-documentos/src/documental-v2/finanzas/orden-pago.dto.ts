@@ -1,15 +1,21 @@
 import { BadRequestException, ForbiddenException } from '@nestjs/common';
 
 // Catálogo mínimo OP-01A. No es un mantenimiento de maestros.
-export const TIPOS_OP = {
-  SERVICIOS_GENERALES: ['ENERGIA_ELECTRICA', 'AGUA', 'INTERNET', 'TELEFONIA', 'ARBITRIOS', 'OTROS'],
-  SEGUROS: [],
-} as const;
-
 export type OrdenPagoInput = {
   tempId?: number;
-  contenedorOperativoId: number; fechaEmision: string; monto: string;
-  moneda: string; tipo: string; subtipo: string | null; observacion: string | null;
+  contenedorOperativoId: number;
+  fechaEmision: string;
+  monto: string;
+  moneda: string;
+  conceptoCodigo: string;
+  observacion: string | null;
+  periodoAnio?: number | null;
+  periodoMes?: number | null;
+  codigoPago: string | null;
+  proveedorId: number | null;
+  beneficiarioClienteDestinoId: number | null;
+  beneficiarioUsuarioId: number | null;
+  beneficiarioNombreLibre: string | null;
 };
 export type OrdenPagoActor = {
   id: number; workspaceId: number; empresaCodigo: string; clienteDestinoId: number | null;
@@ -30,7 +36,22 @@ export function validarOrdenPago(body: unknown, key: string): OrdenPagoInput {
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(key)) fail('Idempotency-Key UUID requerido');
   if (!body || typeof body !== 'object' || Array.isArray(body)) fail('Solicitud OP inválida');
   const b = body as Record<string, unknown>;
-  const allowed = ['contenedorOperativoId', 'fechaEmision', 'monto', 'moneda', 'tipo', 'subtipo', 'observacion', 'tempId'];
+  const allowed = [
+    'contenedorOperativoId',
+    'fechaEmision',
+    'monto',
+    'moneda',
+    'conceptoCodigo',
+    'observacion',
+    'tempId',
+    'periodoAnio',
+    'periodoMes',
+    'codigoPago',
+    'proveedorId',
+    'beneficiarioClienteDestinoId',
+    'beneficiarioUsuarioId',
+    'beneficiarioNombreLibre',
+  ];
   if (Object.keys(b).some(k => !allowed.includes(k))) fail('Campo no autorizado en OP');
   if (b.tempId != null && (!Number.isSafeInteger(b.tempId) || Number(b.tempId) <= 0)) fail('tempId debe ser un entero positivo');
   if (!Number.isSafeInteger(b.contenedorOperativoId) || Number(b.contenedorOperativoId) <= 0) fail('Contexto requerido');
@@ -40,16 +61,97 @@ export function validarOrdenPago(body: unknown, key: string): OrdenPagoInput {
   const monto = String(b.monto ?? '').trim();
   if (!/^\d{1,12}(\.\d{1,2})?$/.test(monto) || Number(monto) <= 0) fail('Monto positivo con máximo dos decimales requerido');
   const [entero, decimal = ''] = monto.split('.');
-  const tipo = String(b.tipo ?? '');
-  if (!Object.hasOwn(TIPOS_OP, tipo)) fail('Tipo OP no habilitado');
-  const subtipos: readonly string[] = TIPOS_OP[tipo as keyof typeof TIPOS_OP];
-  const subtipo = b.subtipo == null || b.subtipo === '' ? null : String(b.subtipo);
-  if (subtipos.length ? !subtipo || !subtipos.includes(subtipo) : subtipo !== null) fail('Subtipo incompatible');
+  const conceptoCodigo = String(b.conceptoCodigo ?? '').trim();
+  if (!conceptoCodigo) fail('Concepto OP requerido');
   const moneda = String(b.moneda ?? '').trim().toUpperCase();
   if (!['PEN', 'USD'].includes(moneda)) fail('Moneda no habilitada');
   if (b.observacion != null && typeof b.observacion !== 'string') fail('Observación inválida');
   const observacion = String(b.observacion ?? '').trim() || null;
   if (observacion && observacion.length > 2000) fail('Observación demasiado extensa');
-  return { ...(b.tempId == null ? {} : { tempId: Number(b.tempId) }), contenedorOperativoId: Number(b.contenedorOperativoId), fechaEmision: fecha,
-    monto: `${BigInt(entero)}.${decimal.padEnd(2, '0')}`, moneda, tipo, subtipo, observacion };
+
+  const periodoAnio = b.periodoAnio == null
+    ? null
+    : Number(b.periodoAnio);
+  const periodoMes = b.periodoMes == null
+    ? null
+    : Number(b.periodoMes);
+
+  if ((periodoAnio == null) !== (periodoMes == null)) {
+    fail('Período incompleto');
+  }
+  if (periodoAnio != null &&
+      (!Number.isSafeInteger(periodoAnio) ||
+       periodoAnio < 1900 ||
+       periodoAnio > 9999)) {
+    fail('Año de período inválido');
+  }
+  if (periodoMes != null &&
+      (!Number.isSafeInteger(periodoMes) ||
+       periodoMes < 1 ||
+       periodoMes > 12)) {
+    fail('Mes de período inválido');
+  }
+
+  const codigoPago = b.codigoPago == null
+    ? null
+    : String(b.codigoPago).trim() || null;
+  if (codigoPago && codigoPago.length > 250) {
+    fail('Referencia funcional demasiado extensa');
+  }
+
+  const enteroPositivoOpcional = (valor: unknown, campo: string): number | null => {
+    if (valor == null) return null;
+    if (!Number.isSafeInteger(valor) || Number(valor) <= 0) {
+      fail(`${campo} debe ser un entero positivo`);
+    }
+    return Number(valor);
+  };
+
+  const proveedorId = enteroPositivoOpcional(b.proveedorId, 'proveedorId');
+  const beneficiarioClienteDestinoId = enteroPositivoOpcional(
+    b.beneficiarioClienteDestinoId,
+    'beneficiarioClienteDestinoId',
+  );
+  const beneficiarioUsuarioId = enteroPositivoOpcional(
+    b.beneficiarioUsuarioId,
+    'beneficiarioUsuarioId',
+  );
+
+  if (b.beneficiarioNombreLibre != null &&
+      typeof b.beneficiarioNombreLibre !== 'string') {
+    fail('beneficiarioNombreLibre inválido');
+  }
+  const beneficiarioNombreLibre =
+    String(b.beneficiarioNombreLibre ?? '').trim() || null;
+  if (beneficiarioNombreLibre && beneficiarioNombreLibre.length > 250) {
+    fail('beneficiarioNombreLibre demasiado extenso');
+  }
+
+  const beneficiariosInformados = [
+    proveedorId,
+    beneficiarioClienteDestinoId,
+    beneficiarioUsuarioId,
+    beneficiarioNombreLibre,
+  ].filter(valor => valor != null).length;
+
+  if (beneficiariosInformados > 1) {
+    fail('Solo puede informarse un beneficiario por Orden de Pago');
+  }
+
+  return {
+    ...(b.tempId == null ? {} : { tempId: Number(b.tempId) }),
+    contenedorOperativoId: Number(b.contenedorOperativoId),
+    fechaEmision: fecha,
+    monto: `${BigInt(entero)}.${decimal.padEnd(2, '0')}`,
+    moneda,
+    conceptoCodigo,
+    observacion,
+    periodoAnio,
+    periodoMes,
+    codigoPago,
+    proveedorId,
+    beneficiarioClienteDestinoId,
+    beneficiarioUsuarioId,
+    beneficiarioNombreLibre,
+  };
 }

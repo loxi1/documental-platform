@@ -13,6 +13,11 @@ import { DocumentoOperativoPrincipalService } from './documento-operativo-princi
 import { GrupoFacturaDocumentoRepository } from './grupo-factura-documento.repository';
 import { GrupoFacturaDocumentoService } from './grupo-factura-documento.service';
 import { GrupoFacturaRepository } from './grupo-factura.repository';
+import { CatalogoConceptosObligacionRepository } from './catalogo-conceptos-obligacion.repository';
+import { ObligacionesSnapshotRepository } from './obligaciones-snapshot.repository';
+import { RegularizadoresObligacionRepository } from './regularizadores-obligacion.repository';
+import { ConfigProveedoresConceptoOpRepository } from './config-proveedores-concepto-op.repository';
+import { ConfigBeneficiariosRendicionOpRepository } from './config-beneficiarios-rendicion-op.repository';
 import { GrupoFacturaService } from './grupo-factura.service';
 import { V1DocumentalReadOnlyRepository } from './adapters/v1-documental-readonly.repository';
 import { V1V2CompatibilityAdapter } from './adapters/v1-v2-compatibility.adapter';
@@ -23,6 +28,7 @@ import { DocumentoExistenteReadonlyRepository } from './documento-existente-read
 import { AsociarDocumentoPrincipalV2UseCase } from './use-cases/asociar-documento-principal-v2.usecase';
 import { AsociarGrupoFacturaV2UseCase } from './use-cases/asociar-grupo-factura-v2.usecase';
 import { AsociarDocumentoGrupoFacturaV2UseCase } from './use-cases/asociar-documento-grupo-factura-v2.usecase';
+import { RegularizarObligacionOpFacturaUseCase } from './use-cases/regularizar-obligacion-op-factura.usecase';
 import { AuditoriaOperativaV2Repository } from './auditoria-operativa-v2.repository';
 import { TrazabilidadV2Repository } from './trazabilidad-v2.repository';
 import { TrazabilidadV2ProjectionMapper } from './trazabilidad-v2.projection.mapper';
@@ -41,6 +47,11 @@ import {
     ContenedorOperativoRepository,
     DocumentoOperativoPrincipalRepository,
     GrupoFacturaRepository,
+    CatalogoConceptosObligacionRepository,
+    ObligacionesSnapshotRepository,
+    RegularizadoresObligacionRepository,
+    ConfigProveedoresConceptoOpRepository,
+    ConfigBeneficiariosRendicionOpRepository,
     GrupoFacturaDocumentoRepository,
     ContenedorOperativoService,
     DocumentoOperativoPrincipalService,
@@ -59,6 +70,7 @@ import {
     AsociarDocumentoPrincipalV2UseCase,
     AsociarGrupoFacturaV2UseCase,
     AsociarDocumentoGrupoFacturaV2UseCase,
+    RegularizarObligacionOpFacturaUseCase,
     AuditoriaOperativaV2Repository,
     TrazabilidadV2Repository,
     TrazabilidadV2ProjectionMapper,

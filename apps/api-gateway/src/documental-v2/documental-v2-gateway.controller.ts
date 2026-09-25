@@ -872,6 +872,39 @@ export class DocumentalV2GatewayController {
     } catch (error: any) { this.throwUpstreamHttpException(error); }
   }
 
+  @Post('finanzas/ordenes-pago/regularizar-factura')
+  async regularizarObligacionOpFactura(
+    @Headers('authorization') authorization: string | undefined,
+    @Headers(REQUEST_ID_HEADER) requestId: string | undefined,
+    @Body() body: { grupoFacturaId: number; documentoId: number },
+  ) {
+    const contexto = await this.validateAuthorization(authorization);
+    this.assertFinanzasOp(contexto);
+
+    const payload = {
+      grupoFacturaId: body.grupoFacturaId,
+      documentoId: body.documentoId,
+    };
+
+    try {
+      const response = await axios.post(
+        `${this.getBaseUrl()}/documental-v2/finanzas/ordenes-pago/regularizar-factura`,
+        payload,
+        {
+          headers: this.buildDocumentosForwardHeaders(
+            authorization,
+            requestId,
+            contexto,
+          ),
+        },
+      );
+
+      return this.unwrap(response);
+    } catch (error: any) {
+      this.throwUpstreamHttpException(error);
+    }
+  }
+
   @Get('finanzas/ordenes-pago/:ordenPagoId')
   async obtenerOrdenPago(
     @Headers('authorization') authorization: string | undefined,

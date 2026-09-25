@@ -65,6 +65,10 @@ describe('DocumentalV2Controller', () => {
     listarDocumentosCandidatos: jest.fn(),
   };
 
+  const regularizarObligacionOpFacturaUseCase = {
+    execute: jest.fn(),
+  };
+
   const documentoExistenteReadonlyRepository = {
     listarCandidatosPrincipal: jest.fn(),
   };
@@ -88,6 +92,7 @@ describe('DocumentalV2Controller', () => {
       asociarDocumentoPrincipalV2UseCase as any,
       asociarGrupoFacturaV2UseCase as any,
       asociarDocumentoGrupoFacturaV2UseCase as any,
+      regularizarObligacionOpFacturaUseCase as any,
       consultarTrazabilidadV2UseCase as any,
       documentoExistenteReadonlyRepository as any,
     );
@@ -385,6 +390,49 @@ describe('DocumentalV2Controller', () => {
         tienePermisoAutorizarExcepcion: false,
       },
     });
+  });
+
+  it('regulariza una obligación OP mediante el usecase dedicado preservando contexto confiable', async () => {
+    const esperado = {
+      grupoFacturaId: 116,
+      documentoId: 910008,
+      tipoRelacion: 'regularizador_factura',
+      estadoRegularizacion: 'REGULARIZADO',
+      idempotente: false,
+    };
+
+    regularizarObligacionOpFacturaUseCase.execute.mockResolvedValue(esperado);
+
+    await expect(
+      controller.regularizarObligacionOpFactura(
+        { grupoFacturaId: 116, documentoId: 910008 },
+        '6',
+        'finanzas@documental.local',
+        '12',
+        'BBTI',
+        '2',
+        'req-b4',
+        'corr-b4',
+      ),
+    ).resolves.toBe(esperado);
+
+    expect(regularizarObligacionOpFacturaUseCase.execute).toHaveBeenCalledTimes(1);
+    expect(regularizarObligacionOpFacturaUseCase.execute).toHaveBeenCalledWith({
+      grupoFacturaId: 116,
+      documentoId: 910008,
+      usuario: {
+        id: 6,
+        email: 'finanzas@documental.local',
+        workspaceId: 12,
+        empresaCodigo: 'BBTI',
+        clienteDestinoId: 2,
+        requestId: 'req-b4',
+        correlationId: 'corr-b4',
+        origen: 'api-gateway',
+      },
+    });
+
+    expect(asociarDocumentoGrupoFacturaV2UseCase.execute).not.toHaveBeenCalled();
   });
 
   it('vincula un documento a un grupo de factura usando el service V2', async () => {

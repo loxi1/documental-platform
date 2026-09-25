@@ -593,6 +593,98 @@ describe('DocumentalV2GatewayController', () => {
     );
   });
 
+  it('regulariza obligación OP por proxy dedicado y filtra campos de autoridad', async () => {
+    const { controller, nats } = buildController({
+      sub: 1,
+      email: 'admin@documental.local',
+      workspaceId: 1,
+      permisos: {
+        menus: ['finanzas'],
+      },
+    });
+
+    const respuesta = {
+      grupoFacturaId: 116,
+      documentoId: 910008,
+      tipoRelacion: 'regularizador_factura',
+      estadoRegularizacion: 'REGULARIZADO',
+      idempotente: false,
+    };
+
+    (axios.post as jest.Mock).mockResolvedValueOnce({
+      data: {
+        success: true,
+        data: respuesta,
+      },
+    });
+
+    const body = {
+      grupoFacturaId: 116,
+      documentoId: 910008,
+      estadoRegularizacion: 'REGULARIZADO',
+      origenObligacion: 'FACTURA',
+      facturaDocumentoId: 999,
+      tiposRegularizadores: ['RECIBO_HONORARIO'],
+      requiresRegularizacion: false,
+    } as any;
+
+    const result = await controller.regularizarObligacionOpFactura(
+      'Bearer token-valido',
+      'req-b4',
+      body,
+    );
+
+    expect(nats.send).toHaveBeenCalledWith('auth.validate-token', {
+      token: 'token-valido',
+    });
+
+    expect(axios.post).toHaveBeenCalledWith(
+      'http://ms-documentos:3002/api/v1/documental-v2/finanzas/ordenes-pago/regularizar-factura',
+      {
+        grupoFacturaId: 116,
+        documentoId: 910008,
+      },
+      {
+        headers: {
+          authorization: 'Bearer token-valido',
+          'x-user-id': '1',
+          'x-user-email': 'admin@documental.local',
+          'x-workspace-id': '1',
+          'x-empresa-codigo': 'BBTI',
+          'x-cliente-destino-id': '2',
+          'x-request-id': 'req-b4',
+          'x-correlation-id': 'req-b4',
+        },
+      },
+    );
+
+    expect(result).toEqual(respuesta);
+  });
+
+  it('rechaza regularización OP sin permiso de Finanzas antes del upstream', async () => {
+    const { controller } = buildController({
+      sub: 1,
+      email: 'admin@documental.local',
+      workspaceId: 1,
+      permisos: {
+        menus: [],
+      },
+    });
+
+    await expect(
+      controller.regularizarObligacionOpFactura(
+        'Bearer token-valido',
+        'req-b4-denied',
+        {
+          grupoFacturaId: 116,
+          documentoId: 910008,
+        },
+      ),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+
+    expect(axios.post).not.toHaveBeenCalled();
+  });
+
 
   it('expone trazabilidad canónica V2 por proxy controlado', async () => {
     const { controller, nats } = buildController({

@@ -69,6 +69,7 @@ export type AsociarDocumentoGrupoFacturaV2Input = {
   grupoFacturaId: number;
   documentoId: number;
   tipoRelacion: string;
+  operacionInterna?: 'REGULARIZAR_FACTURA_OP';
   decisionCorrespondencia?: {
     accion: AccionDecisionCorrespondencia;
     motivo?: string | null;
@@ -205,7 +206,11 @@ export class AsociarDocumentoGrupoFacturaV2UseCase {
     const tipoRelacion = normalizarTexto(input.tipoRelacion);
 
     const contexto = await this.obtenerContextoGrupo(grupoFacturaId, input.usuario, executor);
-    this.validarTipoRelacionPermitido(tipoRelacion);
+    this.validarTipoRelacionPermitido(
+      tipoRelacion,
+      input.operacionInterna,
+      contexto,
+    );
 
     const documento = await this.documentos.buscarPorId(documentoId, executor);
     if (!documento) {
@@ -254,7 +259,11 @@ export class AsociarDocumentoGrupoFacturaV2UseCase {
       );
     }
 
-    this.validarCompatibilidadDocumentoRelacion(documento, tipoRelacion);
+    this.validarCompatibilidadDocumentoRelacion(
+      documento,
+      tipoRelacion,
+      input.operacionInterna,
+    );
 
     let evaluacionCorrespondencia:
       | EvaluacionCorrespondenciaPagoFactura
@@ -714,7 +723,34 @@ export class AsociarDocumentoGrupoFacturaV2UseCase {
     }
   }
 
-  private validarTipoRelacionPermitido(tipoRelacion: string) {
+  private validarTipoRelacionPermitido(
+    tipoRelacion: string,
+    operacionInterna: AsociarDocumentoGrupoFacturaV2Input['operacionInterna'],
+    contexto: {
+      grupo: GrupoFacturaRow;
+      principal: DocumentoOperativoPrincipalRow;
+      contenedor: ContenedorOperativoRow;
+    },
+  ) {
+    if (
+      operacionInterna === 'REGULARIZAR_FACTURA_OP' &&
+      tipoRelacion === 'regularizador_factura'
+    ) {
+      if (
+        contexto.grupo.origenObligacion !== 'ORDEN_PAGO' ||
+        contexto.grupo.facturaDocumentoId != null ||
+        contexto.principal.tipoPrincipal !== 'ORDEN_PAGO'
+      ) {
+        throw new ConflictException(
+          crearError(
+            'La relación regularizador_factura sólo aplica a una obligación ORDEN_PAGO válida',
+            'REGULARIZACION_OP_GRUPO_INVALIDO',
+          ),
+        );
+      }
+      return;
+    }
+
     if (!TIPOS_RELACION_PERMITIDOS.has(tipoRelacion)) {
       throw new ConflictException(
         crearError('Tipo de relación no permitido', 'TIPO_RELACION_NO_PERMITIDO', {
@@ -725,9 +761,31 @@ export class AsociarDocumentoGrupoFacturaV2UseCase {
     }
   }
 
-  private validarCompatibilidadDocumentoRelacion(documento: DocumentoExistenteV2, tipoRelacion: string) {
+  private validarCompatibilidadDocumentoRelacion(
+    documento: DocumentoExistenteV2,
+    tipoRelacion: string,
+    operacionInterna: AsociarDocumentoGrupoFacturaV2Input['operacionInterna'],
+  ) {
     const tipoDocumental = documento.tipoDocumental?.trim().toUpperCase();
-    const tipoRelacionEsperada = TIPOS_RELACION_POR_TIPO_DOCUMENTAL[tipoDocumental];
+
+    if (
+      operacionInterna === 'REGULARIZAR_FACTURA_OP' &&
+      tipoRelacion === 'regularizador_factura'
+    ) {
+      if (tipoDocumental !== 'FACTURA') {
+        throw new ConflictException(
+          crearError(
+            'regularizador_factura requiere un documento FACTURA',
+            'TIPO_DOCUMENTAL_NO_PERMITIDO_EN_GRUPO',
+            { tipoDocumental, tipoRelacion },
+          ),
+        );
+      }
+      return;
+    }
+
+    const tipoRelacionEsperada =
+      TIPOS_RELACION_POR_TIPO_DOCUMENTAL[tipoDocumental];
 
     if (!tipoRelacionEsperada) {
       throw new ConflictException(
