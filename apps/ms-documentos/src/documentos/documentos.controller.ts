@@ -224,6 +224,9 @@ export class DocumentosController {
       observacion?: string;
     },
     @Headers('x-user-id') userId?: string,
+    @Headers('x-workspace-id') workspaceId?: string,
+    @Headers('x-empresa-codigo') empresaCodigo?: string,
+    @Headers('x-cliente-destino-id') clienteDestinoId?: string,
     @Headers('x-request-id') requestId?: string,
     @Headers('x-correlation-id') correlationId?: string,
   ) {
@@ -240,6 +243,16 @@ export class DocumentosController {
           Number.isFinite(usuarioId) && usuarioId > 0 ? usuarioId : null,
         requestId: requestId?.trim() || null,
         correlationId: correlationId?.trim() || requestId?.trim() || null,
+        workspaceId:
+          Number.isFinite(Number(workspaceId)) && Number(workspaceId) > 0
+            ? Number(workspaceId)
+            : null,
+        empresaCodigo: empresaCodigo?.trim().toUpperCase() || null,
+        clienteDestinoId:
+          Number.isFinite(Number(clienteDestinoId)) &&
+          Number(clienteDestinoId) > 0
+            ? Number(clienteDestinoId)
+            : null,
       },
     );
   }

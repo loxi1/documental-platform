@@ -15,6 +15,7 @@ export type ConfirmacionDocumentalIntegradaInput = {
   expedienteId: number;
   documentoBaseId?: number;
   grupoFacturaId?: number | null;
+  origenObligacion?: 'ORDEN_PAGO';
   tipoRelacion?: string;
   esPrincipal?: boolean;
   orden?: number;

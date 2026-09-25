@@ -4,9 +4,14 @@ import { BadRequestException, ConflictException, Inject, Injectable, NotFoundExc
 import { ClientProxy } from '@nestjs/microservices';
 import { firstValueFrom, timeout } from 'rxjs';
 import { NatsSubjects } from '@documental/shared';
+import { sql } from '@documental/database';
 import { NATS_CLIENT } from '../nats/nats-client.provider';
 import { DocumentoEventosService } from '../documento-eventos/documento-eventos.service';
-import { OrquestarConfirmacionDocumentalV2UseCase } from '../documental-v2/use-cases/orquestar-confirmacion-documental-v2.usecase';
+import {
+  OrquestarConfirmacionDocumentalV2UseCase,
+  type ConfirmacionDocumentalIntegradaInput,
+} from '../documental-v2/use-cases/orquestar-confirmacion-documental-v2.usecase';
+import { GrupoFacturaRepository } from '../documental-v2/grupo-factura.repository';
 
 import {
   DocumentosFilters,
@@ -22,6 +27,7 @@ export class DocumentosService {
     private readonly documentoEventos: DocumentoEventosService,
     @Inject(NATS_CLIENT)
     private readonly nats: ClientProxy,
+    private readonly grupoFacturaRepository: GrupoFacturaRepository,
   ) {}
 
   findAll(filters: DocumentosFilters) {
@@ -529,6 +535,9 @@ export class DocumentosService {
       requestId?: string | null;
       correlationId?: string | null;
       tienePermisoAutorizarExcepcion?: boolean;
+      workspaceId?: number | null;
+      empresaCodigo?: string | null;
+      clienteDestinoId?: number | null;
     },
   ) {
     if (!input?.expedienteId) {
@@ -559,11 +568,101 @@ export class DocumentosService {
       });
     }
 
-    const confirmado = await this.orquestarConfirmacionV2.executeManualFactura(
-      params,
-      input,
-      audit,
-    );
+    let inputConfiable: ConfirmacionDocumentalIntegradaInput = input;
+
+    if (input.grupoFacturaId != null) {
+      const usuarioId = Number(audit?.usuarioId ?? NaN);
+      const workspaceId = Number(audit?.workspaceId ?? NaN);
+      const empresaCodigo = String(audit?.empresaCodigo ?? '')
+        .trim()
+        .toUpperCase();
+      const clienteDestinoId = Number(audit?.clienteDestinoId ?? NaN);
+
+      if (
+        !Number.isInteger(usuarioId) ||
+        usuarioId <= 0 ||
+        !Number.isInteger(workspaceId) ||
+        workspaceId <= 0 ||
+        !empresaCodigo ||
+        !Number.isInteger(clienteDestinoId) ||
+        clienteDestinoId <= 0
+      ) {
+        throw new BadRequestException({
+          code: 'CONTEXTO_AUTENTICADO_INCOMPLETO',
+          message:
+            'No se pudo acreditar el contexto autenticado para resolver la obligación.',
+        });
+      }
+
+      const obligacion =
+        await this.grupoFacturaRepository.buscarObligacionScoped(
+          input.grupoFacturaId,
+          {
+            id: usuarioId,
+            workspaceId,
+            empresaCodigo,
+            clienteDestinoId,
+          },
+          sql,
+        );
+
+      if (!obligacion) {
+        throw new BadRequestException({
+          code: 'GRUPO_FACTURA_NO_AUTORIZADO',
+          message:
+            'El grupo indicado no existe o no pertenece al contexto autorizado.',
+        });
+      }
+
+      if (obligacion.origenObligacion === 'ORDEN_PAGO') {
+        if (
+          obligacion.tipoPrincipal !== 'ORDEN_PAGO' ||
+          obligacion.expedienteId !== input.expedienteId
+        ) {
+          throw new BadRequestException({
+            code: 'CONTEXTO_OP_INCONSISTENTE',
+            message:
+              'La obligación de Orden de Pago no corresponde al expediente autorizado.',
+          });
+        }
+
+        if (
+          input.documentoBaseId != null &&
+          input.documentoBaseId !== obligacion.documentoPrincipalId
+        ) {
+          throw new BadRequestException({
+            code: 'DOCUMENTO_BASE_OP_INCONSISTENTE',
+            message:
+              'El documento base indicado no corresponde a la obligación autorizada.',
+          });
+        }
+
+        inputConfiable = {
+          ...input,
+          grupoFacturaId: input.grupoFacturaId,
+          documentoBaseId: obligacion.documentoPrincipalId,
+          origenObligacion: 'ORDEN_PAGO',
+        };
+      }
+    }
+
+    let confirmado;
+    try {
+      confirmado = await this.orquestarConfirmacionV2.executeManualFactura(
+        params,
+        inputConfiable,
+        audit,
+      );
+    } catch (error: any) {
+      if (error?.code === 'OCR_VALIDACION_INVALIDA') {
+        throw new BadRequestException({
+          code: error.code,
+          message: error.message,
+          details: error.details ?? null,
+        });
+      }
+      throw error;
+    }
 
     if (!confirmado) {
       throw new NotFoundException(
