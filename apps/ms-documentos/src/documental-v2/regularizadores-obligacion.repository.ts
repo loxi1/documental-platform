@@ -5,6 +5,24 @@ type Executor = Pick<typeof sql, 'unsafe'>;
 
 @Injectable()
 export class RegularizadoresObligacionRepository {
+  async reemplazarCongeladosTemprano(
+    grupoFacturaId: number,
+    tiposDocumentales: string[],
+    executor: Executor = sql,
+  ): Promise<void> {
+    await executor.unsafe(
+      `DELETE FROM documentos.obligacion_regularizadores_snapshot
+       WHERE grupo_factura_id = $1`,
+      [grupoFacturaId],
+    );
+
+    await this.congelarParaObligacion(
+      grupoFacturaId,
+      tiposDocumentales,
+      executor,
+    );
+  }
+
   async listarConfiguradosActivosPorConcepto(
     conceptoId: number,
     executor: Executor = sql,

@@ -2,8 +2,8 @@ import { createHash } from 'node:crypto';
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { sql } from '@documental/database';
 import { AuditoriaOperativaV2Repository } from '../auditoria-operativa-v2.repository';
-import { validarActorOp, validarOrdenPago } from './orden-pago.dto';
-import type { OrdenPagoActor } from './orden-pago.dto';
+import { validarActorOp, validarEdicionOrdenPago, validarOrdenPago } from './orden-pago.dto';
+import type { EditarOrdenPagoInput, OrdenPagoActor } from './orden-pago.dto';
 import type { SqlExecutor } from '../sql-executor';
 import { CatalogoConceptosObligacionRepository } from '../catalogo-conceptos-obligacion.repository';
 import { ObligacionesSnapshotRepository } from '../obligaciones-snapshot.repository';
@@ -457,6 +457,462 @@ export class OrdenPagoService {
     }
 
     throw new ConflictException('REGLA_BENEFICIARIO_INCONSISTENTE');
+  }
+
+  async editar(
+    ordenPagoId: number,
+    body: unknown,
+    actor: OrdenPagoActor,
+    executor?: SqlExecutor,
+  ) {
+    validarActorOp(actor);
+
+    if (!Number.isSafeInteger(ordenPagoId) || ordenPagoId <= 0) {
+      throw new NotFoundException('Orden de Pago no disponible');
+    }
+
+    const input = validarEdicionOrdenPago(body);
+
+    const earlyFields: Array<keyof EditarOrdenPagoInput> = [
+      'periodoAnio',
+      'periodoMes',
+      'codigoPago',
+      'conceptoCodigo',
+      'proveedorId',
+      'beneficiarioClienteDestinoId',
+      'beneficiarioUsuarioId',
+      'beneficiarioNombreLibre',
+    ];
+
+    const requiereEdicionTemprana = earlyFields.some(
+      campo => Object.prototype.hasOwnProperty.call(input, campo),
+    );
+
+    const edit = async (tx: SqlExecutor) => {
+      const rows = await tx`
+        SELECT
+          p.id AS "ordenPagoId",
+          p.documento_id AS "documentoId",
+          p.contenedor_operativo_id AS "contenedorOperativoId",
+          p.proveedor_id AS "proveedorId",
+          p.beneficiario_cliente_destino_id AS "beneficiarioClienteDestinoId",
+          p.beneficiario_usuario_id AS "beneficiarioUsuarioId",
+          p.beneficiario_nombre_libre AS "beneficiarioNombreLibre",
+          g.id AS "grupoFacturaId",
+          g.origen_obligacion AS "origenObligacion",
+          g.factura_documento_id AS "facturaDocumentoId",
+          c.empresa_codigo AS "empresaCodigo",
+          c.cliente_destino_id AS "clienteDestinoId",
+          d.fecha_emision::text AS "fechaEmision",
+          d.monto_total::text AS monto,
+          d.moneda,
+          d.metadata->'ordenPago'->>'observacion' AS observacion,
+          os.concepto_id AS "conceptoId",
+          co.codigo AS "conceptoCodigo",
+          os.requiere_regularizacion_aplicada AS "requiereRegularizacionAplicada",
+          os.estado_regularizacion AS "estadoRegularizacion",
+          os.periodo_anio AS "periodoAnio",
+          os.periodo_mes AS "periodoMes",
+          os.codigo_pago AS "codigoPago",
+          os.tipo_beneficiario_aplicado AS "tipoBeneficiarioAplicado",
+          os.uso_beneficiario_aplicado AS "usoBeneficiarioAplicado"
+        FROM documentos.documentos_operativos_principales p
+        JOIN documentos.documentos d
+          ON d.id = p.documento_id
+         AND d.tipo_documental = 'ORDEN_PAGO'
+        JOIN documentos.contenedores_operativos c
+          ON c.id = p.contenedor_operativo_id
+        JOIN documentos.grupos_factura g
+          ON g.documento_operativo_principal_id = p.id
+         AND g.origen_obligacion = 'ORDEN_PAGO'
+        JOIN documentos.obligaciones_snapshot os
+          ON os.grupo_factura_id = g.id
+        LEFT JOIN documentos.catalogo_conceptos_obligacion co
+          ON co.id = os.concepto_id
+        WHERE p.id = ${ordenPagoId}
+          AND p.tipo_principal = 'ORDEN_PAGO'
+          AND p.estado = 'activo'
+          AND p.es_principal_activo = true
+          AND c.estado = 'activo'
+          AND c.empresa_codigo = ${actor.empresaCodigo}
+          AND c.cliente_destino_id IS NOT DISTINCT FROM ${actor.clienteDestinoId}::bigint
+        FOR UPDATE OF p, d, g, os
+      `;
+
+      const actual = rows[0];
+
+      if (!actual) {
+        throw new NotFoundException('Orden de Pago no disponible');
+      }
+
+      if (
+        actual.origenObligacion !== 'ORDEN_PAGO' ||
+        actual.facturaDocumentoId != null
+      ) {
+        throw new ConflictException('OP_ESTRUCTURA_NO_EDITABLE');
+      }
+
+      if (!actual.conceptoId || !actual.conceptoCodigo) {
+        throw new ConflictException('OBLIGACION_SNAPSHOT_INCONSISTENTE');
+      }
+
+      if (requiereEdicionTemprana) {
+        if (String(actual.estadoRegularizacion) === 'REGULARIZADO') {
+          throw new ConflictException('OP_REGULARIZADA_NO_PERMITE_EDICION_TEMPRANA');
+        }
+
+        const asociaciones = await tx`
+          SELECT id, tipo_relacion
+          FROM documentos.grupo_factura_documentos
+          WHERE grupo_factura_id = ${Number(actual.grupoFacturaId)}::bigint
+            AND estado = 'activo'
+            AND tipo_relacion IN (
+              'adjunto_guia',
+              'adjunto_nota_ingreso',
+              'adjunto_transferencia',
+              'adjunto_detraccion',
+              'regularizador_factura'
+            )
+          LIMIT 1
+        `;
+
+        if (asociaciones.length > 0) {
+          throw new ConflictException('OP_FUERA_DE_VENTANA_EDICION_TEMPRANA');
+        }
+      }
+
+      if (input.moneda !== undefined) {
+        const monedas = await tx`
+          SELECT codigo
+          FROM core.monedas
+          WHERE codigo = ${input.moneda}
+            AND activo = true
+        `;
+        if (!monedas.length) {
+          throw new ConflictException('Moneda no disponible');
+        }
+      }
+
+      const fechaEmision = input.fechaEmision ?? String(actual.fechaEmision);
+      const monto = input.monto ?? String(actual.monto);
+      const moneda = input.moneda ?? String(actual.moneda);
+      const observacion =
+        input.observacion !== undefined
+          ? input.observacion
+          : actual.observacion == null
+            ? null
+            : String(actual.observacion);
+
+      let conceptoId = Number(actual.conceptoId);
+      let conceptoCodigo = String(actual.conceptoCodigo);
+      let requiereRegularizacion =
+        Boolean(actual.requiereRegularizacionAplicada);
+      let estadoRegularizacion = String(actual.estadoRegularizacion) as
+        'NO_REQUIERE' | 'PENDIENTE' | 'REGULARIZADO';
+      let tipoBeneficiarioAplicado =
+        actual.tipoBeneficiarioAplicado == null
+          ? null
+          : String(actual.tipoBeneficiarioAplicado);
+      let usoBeneficiarioAplicado =
+        actual.usoBeneficiarioAplicado == null
+          ? null
+          : String(actual.usoBeneficiarioAplicado);
+
+      const periodoAnio =
+        input.periodoAnio !== undefined
+          ? input.periodoAnio
+          : actual.periodoAnio == null
+            ? null
+            : Number(actual.periodoAnio);
+
+      const periodoMes =
+        input.periodoMes !== undefined
+          ? input.periodoMes
+          : actual.periodoMes == null
+            ? null
+            : Number(actual.periodoMes);
+
+      if ((periodoAnio == null) !== (periodoMes == null)) {
+        throw new BadRequestException('Período incompleto');
+      }
+
+      const codigoPago =
+        input.codigoPago !== undefined
+          ? input.codigoPago
+          : actual.codigoPago == null
+            ? null
+            : String(actual.codigoPago);
+
+      let beneficiario = {
+        proveedorId:
+          actual.proveedorId == null ? null : Number(actual.proveedorId),
+        beneficiarioClienteDestinoId:
+          actual.beneficiarioClienteDestinoId == null
+            ? null
+            : Number(actual.beneficiarioClienteDestinoId),
+        beneficiarioUsuarioId:
+          actual.beneficiarioUsuarioId == null
+            ? null
+            : Number(actual.beneficiarioUsuarioId),
+        beneficiarioNombreLibre:
+          actual.beneficiarioNombreLibre == null
+            ? null
+            : String(actual.beneficiarioNombreLibre),
+      };
+
+      let tiposRegularizadores: string[] | null = null;
+      const cambiaConcepto =
+        input.conceptoCodigo !== undefined &&
+        input.conceptoCodigo !== conceptoCodigo;
+
+      const tocaBeneficiario = [
+        'proveedorId',
+        'beneficiarioClienteDestinoId',
+        'beneficiarioUsuarioId',
+        'beneficiarioNombreLibre',
+      ].some(campo => Object.prototype.hasOwnProperty.call(input, campo));
+
+      const tocaCodigoPago =
+        Object.prototype.hasOwnProperty.call(input, 'codigoPago');
+
+      /*
+       * El período por sí solo no reinterpreta la semántica histórica.
+       * Concepto, referencia funcional y beneficiario sólo se resuelven
+       * cuando el usuario modifica alguno de esos elementos.
+       */
+      if (cambiaConcepto || tocaBeneficiario || tocaCodigoPago) {
+        const concepto = await this.catalogoConceptos.buscarPorCodigo(
+          input.conceptoCodigo ?? conceptoCodigo,
+          tx,
+        );
+
+        if (!concepto) {
+          throw new ConflictException('CONCEPTO_OBLIGACION_NO_RESUELTO');
+        }
+
+        if (!concepto.activo) {
+          throw new ConflictException('CONCEPTO_OBLIGACION_INACTIVO');
+        }
+
+        /*
+         * La referencia funcional depende de la regla canónica del concepto.
+         * Se valida tanto al cambiar concepto como al editar codigoPago.
+         */
+        if (cambiaConcepto || tocaCodigoPago) {
+          this.validarReferenciaConcepto(
+            concepto.usoCodigoPago,
+            codigoPago,
+          );
+        }
+
+        /*
+         * Un cambio de concepto o una edición explícita de beneficiario
+         * obliga a resolver nuevamente el beneficiario.
+         *
+         * Si el usuario toca cualquier campo de beneficiario, la selección
+         * es atómica: los tipos no enviados quedan NULL. Así no se arrastra
+         * un beneficiario incompatible de la selección anterior.
+         *
+         * Al cambiar concepto también partimos de una selección vacía para
+         * que las reglas canónicas puedan autoseleccionar cuando corresponda.
+         */
+        if (cambiaConcepto || tocaBeneficiario) {
+          const beneficiarioSolicitado = {
+            contenedorOperativoId: Number(actual.contenedorOperativoId),
+            proveedorId:
+              input.proveedorId !== undefined ? input.proveedorId : null,
+            beneficiarioClienteDestinoId:
+              input.beneficiarioClienteDestinoId !== undefined
+                ? input.beneficiarioClienteDestinoId
+                : null,
+            beneficiarioUsuarioId:
+              input.beneficiarioUsuarioId !== undefined
+                ? input.beneficiarioUsuarioId
+                : null,
+            beneficiarioNombreLibre:
+              input.beneficiarioNombreLibre !== undefined
+                ? input.beneficiarioNombreLibre
+                : null,
+          };
+
+          beneficiario = await this.resolverBeneficiarioConcepto(
+            concepto,
+            beneficiarioSolicitado,
+            actual.clienteDestinoId == null
+              ? null
+              : Number(actual.clienteDestinoId),
+            tx,
+          );
+        }
+
+        /*
+         * Sólo cambiar el concepto reconstruye la semántica congelada de
+         * la obligación. Período, referencia o beneficiario no deben
+         * recalcular estado de regularización ni regularizadores.
+         */
+        if (cambiaConcepto) {
+          conceptoId = concepto.id;
+          conceptoCodigo = String(concepto.codigo);
+
+          tiposRegularizadores =
+            await this.regularizadoresObligacion.listarConfiguradosActivosPorConcepto(
+              concepto.id,
+              tx,
+            );
+
+          if (
+            concepto.requiereRegularizacion &&
+            tiposRegularizadores.length === 0
+          ) {
+            throw new ConflictException(
+              'CONCEPTO_OBLIGACION_SIN_REGULARIZADOR_CONFIGURADO',
+            );
+          }
+
+          requiereRegularizacion = concepto.requiereRegularizacion;
+          estadoRegularizacion =
+            concepto.requiereRegularizacion ? 'PENDIENTE' : 'NO_REQUIERE';
+          tipoBeneficiarioAplicado = concepto.tipoBeneficiario;
+          usoBeneficiarioAplicado = concepto.usoBeneficiario;
+        }
+      }
+
+      const antes = {
+        fechaEmision: String(actual.fechaEmision),
+        monto: String(actual.monto),
+        moneda: String(actual.moneda),
+        observacion:
+          actual.observacion == null ? null : String(actual.observacion),
+        conceptoCodigo: String(actual.conceptoCodigo),
+        periodoAnio:
+          actual.periodoAnio == null ? null : Number(actual.periodoAnio),
+        periodoMes:
+          actual.periodoMes == null ? null : Number(actual.periodoMes),
+        codigoPago:
+          actual.codigoPago == null ? null : String(actual.codigoPago),
+        proveedorId:
+          actual.proveedorId == null ? null : Number(actual.proveedorId),
+        beneficiarioClienteDestinoId:
+          actual.beneficiarioClienteDestinoId == null
+            ? null
+            : Number(actual.beneficiarioClienteDestinoId),
+        beneficiarioUsuarioId:
+          actual.beneficiarioUsuarioId == null
+            ? null
+            : Number(actual.beneficiarioUsuarioId),
+        beneficiarioNombreLibre:
+          actual.beneficiarioNombreLibre == null
+            ? null
+            : String(actual.beneficiarioNombreLibre),
+        estadoRegularizacion: String(actual.estadoRegularizacion),
+      };
+
+      await tx`
+        UPDATE documentos.documentos
+        SET fecha_emision = ${fechaEmision}::date,
+            monto_total = ${monto}::numeric(14,2),
+            moneda = ${moneda},
+            metadata = jsonb_set(
+              COALESCE(metadata, '{}'::jsonb),
+              '{ordenPago,observacion}',
+              ${JSON.stringify(observacion)}::jsonb,
+              true
+            )
+        WHERE id = ${Number(actual.documentoId)}::bigint
+      `;
+
+      if (requiereEdicionTemprana) {
+        await tx`
+          UPDATE documentos.documentos_operativos_principales
+          SET proveedor_id = ${beneficiario.proveedorId}::integer,
+              beneficiario_cliente_destino_id =
+                ${beneficiario.beneficiarioClienteDestinoId}::integer,
+              beneficiario_usuario_id =
+                ${beneficiario.beneficiarioUsuarioId}::integer,
+              beneficiario_nombre_libre =
+                ${beneficiario.beneficiarioNombreLibre}::text
+          WHERE id = ${ordenPagoId}::bigint
+        `;
+
+        const snapshotActualizado =
+          await this.obligacionesSnapshot.actualizarTemprano(
+            {
+              grupoFacturaId: Number(actual.grupoFacturaId),
+              conceptoId,
+              requiereRegularizacionAplicada: requiereRegularizacion,
+              estadoRegularizacion,
+              periodoAnio,
+              periodoMes,
+              codigoPago,
+              tipoBeneficiarioAplicado,
+              usoBeneficiarioAplicado,
+            },
+            tx,
+          );
+
+        if (!snapshotActualizado) {
+          throw new ConflictException('OP_SNAPSHOT_NO_EDITABLE');
+        }
+
+        if (cambiaConcepto) {
+          await this.regularizadoresObligacion.reemplazarCongeladosTemprano(
+            Number(actual.grupoFacturaId),
+            requiereRegularizacion ? (tiposRegularizadores ?? []) : [],
+            tx,
+          );
+        }
+      }
+
+      const despues = {
+        fechaEmision,
+        monto,
+        moneda,
+        observacion,
+        conceptoCodigo,
+        periodoAnio,
+        periodoMes,
+        codigoPago,
+        ...beneficiario,
+        estadoRegularizacion,
+      };
+
+      const camposModificados = Object.keys(input);
+
+      await this.auditoria.registrarEdicion(
+        {
+          accion: 'EDITAR_OP',
+          entidad: 'documento_operativo_principal',
+          entidadId: ordenPagoId,
+          descripcion: 'Orden de Pago editada en Finanzas.',
+          empresaCodigo: actor.empresaCodigo,
+          usuario: { ...actor, origen: 'finanzas-op-editar' },
+          antes: {
+            ...antes,
+            ordenPagoId,
+            documentoId: Number(actual.documentoId),
+            grupoFacturaId: Number(actual.grupoFacturaId),
+          },
+          despues: {
+            ...despues,
+            ordenPagoId,
+            documentoId: Number(actual.documentoId),
+            grupoFacturaId: Number(actual.grupoFacturaId),
+            camposModificados,
+          },
+        },
+        tx,
+      );
+
+      return {
+        ordenPagoId,
+        documentoId: Number(actual.documentoId),
+        grupoFacturaId: Number(actual.grupoFacturaId),
+        contenedorOperativoId: Number(actual.contenedorOperativoId),
+        camposModificados,
+      };
+    };
+
+    return executor ? edit(executor) : sql.begin(edit);
   }
 
   async crear(body: unknown, key: string, actor: OrdenPagoActor, executor?: SqlExecutor) {

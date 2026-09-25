@@ -1,5 +1,5 @@
 import { BuscarContextosOpService } from './buscar-contextos-op.service';
-import { Controller, Get, Headers, Param, Query } from '@nestjs/common';
+import { Body, Controller, Get, Headers, Param, Patch, Query } from '@nestjs/common';
 import { OrdenPagoService } from './orden-pago.service';
 import { validarActorOp } from './orden-pago.dto';
 import type { OrdenPagoActor } from './orden-pago.dto';
@@ -32,6 +32,16 @@ export class OrdenPagoController {
   obtenerDetalle(@Headers() headers: Record<string, string>, @Param('ordenPagoId') id: string) {
     return this.op.obtenerDetalle(Number(id), this.actor(headers));
   }
+
+  @Patch('ordenes-pago/:ordenPagoId')
+  editar(
+    @Headers() headers: Record<string, string>,
+    @Param('ordenPagoId') id: string,
+    @Body() body: unknown,
+  ) {
+    return this.op.editar(Number(id), body, this.actor(headers));
+  }
+
 
   @Get('bandeja')
   async bandeja(@Headers() headers: Record<string, string>, @Query() query: Record<string, string>) {

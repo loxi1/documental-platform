@@ -1449,6 +1449,28 @@ export class DocumentosRepository {
   }
 
 
+  async obtenerEstadoArchivoVersion(archivoId: number) {
+    if (!Number.isSafeInteger(archivoId) || archivoId <= 0) {
+      return null;
+    }
+
+    const [row] = await sql`
+      SELECT
+        id,
+        documento_id,
+        version,
+        es_version_actual,
+        estado,
+        area_origen,
+        origen_archivo,
+        metadata
+      FROM documentos.documentos_archivos
+      WHERE id = ${archivoId}::int
+    `;
+
+    return row ?? null;
+  }
+
   async agregarArchivoComoVersion(params: {
     documentoId: number;
     archivoId: number;
@@ -1456,6 +1478,9 @@ export class DocumentosRepository {
     observacion?: string | null;
     marcarComoActual?: boolean;
     usuarioId?: number | null;
+    areaOrigen?: string | null;
+    origenArchivo?: string | null;
+    metadataMerge?: Record<string, unknown> | null;
     recuperacionAlmacen?: { contexto: AlmacenContexto; scope: AlmacenScope; documentoIdCandidato: number };
     recuperacionCompras?: { expedienteId: number; principalId: number; documentoIdCandidato: number;
       scope: { workspaceId: number; clienteDestinoId: number; empresa: string } };
@@ -1604,7 +1629,12 @@ export class DocumentosRepository {
           es_version_actual = ${marcarComoActual}::boolean,
           estado = 'activo',
           observacion = COALESCE(${params.observacion ?? null}::text, observacion),
-          metadata = COALESCE(metadata, '{}'::jsonb)
+          area_origen = COALESCE(${params.areaOrigen ?? null}::text, area_origen),
+          origen_archivo = COALESCE(${params.origenArchivo ?? null}::text, origen_archivo),
+          metadata = (
+            COALESCE(metadata, '{}'::jsonb)
+            || ${JSON.stringify(params.metadataMerge ?? {})}::jsonb
+          )
             || jsonb_build_object(
               'versionado',
               jsonb_build_object(

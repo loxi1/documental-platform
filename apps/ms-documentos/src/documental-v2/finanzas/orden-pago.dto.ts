@@ -23,12 +23,153 @@ export type OrdenPagoActor = {
   sessionContextId?: string | null; sistemaCodigo?: string | null; perfilCodigo?: string | null;
 };
 
+export type EditarOrdenPagoInput = {
+  fechaEmision?: string;
+  monto?: string;
+  moneda?: string;
+  observacion?: string | null;
+  periodoAnio?: number | null;
+  periodoMes?: number | null;
+  codigoPago?: string | null;
+  conceptoCodigo?: string;
+  proveedorId?: number | null;
+  beneficiarioClienteDestinoId?: number | null;
+  beneficiarioUsuarioId?: number | null;
+  beneficiarioNombreLibre?: string | null;
+};
+
 export function validarActorOp(actor: OrdenPagoActor) {
   if (!Number.isSafeInteger(actor.id) || actor.id <= 0 ||
       !Number.isSafeInteger(actor.workspaceId) || actor.workspaceId <= 0 || !actor.empresaCodigo ||
       (actor.clienteDestinoId != null && (!Number.isSafeInteger(actor.clienteDestinoId) || actor.clienteDestinoId <= 0))) {
     throw new ForbiddenException('Contexto autenticado de Finanzas requerido');
   }
+}
+
+export function validarEdicionOrdenPago(body: unknown): EditarOrdenPagoInput {
+  const fail = (message: string): never => { throw new BadRequestException(message); };
+  if (!body || typeof body !== 'object' || Array.isArray(body)) fail('Edición OP inválida');
+
+  const b = body as Record<string, unknown>;
+  const allowed = [
+    'fechaEmision', 'monto', 'moneda', 'observacion',
+    'periodoAnio', 'periodoMes', 'codigoPago', 'conceptoCodigo',
+    'proveedorId', 'beneficiarioClienteDestinoId',
+    'beneficiarioUsuarioId', 'beneficiarioNombreLibre',
+  ];
+
+  const keys = Object.keys(b);
+  if (!keys.length) fail('Edición OP sin cambios');
+  if (keys.some(k => !allowed.includes(k))) fail('Campo no autorizado en edición OP');
+
+  const out: EditarOrdenPagoInput = {};
+
+  if ('fechaEmision' in b) {
+    const fecha = String(b.fechaEmision ?? '');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha) || !Number.isFinite(Date.parse(fecha)) ||
+        new Date(fecha).toISOString().slice(0, 10) !== fecha || fecha < '1900-01-01') {
+      fail('Fecha de emisión inválida');
+    }
+    out.fechaEmision = fecha;
+  }
+
+  if ('monto' in b) {
+    const monto = String(b.monto ?? '').trim();
+    if (!/^\d{1,12}(\.\d{1,2})?$/.test(monto) || Number(monto) <= 0) {
+      fail('Monto positivo con máximo dos decimales requerido');
+    }
+    const [entero, decimal = ''] = monto.split('.');
+    out.monto = `${BigInt(entero)}.${decimal.padEnd(2, '0')}`;
+  }
+
+  if ('moneda' in b) {
+    const moneda = String(b.moneda ?? '').trim().toUpperCase();
+    if (!['PEN', 'USD'].includes(moneda)) fail('Moneda no habilitada');
+    out.moneda = moneda;
+  }
+
+  if ('observacion' in b) {
+    if (b.observacion != null && typeof b.observacion !== 'string') {
+      fail('Observación inválida');
+    }
+    const observacion = String(b.observacion ?? '').trim() || null;
+    if (observacion && observacion.length > 2000) fail('Observación demasiado extensa');
+    out.observacion = observacion;
+  }
+
+  if ('periodoAnio' in b) {
+    const anio = b.periodoAnio == null ? null : Number(b.periodoAnio);
+    if (anio != null &&
+        (!Number.isSafeInteger(anio) || anio < 1900 || anio > 9999)) {
+      fail('Año de período inválido');
+    }
+    out.periodoAnio = anio;
+  }
+
+  if ('periodoMes' in b) {
+    const mes = b.periodoMes == null ? null : Number(b.periodoMes);
+    if (mes != null &&
+        (!Number.isSafeInteger(mes) || mes < 1 || mes > 12)) {
+      fail('Mes de período inválido');
+    }
+    out.periodoMes = mes;
+  }
+
+  if ('codigoPago' in b) {
+    const codigoPago =
+      b.codigoPago == null ? null : String(b.codigoPago).trim() || null;
+
+    if (codigoPago && codigoPago.length > 250) {
+      fail('Referencia funcional demasiado extensa');
+    }
+
+    out.codigoPago = codigoPago;
+  }
+
+  if ('conceptoCodigo' in b) {
+    const conceptoCodigo = String(b.conceptoCodigo ?? '').trim();
+    if (!conceptoCodigo) fail('Concepto OP requerido');
+    out.conceptoCodigo = conceptoCodigo;
+  }
+
+  const enteroPositivoNullable = (campo: string) => {
+    if (!(campo in b)) return;
+
+    const valor = b[campo];
+
+    if (valor == null) {
+      (out as Record<string, unknown>)[campo] = null;
+      return;
+    }
+
+    if (!Number.isSafeInteger(valor) || Number(valor) <= 0) {
+      fail(`${campo} debe ser un entero positivo`);
+    }
+
+    (out as Record<string, unknown>)[campo] = Number(valor);
+  };
+
+  enteroPositivoNullable('proveedorId');
+  enteroPositivoNullable('beneficiarioClienteDestinoId');
+  enteroPositivoNullable('beneficiarioUsuarioId');
+
+  if ('beneficiarioNombreLibre' in b) {
+    if (b.beneficiarioNombreLibre != null &&
+        typeof b.beneficiarioNombreLibre !== 'string') {
+      fail('beneficiarioNombreLibre inválido');
+    }
+
+    const nombre =
+      String(b.beneficiarioNombreLibre ?? '').trim() || null;
+
+    if (nombre && nombre.length > 250) {
+      fail('beneficiarioNombreLibre demasiado extenso');
+    }
+
+    out.beneficiarioNombreLibre = nombre;
+  }
+
+  return out;
 }
 
 export function validarOrdenPago(body: unknown, key: string): OrdenPagoInput {

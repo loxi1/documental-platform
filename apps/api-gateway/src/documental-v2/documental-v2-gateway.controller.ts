@@ -905,6 +905,68 @@ export class DocumentalV2GatewayController {
     }
   }
 
+  @Post('finanzas/ordenes-pago/:ordenPagoId/reemplazar-archivo-inicial')
+  async reemplazarArchivoInicialOrdenPago(
+    @Headers('authorization') authorization: string | undefined,
+    @Headers(REQUEST_ID_HEADER) requestId: string | undefined,
+    @Headers('idempotency-key') key: string | undefined,
+    @Param('ordenPagoId') ordenPagoId: string,
+    @Body() body: unknown,
+  ) {
+    const contexto = await this.validateAuthorization(authorization);
+    this.assertFinanzasOp(contexto, true);
+
+    try {
+      const response = await axios.post(
+        `${this.getBaseUrl()}/documental-v2/finanzas/ordenes-pago/${encodeURIComponent(ordenPagoId)}/reemplazar-archivo-inicial`,
+        body,
+        {
+          headers: {
+            ...this.buildDocumentosForwardHeaders(
+              authorization,
+              requestId,
+              contexto,
+            ),
+            'idempotency-key': key ?? '',
+          },
+        },
+      );
+
+      return this.unwrap(response);
+    } catch (error: any) {
+      this.throwUpstreamHttpException(error);
+    }
+  }
+
+  @Patch('finanzas/ordenes-pago/:ordenPagoId')
+  async editarOrdenPago(
+    @Headers('authorization') authorization: string | undefined,
+    @Headers(REQUEST_ID_HEADER) requestId: string | undefined,
+    @Param('ordenPagoId') ordenPagoId: string,
+    @Body() body: unknown,
+  ) {
+    const contexto = await this.validateAuthorization(authorization);
+    this.assertFinanzasOp(contexto);
+
+    try {
+      const response = await axios.patch(
+        `${this.getBaseUrl()}/documental-v2/finanzas/ordenes-pago/${encodeURIComponent(ordenPagoId)}`,
+        body,
+        {
+          headers: this.buildDocumentosForwardHeaders(
+            authorization,
+            requestId,
+            contexto,
+          ),
+        },
+      );
+
+      return this.unwrap(response);
+    } catch (error: any) {
+      this.throwUpstreamHttpException(error);
+    }
+  }
+
   @Get('finanzas/ordenes-pago/:ordenPagoId')
   async obtenerOrdenPago(
     @Headers('authorization') authorization: string | undefined,

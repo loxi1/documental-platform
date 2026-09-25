@@ -23,6 +23,29 @@ export type ObligacionSnapshotRegularizacion = {
 
 @Injectable()
 export class ObligacionesSnapshotRepository {
+  async actualizarTemprano(
+    input: CrearObligacionSnapshotInput,
+    tx: SqlExecutor,
+  ): Promise<boolean> {
+    const rows = await tx`
+      UPDATE documentos.obligaciones_snapshot
+      SET concepto_id = ${input.conceptoId},
+          requiere_regularizacion_aplicada = ${input.requiereRegularizacionAplicada},
+          estado_regularizacion = ${input.estadoRegularizacion},
+          periodo_anio = ${input.periodoAnio},
+          periodo_mes = ${input.periodoMes},
+          codigo_pago = ${input.codigoPago},
+          tipo_beneficiario_aplicado = ${input.tipoBeneficiarioAplicado ?? null},
+          uso_beneficiario_aplicado = ${input.usoBeneficiarioAplicado ?? null},
+          updated_at = now()
+      WHERE grupo_factura_id = ${input.grupoFacturaId}
+        AND estado_regularizacion <> 'REGULARIZADO'
+      RETURNING grupo_factura_id
+    `;
+
+    return rows.length === 1;
+  }
+
   async crear(
     input: CrearObligacionSnapshotInput,
     tx: SqlExecutor,
