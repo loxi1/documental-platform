@@ -860,4 +860,251 @@ describe('AsociarDocumentoGrupoFacturaV2UseCase - correspondencia financiera', (
     });
   });
 
+
+  describe('R28 CUT2 - operación común de regularización OP', () => {
+    const regularizadorOp = (
+      tipoDocumental: 'FACTURA' | 'RECIBO_HONORARIO',
+      tipoRelacion: 'regularizador_factura' | 'regularizador_recibo_honorario',
+      options?: {
+        origenObligacion?: 'FACTURA' | 'ORDEN_PAGO';
+        facturaDocumentoId?: number | null;
+        tipoPrincipal?: string;
+        grupoFacturaId?: number;
+        existente?: any;
+      },
+    ) => {
+      const ctx = buildUseCase({
+        grupoFacturaId: options?.grupoFacturaId ?? 116,
+        origenObligacion: options?.origenObligacion ?? 'ORDEN_PAGO',
+        facturaDocumentoId:
+          options?.facturaDocumentoId !== undefined
+            ? options.facturaDocumentoId
+            : null,
+        tipoPrincipal: options?.tipoPrincipal ?? 'ORDEN_PAGO',
+        principalDocumentoId: 443,
+        tipoDocumental,
+        existente: options?.existente,
+        documentoOp: {
+          id: 443,
+          tipoDocumental: 'ORDEN_PAGO',
+          clienteAbreviatura: 'BBTI',
+          estado: 'confirmado',
+          rucEmisor: null,
+          razonSocialEmisor: null,
+          serie: null,
+          numero: null,
+          claveDocumental: null,
+          fechaEmision: '2026-09-15',
+          moneda: 'PEN',
+          montoTotal: 100,
+          nombreArchivo: 'OP-443',
+          metadata: {},
+        },
+        pago: {
+          id: 29,
+          tipoDocumental,
+          clienteAbreviatura: 'BBTI',
+          estado: 'confirmado',
+          rucEmisor: '201',
+          razonSocialEmisor: 'Proveedor',
+          serie: tipoDocumental === 'FACTURA' ? 'F001' : 'E001',
+          numero: '29',
+          claveDocumental:
+            tipoDocumental === 'FACTURA'
+              ? 'BBTI|FACTURA|201|F001|29'
+              : 'BBTI|RECIBO_HONORARIO|201|E001|29',
+          fechaEmision: '2026-09-15',
+          moneda: 'PEN',
+          montoTotal: 100,
+          nombreArchivo:
+            tipoDocumental === 'FACTURA'
+              ? 'factura.pdf'
+              : 'recibo-honorario.pdf',
+          metadata: {},
+        },
+      });
+
+      return {
+        ...ctx,
+        input: {
+          ...ctx.input,
+          tipoRelacion,
+          operacionInterna: 'REGULARIZAR_OBLIGACION_OP' as const,
+        },
+      };
+    };
+
+    it('T-COMMON-01 REGULARIZAR_OBLIGACION_OP + FACTURA + regularizador_factura PASS', async () => {
+      const ctx = regularizadorOp('FACTURA', 'regularizador_factura');
+
+      const result = await ctx.useCase.execute(ctx.input);
+
+      expect(ctx.grupoFacturaDocumentos.crear).toHaveBeenCalledTimes(1);
+      expect(result.idempotente).toBe(false);
+      expect(
+        ctx.grupoFacturaDocumentos.crear.mock.calls[0][0].tipoRelacion,
+      ).toBe('regularizador_factura');
+    });
+
+    it('T-COMMON-02 REGULARIZAR_OBLIGACION_OP + RECIBO_HONORARIO + regularizador_recibo_honorario PASS', async () => {
+      const ctx = regularizadorOp(
+        'RECIBO_HONORARIO',
+        'regularizador_recibo_honorario',
+      );
+
+      const result = await ctx.useCase.execute(ctx.input);
+
+      expect(ctx.grupoFacturaDocumentos.crear).toHaveBeenCalledTimes(1);
+      expect(result.idempotente).toBe(false);
+      expect(
+        ctx.grupoFacturaDocumentos.crear.mock.calls[0][0].tipoRelacion,
+      ).toBe('regularizador_recibo_honorario');
+    });
+
+    it('T-COMMON-03 FACTURA + regularizador_recibo_honorario REJECT', async () => {
+      const ctx = regularizadorOp(
+        'FACTURA',
+        'regularizador_recibo_honorario',
+      );
+
+      await expect(ctx.useCase.execute(ctx.input)).rejects.toMatchObject({
+        response: expect.objectContaining({
+          code: 'TIPO_DOCUMENTAL_NO_PERMITIDO_EN_GRUPO',
+        }),
+      });
+
+      expect(ctx.grupoFacturaDocumentos.crear).not.toHaveBeenCalled();
+    });
+
+    it('T-COMMON-04 RECIBO_HONORARIO + regularizador_factura REJECT', async () => {
+      const ctx = regularizadorOp(
+        'RECIBO_HONORARIO',
+        'regularizador_factura',
+      );
+
+      await expect(ctx.useCase.execute(ctx.input)).rejects.toMatchObject({
+        response: expect.objectContaining({
+          code: 'TIPO_DOCUMENTAL_NO_PERMITIDO_EN_GRUPO',
+        }),
+      });
+
+      expect(ctx.grupoFacturaDocumentos.crear).not.toHaveBeenCalled();
+    });
+
+    it('T-COMMON-05 origen distinto de ORDEN_PAGO REJECT', async () => {
+      const ctx = regularizadorOp('FACTURA', 'regularizador_factura', {
+        origenObligacion: 'FACTURA',
+        facturaDocumentoId: null,
+      });
+
+      await expect(ctx.useCase.execute(ctx.input)).rejects.toMatchObject({
+        response: expect.objectContaining({
+          code: 'GRUPO_FACTURA_NO_PERSISTIDO',
+        }),
+      });
+
+      expect(ctx.grupoFacturaDocumentos.crear).not.toHaveBeenCalled();
+    });
+
+    it('T-COMMON-06 principal distinto de ORDEN_PAGO REJECT', async () => {
+      const ctx = regularizadorOp('FACTURA', 'regularizador_factura', {
+        tipoPrincipal: 'OC',
+      });
+
+      await expect(ctx.useCase.execute(ctx.input)).rejects.toMatchObject({
+        response: expect.objectContaining({
+          code: 'GRUPO_FACTURA_NO_PERSISTIDO',
+        }),
+      });
+
+      expect(ctx.grupoFacturaDocumentos.crear).not.toHaveBeenCalled();
+    });
+
+    it('T-COMMON-07 facturaDocumentoId != NULL REJECT', async () => {
+      const ctx = regularizadorOp('FACTURA', 'regularizador_factura', {
+        facturaDocumentoId: 26,
+      });
+
+      await expect(ctx.useCase.execute(ctx.input)).rejects.toMatchObject({
+        response: expect.objectContaining({
+          code: 'GRUPO_FACTURA_NO_PERSISTIDO',
+        }),
+      });
+
+      expect(ctx.grupoFacturaDocumentos.crear).not.toHaveBeenCalled();
+    });
+
+    it('T-COMMON-08 replay misma asociación IDEMPOTENT', async () => {
+      const existente = {
+        id: 80,
+        grupoFacturaId: 116,
+        documentoId: 29,
+        tipoRelacion: 'regularizador_recibo_honorario',
+        estado: 'activo',
+        metadata: {},
+      };
+
+      const ctx = regularizadorOp(
+        'RECIBO_HONORARIO',
+        'regularizador_recibo_honorario',
+        { existente },
+      );
+
+      const result = await ctx.useCase.execute(ctx.input);
+
+      expect(result.idempotente).toBe(true);
+      expect(ctx.grupoFacturaDocumentos.crear).not.toHaveBeenCalled();
+    });
+
+    it('T-COMMON-09 mismo documento con relación incompatible CONFLICT', async () => {
+      const existente = {
+        id: 80,
+        grupoFacturaId: 116,
+        documentoId: 29,
+        tipoRelacion: 'regularizador_factura',
+        estado: 'activo',
+        metadata: {},
+      };
+
+      const ctx = regularizadorOp(
+        'RECIBO_HONORARIO',
+        'regularizador_recibo_honorario',
+        { existente },
+      );
+
+      await expect(ctx.useCase.execute(ctx.input)).rejects.toMatchObject({
+        response: expect.objectContaining({
+          code: 'DOCUMENTO_YA_ASOCIADO_AL_GRUPO_CON_OTRA_RELACION',
+        }),
+      });
+
+      expect(ctx.grupoFacturaDocumentos.crear).not.toHaveBeenCalled();
+    });
+
+    it('T-COMMON-10 mismo documento en otro grupo CONFLICT', async () => {
+      const existente = {
+        id: 80,
+        grupoFacturaId: 117,
+        documentoId: 29,
+        tipoRelacion: 'regularizador_recibo_honorario',
+        estado: 'activo',
+        metadata: {},
+      };
+
+      const ctx = regularizadorOp(
+        'RECIBO_HONORARIO',
+        'regularizador_recibo_honorario',
+        { existente },
+      );
+
+      await expect(ctx.useCase.execute(ctx.input)).rejects.toMatchObject({
+        response: expect.objectContaining({
+          code: 'DOCUMENTO_YA_ASOCIADO_A_OTRO_GRUPO',
+        }),
+      });
+
+      expect(ctx.grupoFacturaDocumentos.crear).not.toHaveBeenCalled();
+    });
+  });
+
 });

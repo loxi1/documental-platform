@@ -825,12 +825,77 @@ export class DocumentosGatewayController {
     return this.tmpRequest('GET', `/documentos/tmp/${this.tmpId(id)}`, headers);
   }
 
+  @Get('tmp/:tempId/preview-url')
+  async obtenerPreviewTmp(
+    @Headers('authorization') authorization: string | undefined,
+    @Headers(REQUEST_ID_HEADER) requestId: string | undefined,
+    @Param('tempId') id: string,
+  ) {
+    const headers = await this.tmpHeaders(authorization, requestId);
+    return this.tmpRequest(
+      'GET',
+      `/documentos/tmp/${this.tmpId(id)}/preview-url`,
+      headers,
+    );
+  }
+
   @Post('tmp/:tempId/promover')
   async promoverTmp(@Headers('authorization') authorization: string | undefined,
     @Headers(REQUEST_ID_HEADER) requestId: string | undefined, @Headers('idempotency-key') key: string,
     @Param('tempId') id: string, @Body() body: Record<string, unknown>) {
     const headers = await this.tmpHeaders(authorization, requestId, key);
     return this.tmpRequest('POST', `/documentos/tmp/${this.tmpId(id)}/promover`, headers, body);
+  }
+
+  @Post('tmp/:tempId/procesar-ocr')
+  async procesarOcrTmp(
+    @Headers('authorization') authorization: string | undefined,
+    @Headers(REQUEST_ID_HEADER) requestId: string | undefined,
+    @Headers('idempotency-key') key: string,
+    @Param('tempId') id: string,
+    @Body() body: { tipoEsperado?: unknown },
+  ) {
+    const headers = await this.tmpHeaders(authorization, requestId, key);
+    return this.tmpRequest(
+      'POST',
+      `/documentos/tmp/${this.tmpId(id)}/procesar-ocr`,
+      headers,
+      body,
+    );
+  }
+
+  @Post('tmp/:tempId/materializar-factura-op')
+  async materializarFacturaOpTmp(
+    @Headers('authorization') authorization: string | undefined,
+    @Headers(REQUEST_ID_HEADER) requestId: string | undefined,
+    @Headers('idempotency-key') key: string,
+    @Param('tempId') id: string,
+    @Body() body: { metadata?: Record<string, unknown> },
+  ) {
+    const headers = await this.tmpHeaders(authorization, requestId, key);
+    return this.tmpRequest(
+      'POST',
+      `/documentos/tmp/${this.tmpId(id)}/materializar-factura-op`,
+      headers,
+      body,
+    );
+  }
+
+  @Post('tmp/:tempId/materializar-recibo-honorario-op')
+  async materializarReciboHonorarioOpTmp(
+    @Headers('authorization') authorization: string | undefined,
+    @Headers(REQUEST_ID_HEADER) requestId: string | undefined,
+    @Headers('idempotency-key') key: string,
+    @Param('tempId') id: string,
+    @Body() body: { metadata?: Record<string, unknown> },
+  ) {
+    const headers = await this.tmpHeaders(authorization, requestId, key);
+    return this.tmpRequest(
+      'POST',
+      `/documentos/tmp/${this.tmpId(id)}/materializar-recibo-honorario-op`,
+      headers,
+      body,
+    );
   }
 
   private tmpId(id: string) {

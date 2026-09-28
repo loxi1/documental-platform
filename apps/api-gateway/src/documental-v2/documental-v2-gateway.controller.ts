@@ -872,6 +872,35 @@ export class DocumentalV2GatewayController {
     } catch (error: any) { this.throwUpstreamHttpException(error); }
   }
 
+  @Get('finanzas/ordenes-pago/beneficiarios')
+  async beneficiariosOrdenPago(
+    @Headers('authorization') authorization: string | undefined,
+    @Headers(REQUEST_ID_HEADER) requestId: string | undefined,
+    @Query() query: Record<string, string>,
+  ) {
+    const contexto = await this.validateAuthorization(authorization);
+    this.assertFinanzasOp(contexto, true);
+    try {
+      const response = await axios.get(
+        `${this.getBaseUrl()}/documental-v2/finanzas/ordenes-pago/beneficiarios`,
+        {
+          params: {
+            contenedorOperativoId: query.contenedorOperativoId,
+            conceptoCodigo: query.conceptoCodigo,
+          },
+          headers: this.buildDocumentosForwardHeaders(
+            authorization,
+            requestId,
+            contexto,
+          ),
+        },
+      );
+      return this.unwrap(response);
+    } catch (error: any) {
+      this.throwUpstreamHttpException(error);
+    }
+  }
+
   @Post('finanzas/ordenes-pago/regularizar-factura')
   async regularizarObligacionOpFactura(
     @Headers('authorization') authorization: string | undefined,
@@ -890,6 +919,95 @@ export class DocumentalV2GatewayController {
       const response = await axios.post(
         `${this.getBaseUrl()}/documental-v2/finanzas/ordenes-pago/regularizar-factura`,
         payload,
+        {
+          headers: this.buildDocumentosForwardHeaders(
+            authorization,
+            requestId,
+            contexto,
+          ),
+        },
+      );
+
+      return this.unwrap(response);
+    } catch (error: any) {
+      this.throwUpstreamHttpException(error);
+    }
+  }
+
+  @Post('finanzas/ordenes-pago/regularizar-recibo-honorario')
+  async regularizarObligacionOpReciboHonorario(
+    @Headers('authorization') authorization: string | undefined,
+    @Headers(REQUEST_ID_HEADER) requestId: string | undefined,
+    @Body() body: { grupoFacturaId: number; documentoId: number },
+  ) {
+    const contexto = await this.validateAuthorization(authorization);
+    this.assertFinanzasOp(contexto);
+
+    const payload = {
+      grupoFacturaId: body.grupoFacturaId,
+      documentoId: body.documentoId,
+    };
+
+    try {
+      const response = await axios.post(
+        `${this.getBaseUrl()}/documental-v2/finanzas/ordenes-pago/regularizar-recibo-honorario`,
+        payload,
+        {
+          headers: this.buildDocumentosForwardHeaders(
+            authorization,
+            requestId,
+            contexto,
+          ),
+        },
+      );
+
+      return this.unwrap(response);
+    } catch (error: any) {
+      this.throwUpstreamHttpException(error);
+    }
+  }
+
+  @Get('finanzas/ordenes-pago/:ordenPagoId/upload-pendiente')
+  async obtenerUploadPendienteOrdenPago(
+    @Headers('authorization') authorization: string | undefined,
+    @Headers(REQUEST_ID_HEADER) requestId: string | undefined,
+    @Param('ordenPagoId') ordenPagoId: string,
+  ) {
+    const contexto = await this.validateAuthorization(authorization);
+    this.assertFinanzasOp(contexto);
+
+    try {
+      const response = await axios.get(
+        `${this.getBaseUrl()}/documental-v2/finanzas/ordenes-pago/${encodeURIComponent(ordenPagoId)}/upload-pendiente`,
+        {
+          headers: this.buildDocumentosForwardHeaders(
+            authorization,
+            requestId,
+            contexto,
+          ),
+        },
+      );
+
+      return this.unwrap(response);
+    } catch (error: any) {
+      this.throwUpstreamHttpException(error);
+    }
+  }
+
+  @Post('finanzas/ordenes-pago/:ordenPagoId/confirmar-pago')
+  async confirmarPagoOrdenPago(
+    @Headers('authorization') authorization: string | undefined,
+    @Headers(REQUEST_ID_HEADER) requestId: string | undefined,
+    @Param('ordenPagoId') ordenPagoId: string,
+    @Body() body: unknown,
+  ) {
+    const contexto = await this.validateAuthorization(authorization);
+    this.assertFinanzasOp(contexto);
+
+    try {
+      const response = await axios.post(
+        `${this.getBaseUrl()}/documental-v2/finanzas/ordenes-pago/${encodeURIComponent(ordenPagoId)}/confirmar-pago`,
+        body,
         {
           headers: this.buildDocumentosForwardHeaders(
             authorization,

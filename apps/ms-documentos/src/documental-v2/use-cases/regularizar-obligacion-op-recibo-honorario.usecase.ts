@@ -11,22 +11,22 @@ import { RegularizadoresObligacionRepository } from '../regularizadores-obligaci
 import { GrupoFacturaDocumentoRepository } from '../grupo-factura-documento.repository';
 import { AsociarDocumentoGrupoFacturaV2UseCase } from './asociar-documento-grupo-factura-v2.usecase';
 
-export type RegularizarObligacionOpFacturaInput = {
+export type RegularizarObligacionOpReciboHonorarioInput = {
   grupoFacturaId: number;
   documentoId: number;
   usuario?: any;
 };
 
-export type RegularizarObligacionOpFacturaResult = {
+export type RegularizarObligacionOpReciboHonorarioResult = {
   grupoFacturaId: number;
   documentoId: number;
-  tipoRelacion: 'regularizador_factura';
+  tipoRelacion: 'regularizador_recibo_honorario';
   estadoRegularizacion: 'REGULARIZADO';
   idempotente: boolean;
 };
 
 @Injectable()
-export class RegularizarObligacionOpFacturaUseCase {
+export class RegularizarObligacionOpReciboHonorarioUseCase {
   constructor(
     private readonly snapshots: ObligacionesSnapshotRepository,
     private readonly regularizadores: RegularizadoresObligacionRepository,
@@ -35,7 +35,7 @@ export class RegularizarObligacionOpFacturaUseCase {
     private readonly auditoria: AuditoriaOperativaV2Repository,
   ) {}
 
-  execute(input: RegularizarObligacionOpFacturaInput) {
+  execute(input: RegularizarObligacionOpReciboHonorarioInput) {
     return sql.begin(async (tx) => {
       const grupoFacturaId = Number(input.grupoFacturaId);
       const documentoId = Number(input.documentoId);
@@ -80,7 +80,7 @@ export class RegularizarObligacionOpFacturaUseCase {
             {
               grupoFacturaId,
               documentoId,
-              tipoRelacion: 'regularizador_factura',
+              tipoRelacion: 'regularizador_recibo_honorario',
             },
             tx,
           );
@@ -89,7 +89,7 @@ export class RegularizarObligacionOpFacturaUseCase {
           return {
             grupoFacturaId,
             documentoId,
-            tipoRelacion: 'regularizador_factura' as const,
+            tipoRelacion: 'regularizador_recibo_honorario' as const,
             estadoRegularizacion: 'REGULARIZADO' as const,
             idempotente: true,
           };
@@ -98,7 +98,7 @@ export class RegularizarObligacionOpFacturaUseCase {
         throw new ConflictException({
           code: 'OBLIGACION_YA_REGULARIZADA_CON_OTRO_DOCUMENTO',
           message:
-            'La obligación ya fue regularizada y la Factura indicada no es su documento regularizador activo',
+            'La obligación ya fue regularizada y el Recibo por Honorarios indicado no es su documento regularizador activo',
         });
       }
 
@@ -110,19 +110,19 @@ export class RegularizarObligacionOpFacturaUseCase {
         });
       }
 
-      const facturaPermitida =
+      const reciboHonorarioPermitido =
         await this.regularizadores.permiteTipoDocumental(
           grupoFacturaId,
-          'FACTURA',
+          'RECIBO_HONORARIO',
           tx,
         );
 
-      if (!facturaPermitida) {
+      if (!reciboHonorarioPermitido) {
         throw new ConflictException({
           code: 'TIPO_DOCUMENTAL_REGULARIZADOR_NO_PERMITIDO',
           message:
-            'FACTURA no está permitida por el snapshot documental de esta obligación',
-          tipoDocumental: 'FACTURA',
+            'RECIBO_HONORARIO no está permitido por el snapshot documental de esta obligación',
+          tipoDocumental: 'RECIBO_HONORARIO',
         });
       }
 
@@ -130,7 +130,7 @@ export class RegularizarObligacionOpFacturaUseCase {
         {
           grupoFacturaId,
           documentoId,
-          tipoRelacion: 'regularizador_factura',
+          tipoRelacion: 'regularizador_recibo_honorario',
           operacionInterna: 'REGULARIZAR_OBLIGACION_OP',
           usuario: input.usuario,
         },
@@ -141,7 +141,7 @@ export class RegularizarObligacionOpFacturaUseCase {
         throw new ConflictException({
           code: 'REGULARIZACION_OP_ASOCIACION_NO_PERSISTIDA',
           message:
-            'La Factura regularizadora no quedó asociada a la obligación',
+            'El Recibo por Honorarios regularizador no quedó asociado a la obligación',
         });
       }
 
@@ -165,7 +165,7 @@ export class RegularizarObligacionOpFacturaUseCase {
           entidad: 'obligacion_snapshot',
           entidadId: grupoFacturaId,
           descripcion:
-            'Obligación de Orden de Pago regularizada mediante Factura.',
+            'Obligación de Orden de Pago regularizada mediante Recibo por Honorarios.',
           empresaCodigo: input.usuario?.empresaCodigo ?? null,
           usuario: input.usuario,
           antes: {
@@ -177,8 +177,8 @@ export class RegularizarObligacionOpFacturaUseCase {
             documentoRegularizadorId: documentoId,
             grupoFacturaDocumentoId:
               asociacion.documentoGrupoFactura.id,
-            tipoDocumentoRegularizador: 'FACTURA',
-            tipoRelacion: 'regularizador_factura',
+            tipoDocumentoRegularizador: 'RECIBO_HONORARIO',
+            tipoRelacion: 'regularizador_recibo_honorario',
             estadoRegularizacion: 'REGULARIZADO',
           },
         },
@@ -188,7 +188,7 @@ export class RegularizarObligacionOpFacturaUseCase {
       return {
         grupoFacturaId,
         documentoId,
-        tipoRelacion: 'regularizador_factura' as const,
+        tipoRelacion: 'regularizador_recibo_honorario' as const,
         estadoRegularizacion: 'REGULARIZADO' as const,
         idempotente: asociacion.idempotente,
       };

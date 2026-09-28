@@ -69,11 +69,19 @@ describe('DocumentalV2Controller', () => {
     execute: jest.fn(),
   };
 
+  const regularizarObligacionOpReciboHonorarioUseCase = {
+    execute: jest.fn(),
+  };
+
   const documentoExistenteReadonlyRepository = {
     listarCandidatosPrincipal: jest.fn(),
   };
 
   const consultarTrazabilidadV2UseCase = {
+    execute: jest.fn(),
+  };
+
+  const evaluarCorrespondenciaPagoFacturaUseCase = {
     execute: jest.fn(),
   };
 
@@ -93,8 +101,10 @@ describe('DocumentalV2Controller', () => {
       asociarGrupoFacturaV2UseCase as any,
       asociarDocumentoGrupoFacturaV2UseCase as any,
       regularizarObligacionOpFacturaUseCase as any,
+      regularizarObligacionOpReciboHonorarioUseCase as any,
       consultarTrazabilidadV2UseCase as any,
       documentoExistenteReadonlyRepository as any,
+      evaluarCorrespondenciaPagoFacturaUseCase as any,
     );
   });
 
@@ -433,6 +443,57 @@ describe('DocumentalV2Controller', () => {
     });
 
     expect(asociarDocumentoGrupoFacturaV2UseCase.execute).not.toHaveBeenCalled();
+  });
+
+  it('regulariza una obligación OP mediante RECIBO_HONORARIO preservando contexto confiable', async () => {
+    const esperado = {
+      grupoFacturaId: 116,
+      documentoId: 701,
+      tipoRelacion: 'regularizador_recibo_honorario',
+      estadoRegularizacion: 'REGULARIZADO',
+      idempotente: false,
+    };
+
+    regularizarObligacionOpReciboHonorarioUseCase.execute.mockResolvedValue(
+      esperado,
+    );
+
+    await expect(
+      controller.regularizarObligacionOpReciboHonorario(
+        {
+          grupoFacturaId: 116,
+          documentoId: 701,
+        },
+        '1',
+        'admin@documental.local',
+        '1',
+        'BBTI',
+        '2',
+        'req-rh-1',
+        'corr-rh-1',
+      ),
+    ).resolves.toBe(esperado);
+
+    expect(
+      regularizarObligacionOpReciboHonorarioUseCase.execute,
+    ).toHaveBeenCalledTimes(1);
+
+    expect(
+      regularizarObligacionOpReciboHonorarioUseCase.execute,
+    ).toHaveBeenCalledWith({
+      grupoFacturaId: 116,
+      documentoId: 701,
+      usuario: {
+        id: 1,
+        email: 'admin@documental.local',
+        workspaceId: 1,
+        empresaCodigo: 'BBTI',
+        clienteDestinoId: 2,
+        requestId: 'req-rh-1',
+        correlationId: 'corr-rh-1',
+        origen: 'api-gateway',
+      },
+    });
   });
 
   it('vincula un documento a un grupo de factura usando el service V2', async () => {

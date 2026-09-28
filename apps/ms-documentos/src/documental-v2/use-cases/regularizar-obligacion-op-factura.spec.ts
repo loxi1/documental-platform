@@ -108,7 +108,7 @@ describe('RegularizarObligacionOpFacturaUseCase', () => {
         grupoFacturaId: 116,
         documentoId: 700,
         tipoRelacion: 'regularizador_factura',
-        operacionInterna: 'REGULARIZAR_FACTURA_OP',
+        operacionInterna: 'REGULARIZAR_OBLIGACION_OP',
         usuario,
       }),
       tx,

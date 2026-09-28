@@ -23,6 +23,7 @@ import { AsociarDocumentoPrincipalV2UseCase } from './use-cases/asociar-document
 import { AsociarGrupoFacturaV2UseCase } from './use-cases/asociar-grupo-factura-v2.usecase';
 import { AsociarDocumentoGrupoFacturaV2UseCase } from './use-cases/asociar-documento-grupo-factura-v2.usecase';
 import { RegularizarObligacionOpFacturaUseCase } from './use-cases/regularizar-obligacion-op-factura.usecase';
+import { RegularizarObligacionOpReciboHonorarioUseCase } from './use-cases/regularizar-obligacion-op-recibo-honorario.usecase';
 import { DocumentoExistenteReadonlyRepository } from './documento-existente-readonly.repository';
 import { ConsultarTrazabilidadV2UseCase } from './use-cases/consultar-trazabilidad-v2.usecase';
 import { MaterializarContextoOperativoV2UseCase } from './use-cases/materializar-contexto-operativo-v2.usecase';
@@ -44,6 +45,7 @@ export class DocumentalV2Controller {
     private readonly asociarGrupoFacturaV2UseCase: AsociarGrupoFacturaV2UseCase,
     private readonly asociarDocumentoGrupoFacturaV2UseCase: AsociarDocumentoGrupoFacturaV2UseCase,
     private readonly regularizarObligacionOpFacturaUseCase: RegularizarObligacionOpFacturaUseCase,
+    private readonly regularizarObligacionOpReciboHonorarioUseCase: RegularizarObligacionOpReciboHonorarioUseCase,
     private readonly consultarTrazabilidadV2UseCase: ConsultarTrazabilidadV2UseCase,
     private readonly documentoExistenteReadonlyRepository: DocumentoExistenteReadonlyRepository,
     private readonly evaluarCorrespondenciaPagoFacturaUseCase: EvaluarCorrespondenciaPagoFacturaUseCase,
@@ -579,6 +581,36 @@ export class DocumentalV2Controller {
     @Headers('x-correlation-id') correlationId?: string,
   ) {
     return this.regularizarObligacionOpFacturaUseCase.execute({
+      grupoFacturaId: Number(dto.grupoFacturaId),
+      documentoId: Number(dto.documentoId),
+      usuario: {
+        id: userId ? Number(userId) : null,
+        email: userEmail ?? null,
+        workspaceId: workspaceId ? Number(workspaceId) : null,
+        empresaCodigo: empresaCodigo ?? null,
+        clienteDestinoId: clienteDestinoId ? Number(clienteDestinoId) : null,
+        requestId: requestId ?? null,
+        correlationId: correlationId ?? null,
+        origen: 'api-gateway',
+      },
+    });
+  }
+
+  @ApiOperation({
+    summary: 'Regularizar obligación de Orden de Pago mediante Recibo por Honorarios',
+  })
+  @Post('finanzas/ordenes-pago/regularizar-recibo-honorario')
+  async regularizarObligacionOpReciboHonorario(
+    @Body() dto: { grupoFacturaId: number; documentoId: number },
+    @Headers('x-user-id') userId?: string,
+    @Headers('x-user-email') userEmail?: string,
+    @Headers('x-workspace-id') workspaceId?: string,
+    @Headers('x-empresa-codigo') empresaCodigo?: string,
+    @Headers('x-cliente-destino-id') clienteDestinoId?: string,
+    @Headers('x-request-id') requestId?: string,
+    @Headers('x-correlation-id') correlationId?: string,
+  ) {
+    return this.regularizarObligacionOpReciboHonorarioUseCase.execute({
       grupoFacturaId: Number(dto.grupoFacturaId),
       documentoId: Number(dto.documentoId),
       usuario: {

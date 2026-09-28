@@ -3,6 +3,10 @@ import { OrdenPagoController } from './finanzas/orden-pago.controller';
 import { OrdenPagoService } from './finanzas/orden-pago.service';
 import { ExpedientesRepository } from '../expedientes/expedientes.repository';
 import { Module } from '@nestjs/common';
+import { DocumentoEventosModule } from '../documento-eventos/documento-eventos.module';
+import { DocumentosRepository } from '../documentos/documentos.repository';
+import { ConfirmacionDocumentalService } from './confirmacion-documental.service';
+import { OrquestarConfirmacionDocumentalV2UseCase } from './use-cases/orquestar-confirmacion-documental-v2.usecase';
 
 import { DocumentalV2Controller } from './documental-v2.controller';
 
@@ -29,6 +33,7 @@ import { AsociarDocumentoPrincipalV2UseCase } from './use-cases/asociar-document
 import { AsociarGrupoFacturaV2UseCase } from './use-cases/asociar-grupo-factura-v2.usecase';
 import { AsociarDocumentoGrupoFacturaV2UseCase } from './use-cases/asociar-documento-grupo-factura-v2.usecase';
 import { RegularizarObligacionOpFacturaUseCase } from './use-cases/regularizar-obligacion-op-factura.usecase';
+import { RegularizarObligacionOpReciboHonorarioUseCase } from './use-cases/regularizar-obligacion-op-recibo-honorario.usecase';
 import { AuditoriaOperativaV2Repository } from './auditoria-operativa-v2.repository';
 import { TrazabilidadV2Repository } from './trazabilidad-v2.repository';
 import { TrazabilidadV2ProjectionMapper } from './trazabilidad-v2.projection.mapper';
@@ -41,8 +46,12 @@ import {
 } from './finanzas/evaluar-correspondencia-pago-factura.usecase';
 
 @Module({
+  imports: [DocumentoEventosModule],
   controllers: [DocumentalV2Controller, OrdenPagoController],
   providers: [
+    ConfirmacionDocumentalService,
+    DocumentosRepository,
+    OrquestarConfirmacionDocumentalV2UseCase,
     OrdenPagoService, BuscarContextosOpService, ExpedientesRepository,
     ContenedorOperativoRepository,
     DocumentoOperativoPrincipalRepository,
@@ -71,6 +80,7 @@ import {
     AsociarGrupoFacturaV2UseCase,
     AsociarDocumentoGrupoFacturaV2UseCase,
     RegularizarObligacionOpFacturaUseCase,
+    RegularizarObligacionOpReciboHonorarioUseCase,
     AuditoriaOperativaV2Repository,
     TrazabilidadV2Repository,
     TrazabilidadV2ProjectionMapper,
@@ -80,6 +90,8 @@ import {
     EvaluarCorrespondenciaPagoFacturaUseCase,
   ],
   exports: [
+    ConfirmacionDocumentalService,
+    OrquestarConfirmacionDocumentalV2UseCase,
     OrdenPagoService,
     ContenedorOperativoRepository,
     DocumentoOperativoPrincipalRepository,

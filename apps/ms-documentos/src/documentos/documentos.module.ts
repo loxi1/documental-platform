@@ -4,11 +4,16 @@ import { OrdenPagoArchivoService } from './orden-pago/orden-pago-archivo.service
 import { OrdenPagoArchivoRepository } from './orden-pago/orden-pago-archivo.repository';
 import { TmpService } from './tmp/tmp.service';
 import { TmpRepository } from './tmp/tmp.repository';
+import { FacturaTempMaterializationController } from './factura-temp/factura-temp-materialization.controller';
+import { FacturaTempMaterializationRepository } from './factura-temp/factura-temp-materialization.repository';
+import { FacturaTempMaterializationService } from './factura-temp/factura-temp-materialization.service';
+import { ReciboHonorarioTempMaterializationController } from './recibo-honorario-temp/recibo-honorario-temp-materialization.controller';
+import { ReciboHonorarioTempMaterializationRepository } from './recibo-honorario-temp/recibo-honorario-temp-materialization.repository';
+import { ReciboHonorarioTempMaterializationService } from './recibo-honorario-temp/recibo-honorario-temp-materialization.service';
 import { Module } from '@nestjs/common';
 
 import { DocumentoEventosModule } from '../documento-eventos/documento-eventos.module';
 import { DocumentalV2Module } from '../documental-v2/documental-v2.module';
-import { OrquestarConfirmacionDocumentalV2UseCase } from '../documental-v2/use-cases/orquestar-confirmacion-documental-v2.usecase';
 import { CARGA_SEGURA_STORAGE } from './carga-segura/carga-segura.constants';
 import { CargaSeguraCompensation } from './carga-segura/carga-segura.compensation';
 import { CargaSeguraPersistence } from './carga-segura/carga-segura.persistence';
@@ -24,13 +29,16 @@ import { DocumentosUploadService } from './documentos-upload.service';
 
 @Module({
   imports: [DocumentoEventosModule, DocumentalV2Module],
-  controllers: [DocumentosController, CargaSeguraController, TmpController, OrdenPagoCreacionController],
+  controllers: [DocumentosController, CargaSeguraController, TmpController, OrdenPagoCreacionController, FacturaTempMaterializationController, ReciboHonorarioTempMaterializationController],
   providers: [
     TmpService, TmpRepository,
+    FacturaTempMaterializationRepository,
+    FacturaTempMaterializationService,
+    ReciboHonorarioTempMaterializationRepository,
+    ReciboHonorarioTempMaterializationService,
     OrdenPagoArchivoService, OrdenPagoArchivoRepository,
     DocumentosService,
     DocumentosRepository,
-    OrquestarConfirmacionDocumentalV2UseCase,
     DocumentosPreviewService,
     DocumentosUploadService,
     CargaSeguraRepository,
