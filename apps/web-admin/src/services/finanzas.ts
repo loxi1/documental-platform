@@ -115,3 +115,128 @@ export async function subirArchivoInicialOrdenPago(file: File, key: string) {
   }
   return { tempId: result.tempId, estado: result.estado, nombreOriginal: result.nombreOriginal };
 }
+
+/* K10 accredited PRE-K10 closure contracts */
+
+export type ProveedorOrdenPago = {
+  id: number;
+  ruc: string;
+  razonSocial: string;
+};
+
+export type EditarOrdenPagoPayload = {
+  fechaEmision?: string;
+  monto?: number;
+  moneda?: string;
+  observacion?: string | null;
+  periodoAnio?: number | null;
+  periodoMes?: number | null;
+  codigoPago?: string | null;
+  conceptoCodigo?: string | null;
+  proveedorId?: number | null;
+  beneficiarioClienteDestinoId?: number | null;
+  beneficiarioUsuarioId?: number | null;
+  beneficiarioNombreLibre?: string | null;
+};
+
+export type EditarOrdenPagoResultado = {
+  ordenPagoId: number;
+  documentoId: number;
+  grupoFacturaId: number;
+  contenedorOperativoId: number;
+  camposModificados: string[];
+};
+
+export type BeneficiariosOrdenPago = {
+  tipoBeneficiario: 'NO_APLICA' | 'PROVEEDOR' | 'CLIENTE_DESTINO' | 'USUARIO' | 'NOMBRE_LIBRE';
+  usoBeneficiario: 'NO_APLICA' | 'OPCIONAL' | 'REQUERIDO';
+  items: { id: number; nombre: string; detalle: string | null }[];
+};
+
+export type OrdenPagoFacturaMaterializada = {
+  documentoId: number;
+  archivoId: number;
+  [key: string]: unknown;
+};
+
+export async function buscarProveedoresOrdenPago(
+  search: string,
+  limit = 20,
+): Promise<ProveedorOrdenPago[]> {
+  const termino = search.trim();
+  if (!termino) return [];
+
+  const response = await api.get('/documentos/proveedores', {
+    params: { search: termino, limit, offset: 0 },
+  });
+
+  const payload = response.data?.data ?? response.data;
+  const rows = Array.isArray(payload?.data)
+    ? payload.data
+    : Array.isArray(payload)
+      ? payload
+      : [];
+
+  return rows
+    .map((row: any) => {
+      const rawId = row?.id;
+      const id =
+        typeof rawId === 'number'
+          ? rawId
+          : typeof rawId === 'string' && /^\\d+$/.test(rawId.trim())
+            ? Number(rawId)
+            : NaN;
+
+      return {
+        id,
+        ruc: String(row?.ruc ?? '').trim(),
+        razonSocial: String(row?.razonSocial ?? row?.razon_social ?? '').trim(),
+      };
+    })
+    .filter(
+      (row: ProveedorOrdenPago) =>
+        Number.isSafeInteger(row.id) &&
+        row.id > 0 &&
+        !!row.ruc &&
+        !!row.razonSocial,
+    );
+}
+
+export async function editarOrdenPago(
+  ordenPagoId: number,
+  payload: EditarOrdenPagoPayload,
+): Promise<EditarOrdenPagoResultado> {
+  const { data } = await api.patch(
+    `/documental-v2/finanzas/ordenes-pago/${ordenPagoId}`,
+    payload,
+  );
+  return data?.data ?? data;
+}
+
+export async function getBeneficiariosOrdenPago(
+  contenedorOperativoId: number,
+  conceptoCodigo: string,
+) {
+  return unwrap<BeneficiariosOrdenPago>(
+    (
+      await api.get('/documental-v2/finanzas/ordenes-pago/beneficiarios', {
+        params: { contenedorOperativoId, conceptoCodigo },
+      })
+    ).data,
+  );
+}
+
+export async function materializarFacturaTemporalOrdenPago(
+  tempId: string,
+  payload: Record<string, unknown>,
+  idempotencyKey?: string,
+): Promise<OrdenPagoFacturaMaterializada> {
+  const { data } = await api.post(
+    `/documentos/tmp/${encodeURIComponent(tempId)}/materializar-factura-op`,
+    payload,
+    idempotencyKey
+      ? { headers: { "Idempotency-Key": idempotencyKey } }
+      : undefined,
+  );
+  return data?.data ?? data;
+}
