@@ -2,6 +2,11 @@ import { identidadFacturaPendiente } from '../documentos/identidad-documental';
 import type { SqlExecutor } from '../documental-v2/sql-executor';
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { sql } from '@documental/database';
+import {
+  mapCommonAccountingRowToLegacy,
+  mapFacturaOcosToCommonAccountingRow,
+  mapOrdenPagoToCommonAccountingRow,
+} from './common-accounting-projection';
 
 type ExpedienteAuditContext = {
   usuarioId?: number | null;
@@ -1359,6 +1364,8 @@ export class ExpedientesRepository {
         v2.documento_principal_tipo AS documentoprincipaltipo,
         v2.documento_principal_numero,
         v2.documento_principal_numero AS documentoprincipalnumero,
+        v2.empresa_codigo_v2,
+        v2.cliente_destino_id_v2,
 
         v2.codigo_centro_costo,
         v2.codigo_centro_costo AS codigocentrocosto,
@@ -1468,7 +1475,9 @@ export class ExpedientesRepository {
           dp.id AS documento_principal_id,
           dp.tipo_documental AS documento_principal_tipo,
           dp.numero AS documento_principal_numero,
-          co.centro_costo_codigo AS codigo_centro_costo
+          co.centro_costo_codigo AS codigo_centro_costo,
+          co.empresa_codigo AS empresa_codigo_v2,
+          co.cliente_destino_id AS cliente_destino_id_v2
         FROM documentos.grupos_factura gf
         JOIN documentos.documentos_operativos_principales dop
           ON dop.id = gf.documento_operativo_principal_id
@@ -1755,6 +1764,20 @@ export class ExpedientesRepository {
                 OR CONCAT_WS('-', d_busqueda.serie, d_busqueda.numero) ILIKE ${like}
                 OR d_busqueda.razon_social_emisor ILIKE ${like}
                 OR d_busqueda.ruc_emisor ILIKE ${like}
+                 OR EXISTS (
+                   SELECT 1
+                   FROM documentos.grupo_factura_documentos gfd_pago_busqueda
+                   JOIN documentos.documentos d_pago_busqueda
+                     ON d_pago_busqueda.id = gfd_pago_busqueda.documento_id
+                   WHERE gfd_pago_busqueda.grupo_factura_id = v2.grupo_factura_id
+                     AND gfd_pago_busqueda.estado = 'activo'
+                     AND gfd_pago_busqueda.tipo_relacion = 'adjunto_transferencia'
+                     AND COALESCE(
+                       d_pago_busqueda.metadata ->> 'numeroOperacion',
+                       d_pago_busqueda.metadata #>> '{ocr,metadata,numeroOperacion}'
+                     ) ILIKE ${like}
+                 )
+
               )
           )
         )
@@ -1778,6 +1801,8 @@ export class ExpedientesRepository {
         v2.documento_principal_id,
         v2.documento_principal_tipo,
         v2.documento_principal_numero,
+        v2.empresa_codigo_v2,
+        v2.cliente_destino_id_v2,
         principal.documento_principal,
         docs.documentos,
         factura_archivo.archivo_id,
@@ -1805,37 +1830,294 @@ export class ExpedientesRepository {
           f.fecha_emision AS fecha, f.codigo_expediente AS contexto, f.expediente_id AS orden,
           f.documento_id AS documento
         FROM facturas f
+        WHERE f.grupo_factura_id IS NOT NULL
+          AND f.documento_operativo_principal_id IS NOT NULL
+          AND f.empresa_codigo_v2 = ${filters.empresa}
+          AND f.cliente_destino_id_v2 IS NOT DISTINCT FROM ${finanzas.clienteDestinoId}::bigint
         UNION ALL
         SELECT jsonb_build_object(
           'origen', 'ORDEN_PAGO', 'ordenPagoId', p.id, 'documento_id', d.id,
           'grupo_factura_id', g.id, 'tipo_documental', 'ORDEN_PAGO',
-          'numero', 'OP-' || p.id, 'fecha_emision', d.fecha_emision,
+          'numero', COALESCE(NULLIF(BTRIM(d.numero), ''), 'OP-' || p.id),
+          'fecha_emision', d.fecha_emision,
           'monto_total', d.monto_total, 'moneda', d.moneda,
           'codigo_centro_costo', COALESCE(c.centro_costo_codigo, c.codigo),
           'contexto', c.codigo, 'estado', p.estado,
+          'empresa_codigo', c.empresa_codigo,
+          'cliente_destino_id', c.cliente_destino_id,
+          'codigo_centro_costo', COALESCE(c.centro_costo_codigo, c.codigo),
+          'proveedorId', p.proveedor_id,
+          'rucEmisor', prov_op.ruc,
+          'razonSocialEmisor', prov_op.razon_social,
+          'regularizadorEmisorNombre', reg_emisor_op.razon_social_emisor,
+          'regularizadorEmisorRuc', reg_emisor_op.ruc_emisor,
+          'regularizadorTipoRelacion', reg_emisor_op.tipo_relacion,
+          'regularizadorDocumentoId', reg_emisor_op.documento_id,
+          'regularizadorActivoCantidad', COALESCE(reg_emisor_op.cantidad, 0),
+          'beneficiarioTipo', os_op.tipo_beneficiario_aplicado,
+          'beneficiarioNombre',
+            CASE os_op.tipo_beneficiario_aplicado
+              WHEN 'PROVEEDOR' THEN prov_op.razon_social
+              WHEN 'CLIENTE_DESTINO' THEN COALESCE(benef_cd.nombre_oficial, benef_cd.abreviatura)
+              WHEN 'USUARIO' THEN NULLIF(BTRIM(CONCAT_WS(' ', benef_usr.nombres, benef_usr.apellidos)), '')
+              WHEN 'NOMBRE_LIBRE' THEN NULLIF(BTRIM(p.beneficiario_nombre_libre), '')
+              ELSE NULL
+            END,
+          'sourceDocument', jsonb_build_object(
+            'documentoId', d.id,
+            'tipoDocumental', 'ORDEN_PAGO',
+            'numero', COALESCE(NULLIF(BTRIM(d.numero), ''), 'OP-' || p.id),
+            'fechaEmision', d.fecha_emision,
+            'moneda', d.moneda,
+            'montoTotal', d.monto_total,
+            'archivoId', archivo_op.id,
+            'nombreArchivo', archivo_op.nombre_archivo,
+            'archivoEstado', archivo_op.estado,
+            'storageProvider', archivo_op.storage_provider
+          ),
+          'periodo_anio', os_op.periodo_anio,
+          'periodo_mes', os_op.periodo_mes,
+          'revision_contable', g.metadata -> 'revisionContable',
+          'documentos_relacionados', COALESCE(docs_op.documentos, '[]'::jsonb),
           'tipo', d.metadata #>> '{ordenPago,tipo}',
-          'subtipo', d.metadata #>> '{ordenPago,subtipo}'
+          'subtipo', d.metadata #>> '{ordenPago,subtipo}',
+          'conceptoCodigo', concepto_op.codigo,
+          'conceptoNombre', concepto_op.nombre,
+          'conceptoAbreviatura', concepto_op.abreviatura,
+          'estadoRegularizacion',
+            CASE
+              WHEN os_op.grupo_factura_id IS NULL THEN NULL
+              WHEN os_op.requiere_regularizacion_aplicada = false THEN 'NO_REQUIERE'
+              ELSE os_op.estado_regularizacion
+            END,
+          'tiposDocumentalesRegularizadoresPermitidos',
+            COALESCE(reg_op.tipos, '[]'::jsonb)
         ), d.fecha_emision, c.codigo, c.id, d.id
         FROM documentos.documentos_operativos_principales p
         JOIN documentos.documentos d ON d.id = p.documento_id
         JOIN documentos.contenedores_operativos c ON c.id = p.contenedor_operativo_id
         JOIN documentos.grupos_factura g ON g.documento_operativo_principal_id = p.id
+        LEFT JOIN documentos.obligaciones_snapshot os_op
+          ON os_op.grupo_factura_id = g.id
+        LEFT JOIN documentos.catalogo_conceptos_obligacion concepto_op
+          ON concepto_op.id = os_op.concepto_id
+        LEFT JOIN core.proveedores prov_op
+          ON prov_op.id = p.proveedor_id
+        LEFT JOIN core.clientes_destino benef_cd
+          ON benef_cd.id = p.beneficiario_cliente_destino_id
+        LEFT JOIN auth.usuarios benef_usr
+          ON benef_usr.id = p.beneficiario_usuario_id
+        LEFT JOIN LATERAL (
+          SELECT
+            COUNT(*)::int AS cantidad,
+            CASE WHEN COUNT(*) = 1 THEN MAX(d_reg.id) END AS documento_id,
+            CASE WHEN COUNT(*) = 1 THEN MAX(gfd_reg.tipo_relacion) END AS tipo_relacion,
+            CASE WHEN COUNT(*) = 1 THEN MAX(d_reg.razon_social_emisor) END AS razon_social_emisor,
+            CASE WHEN COUNT(*) = 1 THEN MAX(d_reg.ruc_emisor) END AS ruc_emisor
+          FROM documentos.grupo_factura_documentos gfd_reg
+          JOIN documentos.documentos d_reg
+            ON d_reg.id = gfd_reg.documento_id
+          WHERE gfd_reg.grupo_factura_id = g.id
+            AND gfd_reg.estado = 'activo'
+            AND gfd_reg.tipo_relacion IN (
+              'regularizador_factura',
+              'regularizador_recibo_honorario'
+            )
+        ) reg_emisor_op
+          ON true
+        LEFT JOIN LATERAL (
+          SELECT archivo_actual.*
+          FROM documentos.documentos_archivos archivo_actual
+          WHERE archivo_actual.documento_id = d.id
+            AND archivo_actual.origen_archivo = 'OP_INICIAL'
+            AND archivo_actual.es_version_actual = true
+            AND archivo_actual.estado NOT IN ('anulado', 'duplicado_absorbido')
+          ORDER BY archivo_actual.id DESC
+          LIMIT 1
+        ) archivo_op ON true
+        LEFT JOIN LATERAL (
+          SELECT jsonb_agg(
+            jsonb_build_object(
+              'grupoFacturaDocumentoId', gfd_op.id,
+              'grupoFacturaId', gfd_op.grupo_factura_id,
+              'documentoId', d_op.id,
+              'tipoRelacion', gfd_op.tipo_relacion,
+              'tipoDocumental', d_op.tipo_documental,
+              'serie', d_op.serie,
+              'numero', d_op.numero,
+              'estado', d_op.estado,
+              'fechaEmision', d_op.fecha_emision,
+              'moneda', d_op.moneda,
+              'montoTotal', d_op.monto_total,
+              'claveDocumental', d_op.clave_documental,
+              'metadata', COALESCE(d_op.metadata, '{}'::jsonb),
+              'archivoId', da_op.id,
+              'nombreArchivo', da_op.nombre_archivo,
+              'archivoEstado', da_op.estado,
+              'storageProvider', da_op.storage_provider
+            )
+            ORDER BY gfd_op.creado_en ASC, gfd_op.id ASC
+          ) AS documentos
+          FROM documentos.grupo_factura_documentos gfd_op
+          JOIN documentos.documentos d_op
+            ON d_op.id = gfd_op.documento_id
+          LEFT JOIN LATERAL (
+            SELECT da_op_current.*
+            FROM documentos.documentos_archivos da_op_current
+            WHERE da_op_current.documento_id = d_op.id
+            ORDER BY
+              da_op_current.es_version_actual DESC NULLS LAST,
+              da_op_current.version DESC NULLS LAST,
+              da_op_current.id DESC
+            LIMIT 1
+          ) da_op ON true
+          WHERE gfd_op.grupo_factura_id = g.id
+            AND gfd_op.estado = 'activo'
+        ) docs_op ON true
+        LEFT JOIN LATERAL (
+          SELECT COALESCE(
+            jsonb_agg(
+              ors.tipo_documental
+              ORDER BY ors.tipo_documental
+            ),
+            '[]'::jsonb
+          ) AS tipos
+          FROM documentos.obligacion_regularizadores_snapshot ors
+          WHERE ors.grupo_factura_id = g.id
+        ) reg_op ON true
         WHERE p.tipo_principal = 'ORDEN_PAGO' AND p.estado = 'activo'
           AND ${soloPendientesFinanzas}::boolean = false
           AND c.estado = 'activo' AND g.estado <> 'anulado' AND d.estado = 'confirmado'
           AND c.empresa_codigo = ${filters.empresa}
           AND c.cliente_destino_id IS NOT DISTINCT FROM ${finanzas.clienteDestinoId}::bigint
-          AND d.metadata->>'workspaceId' = ${String(finanzas.workspaceId)}
           AND (${inicioPeriodo}::date IS NULL OR d.fecha_emision >= ${inicioPeriodo}::date)
           AND (${finPeriodo}::date IS NULL OR d.fecha_emision < ${finPeriodo}::date)
-          AND (${like}::text IS NULL OR concat_ws(' ', 'OP-' || p.id, c.codigo, c.nombre,
-            c.centro_costo_codigo, d.metadata #>> '{ordenPago,tipo}',
-            d.metadata #>> '{ordenPago,subtipo}', d.metadata #>> '{ordenPago,observacion}') ILIKE ${like})
+          AND (
+            ${like}::text IS NULL
+            OR NULLIF(BTRIM(d.numero), '') ILIKE ${like}
+            OR os_op.codigo_pago ILIKE ${like}
+            OR prov_op.ruc ILIKE ${like}
+            OR prov_op.razon_social ILIKE ${like}
+            OR (
+              CASE os_op.tipo_beneficiario_aplicado
+                WHEN 'PROVEEDOR' THEN
+                  concat_ws(' ', prov_op.razon_social, prov_op.ruc)
+                WHEN 'CLIENTE_DESTINO' THEN
+                  concat_ws(
+                    ' ',
+                    benef_cd.nombre_oficial,
+                    benef_cd.abreviatura,
+                    benef_cd.ruc
+                  )
+                WHEN 'USUARIO' THEN
+                  NULLIF(
+                    BTRIM(
+                      CONCAT_WS(
+                        ' ',
+                        benef_usr.nombres,
+                        benef_usr.apellidos
+                      )
+                    ),
+                    ''
+                  )
+                WHEN 'NOMBRE_LIBRE' THEN
+                  NULLIF(BTRIM(p.beneficiario_nombre_libre), '')
+                ELSE NULL
+              END
+            ) ILIKE ${like}
+            OR (
+              COALESCE(reg_emisor_op.cantidad, 0) = 1
+              AND (
+                reg_emisor_op.razon_social_emisor ILIKE ${like}
+                OR reg_emisor_op.ruc_emisor ILIKE ${like}
+              )
+            )
+            OR (
+              NULLIF(BTRIM(d.numero), '') IS NULL
+              AND ('OP-' || p.id) ILIKE ${like}
+            )
+            OR concat_ws(
+              ' ',
+              c.codigo,
+              c.nombre,
+              c.centro_costo_codigo,
+              d.metadata #>> '{ordenPago,tipo}',
+              d.metadata #>> '{ordenPago,subtipo}',
+              d.metadata #>> '{ordenPago,observacion}',
+              concepto_op.codigo,
+              concepto_op.nombre
+            ) ILIKE ${like}
+            OR EXISTS (
+              SELECT 1
+              FROM documentos.grupo_factura_documentos gfd_pago_busqueda
+              JOIN documentos.documentos d_pago_busqueda
+                ON d_pago_busqueda.id = gfd_pago_busqueda.documento_id
+              WHERE gfd_pago_busqueda.grupo_factura_id = g.id
+                AND gfd_pago_busqueda.estado = 'activo'
+                AND gfd_pago_busqueda.tipo_relacion = 'adjunto_transferencia'
+                AND COALESCE(
+                  d_pago_busqueda.metadata ->> 'numeroOperacion',
+                  d_pago_busqueda.metadata #>> '{ocr,metadata,numeroOperacion}'
+                ) ILIKE ${like}
+            )
+          )
       ) SELECT item FROM bandeja
       ORDER BY fecha ASC, contexto ASC, orden ASC, documento ASC
       LIMIT ${limit} OFFSET ${offset}
     `;
-    return rows.map(row => row.item);
+    return rows.map(row => {
+      const legacy = row.item;
+
+      if (
+        legacy?.origen === 'ORDEN_PAGO' &&
+        Number(legacy?.regularizadorActivoCantidad ?? 0) > 1
+      ) {
+        throw new Error('MULTIPLE_ACTIVE_REGULARIZERS');
+      }
+
+      const common =
+        legacy?.origen === 'ORDEN_PAGO'
+          ? mapOrdenPagoToCommonAccountingRow(legacy)
+          : mapFacturaOcosToCommonAccountingRow(legacy);
+
+      return mapCommonAccountingRowToLegacy(common, legacy);
+    });
+  }
+
+
+  async getRevisionContableOrdenPago(
+    ordenPagoId: number,
+    numero: string,
+    filters: {
+      empresa: string;
+      clienteDestinoId: number | null;
+    },
+  ) {
+    const q = String(numero ?? '').trim();
+
+    if (!q) return null;
+
+    const rows = await this.getRevisionContable(
+      {
+        empresa: filters.empresa,
+        q,
+        limit: 200,
+        offset: 0,
+        soloPendientesFinanzas: false,
+      },
+      {
+        workspaceId: 0,
+        clienteDestinoId: filters.clienteDestinoId,
+      },
+    );
+
+    return (
+      rows.find(
+        (row: any) =>
+          row?.origen === 'ORDEN_PAGO' &&
+          Number(row?.ordenPagoId) === Number(ordenPagoId),
+      ) ?? null
+    );
   }
 
   async getEstadoDocumental(expedienteId: number) {

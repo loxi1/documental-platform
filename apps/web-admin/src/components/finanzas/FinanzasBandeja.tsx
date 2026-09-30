@@ -1,6 +1,7 @@
 "use client";
 
 import { PagoGrupoResumenCell } from "@/components/finanzas/PagoGrupoResumenCell";
+import { DocumentoRegularizadorOpCell } from "@/components/finanzas/DocumentoRegularizadorOpCell";
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -19,8 +20,15 @@ import {
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useQuery } from '@tanstack/react-query';
-import { getFinanzasBandeja } from '@/services/finanzas';
+import {
+  getFinanzasBandeja,
+  getOrdenPago,
+  getResumenFinancieroGrupo,
+  type OrdenPagoDetalle,
+} from '@/services/finanzas';
 import { CrearOrdenPagoModal } from './CrearOrdenPagoModal';
+import { EditarOrdenPagoModal } from './EditarOrdenPagoModal';
+import { RegularizarOrdenPagoModal } from './RegularizarOrdenPagoModal';
 import { getContexto } from "@/lib/auth-storage";
 import type { RevisionContableItem } from "@/types/revision-contable";
 
@@ -474,6 +482,17 @@ export function FinanzasBandeja() {
   const [soloPendientesFinanzas, setSoloPendientesFinanzas] = useState(false);
   const [pageSize, setPageSize] = useState("50");
   const [page, setPage] = useState(1);
+  const [opDetallePorId, setOpDetallePorId] = useState<
+    Record<number, OrdenPagoDetalle>
+  >({});
+  const [opSeleccionada, setOpSeleccionada] =
+    useState<OrdenPagoDetalle | null>(null);
+  const [editarOpOpen, setEditarOpOpen] = useState(false);
+  const [regularizarOpOpen, setRegularizarOpOpen] = useState(false);
+  const [sustentosRegularizarOp, setSustentosRegularizarOp] = useState<
+    { id: string | number; banco?: string | null; operacion?: string | null; moneda?: string | null; monto?: string | number | null }[]
+  >([]);
+  const [opActionLoading, setOpActionLoading] = useState<number | null>(null);
   const router = useRouter();
 
   const normalizedSearch = search.trim();
@@ -523,6 +542,146 @@ export function FinanzasBandeja() {
   const start = (safePage - 1) * numericPageSize;
   const totalPages = hasNextPage ? page + 1 : page;
   const pageRows = filteredRows.slice(0, numericPageSize);
+
+  const operationalConsumersFrontend = useMemo(
+    () => new Set(["FACTURA", "RECIBO_HONORARIO"]),
+    [],
+  );
+
+  const opIdsVisibles = useMemo(
+    () =>
+      pageRows
+        .filter((item) => itemRecord(item).origen === "ORDEN_PAGO")
+        .map((item) => Number(itemRecord(item).ordenPagoId))
+        .filter((id) => Number.isSafeInteger(id) && id > 0),
+    [pageRows],
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const faltantes = opIdsVisibles.filter((id) => !opDetallePorId[id]);
+    if (faltantes.length === 0) return () => {
+      cancelled = true;
+    };
+
+    void Promise.all(
+      faltantes.map(async (ordenPagoId) => {
+        try {
+          return await getOrdenPago(ordenPagoId);
+        } catch {
+          return null;
+        }
+      }),
+    ).then((detalles) => {
+      if (cancelled) return;
+
+      setOpDetallePorId((current) => {
+        const next = { ...current };
+
+        for (const detalle of detalles) {
+          if (detalle) next[detalle.ordenPagoId] = detalle;
+        }
+
+        return next;
+      });
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [opIdsVisibles, opDetallePorId]);
+
+  function puedeRegularizarOp(detalle: OrdenPagoDetalle | undefined) {
+    if (!detalle) return false;
+
+    if (
+      String(detalle.estadoRegularizacion ?? "").trim().toUpperCase() !==
+      "PENDIENTE"
+    ) {
+      return false;
+    }
+
+    return (detalle.tiposDocumentalesRegularizadoresPermitidos ?? []).some(
+      (tipo) =>
+        operationalConsumersFrontend.has(
+          String(tipo).trim().toUpperCase(),
+        ),
+    );
+  }
+
+  async function cargarDetalleOp(ordenPagoId: number) {
+    const cached = opDetallePorId[ordenPagoId];
+    if (cached) return cached;
+
+    setOpActionLoading(ordenPagoId);
+    try {
+      const detalle = await getOrdenPago(ordenPagoId);
+      setOpDetallePorId((current) => ({
+        ...current,
+        [detalle.ordenPagoId]: detalle,
+      }));
+      return detalle;
+    } finally {
+      setOpActionLoading(null);
+    }
+  }
+
+  async function abrirEditarOp(ordenPagoId: number) {
+    const detalle = await cargarDetalleOp(ordenPagoId);
+    setOpSeleccionada(detalle);
+    setEditarOpOpen(true);
+  }
+
+  async function abrirRegularizarOp(ordenPagoId: number) {
+    const detalle = await cargarDetalleOp(ordenPagoId);
+
+    if (!puedeRegularizarOp(detalle)) {
+      await refetch();
+      return;
+    }
+
+    const grupoId = Number(detalle.grupoFacturaId);
+    const financiero =
+      Number.isSafeInteger(grupoId) && grupoId > 0
+        ? await getResumenFinancieroGrupo(grupoId)
+        : null;
+
+    const sustentos = financiero
+      ? [
+          ...financiero.sustentosActivos,
+          ...financiero.sustentosObservados,
+          ...financiero.sustentosAnulados,
+        ].map((item) => ({
+          id: item.vinculoId ?? item.documentoId,
+          banco: item.banco,
+          operacion: item.numeroReferencia,
+          moneda: item.moneda,
+          monto: item.monto,
+        }))
+      : [];
+
+    setSustentosRegularizarOp(sustentos);
+    setOpSeleccionada(detalle);
+    setRegularizarOpOpen(true);
+  }
+
+  async function refrescarDespuesDeAccionOp() {
+    if (opSeleccionada) {
+      try {
+        const detalle = await getOrdenPago(opSeleccionada.ordenPagoId);
+        setOpSeleccionada(detalle);
+        setOpDetallePorId((current) => ({
+          ...current,
+          [detalle.ordenPagoId]: detalle,
+        }));
+      } catch {
+        // La bandeja sigue siendo la recuperación autoritativa.
+      }
+    }
+
+    await refetch();
+  }
 
   return (
     <main className="space-y-4" data-msii-layout="MSII_GRID_FIRST_FINANZAS_01_V2">
@@ -625,19 +784,26 @@ export function FinanzasBandeja() {
                   <thead>
                     <tr className="border-b bg-muted/40 text-left align-bottom">
                       <th className="min-w-[105px] px-3 py-2.5">Documento</th>
-                      <th className="min-w-[90px] px-3 py-2.5">OC/OS</th>
+                      <th className="min-w-[90px] px-3 py-2.5">Origen</th>
                       <th className="min-w-[110px] px-3 py-2.5">
                         <span className="block leading-tight">Centro de</span>
                         <span className="block leading-tight">costo</span>
                       </th>
                       <th className="w-[190px] min-w-[165px] max-w-[190px] px-3 py-2.5">
-                        Proveedor / Tipo OP
+                        Proveedor / Emisor
+                      </th>
+                      <th className="min-w-[150px] px-3 py-2.5">
+                        Beneficiario
+                      </th>
+                      <th className="min-w-[145px] px-3 py-2.5">
+                        Concepto
                       </th>
                       <th className="min-w-[92px] px-3 py-2.5">
                         <span className="block leading-tight">Fecha de</span>
                         <span className="block leading-tight">emisión</span>
                       </th>
                       <th className="min-w-[105px] px-3 py-2.5">Importe</th>
+                      <th className="min-w-[110px] px-3 py-2.5">Estado</th>
                       <th className="min-w-[82px] px-3 py-2.5 text-center">
                         Sustento
                       </th>
@@ -651,14 +817,94 @@ export function FinanzasBandeja() {
                     {pageRows.map((item) => {
                       if (itemRecord(item).origen === 'ORDEN_PAGO') {
                         const op = itemRecord(item);
+                        const conceptoNombre = String(op.conceptoNombre ?? '').trim();
+                        const conceptoCodigo = String(op.conceptoCodigo ?? '').trim();
+                        const regularizadorActivoCantidad = Number(
+                          op.regularizadorActivoCantidad ?? 0,
+                        );
+                        const regularizadorEmisorNombre = String(
+                          op.regularizadorEmisorNombre ?? '',
+                        ).trim();
+                        const regularizadorEmisorRuc = String(
+                          op.regularizadorEmisorRuc ?? '',
+                        ).trim();
+                        const proveedorOpNombre = String(
+                          op.razonSocialEmisor ?? '',
+                        ).trim();
+                        const proveedorOpRuc = String(op.rucEmisor ?? '').trim();
+                        const proveedorEmisorNombre =
+                          regularizadorActivoCantidad === 1
+                            ? regularizadorEmisorNombre
+                            : proveedorOpNombre;
+                        const proveedorEmisorRuc =
+                          regularizadorActivoCantidad === 1
+                            ? regularizadorEmisorRuc
+                            : proveedorOpRuc;
+                        const beneficiarioNombre = String(
+                          op.beneficiarioNombre ?? '',
+                        ).trim();
+
                         return <tr key={`op-${op.ordenPagoId}`} className="border-b align-middle hover:bg-muted/30">
-                          <td className="px-3 py-2.5 font-medium">{text(op.numero)}</td>
-                          <td className="px-3 py-2.5">Orden de Pago</td>
+                          <td className="px-3 py-2.5">
+                            <DocumentoRegularizadorOpCell
+                              grupoFacturaId={
+                                typeof (op.grupo_factura_id ?? op.grupoFacturaId) === "number" ||
+                                typeof (op.grupo_factura_id ?? op.grupoFacturaId) === "string"
+                                  ? (op.grupo_factura_id ?? op.grupoFacturaId) as string | number
+                                  : null
+                              }
+                              estadoRegularizacion={text(op.estadoRegularizacion)}
+                              conceptoAbreviatura={text(op.conceptoAbreviatura)}
+                            />
+                          </td>
+                          <td className="px-3 py-2.5">
+                            <div className="min-w-[110px] leading-tight">
+                              <div className="font-medium">OP</div>
+                              <div className="mt-0.5 text-xs text-muted-foreground">
+                                {text(op.numero)}
+                              </div>
+                            </div>
+                          </td>
                           <td className="px-3 py-2.5">{text(op.codigo_centro_costo)}<div className="text-xs text-muted-foreground">{text(op.contexto)}</div></td>
-                          <td className="px-3 py-2.5">{text(op.tipo).replaceAll('_', ' ')}<div className="text-xs text-muted-foreground">{text(op.subtipo, '').replaceAll('_', ' ')}</div></td>
+                          <td className="w-[190px] max-w-[190px] px-3 py-2.5">
+                            <div className="w-[180px] max-w-[180px]">
+                              <div
+                                className="truncate font-medium"
+                                title={proveedorEmisorNombre || undefined}
+                              >
+                                {text(proveedorEmisorNombre || null)}
+                              </div>
+                              <div className="text-xs text-muted-foreground">
+                                {text(proveedorEmisorRuc || null)}
+                              </div>
+                            </div>
+                          </td>
+                          <td className="max-w-[180px] px-3 py-2.5">
+                            <div
+                              className="truncate"
+                              title={beneficiarioNombre || undefined}
+                            >
+                              {text(beneficiarioNombre || null)}
+                            </div>
+                          </td>
+                          <td className="max-w-[165px] px-3 py-2.5">
+                            <div
+                              className="truncate"
+                              title={conceptoNombre || conceptoCodigo || undefined}
+                            >
+                              {text(conceptoNombre || conceptoCodigo || null)}
+                            </div>
+                          </td>
                           <td className="px-3 py-2.5">{fechaEmision(item)}</td>
                           <td className="px-3 py-2.5">{montoFactura(item)}</td>
-                          <td className="px-3 py-2.5">{op.estado === 'activo' ? 'Activa' : text(op.estado)}</td>
+                          <td className="px-3 py-2.5">
+                            {text(op.estadoRegularizacion)}
+                          </td>
+                          <td className="px-3 py-2.5">
+                            <PagoGrupoResumenCell
+                              grupoFacturaId={op.grupo_factura_id ?? op.grupoFacturaId}
+                            />
+                          </td>
                           <td className="px-3 py-2.5">
                             <div className="flex justify-end gap-2">
                               <Button asChild size="sm" variant="outline">
@@ -676,11 +922,35 @@ export function FinanzasBandeja() {
                                 type="button"
                                 size="sm"
                                 variant="outline"
-                                disabled
-                                title="Edición de Orden de Pago pendiente de habilitación"
+                                disabled={
+                                  opActionLoading === Number(op.ordenPagoId)
+                                }
+                                onClick={() =>
+                                  void abrirEditarOp(Number(op.ordenPagoId))
+                                }
                               >
                                 Editar
                               </Button>
+
+                              {puedeRegularizarOp(
+                                opDetallePorId[Number(op.ordenPagoId)],
+                              ) ? (
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  disabled={
+                                    opActionLoading === Number(op.ordenPagoId)
+                                  }
+                                  onClick={() =>
+                                    void abrirRegularizarOp(
+                                      Number(op.ordenPagoId),
+                                    )
+                                  }
+                                >
+                                  Regularizar
+                                </Button>
+                              ) : null}
 
                               <Button asChild size="sm">
                                 <Link
@@ -723,12 +993,24 @@ export function FinanzasBandeja() {
                             <ProveedorCell item={item} />
                           </td>
 
+                          <td className="px-3 py-2.5 text-muted-foreground">
+                            —
+                          </td>
+
+                          <td className="px-3 py-2.5 text-muted-foreground">
+                            —
+                          </td>
+
                           <td className="whitespace-nowrap px-3 py-2.5">
                             {fechaEmision(item)}
                           </td>
 
                           <td className="whitespace-nowrap px-3 py-2.5 font-medium">
                             {montoFactura(item)}
+                          </td>
+
+                          <td className="px-3 py-2.5">
+                            {String(item.estadoRegularizacion ?? "").trim() || "—"}
                           </td>
 
                           <td className="px-3 py-2.5">
@@ -799,6 +1081,36 @@ export function FinanzasBandeja() {
           )}
         </CardContent>
       </Card>
+      <EditarOrdenPagoModal
+        open={editarOpOpen}
+        ordenPago={opSeleccionada}
+        onClose={() => {
+          setEditarOpOpen(false);
+          setOpSeleccionada(null);
+        }}
+        onCompleted={async () => {
+          await refrescarDespuesDeAccionOp();
+          setEditarOpOpen(false);
+          setOpSeleccionada(null);
+        }}
+      />
+
+      <RegularizarOrdenPagoModal
+        open={regularizarOpOpen}
+        ordenPago={opSeleccionada}
+        sustentos={sustentosRegularizarOp}
+        onClose={() => {
+          setRegularizarOpOpen(false);
+          setSustentosRegularizarOp([]);
+          setOpSeleccionada(null);
+        }}
+        onCompleted={async () => {
+          await refrescarDespuesDeAccionOp();
+          setRegularizarOpOpen(false);
+          setSustentosRegularizarOp([]);
+          setOpSeleccionada(null);
+        }}
+      />
     </main>
   );
 }
