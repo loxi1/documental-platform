@@ -1,10 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
-import { ArrowLeft, Eye } from "lucide-react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
+import { ArrowLeft, Eye, Pencil, ReceiptText } from "lucide-react";
 
 import { PreviewDocumento } from "@/components/common/PreviewDocumento";
+import { EditarOrdenPagoModal } from "@/components/finanzas/EditarOrdenPagoModal";
+import { RegularizarOrdenPagoModal } from "@/components/finanzas/RegularizarOrdenPagoModal";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Modal } from "@/components/ui/modal";
@@ -25,6 +29,7 @@ type Props = {
   documentosGrupo: GrupoFacturaDocumentoVinculoV2[];
   documentosGrupoLoading: boolean;
   documentosGrupoError: boolean;
+  onRefresh?: () => void | Promise<void>;
 };
 
 const TIPOS_ECONOMICOS = new Set(["FACTURA", "RECIBO_HONORARIO"]);
@@ -133,8 +138,20 @@ export function OrdenPagoVerView({
   documentosGrupo,
   documentosGrupoLoading,
   documentosGrupoError,
+  onRefresh,
 }: Props) {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
   const [preview, setPreview] = useState<PreviewState>(null);
+  const [editarOpen, setEditarOpen] = useState(false);
+  const [regularizarOpen, setRegularizarOpen] = useState(false);
+
+  useEffect(() => {
+    if (searchParams.get("accion") === "editar") {
+      setEditarOpen(true);
+    }
+  }, [searchParams]);
 
   const documentosEconomicos = useMemo(
     () => documentosGrupo.filter((item) => TIPOS_ECONOMICOS.has(tipoEconomico(item))).slice(0, 1),
@@ -159,106 +176,321 @@ export function OrdenPagoVerView({
     return [...unique.values()];
   }, [archivosResponse, detalle.archivoInicial]);
 
-  const codigo = `OP-${detalle.ordenPagoId}`;
+  const codigoLegacy = `OP-${detalle.ordenPagoId}`;
+  const numeroPresentacion = text(detalle.numero, codigoLegacy);
   const centroCodigo = text(detalle.contexto?.centroCostoCodigo, "");
   const contextoNombre = text(detalle.contexto?.nombre, "");
+  const periodo =
+    detalle.periodoAnio && detalle.periodoMes
+      ? `${String(detalle.periodoMes).padStart(2, "0")}/${detalle.periodoAnio}`
+      : detalle.periodoAnio
+        ? String(detalle.periodoAnio)
+        : "—";
+  const concepto = text(
+    detalle.conceptoNombre || detalle.conceptoCodigo,
+    "—",
+  );
+  const beneficiario = text(detalle.beneficiarioNombreLibre, "—");
+  const estadoRegularizacion = text(
+    detalle.estadoRegularizacion,
+    "—",
+  );
+
+  const tiposPermitidos =
+    detalle.tiposDocumentalesRegularizadoresPermitidos ?? [];
+
+  // El frontend sólo representa la intersección:
+  // permitido por snapshot ∩ consumidor operacional implementado.
+  const regularizadoresOperativos = tiposPermitidos.filter((tipo) =>
+    ["FACTURA", "RECIBO_HONORARIO"].includes(
+      String(tipo).trim().toUpperCase(),
+    ),
+  );
+
+  const puedeRegularizar =
+    detalle.estadoRegularizacion === "PENDIENTE" &&
+    regularizadoresOperativos.length > 0;
+
+  function closeEditar() {
+    setEditarOpen(false);
+    if (searchParams.get("accion") === "editar") {
+      router.replace(
+        `/finanzas/ordenes-pago/${encodeURIComponent(
+          String(detalle.ordenPagoId),
+        )}/ver`,
+      );
+    }
+  }
+
+  async function refreshAndCloseEdit() {
+    await onRefresh?.();
+    closeEditar();
+  }
+
+  async function refreshAfterRegularizar() {
+    await onRefresh?.();
+    setRegularizarOpen(false);
+  }
 
   return (
     <main className="space-y-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">Orden de Pago</p>
-          <h1 className="mt-1 text-2xl font-semibold">{codigo}</h1>
-          {centroCodigo || contextoNombre ? (
-            <p className="mt-1 text-sm text-muted-foreground">
-              {centroCodigo ? `Centro ${centroCodigo}` : "Centro"}{contextoNombre ? ` · ${contextoNombre}` : ""}
-            </p>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <h1 className="text-2xl font-semibold">Finanzas</h1>
+
+          {centroCodigo ? (
+            <Badge variant="outline">{centroCodigo}</Badge>
+          ) : null}
+
+          <Badge variant="outline">BBTI</Badge>
+
+          {contextoNombre ? (
+            <Badge variant="outline">{contextoNombre}</Badge>
           ) : null}
         </div>
-        <Button asChild variant="outline">
-          <Link href="/finanzas"><ArrowLeft className="h-4 w-4" />Volver</Link>
+
+        <Button asChild variant="outline" size="sm">
+          <Link href="/finanzas">Volver</Link>
         </Button>
       </div>
 
       <Card>
-        <CardHeader className="pb-3"><CardTitle className="text-base uppercase tracking-wide">Documento principal</CardTitle></CardHeader>
-        <CardContent>
-          <div className="rounded-xl border bg-background p-4">
-            <div className="text-lg font-semibold">{codigo}</div>
-            <div className="text-sm text-muted-foreground">Orden de pago</div>
-            <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              <Dato label="Centro de costo" value={centroCodigo} />
-              <Dato label="Contexto" value={contextoNombre} />
-              <Dato label="Tipo" value={text(detalle.tipo, "")} />
-              <Dato label="Subtipo" value={text(detalle.subtipo, "")} />
-              <Dato label="Fecha emisión" value={formatDate(text(detalle.fechaEmision, ""))} />
-              <Dato label="Moneda" value={text(detalle.moneda, "")} />
-              <Dato label="Monto" value={formatMonto(text(detalle.moneda, ""), text(detalle.monto, ""))} />
+        <CardHeader className="pb-2">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <CardTitle>Orden de Pago</CardTitle>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Consulta la orden y sus sustentos de pago asociados.
+              </p>
             </div>
-            {text(detalle.observacion, "") ? (
-              <div className="mt-4 border-t pt-4"><Dato label="Observación" value={text(detalle.observacion, "")} /></div>
-            ) : null}
+
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setEditarOpen(true)}
+              >
+                <Pencil className="mr-1.5 h-4 w-4" />
+                Editar
+              </Button>
+
+              {puedeRegularizar ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={() => setRegularizarOpen(true)}
+                >
+                  <ReceiptText className="mr-1.5 h-4 w-4" />
+                  Regularizar
+                </Button>
+              ) : null}
+            </div>
           </div>
-        </CardContent>
-      </Card>
+        </CardHeader>
 
-      <Card>
-        <CardHeader className="pb-3"><CardTitle className="text-base uppercase tracking-wide">Documentos de la Orden de Pago</CardTitle></CardHeader>
-        <CardContent>
-          <div className="grid gap-4 lg:grid-cols-2">
-            <section className="rounded-xl border p-4">
-              <h2 className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">Documento económico</h2>
-              {documentosGrupoLoading ? <Skeleton className="mt-3 h-28 w-full" /> : documentosGrupoError ? (
-                <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">No se pudieron cargar los documentos asociados al grupo.</div>
-              ) : documentosEconomicos.length === 0 ? (
-                <div className="mt-3 rounded-lg border border-dashed px-3 py-6 text-sm text-muted-foreground">Sin documento económico asociado.</div>
-              ) : documentosEconomicos.map((item) => {
-                const resumen = documentoEconomicoResumen(item);
-                return (
-                  <div key={`${resumen.tipo}-${text(item.documentoId ?? item.documento_id, "economico")}`} className="mt-3 rounded-lg border p-3">
-                    <div className="font-semibold">{resumen.label}</div>
-                    <div className="mt-1 text-sm">{resumen.numero}</div>
-                    <div className="mt-3 grid gap-2 text-sm sm:grid-cols-2">
-                      {resumen.ruc ? <Dato label="RUC" value={resumen.ruc} /> : null}
-                      {resumen.fecha ? <Dato label="Fecha" value={formatDate(resumen.fecha)} /> : null}
-                      {resumen.monto || resumen.moneda ? <Dato label="Monto" value={formatMonto(resumen.moneda, resumen.monto)} /> : null}
-                      {resumen.nombreArchivo ? <Dato label="Archivo" value={resumen.nombreArchivo} /> : null}
-                    </div>
-                    {resumen.archivoId ? (
-                      <Button type="button" size="sm" variant="outline" className="mt-3" onClick={() => setPreview({ archivoId: resumen.archivoId!, title: resumen.label })}>
-                        <Eye className="h-4 w-4" />Ver
-                      </Button>
-                    ) : null}
-                  </div>
-                );
-              })}
-            </section>
+        <CardContent className="space-y-3">
+          <div className="rounded-xl border p-4">
+            <div className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] lg:items-start">
+              <div className="min-w-0 space-y-4 lg:pr-5">
+                <section>
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                    Documento principal
+                  </p>
 
-            <section className="rounded-xl border p-4">
-              <h2 className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">Otros sustentos</h2>
-              {archivosLoading ? <Skeleton className="mt-3 h-28 w-full" /> : null}
-              {archivosError ? <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">No se pudo cargar la colección de archivos de la Orden de Pago.</div> : null}
-              {!archivosLoading && sustentos.length === 0 ? (
-                <div className="mt-3 rounded-lg border border-dashed px-3 py-6 text-sm text-muted-foreground">Sin sustentos de la orden.</div>
-              ) : (
-                <div className="mt-3 space-y-3">
-                  {sustentos.map((sustento) => (
-                    <div key={sustento.archivoId} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border p-3">
-                      <div className="min-w-0">
-                        <div className="truncate font-medium">{sustento.nombre}</div>
-                        {sustento.tipo ? <div className="text-xs text-muted-foreground">{sustento.tipo}</div> : null}
+                  <div className="mt-3">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div className="flex min-w-0 items-center gap-2">
+                        <span className="truncate font-semibold">
+                          OP {numeroPresentacion}
+                        </span>
                       </div>
-                      <Button type="button" size="sm" variant="outline" onClick={() => setPreview({ archivoId: sustento.archivoId, title: sustento.nombre })}>
-                        <Eye className="h-4 w-4" />Ver
-                      </Button>
+
+                      <Badge variant="outline">Orden de pago</Badge>
                     </div>
-                  ))}
-                </div>
-              )}
-            </section>
+
+                    <dl className="mt-4 grid gap-x-5 gap-y-4 text-sm sm:grid-cols-2 lg:grid-cols-3">
+                      <Dato label="Periodo" value={periodo} />
+                      <Dato label="Beneficiario" value={beneficiario} />
+                      <Dato
+                        label="Estado regularización"
+                        value={estadoRegularizacion}
+                      />
+                      <Dato label="Tipo" value={text(detalle.tipo, "—")} />
+                      <Dato label="Subtipo" value={text(detalle.subtipo, "—")} />
+                      <Dato label="Moneda" value={text(detalle.moneda, "—")} />
+                      <Dato
+                        label="Monto"
+                        value={formatMonto(
+                          text(detalle.moneda, ""),
+                          text(detalle.monto, ""),
+                        )}
+                      />
+                    </dl>
+
+                    <dl className="mt-4 grid gap-x-5 gap-y-4 text-sm sm:grid-cols-2">
+                      <Dato
+                        label="Fecha emisión"
+                        value={formatDate(text(detalle.fechaEmision, ""))}
+                      />
+                      <Dato
+                        label="Referencia"
+                        value={text(detalle.codigoPago, "—")}
+                      />
+                    </dl>
+
+                    <div className="mt-4">
+                      <Dato
+                        label="Observación"
+                        value={text(detalle.observacion, "—")}
+                      />
+                    </div>
+                  </div>
+                </section>
+
+                <section className="border-t pt-4">
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                    Sustento de la orden
+                  </p>
+
+                  {archivosLoading ? (
+                    <Skeleton className="mt-3 h-12 w-full" />
+                  ) : archivosError ? (
+                    <p className="mt-2 text-sm text-muted-foreground">
+                      No se pudo cargar el sustento inicial.
+                    </p>
+                  ) : sustentos.length ? (
+                    <div className="mt-2 space-y-2">
+                      {sustentos.map((item) => (
+                        <div
+                          key={item.archivoId}
+                          className="flex flex-wrap items-center justify-between gap-3"
+                        >
+                          <div className="min-w-0">
+                            <p className="truncate font-semibold">{item.nombre}</p>
+                            {item.tipo ? (
+                              <p className="text-xs text-muted-foreground">
+                                {item.tipo}
+                              </p>
+                            ) : null}
+                          </div>
+
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="h-7 px-2.5"
+                            onClick={() =>
+                              setPreview({
+                                archivoId: item.archivoId,
+                                title: item.nombre,
+                              })
+                            }
+                          >
+                            <Eye className="mr-1.5 h-3.5 w-3.5" />
+                            Ver
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="mt-2 text-sm text-muted-foreground">
+                      Sin sustento inicial asociado a la orden.
+                    </p>
+                  )}
+                </section>
+
+                <section className="border-t pt-4">
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                    Documento regularizador
+                  </p>
+
+                  {documentosGrupoLoading ? (
+                    <Skeleton className="mt-3 h-16 w-full" />
+                  ) : documentosGrupoError ? (
+                    <p className="mt-2 text-sm text-muted-foreground">
+                      No se pudo cargar el documento regularizador.
+                    </p>
+                  ) : documentosEconomicos.length ? (
+                    documentosEconomicos.map((item) => {
+                      const resumen = documentoEconomicoResumen(item);
+
+                      return (
+                        <div
+                          key={`${resumen.tipo}-${resumen.numero}`}
+                          className="mt-3"
+                        >
+                          <div className="flex flex-wrap items-center justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="font-semibold">
+                                {resumen.label} {resumen.numero}
+                              </p>
+                            </div>
+
+                            <div className="flex items-center gap-2">
+                              <Badge variant="outline">{resumen.label}</Badge>
+
+                              {resumen.archivoId ? (
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-7 px-2.5"
+                                  onClick={() =>
+                                    setPreview({
+                                      archivoId: resumen.archivoId!,
+                                      title: `${resumen.label} ${resumen.numero}`,
+                                    })
+                                  }
+                                >
+                                  <Eye className="mr-1.5 h-3.5 w-3.5" />
+                                  Ver
+                                </Button>
+                              ) : null}
+                            </div>
+                          </div>
+
+                          <dl className="mt-3 grid gap-x-5 gap-y-3 text-sm sm:grid-cols-2">
+                            <Dato
+                              label="Fecha"
+                              value={formatDate(resumen.fecha)}
+                            />
+                            <Dato
+                              label="Importe"
+                              value={formatMonto(
+                                resumen.moneda,
+                                resumen.monto,
+                              )}
+                            />
+                          </dl>
+                        </div>
+                      );
+                    })
+                  ) : (
+                    <p className="mt-2 text-sm text-muted-foreground">
+                      Sin documento regularizador asociado.
+                    </p>
+                  )}
+                </section>
+              </div>
+
+            </div>
           </div>
         </CardContent>
       </Card>
+      <EditarOrdenPagoModal
+        open={editarOpen}
+        ordenPago={detalle}
+        onClose={closeEditar}
+        onCompleted={refreshAndCloseEdit}
+      />
+
+      <RegularizarOrdenPagoModal
+        open={regularizarOpen}
+        ordenPago={detalle}
+        onClose={() => setRegularizarOpen(false)}
+        onCompleted={refreshAfterRegularizar}
+      />
 
       <Modal
         isOpen={Boolean(preview)}

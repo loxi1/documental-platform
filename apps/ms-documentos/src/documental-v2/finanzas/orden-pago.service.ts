@@ -2,7 +2,8 @@ import { createHash } from 'node:crypto';
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { sql } from '@documental/database';
 import { AuditoriaOperativaV2Repository } from '../auditoria-operativa-v2.repository';
-import { validarActorOp, validarEdicionOrdenPago, validarOrdenPago } from './orden-pago.dto';
+import { validarActorOp,
+  validarActorOpLecturaScoped, validarEdicionOrdenPago, validarOrdenPago } from './orden-pago.dto';
 import type { EditarOrdenPagoInput, OrdenPagoActor } from './orden-pago.dto';
 import type { SqlExecutor } from '../sql-executor';
 import { CatalogoConceptosObligacionRepository } from '../catalogo-conceptos-obligacion.repository';
@@ -10,6 +11,7 @@ import { ObligacionesSnapshotRepository } from '../obligaciones-snapshot.reposit
 import { RegularizadoresObligacionRepository } from '../regularizadores-obligacion.repository';
 import { ConfigProveedoresConceptoOpRepository } from '../config-proveedores-concepto-op.repository';
 import { ConfigBeneficiariosRendicionOpRepository } from '../config-beneficiarios-rendicion-op.repository';
+import { ConfirmacionDocumentalService } from '../confirmacion-documental.service';
 
 @Injectable()
 export class OrdenPagoService {
@@ -20,17 +22,209 @@ export class OrdenPagoService {
     private readonly regularizadoresObligacion: RegularizadoresObligacionRepository,
     private readonly configProveedores: ConfigProveedoresConceptoOpRepository,
     private readonly configRendicion: ConfigBeneficiariosRendicionOpRepository,
+    private readonly confirmacionDocumental: ConfirmacionDocumentalService,
   ) {}
+
+  async obtenerUploadPendiente(ordenPagoId: number, actor: OrdenPagoActor) {
+    validarActorOp(actor);
+
+    if (!Number.isSafeInteger(ordenPagoId) || ordenPagoId <= 0) {
+      throw new NotFoundException('Orden de Pago no disponible');
+    }
+
+    // La única autoridad externa es ordenPagoId + actor.
+    // Todo el contexto estructural se deriva aquí en backend.
+    const detalle = await this.obtenerDetalle(ordenPagoId, actor);
+
+    const expedienteId = Number(detalle.expedienteId);
+    const documentoBaseId = Number(detalle.documentoId);
+    const grupoFacturaId = Number(detalle.grupoFacturaId);
+
+    if (
+      !Number.isSafeInteger(expedienteId) ||
+      expedienteId <= 0 ||
+      !Number.isSafeInteger(documentoBaseId) ||
+      documentoBaseId <= 0 ||
+      !Number.isSafeInteger(grupoFacturaId) ||
+      grupoFacturaId <= 0
+    ) {
+      throw new ConflictException('ORDEN_PAGO_CONTEXTO_RECUPERACION_INCONSISTENTE');
+    }
+
+    /*
+     * R4P:
+     * - identifica primero el upload por contexto persistido;
+     * - excluye únicamente consumo financiero V2 ACTIVO del MISMO documento;
+     * - NO usa estado OCR, recencia, MAX, LIMIT 1 ni ausencia global de pagos;
+     * - trae todos los OCR del candidato para detectar ambigüedad explícitamente.
+     */
+    const candidatos = await sql`
+      SELECT
+        d.id AS "documentoId",
+        a.id AS "archivoId",
+        a.nombre_archivo AS "nombreArchivo",
+        a.metadata->>'contentType' AS "contentType",
+        a.estado AS "estadoArchivo",
+        COALESCE(
+          json_agg(
+            json_build_object(
+              'ocrResultadoId', o.id,
+              'estado', o.estado,
+              'validacionPendientePago', o.metadata->'validacionPendientePago'
+            )
+            ORDER BY o.id
+          ) FILTER (WHERE o.id IS NOT NULL),
+          '[]'::json
+        ) AS "ocrResultados"
+      FROM documentos.documentos d
+      JOIN documentos.documentos_archivos a
+        ON a.documento_id = d.id
+      LEFT JOIN documentos.ocr_resultados o
+        ON o.documento_id = d.id
+       AND o.archivo_id = a.id
+      WHERE
+        a.workspace_id = ${actor.workspaceId}::bigint
+        AND a.empresa_codigo = ${actor.empresaCodigo}::text
+        AND a.cliente_destino_id IS NOT DISTINCT FROM ${actor.clienteDestinoId}::bigint
+        AND a.expediente_id = ${expedienteId}::bigint
+        AND a.metadata->>'tipoDocumental' = 'TRANSFERENCIA'
+        AND a.metadata->>'documentoBaseId' = ${String(documentoBaseId)}
+        AND a.metadata->>'grupoFacturaId' = ${String(grupoFacturaId)}
+        AND a.metadata->>'tipoRelacion' = 'adjunto_transferencia'
+        AND COALESCE(a.estado, '') NOT IN ('anulado', 'duplicado_absorbido')
+        AND NOT EXISTS (
+          SELECT 1
+          FROM documentos.ocr_resultados o_resuelto
+          WHERE o_resuelto.documento_id = d.id
+            AND o_resuelto.archivo_id = a.id
+            AND o_resuelto.metadata #>> '{validacionPendientePago,estado}' = 'CONSUMIDO'
+        )
+        AND NOT EXISTS (
+          SELECT 1
+          FROM documentos.grupo_factura_documentos gfd
+          WHERE gfd.documento_id = d.id
+            AND gfd.grupo_factura_id = ${grupoFacturaId}::bigint
+            AND gfd.tipo_relacion = 'adjunto_transferencia'
+            AND gfd.estado = 'activo'
+        )
+      GROUP BY
+        d.id,
+        a.id,
+        a.nombre_archivo,
+        a.metadata,
+        a.estado
+      ORDER BY d.id, a.id
+    `;
+
+    if (candidatos.length === 0) {
+      return {
+        existe: false,
+        upload: null,
+        ocr: null,
+      };
+    }
+
+    if (candidatos.length > 1) {
+      throw new ConflictException({
+        message: 'Existe más de un upload pendiente compatible con la Orden de Pago',
+        code: 'ORDEN_PAGO_UPLOAD_PENDIENTE_AMBIGUO',
+        details: {
+          ordenPagoId,
+          cantidad: candidatos.length,
+        },
+      });
+    }
+
+    const candidato = candidatos[0];
+    const ocrResultados = Array.isArray(candidato.ocrResultados)
+      ? candidato.ocrResultados
+      : [];
+
+    if (ocrResultados.length > 1) {
+      throw new ConflictException({
+        message: 'El upload pendiente tiene más de un resultado OCR asociado',
+        code: 'ORDEN_PAGO_UPLOAD_OCR_AMBIGUO',
+        details: {
+          ordenPagoId,
+          documentoId: Number(candidato.documentoId),
+          archivoId: Number(candidato.archivoId),
+          cantidad: ocrResultados.length,
+        },
+      });
+    }
+
+    const ocr = ocrResultados[0] ?? null;
+
+    return {
+      existe: true,
+      upload: {
+        documentoId: Number(candidato.documentoId),
+        archivoId: Number(candidato.archivoId),
+        nombreArchivo: candidato.nombreArchivo ?? null,
+        contentType: candidato.contentType ?? null,
+        estadoArchivo: candidato.estadoArchivo ?? null,
+        puedePrevisualizar: true,
+      },
+      ocr: ocr
+        ? {
+            ocrResultadoId: Number(ocr.ocrResultadoId),
+            estado: ocr.estado ?? null,
+            puedeRevisar: ['pendiente_validacion', 'editado'].includes(
+              String(ocr.estado ?? ''),
+            ),
+            validacionPendientePago:
+              ocr.validacionPendientePago &&
+              typeof ocr.validacionPendientePago === 'object'
+                ? ocr.validacionPendientePago
+                : null,
+          }
+        : null,
+    };
+  }
 
   async obtenerDetalle(ordenPagoId: number, actor: OrdenPagoActor) {
     validarActorOp(actor);
+    return this.obtenerDetalleScoped(ordenPagoId, actor);
+  }
+
+  async obtenerDetalleRevisionContable(
+    ordenPagoId: number,
+    actor: OrdenPagoActor,
+  ) {
+    validarActorOpLecturaScoped(actor);
+    return this.obtenerDetalleScoped(ordenPagoId, actor);
+  }
+
+  private async obtenerDetalleScoped(
+    ordenPagoId: number,
+    actor: OrdenPagoActor,
+  ) {
     if (!Number.isSafeInteger(ordenPagoId) || ordenPagoId <= 0) throw new NotFoundException('Orden de Pago no disponible');
     const [row] = await sql`
       SELECT p.id AS "ordenPagoId", d.id AS "documentoId", g.id AS "grupoFacturaId",
-        c.id AS "contenedorOperativoId", d.fecha_emision::text AS "fechaEmision",
+        c.id AS "contenedorOperativoId", c.expediente_v1_id AS "expedienteId",
+        c.empresa_codigo AS "empresaCodigo",
+        d.numero AS "numeroDocumental",
+        d.fecha_emision::text AS "fechaEmision",
         d.monto_total::text AS monto, d.moneda, d.estado,
         d.metadata->'ordenPago'->>'tipo' AS tipo,
         d.metadata->'ordenPago'->>'subtipo' AS subtipo,
+        os.grupo_factura_id IS NOT NULL AS "tieneSnapshot",
+        co.codigo AS "conceptoCodigo",
+        co.nombre AS "conceptoNombre",
+        os.requiere_regularizacion_aplicada AS "requiereRegularizacion",
+        os.estado_regularizacion AS "estadoRegularizacion",
+        os.periodo_anio AS "periodoAnio",
+        os.periodo_mes AS "periodoMes",
+        os.codigo_pago AS "codigoPago",
+        os.tipo_beneficiario_aplicado AS "tipoBeneficiario",
+        os.uso_beneficiario_aplicado AS "usoBeneficiario",
+        p.proveedor_id AS "proveedorId",
+        prov.ruc AS "proveedorRuc",
+        prov.razon_social AS "proveedorRazonSocial",
+        p.beneficiario_cliente_destino_id AS "beneficiarioClienteDestinoId",
+        p.beneficiario_usuario_id AS "beneficiarioUsuarioId",
+        p.beneficiario_nombre_libre AS "beneficiarioNombreLibre",
         d.metadata->'ordenPago'->>'observacion' AS observacion,
         json_build_object('codigo', c.codigo, 'nombre', c.nombre,
           'centroCostoCodigo', c.centro_costo_codigo) AS contexto,
@@ -44,6 +238,12 @@ export class OrdenPagoService {
       JOIN documentos.contenedores_operativos c ON c.id=p.contenedor_operativo_id
       JOIN documentos.grupos_factura g ON g.documento_operativo_principal_id=p.id
         AND g.origen_obligacion='ORDEN_PAGO'
+      LEFT JOIN documentos.obligaciones_snapshot os
+        ON os.grupo_factura_id=g.id
+      LEFT JOIN documentos.catalogo_conceptos_obligacion co
+        ON co.id=os.concepto_id
+      LEFT JOIN core.proveedores prov
+        ON prov.id=p.proveedor_id
       LEFT JOIN documentos.documentos_archivos a ON a.documento_id=d.id
         AND a.origen_archivo='OP_INICIAL' AND a.es_version_actual=true
       WHERE p.id=${ordenPagoId} AND p.tipo_principal='ORDEN_PAGO'
@@ -52,9 +252,158 @@ export class OrdenPagoService {
         AND c.cliente_destino_id IS NOT DISTINCT FROM ${actor.clienteDestinoId}::bigint
     `;
     if (!row) throw new NotFoundException('Orden de Pago no disponible');
-    return { ...row, ordenPagoId: Number(row.ordenPagoId), documentoId: Number(row.documentoId),
-      grupoFacturaId: Number(row.grupoFacturaId), contenedorOperativoId: Number(row.contenedorOperativoId),
-      numero: `OP-${row.ordenPagoId}` };
+    if (row.tieneSnapshot && (!row.conceptoCodigo || !row.conceptoNombre)) {
+      throw new ConflictException('OBLIGACION_SNAPSHOT_INCONSISTENTE');
+    }
+
+    const conceptoCodigo = row.tieneSnapshot
+      ? String(row.conceptoCodigo)
+      : null;
+
+    const conceptoNombre = row.tieneSnapshot
+      ? String(row.conceptoNombre)
+      : null;
+
+    const tipo = row.tieneSnapshot ? null : row.tipo;
+    const subtipo = row.tieneSnapshot ? null : row.subtipo;
+    const tiposDocumentalesRegularizadoresPermitidos = row.tieneSnapshot
+      ? await this.regularizadoresObligacion.listarCongeladosPorGrupoFacturaId(
+          Number(row.grupoFacturaId),
+        )
+      : [];
+
+    return {
+      ...row,
+      ordenPagoId: Number(row.ordenPagoId),
+      documentoId: Number(row.documentoId),
+      grupoFacturaId: Number(row.grupoFacturaId),
+      contenedorOperativoId: Number(row.contenedorOperativoId),
+      expedienteId: row.expedienteId == null ? null : Number(row.expedienteId),
+      empresaCodigo: row.empresaCodigo == null ? null : String(row.empresaCodigo),
+      numero:
+        row.numeroDocumental != null && String(row.numeroDocumental).trim()
+          ? String(row.numeroDocumental)
+          : `OP-${row.ordenPagoId}`,
+      conceptoCodigo,
+      conceptoNombre,
+      tiposDocumentalesRegularizadoresPermitidos,
+      tipo,
+      subtipo,
+    };
+  }
+
+  async confirmarPago(
+    ordenPagoId: number,
+    body: unknown,
+    actor: OrdenPagoActor,
+  ) {
+    validarActorOp(actor);
+
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+      throw new BadRequestException('Body de confirmación de pago inválido');
+    }
+
+    const input = body as Record<string, unknown>;
+    const permitidos = new Set([
+      'ocrResultadoId',
+      'metadata',
+      'observacion',
+      'decisionCorrespondencia',
+    ]);
+    const noPermitidos = Object.keys(input).filter(key => !permitidos.has(key));
+    if (noPermitidos.length) {
+      throw new BadRequestException(
+        `Campos no permitidos en confirmación de pago OP: ${noPermitidos.join(', ')}`,
+      );
+    }
+
+    const ocrResultadoId = Number(input.ocrResultadoId);
+    if (!Number.isSafeInteger(ocrResultadoId) || ocrResultadoId <= 0) {
+      throw new BadRequestException('ocrResultadoId inválido');
+    }
+
+    if (
+      input.metadata !== undefined &&
+      (input.metadata === null ||
+        typeof input.metadata !== 'object' ||
+        Array.isArray(input.metadata))
+    ) {
+      throw new BadRequestException('metadata inválida');
+    }
+
+    if (
+      input.observacion !== undefined &&
+      typeof input.observacion !== 'string'
+    ) {
+      throw new BadRequestException('observacion inválida');
+    }
+
+    let decisionCorrespondencia:
+      | {
+          accion: 'ACEPTAR' | 'OBSERVAR' | 'AUTORIZAR_EXCEPCION';
+          motivo?: string | null;
+        }
+      | undefined;
+
+    if (input.decisionCorrespondencia !== undefined) {
+      if (
+        !input.decisionCorrespondencia ||
+        typeof input.decisionCorrespondencia !== 'object' ||
+        Array.isArray(input.decisionCorrespondencia)
+      ) {
+        throw new BadRequestException('decisionCorrespondencia inválida');
+      }
+
+      const decision = input.decisionCorrespondencia as Record<string, unknown>;
+      const decisionKeys = Object.keys(decision);
+      if (
+        decisionKeys.some(key => !['accion', 'motivo'].includes(key)) ||
+        !['ACEPTAR', 'OBSERVAR', 'AUTORIZAR_EXCEPCION'].includes(
+          String(decision.accion ?? ''),
+        ) ||
+        (decision.motivo !== undefined &&
+          decision.motivo !== null &&
+          typeof decision.motivo !== 'string')
+      ) {
+        throw new BadRequestException('decisionCorrespondencia inválida');
+      }
+
+      decisionCorrespondencia = {
+        accion: decision.accion as
+          | 'ACEPTAR'
+          | 'OBSERVAR'
+          | 'AUTORIZAR_EXCEPCION',
+        motivo:
+          decision.motivo === undefined
+            ? undefined
+            : (decision.motivo as string | null),
+      };
+    }
+
+    const detalle = await this.obtenerDetalle(ordenPagoId, actor);
+    const expedienteId = Number(detalle.expedienteId);
+
+    if (!Number.isSafeInteger(expedienteId) || expedienteId <= 0) {
+      throw new ConflictException('ORDEN_PAGO_SIN_EXPEDIENTE_COMPATIBLE');
+    }
+
+    return this.confirmacionDocumental.confirmarOcrResultadoConExpediente(
+      ocrResultadoId,
+      {
+        expedienteId,
+        documentoBaseId: detalle.documentoId,
+        grupoFacturaId: detalle.grupoFacturaId,
+        origenObligacion: 'ORDEN_PAGO',
+        metadata: input.metadata as Record<string, any> | undefined,
+        observacion: input.observacion as string | undefined,
+        decisionCorrespondencia,
+      },
+      {
+        usuarioId: actor.id,
+        requestId: actor.requestId ?? null,
+        correlationId: actor.correlationId ?? actor.requestId ?? null,
+      },
+    );
   }
 
   async opciones(actor: OrdenPagoActor) {
@@ -1006,6 +1355,32 @@ export class OrdenPagoService {
           'activo', ${JSON.stringify(metadata)}::jsonb, ${actor.id}, ${key}::uuid, ${hash}) RETURNING id
       `;
       const ordenPagoId = Number(principales[0].id);
+      const numeroDocumentalOp = String(ordenPagoId).padStart(10, '0');
+
+      if (!/^\d{10}$/.test(numeroDocumentalOp)) {
+        throw new ConflictException(
+          'NUMERO_DOCUMENTAL_OP_FUERA_DE_RANGO',
+        );
+      }
+
+      const numeroPersistidoRows = await tx`
+        UPDATE documentos.documentos
+        SET numero=${numeroDocumentalOp}
+        WHERE id=${documentoId}
+          AND tipo_documental='ORDEN_PAGO'
+          AND numero IS NULL
+        RETURNING numero
+      `;
+
+      if (
+        numeroPersistidoRows.length !== 1 ||
+        String(numeroPersistidoRows[0]?.numero ?? '') !== numeroDocumentalOp
+      ) {
+        throw new ConflictException(
+          'NUMERO_DOCUMENTAL_OP_NO_PERSISTIDO',
+        );
+      }
+
       const grupos = await tx`
         INSERT INTO documentos.grupos_factura
           (documento_operativo_principal_id, factura_documento_id, origen_obligacion, estado, metadata, creado_por)

@@ -46,6 +46,15 @@ export function validarActorOp(actor: OrdenPagoActor) {
   }
 }
 
+export function validarActorOpLecturaScoped(actor: OrdenPagoActor) {
+  if (!Number.isSafeInteger(actor.id) || actor.id <= 0 ||
+      !actor.empresaCodigo ||
+      (actor.clienteDestinoId != null &&
+        (!Number.isSafeInteger(actor.clienteDestinoId) || actor.clienteDestinoId <= 0))) {
+    throw new ForbiddenException('Contexto autenticado requerido para consultar la Orden de Pago');
+  }
+}
+
 export function validarEdicionOrdenPago(body: unknown): EditarOrdenPagoInput {
   const fail = (message: string): never => { throw new BadRequestException(message); };
   if (!body || typeof body !== 'object' || Array.isArray(body)) fail('Edición OP inválida');

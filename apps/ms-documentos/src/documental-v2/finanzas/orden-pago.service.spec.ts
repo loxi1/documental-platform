@@ -1,4 +1,8 @@
-jest.mock('@documental/database', () => ({ sql: { begin: jest.fn() } }));
+jest.mock('@documental/database', () => {
+  const sql = jest.fn();
+  (sql as any).begin = jest.fn();
+  return { sql };
+});
 import { sql } from '@documental/database';
 import { OrdenPagoService } from './orden-pago.service';
 import { validarOrdenPago } from './orden-pago.dto';
@@ -80,7 +84,9 @@ describe('OP-01A creación atómica', () => {
     const timestamp = new Date('2026-09-14T18:30:00Z');
     tx.mockResolvedValueOnce([]).mockResolvedValueOnce([]).mockResolvedValueOnce([{ id: 7 }])
       .mockResolvedValueOnce([{ codigo: 'PEN' }]).mockResolvedValueOnce([{ id: 10, creado_en: timestamp }])
-      .mockResolvedValueOnce([{ id: 11 }]).mockResolvedValueOnce([{ id: 12 }]);
+      .mockResolvedValueOnce([{ id: 11 }])
+      .mockResolvedValueOnce([{ numero: '0000000011' }])
+      .mockResolvedValueOnce([{ id: 12 }]);
     return timestamp;
   }
   it('crea sin archivo/formal/OCR y audita actor, IDs y fecha real separada', async () => {
@@ -114,6 +120,20 @@ describe('OP-01A creación atómica', () => {
       String(call[0]?.[0] ?? '').includes('INSERT INTO documentos.documentos')
     );
     expect(documentoInsert).toBeDefined();
+
+    const numeroUpdate = tx.mock.calls.find(call =>
+      String(call[0]?.[0] ?? '').includes('UPDATE documentos.documentos') &&
+      String(call[0]?.[0] ?? '').includes('SET numero=')
+    );
+    expect(numeroUpdate).toBeDefined();
+    expect(numeroUpdate!.slice(1)).toEqual(
+      expect.arrayContaining(['0000000011', 10]),
+    );
+
+    const numeroUpdateQuery = String(numeroUpdate![0]?.join('?') ?? '');
+    expect(numeroUpdateQuery).toContain("tipo_documental='ORDEN_PAGO'");
+    expect(numeroUpdateQuery).toContain('numero IS NULL');
+    expect(numeroUpdateQuery).toContain('RETURNING numero');
 
     const documentoParams = documentoInsert!.slice(1);
     const metadataParam = documentoParams.find(param =>
@@ -149,6 +169,146 @@ describe('OP-01A creación atómica', () => {
       tx,
     );
   });
+  it.each([
+    [1, '0000000001'],
+    [42, '0000000042'],
+    [153, '0000000153'],
+  ])(
+    'T-NUM creación ordenPagoId=%i persiste número documental %s sobre el mismo documento',
+    async (ordenPagoId, numeroEsperado) => {
+      const timestamp = new Date('2026-09-14T18:30:00Z');
+      const documentoId = 10;
+      const grupoFacturaId = 12;
+
+      tx.mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([{ id: 7 }])
+        .mockResolvedValueOnce([{ codigo: 'PEN' }])
+        .mockResolvedValueOnce([{ id: documentoId, creado_en: timestamp }])
+        .mockResolvedValueOnce([{ id: ordenPagoId }])
+        .mockResolvedValueOnce([{ numero: numeroEsperado }])
+        .mockResolvedValueOnce([{ id: grupoFacturaId }]);
+
+      const resultado = await service.crear(body, key, actor);
+
+      expect(resultado).toMatchObject({
+        documentoId,
+        ordenPagoId,
+        grupoFacturaId,
+        idempotente: false,
+      });
+
+      const updatesNumero = tx.mock.calls.filter(call =>
+        String(call[0]?.[0] ?? '').includes('UPDATE documentos.documentos') &&
+        String(call[0]?.[0] ?? '').includes('SET numero=')
+      );
+
+      expect(updatesNumero).toHaveLength(1);
+
+      const numeroUpdate = updatesNumero[0];
+      const params = numeroUpdate.slice(1);
+      const query = String(numeroUpdate[0]?.join('?') ?? '');
+
+      expect(params).toEqual(
+        expect.arrayContaining([numeroEsperado, documentoId]),
+      );
+      expect(numeroEsperado).toMatch(/^\d{10}$/);
+      expect(numeroEsperado).not.toContain('OP-');
+
+      expect(query).toContain("tipo_documental='ORDEN_PAGO'");
+      expect(query).toContain('numero IS NULL');
+      expect(query).toContain('RETURNING numero');
+    },
+  );
+
+  it('T-NUM detalle usa documentos.numero como autoridad visible', async () => {
+    const detalleTx = sql as unknown as jest.Mock;
+
+    detalleTx.mockResolvedValueOnce([{
+      ordenPagoId: 153,
+      documentoId: 10,
+      grupoFacturaId: 12,
+      contenedorOperativoId: 7,
+      expedienteId: null,
+      empresaCodigo: actor.empresaCodigo,
+      numeroDocumental: '0000000153',
+      fechaEmision: '2026-08-15',
+      monto: '100.00',
+      moneda: 'PEN',
+      estado: 'activo',
+      tipo: null,
+      subtipo: null,
+      tieneSnapshot: true,
+      conceptoCodigo: 'AGUA',
+      conceptoNombre: 'Agua',
+      requiereRegularizacion: false,
+      estadoRegularizacion: 'NO_REQUIERE',
+      periodoAnio: 2026,
+      periodoMes: 8,
+      codigoPago: null,
+      tipoBeneficiario: 'NO_APLICA',
+      usoBeneficiario: 'NO_APLICA',
+      proveedorId: null,
+      beneficiarioClienteDestinoId: null,
+      beneficiarioUsuarioId: null,
+      beneficiarioNombreLibre: null,
+      observacion: null,
+      contexto: {},
+      archivoInicial: null,
+    }]);
+
+    regularizadoresObligacion.listarCongeladosPorGrupoFacturaId
+      .mockResolvedValueOnce([]);
+
+    const detalle = await service.obtenerDetalle(153, actor);
+
+    expect(detalle.numero).toBe('0000000153');
+  });
+
+  it('T-NUM detalle usa OP-id sólo como fallback legado cuando documentos.numero es NULL', async () => {
+    const detalleTx = sql as unknown as jest.Mock;
+
+    detalleTx.mockResolvedValueOnce([{
+      ordenPagoId: 153,
+      documentoId: 10,
+      grupoFacturaId: 12,
+      contenedorOperativoId: 7,
+      expedienteId: null,
+      empresaCodigo: actor.empresaCodigo,
+      numeroDocumental: null,
+      fechaEmision: '2026-08-15',
+      monto: '100.00',
+      moneda: 'PEN',
+      estado: 'activo',
+      tipo: null,
+      subtipo: null,
+      tieneSnapshot: true,
+      conceptoCodigo: 'AGUA',
+      conceptoNombre: 'Agua',
+      requiereRegularizacion: false,
+      estadoRegularizacion: 'NO_REQUIERE',
+      periodoAnio: 2026,
+      periodoMes: 8,
+      codigoPago: null,
+      tipoBeneficiario: 'NO_APLICA',
+      usoBeneficiario: 'NO_APLICA',
+      proveedorId: null,
+      beneficiarioClienteDestinoId: null,
+      beneficiarioUsuarioId: null,
+      beneficiarioNombreLibre: null,
+      observacion: null,
+      contexto: {},
+      archivoInicial: null,
+    }]);
+
+    regularizadoresObligacion.listarCongeladosPorGrupoFacturaId
+      .mockResolvedValueOnce([]);
+
+    const detalle = await service.obtenerDetalle(153, actor);
+
+    expect(detalle.numero).toBe('OP-153');
+  });
+
   it('replay conserva IDs y no repite inserciones ni auditoría', async () => {
     created(); await service.crear(body, key, actor);
     const hash = tx.mock.calls[5].at(-1);
@@ -171,6 +331,17 @@ describe('OP-01A creación atómica', () => {
       regularizadoresObligacion.congelarParaObligacion,
     ).not.toHaveBeenCalled();
     expect(audit.registrarCreacion).not.toHaveBeenCalled();
+
+    const replayQueries = tx.mock.calls
+      .map(call =>
+        Array.isArray(call[0])
+          ? call[0].map((fragmento: unknown) => String(fragmento)).join(' ')
+          : String(call[0] ?? '')
+      )
+      .join('\n');
+
+    expect(replayQueries).not.toContain('UPDATE documentos.documentos');
+    expect(replayQueries).not.toContain('SET numero=');
   });
   it('crea concepto representable que requiere regularización como PENDIENTE', async () => {
     created();
@@ -768,6 +939,7 @@ describe('OP-01A creación atómica', () => {
       .mockResolvedValueOnce([{ ok: 1 }])
       .mockResolvedValueOnce([{ id: 10, creado_en: timestamp }])
       .mockResolvedValueOnce([{ id: 11 }])
+      .mockResolvedValueOnce([{ numero: '0000000011' }])
       .mockResolvedValueOnce([{ id: 12 }]);
 
     catalogoConceptos.buscarPorCodigo.mockResolvedValueOnce({
@@ -1285,6 +1457,123 @@ describe('OP-01A creación atómica', () => {
       key,
     ).conceptoCodigo).toBe('AGUA');
   });
+
+  describe('confirmarPago - adaptador OP a capacidad común', () => {
+    const confirmarOcrResultadoConExpediente = jest.fn();
+
+    const crearServiceConfirmacion = () =>
+      new OrdenPagoService(
+        { registrarCreacion: jest.fn() } as any,
+        {
+          buscarPorCodigo: jest.fn(),
+          listarRepresentablesParaOrdenPago: jest.fn(),
+        } as any,
+        {
+          crear: jest.fn(),
+          existePorGrupoFacturaId: jest.fn(),
+        } as any,
+        {
+          listarConfiguradosActivosPorConcepto: jest.fn(),
+          congelarParaObligacion: jest.fn(),
+          listarCongeladosPorGrupoFacturaId: jest.fn(),
+          permiteTipoDocumental: jest.fn(),
+        } as any,
+        { listarActivos: jest.fn(), estaHabilitado: jest.fn() } as any,
+        { listarActivos: jest.fn(), estaHabilitado: jest.fn() } as any,
+        { confirmarOcrResultadoConExpediente } as any,
+      );
+
+    beforeEach(() => {
+      confirmarOcrResultadoConExpediente.mockReset();
+    });
+
+    it('resuelve contexto canónico por ordenPagoId + actor y delega a la capacidad común', async () => {
+      const serviceConfirmacion = crearServiceConfirmacion();
+
+      jest.spyOn(serviceConfirmacion, 'obtenerDetalle').mockResolvedValue({
+        ordenPagoId: 153,
+        documentoId: 443,
+        grupoFacturaId: 116,
+        expedienteId: 118,
+      } as any);
+
+      confirmarOcrResultadoConExpediente.mockResolvedValue({
+        documentoId: 900,
+        archivoId: 901,
+      });
+
+      const input = {
+        ocrResultadoId: 94,
+        metadata: { banco: 'BCP' },
+        observacion: 'Pago OP',
+        decisionCorrespondencia: {
+          accion: 'ACEPTAR' as const,
+          motivo: 'Validado',
+        },
+      };
+
+      const resultado = await serviceConfirmacion.confirmarPago(
+        153,
+        input,
+        actor,
+      );
+
+      expect(serviceConfirmacion.obtenerDetalle).toHaveBeenCalledWith(
+        153,
+        actor,
+      );
+
+      expect(confirmarOcrResultadoConExpediente).toHaveBeenCalledTimes(1);
+      expect(confirmarOcrResultadoConExpediente).toHaveBeenCalledWith(
+        94,
+        {
+          expedienteId: 118,
+          documentoBaseId: 443,
+          grupoFacturaId: 116,
+          origenObligacion: 'ORDEN_PAGO',
+          metadata: { banco: 'BCP' },
+          observacion: 'Pago OP',
+          decisionCorrespondencia: {
+            accion: 'ACEPTAR',
+            motivo: 'Validado',
+          },
+        },
+        {
+          usuarioId: actor.id,
+          requestId: actor.requestId,
+          correlationId: actor.correlationId,
+        },
+      );
+
+      expect(resultado).toEqual({
+        documentoId: 900,
+        archivoId: 901,
+      });
+    });
+
+    it('si la OP no resuelve para el actor no alcanza la capacidad común', async () => {
+      const serviceConfirmacion = crearServiceConfirmacion();
+
+      jest.spyOn(serviceConfirmacion, 'obtenerDetalle').mockRejectedValue(
+        new Error('OP_NO_DISPONIBLE_EN_CONTEXTO'),
+      );
+
+      await expect(
+        serviceConfirmacion.confirmarPago(
+          999999,
+          { ocrResultadoId: 94 },
+          actor,
+        ),
+      ).rejects.toThrow('OP_NO_DISPONIBLE_EN_CONTEXTO');
+
+      expect(serviceConfirmacion.obtenerDetalle).toHaveBeenCalledWith(
+        999999,
+        actor,
+      );
+      expect(confirmarOcrResultadoConExpediente).not.toHaveBeenCalled();
+    });
+  });
+
 
   it('AUTOCOMPLETE acepta proveedor existente en core.proveedores sin configuración por concepto', async () => {
     const serviceAny = service as any;
