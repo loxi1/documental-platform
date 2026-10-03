@@ -116,9 +116,7 @@ export function CrearOrdenPagoModal({ workspaceId, onCreated }: { workspaceId: n
     const picker = flatpickr(periodoInput.current, {
       static: true,
       locale: Spanish,
-      defaultDate: periodo
-        ? `${periodo.slice(3, 7)}-${periodo.slice(0, 2)}-01`
-        : undefined,
+      defaultDate: periodo || undefined,
       dateFormat: 'm-Y',
       allowInput: false,
       plugins: [
