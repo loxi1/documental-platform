@@ -21,9 +21,32 @@ Procesar archivos para clasificación y extracción de metadata documental.
 
 ---
 
+## Topología de ejecución
+
+### Producción
+
+El OCR Worker productivo corre nativamente en Ubuntu mediante:
+
+- Python venv;
+- systemd.
+
+No forma parte del stack Docker/GHCR productivo.
+
+La autoridad operativa es:
+
+`../18-runbooks/ocr-worker-host.md`
+
+NATS corre en Docker y el OCR Worker host consume la conectividad local autorizada.
+
+### LAB
+
+El entorno LAB puede ejecutar un OCR Worker contenerizado para pruebas y validación.
+
+La topología LAB no redefine la arquitectura productiva.
+
 ## Dependencias del sistema operativo
 
-El OCR puede requerir binarios instalados en EC2:
+El OCR productivo puede requerir binarios instalados en EC2:
 
 - Tesseract
 - Poppler
