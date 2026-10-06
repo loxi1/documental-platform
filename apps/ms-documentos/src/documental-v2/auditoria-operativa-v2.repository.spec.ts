@@ -42,7 +42,7 @@ describe('AuditoriaOperativaV2Repository', () => {
     const executor = jest.fn().mockResolvedValue([]);
     const repository = new AuditoriaOperativaV2Repository();
 
-    await repository.registrarAnulacionConEjecutor(executor, {
+    await repository.registrarAnulacionConEjecutor(executor as any, {
       accion: 'ANULAR_CONTENEDOR_OPERATIVO',
       entidad: 'contenedor_operativo',
       entidadId: 4,
