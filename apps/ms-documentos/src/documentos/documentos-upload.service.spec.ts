@@ -39,7 +39,7 @@ describe('DocumentosUploadService - múltiples principales por relación', () =>
   });
 
   function service() {
-    return new DocumentosUploadService({} as any, {} as any);
+    return new DocumentosUploadService({} as any, {} as any, {} as any);
   }
 
   function mockSqlPorConsulta(fixtures: {
@@ -190,7 +190,7 @@ describe('DocumentosUploadService - múltiples principales por relación', () =>
           mimetype: 'application/pdf',
           buffer: Buffer.from('42-B-03A'),
           size: 9,
-        } as Express.Multer.File,
+        } as any,
         {
           empresaCodigo: 'BBTI',
           areaOrigen: 'ALMACEN',
@@ -255,7 +255,7 @@ describe('DocumentosUploadService - múltiples principales por relación', () =>
             mimetype: 'application/pdf',
             buffer: Buffer.from('42-B-03A-cross-tenant'),
             size: 20,
-          } as Express.Multer.File,
+          } as any,
           {
             empresaCodigo: 'BBTI',
             areaOrigen: 'ALMACEN',

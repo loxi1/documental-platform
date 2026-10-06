@@ -14,7 +14,7 @@ function setup(rows: ReturnType<typeof stored>[] = []) {
     saveOcrResultado: jest.fn().mockResolvedValue({ row: stored('pendiente_validacion') }) };
   const nats = { send: jest.fn().mockReturnValue(of({ ok: true, tipoDocumental: 'FACTURA', metadata: { numero: 'NUEVA' } })) };
   const eventos = { registrarEvento: jest.fn() };
-  const service = new DocumentosService(repo as any, {} as any, eventos as any, nats as any);
+  const service = new DocumentosService(repo as any, {} as any, eventos as any, nats as any, {} as any);
   return { service, repo, nats, eventos };
 }
 describe('R1 OCR reuse before processing', () => {

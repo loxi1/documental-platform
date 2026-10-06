@@ -33,9 +33,9 @@ describe('OCR pendiente: editar monto y volver a leer', () => {
       if (query.startsWith('SELECT')) return [stored];
       throw new Error(`Unexpected query: ${query}`);
     });
-    const service = new DocumentosService(new DocumentosRepository(), {} as any, {} as any, {} as any);
+    const service = new DocumentosService(new DocumentosRepository(), {} as any, {} as any, {} as any, {} as any);
     await service.editarOcrResultado(20, { tipoPropuesto: 'FACTURA', metadata: { montoTotal: '2730.02' } });
-    const reread = await service.findOcrResultadoById(20);
+    const reread: any = await service.findOcrResultadoById(20);
     expect(reread.metadata.metadata.montoTotal).toBe('2730.02');
     expect(initialForm(reread).montoTotal).toBe('2730.02');
     expect(queries.filter(q => q.startsWith('UPDATE'))).toHaveLength(1);

@@ -71,7 +71,7 @@ describe('Versionado de recuperación transaccional', () => {
   it('service usa scope del token y traduce conflicto a 409', async () => {
     const repo = { agregarArchivoComoVersion: jest.fn().mockRejectedValue({ code: 'VERSION_CANDIDATO_CAMBIO' }) };
     const nats = { send: jest.fn().mockReturnValue(of({ valid: true, payload: { workspaceId: 7, clienteDestinoId: 8, empresa: 'TEST' } })) };
-    const service = new DocumentosService(repo as any, {} as any, {} as any, nats as any);
+    const service = new DocumentosService(repo as any, {} as any, {} as any, nats as any, {} as any);
     await expect(service.agregarArchivoComoVersion(99, 11, { recuperacionCompras }, undefined, 'Bearer test'))
       .rejects.toMatchObject({ status: 409 });
     expect(repo.agregarArchivoComoVersion).toHaveBeenCalledWith(expect.objectContaining({ recuperacionCompras }));

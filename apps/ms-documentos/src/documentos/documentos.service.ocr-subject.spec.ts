@@ -19,7 +19,7 @@ describe('OCR request subject isolation', () => {
     const repo = { findArchivoById: jest.fn().mockResolvedValue({ id: 1, documento_id: 2,
       cliente_abreviatura: 'TEST', storage_provider: 'r2', storage_key: 'fixture.pdf' }) };
     const nats = { send: jest.fn().mockReturnValue(of({ ok: false, error: 'mock result' })) };
-    const service = new DocumentosService(repo as any, {} as any, {} as any, nats as any);
+    const service = new DocumentosService(repo as any, {} as any, {} as any, nats as any, {} as any);
     const result = await service.procesarOcrArchivo(1, { reprocesar: true });
     expect(nats.send).toHaveBeenCalledTimes(1);
     expect(nats.send).toHaveBeenCalledWith(expected, expect.objectContaining({ archivoId: 1, storageKey: 'fixture.pdf' }));
