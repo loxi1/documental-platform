@@ -1,8 +1,9 @@
 
 jest.mock('@documental/database', () => ({
-  sql: jest.fn(),
+  sql: { begin: jest.fn() },
 }));
 
+import { sql } from '@documental/database';
 import { AsociarGrupoFacturaV2UseCase } from './asociar-grupo-factura-v2.usecase';
 
 describe('AsociarGrupoFacturaV2UseCase', () => {
@@ -27,6 +28,13 @@ describe('AsociarGrupoFacturaV2UseCase', () => {
     listarFacturasCandidatas: jest.fn(),
   };
 
+  const tx = {} as any;
+
+  const obligacionesSnapshot = {
+    crear: jest.fn(),
+    existePorGrupoFacturaId: jest.fn(),
+  };
+
   const auditoria = {
     registrarCreacion: jest.fn(),
   };
@@ -38,6 +46,7 @@ describe('AsociarGrupoFacturaV2UseCase', () => {
       gruposFactura as any,
       documentos as any,
       auditoria as any,
+      obligacionesSnapshot as any,
     );
 
   const principalActivo = {
@@ -72,6 +81,9 @@ describe('AsociarGrupoFacturaV2UseCase', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    (sql.begin as jest.Mock).mockImplementation(async (callback: any) => callback(tx));
+    obligacionesSnapshot.crear.mockResolvedValue(undefined);
+    obligacionesSnapshot.existePorGrupoFacturaId.mockResolvedValue(true);
 
     principales.buscarPorId.mockResolvedValue(principalActivo);
     contenedores.buscarPorId.mockResolvedValue(contenedorActivo);
@@ -164,6 +176,148 @@ describe('AsociarGrupoFacturaV2UseCase', () => {
     });
 
     expect(gruposFactura.crear).not.toHaveBeenCalled();
+    expect(auditoria.registrarCreacion).not.toHaveBeenCalled();
+  });
+
+  it('abre transacción propia cuando execute no recibe executor', async () => {
+    principales.buscarPorId.mockResolvedValue({
+      ...principalActivo,
+      tipoPrincipal: 'OC',
+    });
+    documentos.buscarPorId.mockResolvedValue({
+      ...facturaBase,
+      estado: 'confirmado',
+    });
+
+    await ejecutar();
+
+    expect(sql.begin).toHaveBeenCalledTimes(1);
+    expect(gruposFactura.crear).toHaveBeenCalledWith(
+      expect.any(Object),
+      tx,
+    );
+  });
+
+  it('reutiliza executor externo sin abrir transacción anidada', async () => {
+    const executorExterno = {} as any;
+
+    principales.buscarPorId.mockResolvedValue({
+      ...principalActivo,
+      tipoPrincipal: 'OC',
+    });
+    documentos.buscarPorId.mockResolvedValue({
+      ...facturaBase,
+      estado: 'confirmado',
+    });
+
+    await crearUseCase().execute(
+      {
+        documentoOperativoPrincipalId: 3,
+        facturaDocumentoId: 200,
+        usuario: {
+          id: 7,
+          empresaCodigo: 'BBTI',
+          clienteDestinoId: 10,
+        },
+      },
+      executorExterno,
+    );
+
+    expect(sql.begin).not.toHaveBeenCalled();
+    expect(gruposFactura.crear).toHaveBeenCalledWith(
+      expect.any(Object),
+      executorExterno,
+    );
+    expect(obligacionesSnapshot.crear).toHaveBeenCalledWith(
+      expect.any(Object),
+      executorExterno,
+    );
+  });
+
+  it('crea snapshot FACTURA exacto sin concepto, periodo ni codigo de pago', async () => {
+    principales.buscarPorId.mockResolvedValue({
+      ...principalActivo,
+      tipoPrincipal: 'OS',
+    });
+    documentos.buscarPorId.mockResolvedValue({
+      ...facturaBase,
+      estado: 'confirmado',
+    });
+
+    await ejecutar();
+
+    expect(obligacionesSnapshot.crear).toHaveBeenCalledTimes(1);
+    expect(obligacionesSnapshot.crear).toHaveBeenCalledWith(
+      {
+        grupoFacturaId: 20,
+        conceptoId: null,
+        requiereRegularizacionAplicada: true,
+        estadoRegularizacion: 'REGULARIZADO',
+        periodoAnio: null,
+        periodoMes: null,
+        codigoPago: null,
+      },
+      tx,
+    );
+  });
+
+  it('propaga fallo de snapshot antes de metadata y auditoría', async () => {
+    principales.buscarPorId.mockResolvedValue({
+      ...principalActivo,
+      tipoPrincipal: 'OC',
+    });
+    documentos.buscarPorId.mockResolvedValue({
+      ...facturaBase,
+      estado: 'confirmado',
+    });
+    obligacionesSnapshot.crear.mockRejectedValueOnce(
+      new Error('SNAPSHOT_FAIL'),
+    );
+
+    await expect(ejecutar()).rejects.toThrow('SNAPSHOT_FAIL');
+
+    expect(gruposFactura.actualizar).not.toHaveBeenCalled();
+    expect(auditoria.registrarCreacion).not.toHaveBeenCalled();
+  });
+
+  it('grupo vigente con snapshot existente es idempotente y no crea otro snapshot', async () => {
+    gruposFactura.buscarVigentePorFacturaDocumentoId.mockResolvedValue({
+      id: 20,
+      documentoOperativoPrincipalId: 3,
+      facturaDocumentoId: 200,
+      estado: 'pendiente_revision',
+    });
+    obligacionesSnapshot.existePorGrupoFacturaId.mockResolvedValue(true);
+
+    const result = await ejecutar();
+
+    expect(result.idempotente).toBe(true);
+    expect(obligacionesSnapshot.existePorGrupoFacturaId).toHaveBeenCalledWith(
+      20,
+      tx,
+    );
+    expect(obligacionesSnapshot.crear).not.toHaveBeenCalled();
+    expect(gruposFactura.crear).not.toHaveBeenCalled();
+  });
+
+  it('grupo vigente sin snapshot falla como inconsistencia técnica y no repara', async () => {
+    gruposFactura.buscarVigentePorFacturaDocumentoId.mockResolvedValue({
+      id: 20,
+      documentoOperativoPrincipalId: 3,
+      facturaDocumentoId: 200,
+      estado: 'pendiente_revision',
+    });
+    obligacionesSnapshot.existePorGrupoFacturaId.mockResolvedValue(false);
+
+    await expect(ejecutar()).rejects.toMatchObject({
+      response: {
+        code: 'OBLIGACION_SNAPSHOT_AUSENTE',
+      },
+    });
+
+    expect(obligacionesSnapshot.crear).not.toHaveBeenCalled();
+    expect(gruposFactura.crear).not.toHaveBeenCalled();
+    expect(gruposFactura.actualizar).not.toHaveBeenCalled();
     expect(auditoria.registrarCreacion).not.toHaveBeenCalled();
   });
 });

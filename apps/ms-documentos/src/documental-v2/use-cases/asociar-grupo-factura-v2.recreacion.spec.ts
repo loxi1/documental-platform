@@ -1,3 +1,5 @@
+jest.mock('@documental/database', () => ({ sql: { begin: jest.fn() } }));
+
 jest.mock('../contenedor-operativo.repository', () => ({}));
 jest.mock('../documento-operativo-principal.repository', () => ({}));
 jest.mock('../grupo-factura.repository', () => ({}));
@@ -7,6 +9,8 @@ jest.mock('../auditoria-operativa-v2.repository', () => ({}));
 import { AsociarGrupoFacturaV2UseCase } from './asociar-grupo-factura-v2.usecase';
 
 describe('AsociarGrupoFacturaV2UseCase recreación', () => {
+  const tx = {} as any;
+
   const contenedores = { buscarPorId: jest.fn() };
   const principales = { buscarPorId: jest.fn() };
   const grupos = {
@@ -16,6 +20,11 @@ describe('AsociarGrupoFacturaV2UseCase recreación', () => {
     actualizar: jest.fn(),
   };
   const documentos = { buscarPorId: jest.fn() };
+  const obligacionesSnapshot = {
+    crear: jest.fn(),
+    existePorGrupoFacturaId: jest.fn(),
+  };
+
   const auditoria = { registrarCreacion: jest.fn() };
 
   const useCase = () =>
@@ -25,16 +34,20 @@ describe('AsociarGrupoFacturaV2UseCase recreación', () => {
       grupos as any,
       documentos as any,
       auditoria as any,
+      obligacionesSnapshot as any,
     );
 
   beforeEach(() => {
     jest.clearAllMocks();
+    obligacionesSnapshot.crear.mockResolvedValue(undefined);
+    obligacionesSnapshot.existePorGrupoFacturaId.mockResolvedValue(true);
     principales.buscarPorId.mockResolvedValue({
       id: 3,
       contenedorOperativoId: 2,
       documentoId: 100,
       estado: 'activo',
       esPrincipalActivo: true,
+      rucProveedor: '20123456789',
     });
     contenedores.buscarPorId.mockResolvedValue({
       id: 2,
@@ -48,6 +61,7 @@ describe('AsociarGrupoFacturaV2UseCase recreación', () => {
       id: 200,
       tipoDocumental: 'FACTURA',
       clienteAbreviatura: 'BBTI',
+      rucEmisor: '20123456789',
       estado: 'confirmado',
       serie: 'F001',
       numero: '123',
@@ -73,7 +87,7 @@ describe('AsociarGrupoFacturaV2UseCase recreación', () => {
         empresaCodigo: 'BBTI',
         clienteDestinoId: 10,
       },
-    });
+    }, tx);
 
     expect(result.idempotente).toBe(false);
     expect(grupos.crear).toHaveBeenCalledWith(
@@ -83,7 +97,7 @@ describe('AsociarGrupoFacturaV2UseCase recreación', () => {
           gruposHistoricosIds: [8],
         }),
       }),
-      undefined,
+      tx,
     );
     expect(auditoria.registrarCreacion).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -92,7 +106,7 @@ describe('AsociarGrupoFacturaV2UseCase recreación', () => {
           recreacion: true,
         }),
       }),
-      undefined,
+      tx,
     );
   });
 
@@ -115,9 +129,11 @@ describe('AsociarGrupoFacturaV2UseCase recreación', () => {
         empresaCodigo: 'BBTI',
         clienteDestinoId: 10,
       },
-    });
+    }, tx);
 
     expect(result.idempotente).toBe(true);
+    expect(obligacionesSnapshot.existePorGrupoFacturaId).toHaveBeenCalledWith(22, tx);
+    expect(obligacionesSnapshot.crear).not.toHaveBeenCalled();
     expect(auditoria.registrarCreacion).not.toHaveBeenCalled();
   });
 });
