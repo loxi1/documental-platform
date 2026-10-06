@@ -226,6 +226,8 @@ export class GrupoFacturaDocumentoRepository {
         gfd.documento_id AS "documentoId",
         gfd.tipo_relacion AS "tipoRelacion",
         gfd.estado,
+        d.serie AS serie,
+        d.numero AS numero,
         CASE
           WHEN d.id IS NULL THEN gfd.metadata
           ELSE jsonb_set(
