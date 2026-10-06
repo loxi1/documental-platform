@@ -1,10 +1,12 @@
 import { ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { sql } from '@documental/database';
 
 import { ContenedorOperativoRepository } from '../contenedor-operativo.repository';
 import { DocumentoExistenteReadonlyRepository, DocumentoExistenteV2 } from '../documento-existente-readonly.repository';
 import { DocumentoOperativoPrincipalRepository } from '../documento-operativo-principal.repository';
 import { GrupoFacturaRepository } from '../grupo-factura.repository';
 import { AuditoriaOperativaV2Repository } from '../auditoria-operativa-v2.repository';
+import { ObligacionesSnapshotRepository } from '../obligaciones-snapshot.repository';
 import type {
   ContenedorOperativoRow,
   DocumentoOperativoPrincipalRow,
@@ -120,6 +122,7 @@ export class AsociarGrupoFacturaV2UseCase {
     private readonly gruposFactura: GrupoFacturaRepository,
     private readonly documentos: DocumentoExistenteReadonlyRepository,
     private readonly auditoria: AuditoriaOperativaV2Repository,
+    private readonly obligacionesSnapshot: ObligacionesSnapshotRepository,
   ) {}
 
 
@@ -187,6 +190,15 @@ export class AsociarGrupoFacturaV2UseCase {
   async execute(
     input: AsociarGrupoFacturaV2Input,
     executor?: SqlExecutor,
+  ): Promise<AsociarGrupoFacturaV2Result> {
+    return executor
+      ? this.executeConExecutor(input, executor)
+      : sql.begin((tx) => this.executeConExecutor(input, tx));
+  }
+
+  private async executeConExecutor(
+    input: AsociarGrupoFacturaV2Input,
+    executor: SqlExecutor,
   ): Promise<AsociarGrupoFacturaV2Result> {
     const documentoOperativoPrincipalId = normalizarId(
       input.documentoOperativoPrincipalId,
@@ -315,6 +327,7 @@ export class AsociarGrupoFacturaV2UseCase {
         existente.estado !== 'anulado' &&
         Number(existente.documentoOperativoPrincipalId) === documentoOperativoPrincipalId
       ) {
+        await this.validarSnapshotExistente(existente.id, executor);
         return {
           grupoFactura: this.enriquecerVista(existente, principal, factura),
           idempotente: true,
@@ -368,6 +381,7 @@ export class AsociarGrupoFacturaV2UseCase {
         Number(recuperado.documentoOperativoPrincipalId) ===
           documentoOperativoPrincipalId
       ) {
+        await this.validarSnapshotExistente(recuperado.id, executor);
         return {
           grupoFactura: this.enriquecerVista(recuperado, principal, factura),
           idempotente: true,
@@ -386,6 +400,16 @@ export class AsociarGrupoFacturaV2UseCase {
         ),
       );
     }
+
+    await this.obligacionesSnapshot.crear({
+      grupoFacturaId: Number(creadoInicial.id),
+      conceptoId: null,
+      requiereRegularizacionAplicada: true,
+      estadoRegularizacion: 'REGULARIZADO',
+      periodoAnio: null,
+      periodoMes: null,
+      codigoPago: null,
+    }, executor);
 
     const metadataFinal = this.completarMetadataEntidad(metadataCreacion, Number(creadoInicial.id));
     const creado =
@@ -420,6 +444,27 @@ export class AsociarGrupoFacturaV2UseCase {
       idempotente: false,
       workspaceDebeRefrescar: true,
     };
+  }
+
+  private async validarSnapshotExistente(
+    grupoFacturaId: number,
+    executor: SqlExecutor,
+  ): Promise<void> {
+    const existe =
+      await this.obligacionesSnapshot.existePorGrupoFacturaId(
+        Number(grupoFacturaId),
+        executor,
+      );
+
+    if (!existe) {
+      throw new ConflictException(
+        crearError(
+          'Grupo de Factura vigente sin snapshot de obligación',
+          'OBLIGACION_SNAPSHOT_AUSENTE',
+          { grupoFacturaId: Number(grupoFacturaId) },
+        ),
+      );
+    }
   }
 
   private validarPrincipalActivo(principal: DocumentoOperativoPrincipalRow) {
