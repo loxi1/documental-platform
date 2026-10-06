@@ -71,6 +71,46 @@ export class DocumentosController {
   }
 
 
+  @ApiOperation({ summary: 'Mantenimiento de proveedores - listar' })
+  @Get('proveedores/mantenimiento')
+  findProveedoresMantenimiento(
+    @Query('q') q?: string,
+    @Query('search') search?: string,
+    @Query('limit') limit?: string,
+    @Query('offset') offset?: string,
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
+  ) {
+    return this.service.findProveedoresMantenimiento({
+      q: q ?? search,
+      limit: limit ? Number(limit) : undefined,
+      offset: offset ? Number(offset) : undefined,
+      page: page ? Number(page) : undefined,
+      pageSize: pageSize ? Number(pageSize) : undefined,
+    });
+  }
+
+  @ApiOperation({ summary: 'Mantenimiento de proveedores - detalle' })
+  @Get('proveedores/mantenimiento/:id')
+  findProveedorMantenimientoById(@Param('id', ParseIntPipe) id: number) {
+    return this.service.findProveedorMantenimientoById(id);
+  }
+
+  @ApiOperation({ summary: 'Mantenimiento de proveedores - crear' })
+  @Post('proveedores/mantenimiento')
+  createProveedorMantenimiento(@Body() body: any) {
+    return this.service.createProveedorMantenimiento(body ?? {});
+  }
+
+  @ApiOperation({ summary: 'Mantenimiento de proveedores - actualizar' })
+  @Patch('proveedores/mantenimiento/:id')
+  updateProveedorMantenimiento(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: any,
+  ) {
+    return this.service.updateProveedorMantenimiento(id, body ?? {});
+  }
+
   @ApiOperation({ summary: 'Prevalidar carga guiada sin persistir ni subir a R2' })
   @ApiConsumes('multipart/form-data')
   @Post('carga-guiada/prevalidar')

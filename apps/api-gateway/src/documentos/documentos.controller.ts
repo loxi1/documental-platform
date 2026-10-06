@@ -1380,6 +1380,98 @@ export class DocumentosGatewayController {
     });
   }
 
+  @ApiOperation({ summary: 'Mantenimiento de proveedores - listar' })
+  @Get('proveedores/mantenimiento')
+  async findProveedoresMantenimiento(
+    @Headers('authorization') authorization: string | undefined,
+    @Headers(REQUEST_ID_HEADER) requestId: string | undefined,
+    @Query() query: Record<string, string>,
+  ) {
+    const contexto = await this.validateAuthorization(authorization);
+    this.assertAnyActionPermitida(
+      contexto,
+      ['proveedores.ver'],
+      'consultar el mantenimiento de proveedores',
+    );
+
+    return this.proxy({
+      method: 'GET',
+      path: '/documentos/proveedores/mantenimiento',
+      authorization,
+      requestId,
+      query,
+    });
+  }
+
+  @ApiOperation({ summary: 'Mantenimiento de proveedores - detalle' })
+  @Get('proveedores/mantenimiento/:id')
+  async findProveedorMantenimientoById(
+    @Headers('authorization') authorization: string | undefined,
+    @Headers(REQUEST_ID_HEADER) requestId: string | undefined,
+    @Param('id') id: string,
+  ) {
+    const contexto = await this.validateAuthorization(authorization);
+    this.assertAnyActionPermitida(
+      contexto,
+      ['proveedores.ver'],
+      'consultar el mantenimiento de proveedores',
+    );
+
+    return this.proxy({
+      method: 'GET',
+      path: `/documentos/proveedores/mantenimiento/${id}`,
+      authorization,
+      requestId,
+    });
+  }
+
+  @ApiOperation({ summary: 'Mantenimiento de proveedores - crear' })
+  @Post('proveedores/mantenimiento')
+  async createProveedorMantenimiento(
+    @Headers('authorization') authorization: string | undefined,
+    @Headers(REQUEST_ID_HEADER) requestId: string | undefined,
+    @Body() body: unknown,
+  ) {
+    const contexto = await this.validateAuthorization(authorization);
+    this.assertAnyActionPermitida(
+      contexto,
+      ['proveedores.crear'],
+      'crear proveedores',
+    );
+
+    return this.proxy({
+      method: 'POST',
+      path: '/documentos/proveedores/mantenimiento',
+      authorization,
+      requestId,
+      body,
+    });
+  }
+
+  @ApiOperation({ summary: 'Mantenimiento de proveedores - actualizar' })
+  @Patch('proveedores/mantenimiento/:id')
+  async updateProveedorMantenimiento(
+    @Headers('authorization') authorization: string | undefined,
+    @Headers(REQUEST_ID_HEADER) requestId: string | undefined,
+    @Param('id') id: string,
+    @Body() body: unknown,
+  ) {
+    const contexto = await this.validateAuthorization(authorization);
+    this.assertAnyActionPermitida(
+      contexto,
+      ['proveedores.editar'],
+      'editar proveedores',
+    );
+
+    return this.proxy({
+      method: 'PATCH',
+      path: `/documentos/proveedores/mantenimiento/${id}`,
+      authorization,
+      requestId,
+      body,
+    });
+  }
+
   @ApiOperation({ summary: 'Listar resultados OCR vía API Gateway' })
   @Get('ocr-resultados')
   async findOcrResultados(

@@ -82,6 +82,12 @@ const navGroups: NavGroup[] = [
         menuKey: "finanzas",
       },
       {
+        name: "Proveedores",
+        path: "/proveedores",
+        icon: <ListChecks className="h-4 w-4" />,
+        menuKey: "proveedores",
+      },
+      {
         name: "Documentos",
         path: "/documentos",
         icon: <ClipboardList className="h-4 w-4" />,

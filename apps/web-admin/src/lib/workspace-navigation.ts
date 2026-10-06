@@ -30,6 +30,12 @@ export const workspaceRouteRules: RouteAccessRule[] = [
   { prefix: "/compras", label: "Compras", menuKey: "compras" },
   { prefix: "/almacen", label: "Almacén", menuKey: "almacen" },
   { prefix: "/finanzas", label: "Finanzas", menuKey: "finanzas" },
+  {
+    prefix: "/proveedores",
+    label: "Proveedores",
+    menuKey: "proveedores",
+    actionKeys: ["proveedores.ver"],
+  },
   { prefix: "/documentos/cargar", label: "Carga guiada", menuKey: "documentos" },
   { prefix: "/carga-guiada", label: "Carga guiada", menuKey: "documentos" },
   { prefix: "/ocr-resultados", label: "OCR Resultados", menuKey: "documentos" },

@@ -227,6 +227,176 @@ export class DocumentosRepository {
     };
   }
 
+  async findProveedoresMantenimiento(filters: {
+    q?: string;
+    limit?: number;
+    offset?: number;
+    page?: number;
+    pageSize?: number;
+  }) {
+    const pageRaw = Number(filters.page ?? 1);
+    const pageSizeRaw = Number(filters.pageSize ?? filters.limit ?? 50);
+    const offsetRaw =
+      filters.offset !== undefined ? Number(filters.offset) : undefined;
+
+    const requestedPage =
+      Number.isFinite(pageRaw) && pageRaw >= 1
+        ? Math.floor(pageRaw)
+        : 1;
+
+    const requestedPageSize =
+      Number.isFinite(pageSizeRaw) && pageSizeRaw >= 1
+        ? Math.min(Math.floor(pageSizeRaw), 200)
+        : 50;
+
+    const limit = requestedPageSize;
+    const offset =
+      offsetRaw !== undefined && Number.isFinite(offsetRaw) && offsetRaw >= 0
+        ? Math.floor(offsetRaw)
+        : (requestedPage - 1) * requestedPageSize;
+    const page = Math.floor(offset / limit) + 1;
+    const q = String(filters.q ?? '').trim() || null;
+    const like = q ? `%${q}%` : null;
+
+    const data = await sql`
+      SELECT
+        id,
+        ruc,
+        razon_social AS "razonSocial",
+        direccion,
+        tipo_persona AS "tipoPersona",
+        creado_en AS "creadoEn",
+        actualizado_en AS "actualizadoEn"
+      FROM core.proveedores
+      WHERE (
+        ${like}::text IS NULL
+        OR ruc ILIKE ${like}
+        OR razon_social ILIKE ${like}
+        OR direccion ILIKE ${like}
+      )
+      ORDER BY actualizado_en DESC NULLS LAST, razon_social, id DESC
+      LIMIT ${limit}
+      OFFSET ${offset}
+    `;
+
+    const [countRow] = await sql`
+      SELECT COUNT(*)::int AS total
+      FROM core.proveedores
+      WHERE (
+        ${like}::text IS NULL
+        OR ruc ILIKE ${like}
+        OR razon_social ILIKE ${like}
+        OR direccion ILIKE ${like}
+      )
+    `;
+
+    const total = Number(countRow?.total ?? 0);
+    const totalPages = limit > 0 ? Math.ceil(total / limit) : 0;
+
+    return {
+      items: data,
+      total,
+      limit,
+      offset,
+      page,
+      pageSize: limit,
+      totalPages,
+      hasNextPage: page < totalPages,
+      hasPreviousPage: page > 1,
+      filters: { q },
+    };
+  }
+
+  async findProveedorMantenimientoById(id: number) {
+    const rows = await sql`
+      SELECT
+        id,
+        ruc,
+        razon_social AS "razonSocial",
+        direccion,
+        tipo_persona AS "tipoPersona",
+        creado_en AS "creadoEn",
+        actualizado_en AS "actualizadoEn"
+      FROM core.proveedores
+      WHERE id = ${id}
+      LIMIT 1
+    `;
+
+    return rows[0] ?? null;
+  }
+
+  async existsProveedorRuc(ruc: string, excludeId?: number) {
+    const rows = await sql`
+      SELECT id
+      FROM core.proveedores
+      WHERE ruc = ${ruc}
+        AND (
+          ${excludeId ?? null}::bigint IS NULL
+          OR id <> ${excludeId ?? null}
+        )
+      LIMIT 1
+    `;
+
+    return rows[0] ?? null;
+  }
+
+  async createProveedorMantenimiento(data: {
+    ruc: string;
+    razonSocial: string;
+    direccion: string | null;
+    tipoPersona: string;
+  }) {
+    const rows = await sql`
+      INSERT INTO core.proveedores (
+        ruc,
+        razon_social,
+        direccion,
+        tipo_persona,
+        creado_en,
+        actualizado_en
+      )
+      VALUES (
+        ${data.ruc},
+        ${data.razonSocial},
+        ${data.direccion},
+        ${data.tipoPersona},
+        now(),
+        now()
+      )
+      RETURNING id
+    `;
+
+    return this.findProveedorMantenimientoById(Number(rows[0]?.id));
+  }
+
+  async updateProveedorMantenimiento(
+    id: number,
+    data: {
+      ruc: string;
+      razonSocial: string;
+      direccion: string | null;
+      tipoPersona: string;
+    },
+  ) {
+    const rows = await sql`
+      UPDATE core.proveedores
+      SET
+        ruc = ${data.ruc},
+        razon_social = ${data.razonSocial},
+        direccion = ${data.direccion},
+        tipo_persona = ${data.tipoPersona},
+        actualizado_en = now()
+      WHERE id = ${id}
+      RETURNING id
+    `;
+
+    if (!rows[0]?.id) {
+      return null;
+    }
+
+    return this.findProveedorMantenimientoById(Number(rows[0].id));
+  }
+
   private async fetchProveedorRucExterno(ruc: string): Promise<{
     ruc: string;
     razon_social: string;

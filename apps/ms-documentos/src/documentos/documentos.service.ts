@@ -105,6 +105,149 @@ export class DocumentosService {
     return this.repo.getProveedores(search, limit, offset);
   }
 
+  findProveedoresMantenimiento(filters: {
+    q?: string;
+    limit?: number;
+    offset?: number;
+    page?: number;
+    pageSize?: number;
+  }) {
+    return this.repo.findProveedoresMantenimiento({
+      q: filters.q?.trim() || undefined,
+      limit: filters.limit,
+      offset: filters.offset,
+      page: filters.page,
+      pageSize: filters.pageSize,
+    });
+  }
+
+  async findProveedorMantenimientoById(id: number) {
+    const proveedor = await this.repo.findProveedorMantenimientoById(id);
+
+    if (!proveedor) {
+      throw new NotFoundException(`Proveedor ${id} no encontrado`);
+    }
+
+    return proveedor;
+  }
+
+  async createProveedorMantenimiento(data: {
+    ruc?: string;
+    razonSocial?: string;
+    direccion?: string | null;
+    tipoPersona?: string;
+  }) {
+    const ruc = this.normalizeProveedorRuc(data.ruc);
+    const razonSocial = this.normalizeProveedorRazonSocial(data.razonSocial);
+    const tipoPersona = this.normalizeProveedorTipoPersona(data.tipoPersona, ruc);
+    const direccion = this.normalizeProveedorDireccion(data.direccion);
+
+    const duplicate = await this.repo.existsProveedorRuc(ruc);
+
+    if (duplicate) {
+      throw new ConflictException(`Ya existe un proveedor con RUC ${ruc}`);
+    }
+
+    return this.repo.createProveedorMantenimiento({
+      ruc,
+      razonSocial,
+      direccion,
+      tipoPersona,
+    });
+  }
+
+  async updateProveedorMantenimiento(
+    id: number,
+    data: {
+      ruc?: string;
+      razonSocial?: string;
+      direccion?: string | null;
+      tipoPersona?: string;
+    },
+  ) {
+    const current = await this.findProveedorMantenimientoById(id);
+
+    const ruc =
+      data.ruc !== undefined
+        ? this.normalizeProveedorRuc(data.ruc)
+        : String(current.ruc);
+
+    const razonSocial =
+      data.razonSocial !== undefined
+        ? this.normalizeProveedorRazonSocial(data.razonSocial)
+        : String(current.razonSocial);
+
+    const tipoPersona =
+      data.tipoPersona !== undefined
+        ? this.normalizeProveedorTipoPersona(data.tipoPersona, ruc)
+        : String(current.tipoPersona);
+
+    const direccion =
+      data.direccion !== undefined
+        ? this.normalizeProveedorDireccion(data.direccion)
+        : current.direccion ?? null;
+
+    const duplicate = await this.repo.existsProveedorRuc(ruc, id);
+
+    if (duplicate) {
+      throw new ConflictException(`Ya existe un proveedor con RUC ${ruc}`);
+    }
+
+    const proveedor = await this.repo.updateProveedorMantenimiento(id, {
+      ruc,
+      razonSocial,
+      direccion,
+      tipoPersona,
+    });
+
+    if (!proveedor) {
+      throw new NotFoundException(`Proveedor ${id} no encontrado`);
+    }
+
+    return proveedor;
+  }
+
+  private normalizeProveedorRuc(value?: string) {
+    const ruc = String(value ?? '').trim();
+
+    if (!/^\d{11}$/.test(ruc)) {
+      throw new BadRequestException('El RUC debe contener exactamente 11 dígitos');
+    }
+
+    return ruc;
+  }
+
+  private normalizeProveedorRazonSocial(value?: string) {
+    const razonSocial = String(value ?? '').trim();
+
+    if (!razonSocial) {
+      throw new BadRequestException('La razón social es obligatoria');
+    }
+
+    return razonSocial;
+  }
+
+  private normalizeProveedorDireccion(value?: string | null) {
+    const direccion = String(value ?? '').trim();
+    return direccion || null;
+  }
+
+  private normalizeProveedorTipoPersona(value: string | undefined, ruc: string) {
+    const tipoPersona = String(
+      value ?? (ruc.startsWith('10') ? 'NATURAL' : 'JURIDICA'),
+    )
+      .trim()
+      .toUpperCase();
+
+    if (tipoPersona !== 'NATURAL' && tipoPersona !== 'JURIDICA') {
+      throw new BadRequestException(
+        'El tipo de persona debe ser NATURAL o JURIDICA',
+      );
+    }
+
+    return tipoPersona;
+  }
+
   private resultadoOcrPersistido(ocr: Record<string, any>) {
     const persistida = ocr.metadata && typeof ocr.metadata === 'object' && !Array.isArray(ocr.metadata)
       ? ocr.metadata : {};
