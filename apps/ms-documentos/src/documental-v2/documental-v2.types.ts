@@ -142,6 +142,8 @@ export type GrupoFacturaDocumentoRow = {
   documentoId: number;
   tipoRelacion: string;
   estado: string;
+  serie: string | null;
+  numero: string | null;
   metadata: JsonObject;
   creadoPor: number | null;
   creadoEn: Date;
