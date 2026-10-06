@@ -331,7 +331,9 @@ export function OrdenPagoVerView({
             <Badge variant="outline">{centroCodigo}</Badge>
           ) : null}
 
-          <Badge variant="outline">BBTI</Badge>
+          {detalle.empresaCodigo ? (
+            <Badge variant="outline">{detalle.empresaCodigo}</Badge>
+          ) : null}
 
           {contextoNombre ? (
             <Badge variant="outline">{contextoNombre}</Badge>
@@ -491,14 +493,14 @@ export function OrdenPagoVerView({
 
                 <section className="border-t pt-4">
                   <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                    Documento regularizador
+                    Documento económico
                   </p>
 
                   {documentosGrupoLoading ? (
                     <Skeleton className="mt-3 h-16 w-full" />
                   ) : documentosGrupoError ? (
                     <p className="mt-2 text-sm text-muted-foreground">
-                      No se pudo cargar el documento regularizador.
+                      No se pudo cargar el documento económico.
                     </p>
                   ) : documentosEconomicos.length ? (
                     documentosEconomicos.map((item) => {
@@ -557,25 +559,16 @@ export function OrdenPagoVerView({
                     })
                   ) : (
                     <p className="mt-2 text-sm text-muted-foreground">
-                      Sin documento regularizador asociado.
+                      Sin documento económico asociado.
                     </p>
                   )}
                 </section>
               </div>
 
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle>Pagos y sustentos</CardTitle>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Resumen financiero del grupo asociado a la Orden de Pago.
-          </p>
-        </CardHeader>
-
-        <CardContent className="space-y-4">
+              <div className="flex min-w-0 flex-col items-stretch gap-4 border-t pt-4 lg:border-l lg:border-t-0 lg:pl-5 lg:pt-0">
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                  Pagos
+                </p>
           {resumenFinancieroLoading ? (
             <Skeleton className="h-28 w-full" />
           ) : resumenFinancieroError ? (
@@ -731,6 +724,9 @@ export function OrdenPagoVerView({
               Sin resumen financiero disponible.
             </div>
           )}
+              </div>
+            </div>
+          </div>
         </CardContent>
       </Card>
 
