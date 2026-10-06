@@ -73,6 +73,7 @@ type OcrValidationModalProps = {
   };
   onConfirmarVersion?: () => void | Promise<void>;
   tiposDocumentalesPermitidos?: readonly string[];
+  tipoDocumentalInicial?: string;
   tipoDocumentalBloqueado?: boolean;
   /**
    * Contexto visual/operativo del formulario.
@@ -780,6 +781,7 @@ export function OcrValidationModal({
   modoVersionDocumentoExistente,
   onConfirmarVersion,
   tiposDocumentalesPermitidos,
+  tipoDocumentalInicial,
   tipoDocumentalBloqueado = false,
   formularioContexto,
   modo = "ocr",
@@ -788,14 +790,24 @@ export function OcrValidationModal({
   const esModoVersionDocumentoExistente = Boolean(
     modoVersionDocumentoExistente,
   );
-  const [form, setForm] = useState<FormState>(() =>
-    buildInitialFormParaModo(
+
+  const buildFormInicial = () => {
+    const inicial = buildInitialFormParaModo(
       resultado,
       expedienteContexto,
       modoVersionDocumentoExistente?.metadataVigente,
       modo,
-    ),
-  );
+    );
+
+    if (!tipoDocumentalInicial) return inicial;
+
+    return {
+      ...inicial,
+      tipoDocumental: normalizeTipoParaUi(tipoDocumentalInicial),
+    };
+  };
+
+  const [form, setForm] = useState<FormState>(() => buildFormInicial());
   const [localMessage, setLocalMessage] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [duplicadoDetails, setDuplicadoDetails] = useState<DocumentoDuplicadoEnExpedienteDetails | null>(null);
@@ -808,21 +820,21 @@ export function OcrValidationModal({
 
   useEffect(() => {
     if (open) {
-      setForm(
-        buildInitialFormParaModo(
-          resultado,
-          expedienteContexto,
-          modoVersionDocumentoExistente?.metadataVigente,
-          modo,
-        ),
-      );
+      setForm(buildFormInicial());
       setLocalMessage(null);
       setActionError(null);
       setDuplicadoDetails(null);
       setProveedorEstado("SIN_CONSULTAR");
       setProveedorOrigen("");
     }
-  }, [open, resultado, expedienteContexto, modoVersionDocumentoExistente, modo]);
+  }, [
+    open,
+    resultado,
+    expedienteContexto,
+    modoVersionDocumentoExistente,
+    modo,
+    tipoDocumentalInicial,
+  ]);
 
   useEffect(() => {
     if (!open) return;

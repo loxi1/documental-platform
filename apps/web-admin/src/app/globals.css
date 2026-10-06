@@ -216,6 +216,30 @@
 }
 
 
+
+/*
+ * Orden de Pago: Flatpickr vive dentro de un <dialog>.
+ * static=true evita coordenadas globales incorrectas del top layer;
+ * el popup queda anclado localmente debajo de su propio campo.
+ */
+.op-flatpickr-field .flatpickr-wrapper {
+  display: block;
+  width: 100%;
+  position: relative;
+}
+
+.op-flatpickr-field .flatpickr-calendar.static {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: auto;
+  z-index: 50;
+}
+
+.op-flatpickr-field .flatpickr-calendar.static.open {
+  display: block;
+}
+
 @layer utilities {
   .text-balance {
     text-wrap: balance;
