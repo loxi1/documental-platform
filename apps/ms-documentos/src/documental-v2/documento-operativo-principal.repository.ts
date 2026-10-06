@@ -29,7 +29,7 @@ export class DocumentoOperativoPrincipalRepository {
         ${input.documentoId}::bigint,
         ${input.tipoPrincipal}::text,
         ${input.esPrincipalActivo ?? false}::boolean,
-        ${input.proveedorId ?? null}::bigint,
+        ${input.proveedorId ?? null}::integer,
         ${input.rucProveedor ?? null}::text,
         ${input.razonSocialProveedor ?? null}::text,
         ${input.estado ?? 'activo'}::text,
