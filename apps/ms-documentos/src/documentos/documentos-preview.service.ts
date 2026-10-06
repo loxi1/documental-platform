@@ -205,4 +205,157 @@ export class DocumentosPreviewService {
       expiresAt,
     };
   }
+
+  async getTempPreviewUrl(input: {
+    tempId: number;
+    filename: string | null;
+    storageProvider: string | null;
+    storageBucket: string | null;
+    storageKey: string;
+  }) {
+    const storageProvider = String(input.storageProvider ?? '').trim().toLowerCase();
+
+    if (storageProvider !== 'r2') {
+      throw new BadRequestException({
+        message: 'Preview temporal disponible solo para archivos R2',
+        tempId: input.tempId,
+        storageProvider: input.storageProvider ?? null,
+        filename: input.filename ?? null,
+      });
+    }
+
+    const storageKey = firstNonEmpty(input.storageKey);
+    if (!storageKey) {
+      throw new BadRequestException({
+        message: 'El TEMP no tiene storage_key para generar preview',
+        tempId: input.tempId,
+      });
+    }
+
+    const accountId = firstNonEmpty(
+      this.config.get<string>('R2_ACCOUNT_ID'),
+      process.env.R2_ACCOUNT_ID,
+      this.config.get<string>('CLOUDFLARE_ACCOUNT_ID'),
+      process.env.CLOUDFLARE_ACCOUNT_ID,
+    );
+
+    const endpoint = firstNonEmpty(
+      this.config.get<string>('R2_ENDPOINT'),
+      process.env.R2_ENDPOINT,
+      this.config.get<string>('R2_ENDPOINT_URL'),
+      process.env.R2_ENDPOINT_URL,
+      this.config.get<string>('CLOUDFLARE_R2_ENDPOINT'),
+      process.env.CLOUDFLARE_R2_ENDPOINT,
+      accountId ? `https://${accountId}.r2.cloudflarestorage.com` : null,
+    );
+
+    const accessKeyId = firstNonEmpty(
+      this.config.get<string>('R2_ACCESS_KEY_ID'),
+      process.env.R2_ACCESS_KEY_ID,
+      this.config.get<string>('AWS_ACCESS_KEY_ID'),
+      process.env.AWS_ACCESS_KEY_ID,
+    );
+
+    const secretAccessKey = firstNonEmpty(
+      this.config.get<string>('R2_SECRET_ACCESS_KEY'),
+      process.env.R2_SECRET_ACCESS_KEY,
+      this.config.get<string>('AWS_SECRET_ACCESS_KEY'),
+      process.env.AWS_SECRET_ACCESS_KEY,
+    );
+
+    const bucket = firstNonEmpty(
+      input.storageBucket,
+      this.config.get<string>('R2_BUCKET'),
+      process.env.R2_BUCKET,
+      this.config.get<string>('R2_BUCKET_NAME'),
+      process.env.R2_BUCKET_NAME,
+      this.config.get<string>('STORAGE_R2_BUCKET'),
+      process.env.STORAGE_R2_BUCKET,
+    );
+
+    if (!endpoint || !accessKeyId || !secretAccessKey || !bucket) {
+      throw new BadRequestException({
+        message: 'Configuración R2 incompleta para generar signed URL',
+        required: [
+          'R2_ENDPOINT o R2_ENDPOINT_URL o R2_ACCOUNT_ID',
+          'R2_ACCESS_KEY_ID',
+          'R2_SECRET_ACCESS_KEY',
+          'R2_BUCKET o storage_bucket',
+        ],
+        tempId: input.tempId,
+      });
+    }
+
+    const filename =
+      firstNonEmpty(input.filename) ||
+      storageKey.split('/').pop() ||
+      `temp-${input.tempId}`;
+
+    const contentType = inferContentType(filename, storageKey);
+
+    const region = firstNonEmpty(
+      this.config.get<string>('R2_REGION'),
+      process.env.R2_REGION,
+    ) ?? 'auto';
+
+    const expiresIn = Number(
+      firstNonEmpty(
+        this.config.get<string>('R2_SIGNED_URL_EXPIRES'),
+        process.env.R2_SIGNED_URL_EXPIRES,
+        this.config.get<string>('R2_SIGNED_URL_EXPIRES_SECONDS'),
+        process.env.R2_SIGNED_URL_EXPIRES_SECONDS,
+      ) ?? DEFAULT_PREVIEW_EXPIRES_IN_SECONDS.toString(),
+    );
+
+    const safeExpiresIn =
+      Number.isFinite(expiresIn) && expiresIn > 0
+        ? expiresIn
+        : DEFAULT_PREVIEW_EXPIRES_IN_SECONDS;
+
+    const forcePathStyleConfig = firstNonEmpty(
+      this.config.get<string>('R2_FORCE_PATH_STYLE'),
+      process.env.R2_FORCE_PATH_STYLE,
+    );
+
+    const forcePathStyle =
+      forcePathStyleConfig?.toLowerCase() === 'true' ||
+      endpoint.includes('minio-lab') ||
+      endpoint.includes('localhost') ||
+      endpoint.includes('127.0.0.1');
+
+    const client = new S3Client({
+      region,
+      endpoint,
+      forcePathStyle,
+      credentials: {
+        accessKeyId,
+        secretAccessKey,
+      },
+    });
+
+    const signedUrl = await getSignedUrl(
+      client,
+      new GetObjectCommand({
+        Bucket: bucket,
+        Key: storageKey,
+        ResponseContentType: contentType,
+        ResponseContentDisposition: `inline; filename="${filename.replace(/"/g, '')}"`,
+      }),
+      { expiresIn: safeExpiresIn },
+    );
+
+    const expiresAt = new Date(
+      Date.now() + safeExpiresIn * 1000,
+    ).toISOString();
+
+    return {
+      tempId: input.tempId,
+      filename,
+      contentType,
+      signedUrl,
+      expiresIn: safeExpiresIn,
+      expiresAt,
+    };
+  }
+
 }

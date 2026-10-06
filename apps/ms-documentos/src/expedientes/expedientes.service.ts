@@ -474,8 +474,26 @@ export class ExpedientesService {
     limit?: number;
     offset?: number;
     soloPendientesFinanzas?: boolean;
+  }, finanzas?: {
+    workspaceId: number;
+    clienteDestinoId: number | null;
   }) {
-    return this.repo.getRevisionContable(filters);
+    return this.repo.getRevisionContable(filters, finanzas);
+  }
+
+  async getRevisionContableOrdenPago(
+    ordenPagoId: number,
+    numero: string,
+    filters: {
+      empresa: string;
+      clienteDestinoId: number | null;
+    },
+  ) {
+    return this.repo.getRevisionContableOrdenPago(
+      ordenPagoId,
+      numero,
+      filters,
+    );
   }
 
   async getEstadoDocumental(id: number) {

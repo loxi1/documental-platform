@@ -63,7 +63,7 @@ def resolve_file_path(payload: OcrProcesarArchivoPayload) -> Path | dict:
         return resolved
 
     if payload.storageProvider == "r2":
-        return download_from_r2(payload.storageKey)
+        return download_from_r2(payload.storageKey, payload.nombreOriginal)
 
     return {
         "ok": False,

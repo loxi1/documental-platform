@@ -898,6 +898,132 @@ export class DocumentosGatewayController {
     );
   }
 
+  @Post('tmp/:tempId/regularizacion-op')
+  async vincularRegularizacionOpTmp(
+    @Headers('authorization') authorization: string | undefined,
+    @Headers(REQUEST_ID_HEADER) requestId: string | undefined,
+    @Headers('idempotency-key') key: string,
+    @Param('tempId') id: string,
+    @Body() body: { ordenPagoId?: unknown; tipoRegularizador?: unknown },
+  ) {
+    const headers = await this.tmpHeaders(authorization, requestId, key);
+    const tempId = this.tmpId(id);
+    const ordenPagoId = this.tmpOrdenPagoId(body?.ordenPagoId);
+    const tipoRegularizador = this.tmpTipoRegularizador(
+      body?.tipoRegularizador,
+    );
+
+    return this.tmpRequest(
+      'POST',
+      `/documentos/tmp/${tempId}/regularizacion-op`,
+      headers,
+      { ordenPagoId, tipoRegularizador },
+    );
+  }
+
+  @Get('tmp/regularizacion-op/:ordenPagoId/:tipoRegularizador')
+  async recoverRegularizacionOpTmp(
+    @Headers('authorization') authorization: string | undefined,
+    @Headers(REQUEST_ID_HEADER) requestId: string | undefined,
+    @Param('ordenPagoId') ordenPagoIdRaw: string,
+    @Param('tipoRegularizador') tipoRegularizadorRaw: string,
+  ) {
+    const headers = await this.tmpHeaders(authorization, requestId);
+    const ordenPagoId = this.tmpOrdenPagoId(ordenPagoIdRaw);
+    const tipoRegularizador = this.tmpTipoRegularizador(
+      tipoRegularizadorRaw,
+    );
+
+    return this.tmpRequest(
+      'GET',
+      `/documentos/tmp/regularizacion-op/${ordenPagoId}/${tipoRegularizador}`,
+      headers,
+    );
+  }
+
+  @Post('tmp/:tempId/regularizacion-op/reemplazar')
+  @UseInterceptors(
+    AnyFilesInterceptor({
+      limits: {
+        fileSize: SECURE_UPLOAD.fileSizeBytes,
+        files: 1,
+        fields: 2,
+        parts: SECURE_UPLOAD.maxParts,
+      },
+    }),
+  )
+  async reemplazarRegularizacionOpTmp(
+    @Headers('authorization') authorization: string | undefined,
+    @Headers(REQUEST_ID_HEADER) requestId: string | undefined,
+    @Headers('idempotency-key') key: string,
+    @Param('tempId') id: string,
+    @UploadedFiles() files: SecureUploadFile[],
+    @Body() body: Record<string, unknown>,
+  ) {
+    const headers = await this.tmpHeaders(authorization, requestId, key);
+    const tempId = this.tmpId(id);
+
+    if (
+      !body ||
+      Object.keys(body).some(
+        k => !['ordenPagoId', 'tipoRegularizador'].includes(k),
+      ) ||
+      files?.length !== 1
+    ) {
+      throw new HttpException(
+        'TEMP reemplazo regularización OP inválido',
+        400,
+      );
+    }
+
+    const ordenPagoId = this.tmpOrdenPagoId(body.ordenPagoId);
+    const tipoRegularizador = this.tmpTipoRegularizador(
+      body.tipoRegularizador,
+    );
+    const file = validateSecureUploadFile(files[0]);
+
+    const form = new FormData();
+    form.append('ordenPagoId', String(ordenPagoId));
+    form.append('tipoRegularizador', tipoRegularizador);
+    form.append('archivo', file.buffer, {
+      filename: file.originalname,
+      contentType: file.mimetype,
+      knownLength: file.size,
+    });
+
+    return this.tmpRequest(
+      'POST',
+      `/documentos/tmp/${tempId}/regularizacion-op/reemplazar`,
+      { ...headers, ...form.getHeaders() },
+      form,
+    );
+  }
+
+  private tmpOrdenPagoId(value: unknown) {
+    const raw = String(value ?? '').trim();
+    const parsed = Number(raw);
+
+    if (
+      !/^\d+$/.test(raw) ||
+      !Number.isSafeInteger(parsed) ||
+      parsed <= 0
+    ) {
+      throw new HttpException('ordenPagoId inválido', 400);
+    }
+
+    return parsed;
+  }
+
+  private tmpTipoRegularizador(value: unknown) {
+    const tipo = String(value ?? '').trim().toUpperCase();
+
+    if (!['FACTURA', 'RECIBO_HONORARIO'].includes(tipo)) {
+      throw new HttpException('tipoRegularizador inválido', 400);
+    }
+
+    return tipo;
+  }
+
   private tmpId(id: string) {
     if (!/^\d+$/.test(id) || !Number.isSafeInteger(Number(id)) || Number(id) <= 0) throw new HttpException('tempId inválido', 400);
     return id;

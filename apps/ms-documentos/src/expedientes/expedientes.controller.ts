@@ -19,12 +19,15 @@ import { firstValueFrom, timeout } from 'rxjs';
 import { NatsSubjects } from '@documental/shared';
 import { NATS_CLIENT } from '../nats/nats-client.provider';
 import { ExpedientesService } from './expedientes.service';
+import { OrdenPagoService } from '../documental-v2/finanzas/orden-pago.service';
+import type { OrdenPagoActor } from '../documental-v2/finanzas/orden-pago.dto';
 
 @ApiTags('expedientes')
 @Controller('expedientes')
 export class ExpedientesController {
   constructor(
     private readonly service: ExpedientesService,
+    private readonly ordenPago: OrdenPagoService,
     @Inject(NATS_CLIENT) private readonly nats: ClientProxy,
   ) {}
 
@@ -197,6 +200,8 @@ export class ExpedientesController {
 
   @Get('bandeja-contable')
   getBandejaContable(
+    @Headers('x-workspace-id') workspaceId: string | undefined,
+    @Headers('x-cliente-destino-id') clienteDestinoId: string | undefined,
     @Query('empresa') empresa: string,
     @Query('anio') anio?: string,
     @Query('mes') mes?: string,
@@ -213,7 +218,56 @@ export class ExpedientesController {
       limit: limit ? Number(limit) : undefined,
       offset: offset ? Number(offset) : undefined,
       soloPendientesFinanzas: soloPendientesFinanzas === 'true',
-    });
+    }, workspaceId ? {
+      workspaceId: Number(workspaceId),
+      clienteDestinoId: clienteDestinoId ? Number(clienteDestinoId) : null,
+    } : undefined);
+  }
+
+  @Get('revision-contable/orden-pago/:ordenPagoId')
+  async getOrdenPagoRevisionContable(
+    @Headers() headers: Record<string, string>,
+    @Param('ordenPagoId', ParseIntPipe) ordenPagoId: number,
+  ) {
+    const actor: OrdenPagoActor = {
+      id: Number(headers['x-user-id']),
+      workspaceId: Number(headers['x-workspace-id']),
+      empresaCodigo: String(headers['x-empresa-codigo'] ?? '').trim().toUpperCase(),
+      clienteDestinoId: headers['x-cliente-destino-id']
+        ? Number(headers['x-cliente-destino-id'])
+        : null,
+      email: headers['x-user-email'],
+      requestId: headers['x-request-id'],
+      correlationId: headers['x-correlation-id'],
+      sessionContextId: headers['x-session-context-id'],
+      sistemaCodigo: headers['x-sistema-codigo'],
+      perfilCodigo: headers['x-perfil-codigo'],
+    };
+
+    const detalle = await this.ordenPago.obtenerDetalleRevisionContable(
+      ordenPagoId,
+      actor,
+    );
+
+    const filaContable = await this.service.getRevisionContableOrdenPago(
+      ordenPagoId,
+      detalle.numero,
+      {
+        empresa: actor.empresaCodigo,
+        clienteDestinoId: actor.clienteDestinoId ?? null,
+      },
+    );
+
+    return {
+      ...detalle,
+      documentosRelacionados:
+        filaContable?.documentos_relacionados ?? [],
+      estadoRegularizacion:
+        filaContable?.estadoRegularizacion ?? null,
+      tiposDocumentalesRegularizadoresPermitidos:
+        filaContable?.tiposDocumentalesRegularizadoresPermitidos ??
+        detalle.tiposDocumentalesRegularizadoresPermitidos,
+    };
   }
 
   @Get('revision-contable')

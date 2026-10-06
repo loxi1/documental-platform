@@ -119,7 +119,7 @@ describe('Almacén manual/version transaccionales', () => {
       { documento_id: 30, estado: 'pendiente_ocr', tipo_documental: tipo },
     ]);
     const result = await new DocumentosRepository().confirmarRecuperacionAlmacenConExecutor(tx as any, 10, 11, { contexto, scope, metadata: fuente });
-    expect(result.estado).toBe('confirmado');
+    expect(result!.estado).toBe('confirmado');
     expect(queries.some(q => q.includes("estado = 'duplicado_versionado'"))).toBe(false);
   });
   it.each(['confirmado','multiple','otro_grupo'])('duplicado %s conserva conflicto sin escrituras', async caso => {
@@ -135,7 +135,7 @@ describe('Almacén manual/version transaccionales', () => {
     const { tx, queries } = transaccion(candidato(tipo, null));
     const result = await new DocumentosRepository().confirmarRecuperacionAlmacenConExecutor(tx as any, 10, 11, { contexto, scope, metadata: fuente });
     expect(result).toMatchObject({ estado: 'confirmado', tipoDocumental: tipo, documentoBaseId: 106 });
-    expect(result.ocrResultado).toBeUndefined();
+    expect(result!.ocrResultado).toBeUndefined();
     expect(queries.some(q => /^(INSERT INTO|UPDATE) documentos.ocr_resultados/.test(q))).toBe(false);
     expect(queries.some(q => q.startsWith('INSERT INTO documentos.expediente_documentos'))).toBe(true);
   });

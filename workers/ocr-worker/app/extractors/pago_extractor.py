@@ -27,11 +27,50 @@ def _first_amount(text: str, patterns: list[str]) -> float | None:
                 return amount
     return None
 
+def extract_transferencia_banco(text: str) -> str | None:
+    t = normalize_for_search(text)
+
+    # Banco emisor del comprobante, no banco del beneficiario.
+    if (
+        re.search(r"CONSTANCIA\s+DE\s+OPERACION", t)
+        and "DATOS DE OPERACION" in t
+        and (
+            "BCP" in t
+            or "BANCO DE CREDITO DEL PERU" in t
+            or "TRANSFERENCIA A OTROS BANCOS LOCALES" in t
+            or "DATOS DE LA CUENTA ORIGEN" in t
+            or "DATOS DE LA CUENTA DE ORIGEN" in t
+        )
+    ):
+        return "BCP"
+
+    if (
+        "TRANSFERENCIAS - CUENTAS DE TERCEROS" in t
+        or "BBVA" in t
+    ) and not re.search(r"CONSTANCIA\s+DE\s+OPERACION", t):
+        return "BBVA"
+
+    if (
+        "SCOTIABANK" in t
+        and "DETALLE DE ORDEN" in t
+        and "LISTADO DE TRANSFERENCIAS" in t
+    ):
+        return "SCOTIABANK"
+
+    return extract_banco(text)
+
+
 def extract_transferencia_montos(text: str) -> dict[str, float | None]:
     monto_operacion = _first_amount(text, [
-        r"(?:IMPORTE|MONTO)\s+(?:DE\s+LA\s+)?(?:OPERACION|TRANSFERENCIA|PAGO)\s*:?\s*(?:S/\.?|US\$|\$)?\s*([0-9][0-9,]*(?:\.[0-9]{2})?)",
-        r"IMPORTE\s+ABONADO\s*:?\s*(?:S/\.?|US\$|\$)?\s*([0-9][0-9,]*(?:\.[0-9]{2})?)",
-        r"MONTO\s+PAGADO\s*:?\s*(?:S/\.?|US\$|\$)?\s*([0-9][0-9,]*(?:\.[0-9]{2})?)",
+        # R4G: layout OCR BCP observado: MONTO -> TITULAR -> moneda/importe.
+        r"MONTO\s*:?\s*TITULAR\s+(?:S/\.?|US\$|\$|\bPEN\b|\bUSD\b|\bSOLES?\b|\bDOLARES?\b)\s*([0-9][0-9,]*(?:\.[0-9]{2})?)",
+        r"(?:IMPORTE|MONTO)\s+(?:DE\s+LA\s+)?(?:OPERACION|TRANSFERENCIA|PAGO)\s*:?\s*(?:S/\.?|US\$|\$|\bPEN\b|\bUSD\b|\bSOLES?\b|\bDOLARES?\b)?\s*([0-9][0-9,]*(?:\.[0-9]{2})?)",
+        r"MONTO\s*:?\s*(?:S/\.?|US\$|\$|\bPEN\b|\bUSD\b|\bSOLES?\b|\bDOLARES?\b)\s*([0-9][0-9,]*(?:\.[0-9]{2})?)",
+        r"IMPORTE\s+ABONADO\s*:?\s*(?:S/\.?|US\$|\$|\bPEN\b|\bUSD\b|\bSOLES?\b|\bDOLARES?\b)?\s*([0-9][0-9,]*(?:\.[0-9]{2})?)",
+        r"IMPORTE\s+CARGADO\s*:?\s*(?:S/\.?|US\$|\$|\bPEN\b|\bUSD\b|\bSOLES?\b|\bDOLARES?\b)?\s*([0-9][0-9,]*(?:\.[0-9]{2})?)",
+        r"IMPORTE\s*:?\s*(?:S/\.?|US\$|\$|\bPEN\b|\bUSD\b|\bSOLES?\b|\bDOLARES?\b)\s*([0-9][0-9,]*(?:\.[0-9]{2})?)",
+        r"\b(?:S/\.?|PEN)\s*([0-9][0-9,]*(?:\.[0-9]{2})?)\s+(?:S/\.?\s*)?[0-9][0-9,.]*\s+(?:[0-9]{10,}|[A-Z0-9\-]{8,})\s+[A-Z]+\s+(?:NORMAL|PROCESADA|COMPLETADA|EXITOSA|APROBADA)\b",
+        r"MONTO\s+PAGADO\s*:?\s*(?:S/\.?|US\$|\$|\bPEN\b|\bUSD\b|\bSOLES?\b|\bDOLARES?\b)?\s*([0-9][0-9,]*(?:\.[0-9]{2})?)",
     ])
     comision = _first_amount(text, [
         r"COMISI(?:O|Ó)N(?:\s+BANCARIA)?\s*:?\s*(?:S/\.?|US\$|\$)?\s*([0-9][0-9,]*(?:\.[0-9]{2})?)",
@@ -56,11 +95,54 @@ def extract_transferencia_montos(text: str) -> dict[str, float | None]:
 
 def extract_transferencia_moneda(text: str) -> str | None:
     t = normalize_for_search(text)
+
+    # R4G: priorizar moneda del layout MONTO -> TITULAR -> moneda/importe.
+    monto_titular_match = re.search(
+        r"MONTO\s*:?\s*TITULAR\s+"
+        r"(S/\.?|US\$|\$|\bPEN\b|\bUSD\b|\bSOLES?\b|\bDOLARES?\b)"
+        r"\s*[0-9][0-9,]*(?:\.[0-9]{2})?",
+        t,
+    )
+    if monto_titular_match:
+        moneda_monto = monto_titular_match.group(1)
+        if re.search(r"^(?:US\$|USD|\$|DOLARES?)$", moneda_monto):
+            return "USD"
+        if re.search(r"^(?:S/\.?|PEN|SOLES?)$", moneda_monto):
+            return "PEN"
+
+    monto_match = re.search(
+        r"(?:IMPORTE|MONTO)"
+        r"(?:\s+(?:DE\s+LA\s+)?(?:OPERACION|TRANSFERENCIA|PAGO)|\s+ABONADO|\s+CARGADO)?"
+        r"\s*:?\s*"
+        r"(S/\.?|US\$|\$|\bPEN\b|\bUSD\b|\bSOLES?\b|\bDOLARES?\b)",
+        t,
+        flags=re.DOTALL,
+    )
+    if monto_match:
+        moneda_monto = monto_match.group(1)
+        if re.search(r"^(?:US\$|USD|\$|DOLARES?)$", moneda_monto):
+            return "USD"
+        if re.search(r"^(?:S/\.?|PEN|SOLES?)$", moneda_monto):
+            return "PEN"
+
     if re.search(r"\b(?:US\$|USD|DOLARES?|DOLAR AMERICANO)\b", t):
         return "USD"
     if re.search(r"(?:S/\.?|\bPEN\b|\bSOLES?\b)", t):
         return "PEN"
     return None
+
+def extract_transferencia_numero_operacion(text: str) -> str | None:
+    t = normalize_for_search(text)
+    for pattern in [
+        r"(?:NUMERO|NRO|N[.\s]*[°º])\s+DE\s+OPERACION\s*:?\s*([0-9][0-9,.\-]{3,30})",
+        r"(?:NUMERO|NRO|N[.\s]*[°º])\s+OPERACION\s*:?\s*([0-9][0-9,.\-]{3,30})",
+        r"CODIGO\s+DE\s+SOLICITUD\s*:?\s*([0-9][0-9,.\-]{3,30})",
+    ]:
+        match = re.search(pattern, t)
+        if match:
+            return match.group(1).strip(" .:")
+    return None
+
 
 def extract_transferencia_estado(text: str) -> str | None:
     t = normalize_for_search(text)
@@ -152,7 +234,28 @@ def extract_pago_metadata(text: str, tipo_documental: str, filename: str | None 
     tipo = "TRANSFERENCIA" if tipo == "PAGO_TRANSFERENCIA" else tipo
     from_file = extract_pago_from_filename(filename, tipo_documental)
     rucs = extract_pago_rucs(text)
-    numero_operacion = extract_detraccion_operacion(text) if tipo == "PAGO_DETRACCION" else extract_numero_operacion(text)
+    if tipo == "PAGO_DETRACCION":
+        numero_operacion = extract_detraccion_operacion(text)
+    elif tipo == "TRANSFERENCIA":
+        numero_operacion = extract_transferencia_numero_operacion(text)
+        if numero_operacion is None:
+            t = normalize_for_search(text)
+            if (
+                "SCOTIABANK" in t
+                and "LISTADO DE TRANSFERENCIAS" in t
+            ):
+                match = re.search(
+                    r"\b([0-9]{5,20})\s+"
+                    r"[A-Z]{2,}[A-Z0-9\s\-]*?\s+"
+                    r"[0-9]{11}\s+"
+                    r"(?:S/\.?|PEN)",
+                    t,
+                    flags=re.DOTALL,
+                )
+                if match:
+                    numero_operacion = match.group(1)
+    else:
+        numero_operacion = extract_numero_operacion(text)
     proveedor_ruc = rucs.get("proveedorRuc")
     cliente_ruc = rucs.get("clienteRuc")
     metadata: dict[str, Any] = {
@@ -160,7 +263,11 @@ def extract_pago_metadata(text: str, tipo_documental: str, filename: str | None 
         "numeroConstancia": numero_operacion or from_file.get("numeroOperacion"),
         "comprobante": extract_detraccion_comprobante(text),
         "fechaPago": extract_fecha(text),
-        "banco": extract_banco(text) or from_file.get("banco"),
+        "banco": (
+            extract_transferencia_banco(text)
+            if tipo == "TRANSFERENCIA"
+            else extract_banco(text)
+        ) or from_file.get("banco"),
         "proveedorRuc": proveedor_ruc,
         "proveedorNombre": extract_pago_proveedor_nombre_etiquetado(text)
         or extract_pago_nombre_cercano(text, proveedor_ruc),

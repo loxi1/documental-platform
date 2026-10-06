@@ -7,6 +7,7 @@ class OcrProcesarArchivoPayload(BaseModel):
     archivoId: Optional[int] = None
     storageProvider: Literal["local", "r2", "s3"] = "local"
     storageKey: str = Field(..., min_length=1)
+    nombreOriginal: Optional[str] = None
     tipoSolicitud: Literal["clasificar", "extraer", "clasificar_extraer"] = "clasificar_extraer"
     requestId: Optional[str] = None
 

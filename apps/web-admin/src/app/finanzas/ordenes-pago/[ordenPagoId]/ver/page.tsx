@@ -8,7 +8,10 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getDocumentoArchivos } from "@/services/documentos";
 import { getGrupoFacturaDocumentosV2 } from "@/services/documental-v2-workspace";
-import { getOrdenPago } from "@/services/finanzas";
+import {
+  getOrdenPago,
+  getResumenFinancieroGrupo,
+} from "@/services/finanzas";
 
 export default function OrdenPagoVerPage() {
   const params = useParams<{ ordenPagoId: string }>();
@@ -42,6 +45,32 @@ export default function OrdenPagoVerPage() {
     queryFn: () => getGrupoFacturaDocumentosV2(detalle!.grupoFacturaId),
     enabled: Boolean(detalle?.grupoFacturaId),
   });
+
+  const resumenFinancieroQuery = useQuery({
+    queryKey: [
+      "finanzas-orden-pago-ver-resumen-financiero",
+      detalle?.grupoFacturaId,
+    ],
+    queryFn: () => getResumenFinancieroGrupo(detalle!.grupoFacturaId),
+    enabled: Boolean(detalle?.grupoFacturaId),
+  });
+
+  async function refreshOrdenPagoView() {
+    // La visibilidad de Regularizar vuelve a resolverse desde el backend:
+    // concepto -> snapshot congelado -> estado/tipos permitidos.
+    // No se fuerza REGULARIZADO ni se oculta la acción por estado local.
+    const refreshedOrden = await ordenQuery.refetch();
+
+    if (refreshedOrden.error) {
+      throw refreshedOrden.error;
+    }
+
+    await Promise.all([
+      archivosQuery.refetch(),
+      documentosGrupoQuery.refetch(),
+      resumenFinancieroQuery.refetch(),
+    ]);
+  }
 
   if (!idValido) {
     return (
@@ -82,6 +111,10 @@ export default function OrdenPagoVerPage() {
       documentosGrupo={documentosGrupoQuery.data ?? []}
       documentosGrupoLoading={documentosGrupoQuery.isLoading}
       documentosGrupoError={Boolean(documentosGrupoQuery.error)}
+      resumenFinanciero={resumenFinancieroQuery.data ?? null}
+      resumenFinancieroLoading={resumenFinancieroQuery.isLoading}
+      resumenFinancieroError={Boolean(resumenFinancieroQuery.error)}
+      onRefresh={refreshOrdenPagoView}
     />
   );
 }

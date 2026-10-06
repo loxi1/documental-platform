@@ -220,6 +220,32 @@ function buildDetailFields(documento: ExpedienteDocumento | null): DetailField[]
     razonSocial,
   };
 
+  if (tipo === "ORDEN_PAGO") {
+    const concepto = pickDocumentoValue(documento, [
+      "concepto",
+      "conceptoNombre",
+      "concepto_nombre",
+    ]);
+    const referencia = pickDocumentoValue(documento, [
+      "codigoPago",
+      "codigo_pago",
+      "referencia",
+    ]);
+
+    return [
+      { label: "Tipo documental", value: common.tipoDocumental },
+      { label: "Número", value: common.numero },
+      { label: "Fecha emisión", value: formatDate(common.fecha) },
+      { label: "Beneficiario", value: common.razonSocial, wide: true },
+      { label: "RUC proveedor", value: common.ruc },
+      { label: "Concepto", value: concepto },
+      { label: "Referencia", value: referencia },
+      { label: "Monto", value: formatMoney(common.moneda, common.monto) },
+      { label: "Moneda", value: common.moneda },
+      { label: "Estado", value: common.estado },
+    ];
+  }
+
   if (tipo === "NOTA_INGRESO") {
     return [
       { label: "Tipo documental", value: common.tipoDocumental },

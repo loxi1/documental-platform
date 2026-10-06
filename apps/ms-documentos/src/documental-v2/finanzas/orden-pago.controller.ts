@@ -1,5 +1,5 @@
 import { BuscarContextosOpService } from './buscar-contextos-op.service';
-import { Body, Controller, Get, Headers, Param, Patch, Query } from '@nestjs/common';
+import { Body, Controller, Get, Headers, Param, Patch, Post, Query } from '@nestjs/common';
 import { OrdenPagoService } from './orden-pago.service';
 import { validarActorOp } from './orden-pago.dto';
 import type { OrdenPagoActor } from './orden-pago.dto';
@@ -28,6 +28,22 @@ export class OrdenPagoController {
   @Get('ordenes-pago/opciones')
   opciones(@Headers() headers: Record<string, string>) { return this.op.opciones(this.actor(headers)); }
 
+  @Get('ordenes-pago/beneficiarios')
+  beneficiarios(
+    @Headers() headers: Record<string, string>,
+    @Query() query: { contenedorOperativoId?: string; conceptoCodigo?: string },
+  ) {
+    return this.op.beneficiariosElegibles(this.actor(headers), query);
+  }
+
+  @Get('ordenes-pago/:ordenPagoId/upload-pendiente')
+  obtenerUploadPendiente(
+    @Headers() headers: Record<string, string>,
+    @Param('ordenPagoId') id: string,
+  ) {
+    return this.op.obtenerUploadPendiente(Number(id), this.actor(headers));
+  }
+
   @Get('ordenes-pago/:ordenPagoId')
   obtenerDetalle(@Headers() headers: Record<string, string>, @Param('ordenPagoId') id: string) {
     return this.op.obtenerDetalle(Number(id), this.actor(headers));
@@ -42,6 +58,14 @@ export class OrdenPagoController {
     return this.op.editar(Number(id), body, this.actor(headers));
   }
 
+  @Post('ordenes-pago/:ordenPagoId/confirmar-pago')
+  confirmarPago(
+    @Headers() headers: Record<string, string>,
+    @Param('ordenPagoId') id: string,
+    @Body() body: unknown,
+  ) {
+    return this.op.confirmarPago(Number(id), body, this.actor(headers));
+  }
 
   @Get('bandeja')
   async bandeja(@Headers() headers: Record<string, string>, @Query() query: Record<string, string>) {

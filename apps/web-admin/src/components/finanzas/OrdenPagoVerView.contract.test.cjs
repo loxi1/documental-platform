@@ -119,17 +119,67 @@ test("principal lógico no fabrica PreviewDocumento", () => {
   assert.doesNotMatch(principal, /<PreviewDocumento/);
 });
 
-test("Ver OP no incorpora cálculo de pagos", () => {
-  for (const forbidden of [
-    "Pagado acumulado",
-    "Saldo",
-    "adjunto_transferencia",
-  ]) {
-    assert.equal(
-      view.toLowerCase().includes(forbidden.toLowerCase()),
-      false,
-    );
-  }
+test("Ver OP incorpora resumen financiero sin recalcular pagos", () => {
+  assert.match(page, /getResumenFinancieroGrupo/);
+  assert.match(
+    page,
+    /getResumenFinancieroGrupo\(detalle!\.grupoFacturaId\)/,
+  );
+
+  assert.match(view, /resumenFinanciero\.pago\.estado/);
+  assert.match(view, /resumenFinanciero\.pago\.pagado/);
+  assert.match(view, /resumenFinanciero\.pago\.saldo/);
+  assert.match(view, /Pagado acumulado/);
+  assert.match(view, /Saldo/);
+
+  assert.doesNotMatch(
+    view,
+    /resumenFinanciero\.sustentosActivos\.reduce\(/,
+  );
+});
+
+test("Ver OP separa sustentos activos observados y anulados", () => {
+  assert.match(view, /resumenFinanciero\.sustentosActivos/);
+  assert.match(view, /resumenFinanciero\.sustentosObservados/);
+  assert.match(view, /resumenFinanciero\.sustentosAnulados/);
+
+  assert.match(view, /Sustentos de pago activos/);
+  assert.match(view, /Sustentos observados/);
+  assert.match(view, /Sustentos anulados/);
+});
+
+test("Ver OP previsualiza sustentos financieros por archivoId", () => {
+  assert.match(view, /item\.archivoId/);
+  assert.match(
+    view,
+    /<PreviewDocumento\s+archivoId=\{previewPago\.archivoId\}/s,
+  );
+});
+
+test("Ver OP permite adjuntar otro pago mientras backend no marque COMPLETO", () => {
+  assert.match(
+    view,
+    /resumenFinanciero\.pago\.estado !== "COMPLETO"/,
+  );
+
+  assert.match(
+    view,
+    /\/finanzas\/ordenes-pago\/\$\{encodeURIComponent\(/,
+  );
+
+  assert.match(view, /\/adjuntar-pago/);
+  assert.match(view, /Adjuntar otro pago/);
+  assert.match(view, /Adjuntar sustento de pago/);
+});
+
+test("Ver OP mantiene pago separado de estadoRegularizacion", () => {
+  assert.match(view, /detalle\.estadoRegularizacion/);
+  assert.match(view, /resumenFinanciero\.pago\.estado/);
+
+  assert.doesNotMatch(
+    view,
+    /estadoRegularizacion\s*=\s*resumenFinanciero\.pago\.estado/,
+  );
 });
 
 test("Bandeja conserva Ver y Adjuntar como navegación", () => {

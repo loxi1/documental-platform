@@ -3,8 +3,13 @@
 import { PagoGrupoResumenCell } from "@/components/finanzas/PagoGrupoResumenCell";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
-import { Eye, FileText, RefreshCcw, Search, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { CalendarDays, Eye, FileText, RefreshCcw, Search, X } from "lucide-react";
+import flatpickr from "flatpickr";
+import monthSelectPlugin from "flatpickr/dist/plugins/monthSelect";
+import { Spanish } from "flatpickr/dist/l10n/es";
+import "flatpickr/dist/flatpickr.min.css";
+import "flatpickr/dist/plugins/monthSelect/style.css";
 
 import { PreviewDocumento } from "@/components/common/PreviewDocumento";
 import { Button } from "@/components/ui/button";
@@ -178,6 +183,38 @@ function documentoCompacto(
   return nestedRecord(filaFactura(item), key);
 }
 
+function documentosRelacionados(item: RevisionContableItem): UnknownRecord[] {
+  const record = itemRecord(item);
+  const raw = pick(
+    record.documentosRelacionados,
+    record.documentos_relacionados,
+    record.documentos,
+    [],
+  );
+
+  return Array.isArray(raw)
+    ? raw.map(asRecord).filter((doc): doc is UnknownRecord => doc !== null)
+    : [];
+}
+
+function regularizadorOrdenPago(item: RevisionContableItem) {
+  return (
+    documentosRelacionados(item).find((doc) => {
+      const relacion = asText(
+        pick(doc.tipoRelacion, doc.tipo_relacion, null),
+        "",
+      )
+        .trim()
+        .toLowerCase();
+
+      return (
+        relacion === "regularizador_factura" ||
+        relacion === "regularizador_recibo_honorario"
+      );
+    }) ?? null
+  );
+}
+
 function expedienteId(item: RevisionContableItem) {
   const fila = filaFactura(item);
   return pick(
@@ -277,16 +314,19 @@ function fechaEmision(item: RevisionContableItem) {
 
 function proveedorNombre(item: RevisionContableItem) {
   const factura = facturaRecord(item);
+  const record = itemRecord(item);
   return asText(
     pick(
+      record.regularizadorEmisorNombre,
+      record.regularizador_emisor_nombre,
       nestedValue(
         factura,
         "proveedorNombre",
         "razonSocialEmisor",
         "razon_social_emisor",
       ),
-      itemRecord(item).razonSocialEmisor,
-      itemRecord(item).razon_social_emisor,
+      record.razonSocialEmisor,
+      record.razon_social_emisor,
     ),
     "—",
   );
@@ -294,14 +334,26 @@ function proveedorNombre(item: RevisionContableItem) {
 
 function proveedorRuc(item: RevisionContableItem) {
   const factura = facturaRecord(item);
+  const record = itemRecord(item);
   return asText(
     pick(
+      record.regularizadorEmisorRuc,
+      record.regularizador_emisor_ruc,
       nestedValue(factura, "proveedorRuc", "rucEmisor", "ruc_emisor"),
-      itemRecord(item).rucEmisor,
-      itemRecord(item).ruc_emisor,
+      record.rucEmisor,
+      record.ruc_emisor,
     ),
     "—",
   );
+}
+
+function beneficiarioOrdenPagoNombre(item: RevisionContableItem) {
+  if (!isOrdenPagoRow(item)) return "";
+  const record = itemRecord(item);
+  return asText(
+    pick(record.beneficiarioNombre, record.beneficiario_nombre, null),
+    "",
+  ).trim();
 }
 
 function monedaFactura(item: RevisionContableItem) {
@@ -424,31 +476,31 @@ function pagoOperacion(item: RevisionContableItem) {
 
 function periodoParts(item: RevisionContableItem) {
   const periodo = nestedRecord(filaFactura(item), "periodo");
+  const record = itemRecord(item);
+
   const anio = Number(
-    pick(nestedValue(periodo, "anio", "year"), 0) ?? 0,
+    pick(
+      nestedValue(periodo, "anio", "year"),
+      record.periodoAnio,
+      record.periodo_anio,
+      0,
+    ) ?? 0,
   );
+
   const mes = Number(
-    pick(nestedValue(periodo, "mes", "month"), 0) ?? 0,
+    pick(
+      nestedValue(periodo, "mes", "month"),
+      record.periodoMes,
+      record.periodo_mes,
+      0,
+    ) ?? 0,
   );
 
   if (anio > 0 && mes >= 1 && mes <= 12) {
     return { anio, mes };
   }
 
-  const raw = fechaEmisionRaw(item);
-  if (!raw) return null;
-
-  const text = String(raw);
-  const match = text.match(/^(\d{4})-(\d{2})/);
-
-  if (match) {
-    return { anio: Number(match[1]), mes: Number(match[2]) };
-  }
-
-  const date = new Date(text);
-  if (Number.isNaN(date.getTime())) return null;
-
-  return { anio: date.getFullYear(), mes: date.getMonth() + 1 };
+  return null;
 }
 
 function periodoLabel(item: RevisionContableItem) {
@@ -458,6 +510,27 @@ function periodoLabel(item: RevisionContableItem) {
 }
 
 function revisionContableLabel(item: RevisionContableItem) {
+  const record = itemRecord(item);
+
+  const estadoRegularizacion = asText(
+    pick(
+      record.estadoRegularizacion,
+      record.estado_regularizacion,
+      null,
+    ),
+    "",
+  ).trim();
+
+  if (estadoRegularizacion) {
+    const normalized = estadoRegularizacion.toUpperCase();
+
+    if (normalized === "PENDIENTE") return "Pendiente";
+    if (normalized === "NO_REQUIERE") return "No requiere";
+    if (normalized === "REGULARIZADO") return "Regularizado";
+
+    return estadoRegularizacion;
+  }
+
   const revision = nestedRecord(filaFactura(item), "revisionContable");
   if (!revision) return "—";
 
@@ -474,6 +547,34 @@ function revisionContableLabel(item: RevisionContableItem) {
   if (normalized === "observado" || normalized === "observada") return "Observado";
 
   return raw;
+}
+
+function isOrdenPagoRow(item: RevisionContableItem) {
+  const record = itemRecord(item);
+  const tipo = String(
+    pick(record.tipoDocumental, record.tipo_documental, record.origen, ""),
+  ).toUpperCase();
+
+  return tipo === "ORDEN_PAGO";
+}
+
+function ordenPagoId(item: RevisionContableItem) {
+  const record = itemRecord(item);
+  return pick(record.ordenPagoId, record.orden_pago_id, null);
+}
+
+function conceptoOrdenPago(item: RevisionContableItem) {
+  const record = itemRecord(item);
+  return asText(
+    pick(
+      record.conceptoNombre,
+      record.concepto_nombre,
+      record.conceptoCodigo,
+      record.concepto_codigo,
+      null,
+    ),
+    "—",
+  );
 }
 
 function isFacturaRow(item: RevisionContableItem) {
@@ -527,13 +628,13 @@ function buildSearchText(item: RevisionContableItem) {
     centroCostoCodigo(item),
     proveedorNombre(item),
     proveedorRuc(item),
+    beneficiarioOrdenPagoNombre(item),
     fechaEmision(item),
     montoFactura(item),
     guiaIdentidad(item),
     notaIngresoIdentidad(item),
     pagoBanco(item),
     pagoOperacion(item),
-    periodoLabel(item),
     revisionContableLabel(item),
   ]
     .filter(Boolean)
@@ -615,6 +716,49 @@ export default function RevisionContablePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const periodoInput = useRef<HTMLInputElement | null>(null);
+  const periodoPicker = useRef<flatpickr.Instance | null>(null);
+
+  useEffect(() => {
+    if (!periodoInput.current) return;
+
+    const selected = new Date(Number(anio), Number(mes) - 1, 1);
+
+    const picker = flatpickr(periodoInput.current, {
+      locale: Spanish,
+      defaultDate: selected,
+      dateFormat: "m-Y",
+      static: true,
+      plugins: [
+        monthSelectPlugin({
+          shorthand: false,
+          dateFormat: "m-Y",
+          altFormat: "m-Y",
+        }),
+      ],
+      onChange: ([date]) => {
+        if (!date) return;
+        setAnio(String(date.getFullYear()));
+        setMes(String(date.getMonth() + 1));
+      },
+    });
+
+    periodoPicker.current = picker;
+
+    return () => {
+      periodoPicker.current = null;
+      picker.destroy();
+    };
+  }, []);
+
+  useEffect(() => {
+    const picker = periodoPicker.current;
+    if (!picker) return;
+
+    const selected = new Date(Number(anio), Number(mes) - 1, 1);
+    picker.setDate(selected, false);
+  }, [anio, mes]);
+
   const monthOptions = useMemo(() => buildMonthOptions(anio), [anio]);
 
   useEffect(() => {
@@ -637,7 +781,10 @@ export default function RevisionContablePage() {
 
   const rawItems = data?.items ?? [];
   const items = useMemo(
-    () => rawItems.filter((item) => isFacturaRow(item)),
+    () =>
+      rawItems.filter(
+        (item) => isFacturaRow(item) || isOrdenPagoRow(item),
+      ),
     [rawItems],
   );
 
@@ -669,7 +816,7 @@ export default function RevisionContablePage() {
       <div>
         <h1 className="text-2xl font-bold">Revisión documental</h1>
         <p className="text-sm text-muted-foreground">
-          Revisión contable de facturas por periodo de emisión.
+          Revisión contable de obligaciones por periodo de emisión.
         </p>
       </div>
 
@@ -689,44 +836,28 @@ export default function RevisionContablePage() {
               <div>
                 <div className="flex items-center gap-2 font-semibold">
                   <FileText className="h-5 w-5" />
-                  Facturas del periodo
+                  Obligaciones del periodo
                 </div>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Revisión contable por fecha de emisión de la factura.
+                  Revisión contable por fecha de emisión de la obligación.
                 </p>
               </div>
 
               <div className="flex flex-wrap items-end gap-2">
                 <label className="grid gap-1 text-xs text-muted-foreground">
-                  <span>Año</span>
-                  <Select value={anio} onValueChange={setAnio}>
-                    <SelectTrigger className="h-9 min-w-[110px]">
-                      <SelectValue placeholder="Año" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {yearOptions.map((option) => (
-                        <SelectItem key={option} value={option}>
-                          {option}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </label>
-
-                <label className="grid gap-1 text-xs text-muted-foreground">
-                  <span>Mes</span>
-                  <Select value={mes} onValueChange={setMes}>
-                    <SelectTrigger className="h-9 min-w-[160px]">
-                      <SelectValue placeholder="Mes" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {monthOptions.map((option) => (
-                        <SelectItem key={option.value} value={option.value}>
-                          {option.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <span>Periodo de emisión</span>
+                  <div className="op-flatpickr-field relative min-w-[160px]">
+                    <CalendarDays className="pointer-events-none absolute left-3 top-1/2 z-10 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                    <input
+                      ref={periodoInput}
+                      type="text"
+                      readOnly
+                      aria-label="Periodo de emisión"
+                      className="h-9 w-full cursor-pointer rounded-md border border-input bg-background pl-9 pr-3 text-sm shadow-sm"
+                      value={`${String(Number(mes)).padStart(2, "0")}-${anio}`}
+                      onChange={() => undefined}
+                    />
+                  </div>
                 </label>
 
                 <Button
@@ -745,7 +876,7 @@ export default function RevisionContablePage() {
               <Input
                 value={busqueda}
                 onChange={(event) => setBusqueda(event.target.value)}
-                placeholder="Buscar factura, OC/OS, proveedor, RUC, guía, nota de ingreso o pago..."
+                placeholder="Buscar obligación, factura, OP, OC/OS, proveedor, RUC, guía, nota de ingreso o pago..."
               />
 
               <Button
@@ -784,7 +915,7 @@ export default function RevisionContablePage() {
               <EmptyHeader>
                 <EmptyTitle>Cargando bandeja contable...</EmptyTitle>
                 <EmptyDescription>
-                  Estamos consultando las facturas del periodo.
+                  Estamos consultando las obligaciones del periodo.
                 </EmptyDescription>
               </EmptyHeader>
             </Empty>
@@ -793,14 +924,17 @@ export default function RevisionContablePage() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b bg-muted/40 text-left align-bottom">
-                    <th className="min-w-[108px] px-3 py-2.5">Factura</th>
-                    <th className="min-w-[88px] px-3 py-2.5">OC/OS</th>
+                    <th className="min-w-[108px] px-3 py-2.5">Obligación</th>
+                    <th className="min-w-[96px] px-3 py-2.5">Origen</th>
                     <th className="min-w-[92px] px-3 py-2.5">
                       <span className="block leading-tight">Centro de</span>
                       <span className="block leading-tight">costo</span>
                     </th>
                     <th className="w-[180px] min-w-[160px] max-w-[180px] px-3 py-2.5">
-                      Proveedor
+                      Proveedor / Emisor
+                    </th>
+                    <th className="w-[170px] min-w-[150px] max-w-[190px] px-3 py-2.5">
+                      Beneficiario
                     </th>
                     <th className="min-w-[92px] px-3 py-2.5">
                       <span className="block leading-tight">Fecha de</span>
@@ -813,8 +947,7 @@ export default function RevisionContablePage() {
                       <span className="block leading-tight">ingreso</span>
                     </th>
                     <th className="min-w-[112px] px-3 py-2.5">Pago</th>
-                    <th className="min-w-[82px] px-3 py-2.5">Periodo</th>
-                    <th className="min-w-[92px] px-3 py-2.5">Revisión</th>
+                     <th className="min-w-[92px] px-3 py-2.5">Revisión</th>
                     <th className="w-[54px] px-2 py-2.5 text-center">Ver</th>
                   </tr>
                 </thead>
@@ -825,9 +958,60 @@ export default function RevisionContablePage() {
                     const grupoId = grupoFacturaId(item);
                     const facturaDocId = facturaDocumentoId(item);
 
-                    const href =
-                      (typeof expId === "string" || typeof expId === "number") &&
-                      expId !== ""
+                    const opRow = isOrdenPagoRow(item);
+                    const opId = ordenPagoId(item);
+                    const regularizadorOp = opRow
+                      ? regularizadorOrdenPago(item)
+                      : null;
+
+                    const regularizadorTipo = regularizadorOp
+                      ? asText(
+                          pick(
+                            regularizadorOp.tipoDocumental,
+                            regularizadorOp.tipo_documental,
+                            null,
+                          ),
+                          "",
+                        )
+                          .trim()
+                          .toUpperCase()
+                      : "";
+
+                    const regularizadorSerie = regularizadorOp
+                      ? asText(regularizadorOp.serie, "")
+                      : "";
+
+                    const regularizadorNumero = regularizadorOp
+                      ? asText(regularizadorOp.numero, "")
+                      : "";
+
+                    const regularizadorArchivo = regularizadorOp
+                      ? documentoArchivoId(regularizadorOp)
+                      : null;
+
+                    const regularizadorLabel =
+                      regularizadorTipo === "RECIBO_HONORARIO" ||
+                      regularizadorTipo === "RECIBO_POR_HONORARIOS"
+                        ? "RH"
+                        : regularizadorTipo === "FACTURA"
+                          ? "Factura"
+                          : regularizadorTipo
+                            ? regularizadorTipo.replaceAll("_", " ")
+                            : "Documento";
+
+                    const regularizadorIdentidad = [
+                      regularizadorSerie,
+                      regularizadorNumero,
+                    ]
+                      .filter(Boolean)
+                      .join(" / ");
+
+                    const href = opRow
+                      ? typeof opId === "string" || typeof opId === "number"
+                        ? `/revision-contable/orden-pago/${opId}/ver`
+                        : null
+                      : (typeof expId === "string" || typeof expId === "number") &&
+                          expId !== ""
                         ? buildDetalleRevisionHref(
                             expId,
                             params.empresa,
@@ -848,6 +1032,31 @@ export default function RevisionContablePage() {
 
                     const facturaArchivo = facturaArchivoId(item);
                     const principalArchivo = principalArchivoId(item);
+
+                    const sourceDocumentOp = opRow
+                      ? asRecord(
+                          pick(
+                            itemRecord(item).sourceDocument,
+                            itemRecord(item).source_document,
+                            null,
+                          ),
+                        )
+                      : null;
+
+                    const sourceDocumentOpArchivo = sourceDocumentOp
+                      ? documentoArchivoId(sourceDocumentOp)
+                      : null;
+
+                    const sourceDocumentOpNumero = sourceDocumentOp
+                      ? asText(
+                          pick(
+                            sourceDocumentOp.numero,
+                            facturaNumero(item),
+                          ),
+                          facturaNumero(item),
+                        )
+                      : facturaNumero(item);
+
                     const guiaArchivo = documentoArchivoId(guiaDoc);
                     const notaIngresoArchivo =
                       documentoArchivoId(notaIngresoDoc);
@@ -883,18 +1092,44 @@ export default function RevisionContablePage() {
                         className="border-b align-middle hover:bg-muted/30"
                       >
                         <td className="px-3 py-2.5">
-                          <DocumentoPreviewCell
-                            archivoId={facturaArchivo}
-                            line1={facturaSerie(item)}
-                            line2={facturaNumero(item)}
-                            title={facturaTitle}
-                            onPreview={openPreview}
-                          />
+                          {opRow ? (
+                            regularizadorOp ? (
+                              <DocumentoPreviewCell
+                                archivoId={regularizadorArchivo}
+                                line1={regularizadorLabel}
+                                line2={regularizadorIdentidad || "—"}
+                                title={`${regularizadorLabel}${
+                                  regularizadorIdentidad
+                                    ? ` ${regularizadorIdentidad}`
+                                    : ""
+                                }`}
+                                onPreview={openPreview}
+                              />
+                            ) : (
+                              <span className="text-muted-foreground">—</span>
+                            )
+                          ) : (
+                            <DocumentoPreviewCell
+                              archivoId={facturaArchivo}
+                              line1={facturaSerie(item)}
+                              line2={facturaNumero(item)}
+                              title={facturaTitle}
+                              onPreview={openPreview}
+                            />
+                          )}
                         </td>
 
                         <td className="px-3 py-2.5">
-                          {principalTipo(item) !== "—" ||
-                          principalNumero(item) !== "—" ? (
+                          {opRow ? (
+                            <DocumentoPreviewCell
+                              archivoId={sourceDocumentOpArchivo}
+                              line1="OP"
+                              line2={sourceDocumentOpNumero}
+                              title={`OP ${sourceDocumentOpNumero}`}
+                              onPreview={openPreview}
+                            />
+                          ) : principalTipo(item) !== "—" ||
+                            principalNumero(item) !== "—" ? (
                             <DocumentoPreviewCell
                               archivoId={principalArchivo}
                               line1={principalTipo(item)}
@@ -922,6 +1157,11 @@ export default function RevisionContablePage() {
                             {proveedorRuc(item)}
                           </div>
                         </td>
+                    <td className="px-3 py-2.5 align-top">
+                      {isOrdenPagoRow(item)
+                        ? beneficiarioOrdenPagoNombre(item) || "—"
+                        : "—"}
+                    </td>
 
                         <td className="whitespace-nowrap px-3 py-2.5">
                           {fechaEmision(item)}
@@ -961,11 +1201,7 @@ export default function RevisionContablePage() {
                           <PagoGrupoResumenCell grupoFacturaId={grupoId} />
                         </td>
 
-                        <td className="whitespace-nowrap px-3 py-2.5">
-                          {periodoLabel(item)}
-                        </td>
-
-                        <td className="px-3 py-2.5">
+                         <td className="px-3 py-2.5">
                           <span
                             className="text-xs font-medium"
                             title="Estado de revisión contable; solo lectura en este control"
@@ -984,8 +1220,8 @@ export default function RevisionContablePage() {
                             >
                               <Link
                                 href={href}
-                                title="Ver detalle documental de la factura"
-                                aria-label="Ver detalle documental de la factura"
+                                title={opRow ? "Ver orden de pago" : "Ver detalle documental de la factura"}
+                                aria-label={opRow ? "Ver orden de pago" : "Ver detalle documental de la factura"}
                               >
                                 <Eye className="h-4 w-4" />
                               </Link>
@@ -1006,9 +1242,9 @@ export default function RevisionContablePage() {
                     <EmptyMedia variant="icon">
                       <FileText className="h-5 w-5" />
                     </EmptyMedia>
-                    <EmptyTitle>Sin facturas para este periodo</EmptyTitle>
+                    <EmptyTitle>Sin obligaciones para este periodo</EmptyTitle>
                     <EmptyDescription>
-                      No se encontraron facturas con los criterios seleccionados.
+                      No se encontraron obligaciones con los criterios seleccionados.
                     </EmptyDescription>
                   </EmptyHeader>
                 </Empty>

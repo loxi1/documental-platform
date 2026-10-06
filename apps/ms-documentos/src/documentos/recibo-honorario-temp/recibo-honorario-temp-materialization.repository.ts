@@ -74,34 +74,8 @@ export class ReciboHonorarioTempMaterializationRepository {
       );
     }
 
-    const ocrCandidate = row.metadata?.ocrCandidate;
-
-    if (!ocrCandidate) {
-      throw new ConflictException(
-        'RECIBO_HONORARIO_TEMP_OCR_NOT_ATTEMPTED',
-      );
-    }
-
-    if (
-      ocrCandidate.tipoEsperado !==
-      'RECIBO_HONORARIO'
-    ) {
-      throw new ConflictException(
-        'RECIBO_HONORARIO_TEMP_OCR_TYPE_CONFLICT',
-      );
-    }
-
-    if (ocrCandidate.status === 'PROCESSING') {
-      throw new ConflictException(
-        'RECIBO_HONORARIO_TEMP_OCR_PROCESSING',
-      );
-    }
-
-    if (ocrCandidate.status !== 'DONE') {
-      throw new ConflictException(
-        'RECIBO_HONORARIO_TEMP_OCR_STATE_INVALID',
-      );
-    }
+    // OCR es asistencia, no autoridad ni requisito de materialización.
+    // La validación humana posterior exige los campos fiscales mínimos.
 
     if (
       Number(row.actor_id) !== actor.actorId ||
@@ -459,6 +433,7 @@ export class ReciboHonorarioTempMaterializationRepository {
         estado='confirmado',
         ruc_emisor=${rucEmisor},
         fecha_emision=${fechaEmision}::date,
+        moneda=${moneda},
         monto_total=${montoTotal}::numeric,
         metadata=${JSON.stringify(
           metadataDocumento,

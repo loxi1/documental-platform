@@ -41,10 +41,19 @@ function page({
   vm.runInNewContext(code, { exports, require(name) {
     if (name === 'react/jsx-runtime') return { jsx, jsxs: jsx };
     if (name === 'next/navigation') return { useParams: () => ({ ordenPagoId: id }) };
-    if (name === '@tanstack/react-query') return { useQuery: config => {
-      options.push(config);
-      return options.length === 1 ? query : resumenQuery;
-    } };
+    if (name === '@tanstack/react-query') return {
+      useQuery: config => {
+        options.push(config);
+        return options.length === 1 ? query : resumenQuery;
+      },
+      useQueryClient: () => ({
+        invalidateQueries: ({ queryKey }) => {
+          calls.invalidatedQueries ??= [];
+          calls.invalidatedQueries.push(queryKey);
+          return Promise.resolve();
+        },
+      }),
+    };
     if (name === '@/lib/auth-storage') return { getContexto: () => ({ workspaceId, sub: 6 }) };
     if (name === '@/services/finanzas') return {
       getOrdenPago: async value => {
@@ -92,7 +101,33 @@ test('OP-153 usa grupoFacturaId 116 para R5-READ y consume resumen financiero ca
 
   assert.equal(p.node.props.documentoEconomico, undefined);
 });
+test('OP con concepto canónico hidrata conceptoCodigo/conceptoNombre y conserva fallback sin darle prioridad', () => {
+  const data = {
+    ...op,
+    conceptoCodigo: 'AGUA',
+    conceptoNombre: 'Agua',
+    tipo: 'SERVICIOS_GENERALES',
+    subtipo: 'OTROS',
+  };
 
+  const resumen = JSON.parse(JSON.stringify(
+    page({ query: { data } }).node.props.resumen,
+  ));
+
+  assert.equal(resumen.conceptoCodigo, 'AGUA');
+  assert.equal(resumen.conceptoNombre, 'Agua');
+  assert.equal(resumen.tipo, 'SERVICIOS_GENERALES');
+  assert.equal(resumen.subtipo, 'OTROS');
+});
+
+test('OP histórica sin concepto canónico conserva tipo/subtipo para fallback', () => {
+  const resumen = JSON.parse(JSON.stringify(page().node.props.resumen));
+
+  assert.equal(resumen.conceptoCodigo, undefined);
+  assert.equal(resumen.conceptoNombre, undefined);
+  assert.equal(resumen.tipo, 'SERVICIOS_GENERALES');
+  assert.equal(resumen.subtipo, 'OTROS');
+});
 test('archivo inicial preserva ID/nombre/MIME para preview; nunca URL', () => {
   const props = page().node.props;
   assert.deepEqual(JSON.parse(JSON.stringify(props.sustentoOrden)), { archivoId: 444, nombre: 'imagen_correo.png', tipo: 'image/png', visualizable: true });
@@ -129,6 +164,43 @@ test('sin contexto no habilita GET; cache aislado por workspace/actor', () => {
     page({ workspaceId: 14 }).queryOptions.queryKey,
   );
 });
+function renderedText(nodes) {
+  const text = node =>
+    Array.isArray(node)
+      ? node.map(text).join('')
+      : typeof node === 'object' && node
+        ? text(node.props?.children)
+        : String(node ?? '');
+
+  return nodes.map(text).join(' ');
+}
+test('vista muestra Concepto y nombre canónico sin mostrar tipo/subtipo como segunda clasificación', () => {
+  const data = {
+    ...op,
+    conceptoCodigo: 'AGUA',
+    conceptoNombre: 'Agua',
+    tipo: 'SERVICIOS_GENERALES',
+    subtipo: 'OTROS',
+  };
+
+  const props = page({ query: { data } }).node.props;
+  const contenido = renderedText(viewHarness(props)());
+
+  assert.match(contenido, /Concepto/);
+  assert.match(contenido, /Agua/);
+  assert.doesNotMatch(contenido, /SERVICIOS_GENERALES/);
+  assert.doesNotMatch(contenido, /OTROS/);
+});
+
+test('vista histórica sin concepto conserva tipo/subtipo sin separador vacío', () => {
+  const props = page().node.props;
+  const contenido = renderedText(viewHarness(props)());
+
+  assert.match(contenido, /SERVICIOS_GENERALES/);
+  assert.match(contenido, /OTROS/);
+  assert.doesNotMatch(contenido, /undefined|null/);
+  assert.doesNotMatch(contenido, /·\s*$/);
+});
 function viewHarness(props) {
   const viewSource = fs.readFileSync(require.resolve('../../../../../components/finanzas/OrdenPagoAdjuntarPagoView.tsx'), 'utf8');
   const viewCode = ts.transpileModule(viewSource, { compilerOptions: {
@@ -139,11 +211,71 @@ function viewHarness(props) {
   const states = []; let cursor = 0;
   vm.runInNewContext(viewCode, { exports, require(name) {
     if (name === 'react/jsx-runtime') return { jsx, jsxs: jsx };
-    if (name === 'react') return { useMemo: fn => fn(), useState: value => {
-      const i = cursor++; if (!(i in states)) states[i] = value;
-      return [states[i], next => { states[i] = next; }];
-    } };
+    if (name === 'react') return {
+      useMemo: fn => fn(),
+      useRef: value => {
+        const i = cursor++;
+        if (!(i in states)) states[i] = { current: value };
+        return states[i];
+      },
+      useState: value => {
+        const i = cursor++;
+        if (!(i in states)) states[i] = typeof value === 'function' ? value() : value;
+        return [states[i], next => {
+          states[i] = typeof next === 'function' ? next(states[i]) : next;
+        }];
+      },
+      useEffect: () => {
+        cursor++;
+      },
+    };
     if (name === '@/constants/catalogos') return { BANCO_OPTIONS: [], MONEDA_OPTIONS: [], hasCatalogValue: () => false };
+    if (name === '@tanstack/react-query') return {
+      useQueryClient: () => ({
+        invalidateQueries: ({ queryKey }) => {
+          return Promise.resolve();
+        },
+      }),
+    };
+    if (name === '@/components/finanzas/finanzas-moneda') return {
+      formatMontoFinanzas: (monto, moneda = 'PEN') => {
+        if (monto === null || monto === undefined || monto === '') {
+          return 'No disponible';
+        }
+
+        const raw = String(moneda ?? 'PEN').trim().toUpperCase();
+        const normalizada = raw
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, '')
+          .replace(/[\s._-]+/g, '');
+
+        let monedaNormalizada;
+        if (['S/', 'S/.', 'SOLES', 'SOL', 'PEN'].includes(raw)) {
+          monedaNormalizada = 'PEN';
+        } else if (
+          ['$', 'US$', 'USD', 'DOLARES', 'DOLAR'].includes(raw) ||
+          ['DOLARESAMERICANOS', 'DOLARAME', 'USDDOLLARS'].includes(normalizada)
+        ) {
+          monedaNormalizada = 'USD';
+        } else {
+          monedaNormalizada = raw || 'PEN';
+        }
+
+        const numero =
+          typeof monto === 'number'
+            ? monto
+            : Number(String(monto).replace(/,/g, ''));
+
+        if (!Number.isFinite(numero)) {
+          return `${monedaNormalizada} ${String(monto)}`.trim();
+        }
+
+        return new Intl.NumberFormat('es-PE', {
+          style: 'currency',
+          currency: monedaNormalizada === 'USD' ? 'USD' : 'PEN',
+        }).format(numero);
+      },
+    };
     return new Proxy({}, { get: (_, key) => key });
   } });
   function nodes(node) {
@@ -156,8 +288,8 @@ function viewHarness(props) {
 test('la vista presenta estado, pagado y saldo recibidos de R5-READ sin cálculo local', () => {
   const panel = viewHarness(page().node.props)().find(n => n.type === 'FinanzasPaymentPanel');
   assert.equal(panel.props.estadoPago, 'SIN PAGOS');
-  assert.equal(panel.props.pagadoAcumuladoLabel, 'S/ 0.00');
-  assert.equal(panel.props.saldoLabel, 'S/ 100.00');
+  assert.equal(panel.props.pagadoAcumuladoLabel, 'S/\u00A00.00');
+  assert.equal(panel.props.saldoLabel, 'S/\u00A0100.00');
   assert.equal(panel.props.pagos.length, 0);
 });
 test('solo Ver del sustento abre archivo 444 en PreviewDocumento y permite cerrar', () => {

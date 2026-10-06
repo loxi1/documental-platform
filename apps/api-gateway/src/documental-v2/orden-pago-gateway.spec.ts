@@ -24,6 +24,82 @@ describe('Gateway OP identidad autenticada', () => {
     expect((axios.get as jest.Mock).mock.calls[0][1].params).toBeUndefined();
     expect((axios.get as jest.Mock).mock.calls[0][1].data).toBeUndefined();
   });
+  it('recupera upload pendiente OP con identidad solo del token', async () => {
+    const respuesta = {
+      existe: true,
+      estado: 'UPLOAD_PERSISTIDO',
+      archivo: {
+        archivoId: 445,
+        documentoId: 445,
+        nombreArchivo: '05_OP_15.pdf',
+        contentType: 'application/pdf',
+        estado: 'subido',
+        puedePrevisualizar: true,
+      },
+      ocr: {
+        ocrResultadoId: 434,
+        estado: 'pendiente_validacion',
+        puedeRevisar: true,
+      },
+    };
+
+    (axios.get as jest.Mock).mockResolvedValue({ data: { data: respuesta } });
+
+    const read = controller({
+      ...context,
+      permisos: { menus: ['finanzas'], actions: [] },
+    });
+
+    const result = await (read.obtenerUploadPendienteOrdenPago as any)(
+      'Bearer token',
+      'req-upload-pendiente',
+      '153',
+      { actor: 999, empresa: 'OTRA', clienteDestinoId: 999 },
+    );
+
+    expect(result).toEqual(respuesta);
+    expect(axios.get).toHaveBeenCalledWith(
+      'http://ms-documentos:3002/api/v1/documental-v2/finanzas/ordenes-pago/153/upload-pendiente',
+      {
+        headers: expect.objectContaining({
+          'x-user-id': '5',
+          'x-workspace-id': '7',
+          'x-empresa-codigo': 'LAB',
+          'x-cliente-destino-id': '2',
+        }),
+      },
+    );
+    expect((axios.get as jest.Mock).mock.calls[0][1].params).toBeUndefined();
+    expect((axios.get as jest.Mock).mock.calls[0][1].data).toBeUndefined();
+  });
+
+  it('upload pendiente OP rechaza acceso sin Finanzas', async () => {
+    await expect(
+      controller({
+        ...context,
+        permisos: { menus: ['compras'], actions: ['documentos.subir'] },
+      }).obtenerUploadPendienteOrdenPago(
+        'Bearer token',
+        'req-upload-pendiente',
+        '153',
+      ),
+    ).rejects.toThrow('Sin permiso');
+
+    expect(axios.get).not.toHaveBeenCalled();
+  });
+
+  it('upload pendiente OP exige autorizacion antes del passthrough', async () => {
+    await expect(
+      controller().obtenerUploadPendienteOrdenPago(
+        undefined,
+        'req-upload-pendiente',
+        '153',
+      ),
+    ).rejects.toThrow('Token requerido');
+
+    expect(axios.get).not.toHaveBeenCalled();
+  });
+
   it('detalle rechaza acceso sin Finanzas', async () => {
     await expect(controller({ ...context, permisos: { menus: ['compras'], actions: ['documentos.subir'] } })
       .obtenerOrdenPago('Bearer token', 'req', '151')).rejects.toThrow('Sin permiso');
@@ -183,6 +259,80 @@ describe('Gateway OP identidad autenticada', () => {
     await expect(controller({ ...context, permisos: { menus: ['finanzas'], actions: [] } })
       .buscarContextosOrdenPago('Bearer token', 'req', { q: '050' })).rejects.toThrow('Sin permiso');
     expect(axios.get).not.toHaveBeenCalled();
+  });
+
+
+  it('expone proxy POST de confirmación de pago de Orden de Pago', () => {
+    const source = require('node:fs').readFileSync(
+      require('node:path').join(
+        process.cwd(),
+        'src/documental-v2/documental-v2-gateway.controller.ts',
+      ),
+      'utf8',
+    );
+
+    expect(source).toContain(
+      "@Post('finanzas/ordenes-pago/:ordenPagoId/confirmar-pago')",
+    );
+    expect(source).toContain(
+      '/documental-v2/finanzas/ordenes-pago/${encodeURIComponent(ordenPagoId)}/confirmar-pago',
+    );
+    expect(source).toContain('axios.post(');
+  });
+
+
+  it('expone proxy GET de beneficiarios elegibles de Orden de Pago con scope autenticado', async () => {
+    (axios.get as jest.Mock).mockResolvedValue({
+      data: {
+        data: {
+          tipoBeneficiario: 'PROVEEDOR',
+          usoBeneficiario: 'REQUERIDO',
+          items: [
+            {
+              id: 849,
+              nombre: 'Proveedor configurado',
+              detalle: '20131257750',
+            },
+          ],
+        },
+      },
+    });
+
+    const result = await (controller() as any).beneficiariosOrdenPago(
+      'Bearer token',
+      'req',
+      {
+        contenedorOperativoId: '1',
+        conceptoCodigo: 'AGUA',
+      },
+    );
+
+    expect(result).toEqual({
+      tipoBeneficiario: 'PROVEEDOR',
+      usoBeneficiario: 'REQUERIDO',
+      items: [
+        {
+          id: 849,
+          nombre: 'Proveedor configurado',
+          detalle: '20131257750',
+        },
+      ],
+    });
+
+    expect(axios.get).toHaveBeenCalledWith(
+      expect.stringContaining(
+        '/documental-v2/finanzas/ordenes-pago/beneficiarios',
+      ),
+      expect.objectContaining({
+        params: {
+          contenedorOperativoId: '1',
+          conceptoCodigo: 'AGUA',
+        },
+        headers: expect.objectContaining({
+          authorization: 'Bearer token',
+        }),
+      }),
+    );
   });
 
 });

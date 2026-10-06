@@ -17,14 +17,16 @@ def get_r2_client():
     )
 
 
-def download_from_r2(storage_key: str) -> Path:
+def download_from_r2(storage_key: str, nombre_original: str | None = None) -> Path:
     if not settings.r2_bucket:
         raise RuntimeError("R2_BUCKET no está configurado")
 
     tmp_dir = Path(settings.ocr_tmp_dir)
     tmp_dir.mkdir(parents=True, exist_ok=True)
 
-    filename = Path(storage_key).name
+    original = (nombre_original or "").strip()
+    safe_original = Path(original.replace("\\", "/")).name if original else ""
+    filename = safe_original or Path(storage_key).name
     local_path = tmp_dir / filename
 
     client = get_r2_client()

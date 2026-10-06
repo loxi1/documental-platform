@@ -73,9 +73,159 @@ export class TmpRepository {
   async staged(c: Connection, id: number) {
     await c`UPDATE documentos.carga_operaciones SET estado='almacenada', almacenada_en=now(), actualizado_en=now() WHERE id=${id} AND estado='iniciada'`;
   }
+
+  async replaceLostRegularizacionOp(
+    c: Connection,
+    row: TmpRow,
+    actor: Identity,
+    file: { name: string; mime: string; size: number; hash: string },
+    fingerprint: string,
+    bucket: string,
+  ): Promise<TmpRow> {
+    const regularizacionOp = row.metadata?.regularizacionOp;
+
+    if (
+      !regularizacionOp ||
+      regularizacionOp.consumer !== 'REGULARIZACION_OP'
+    ) {
+      throw new ConflictException('TEMP_REGULARIZACION_OP_NO_VINCULADO');
+    }
+
+    const metadata = {
+      ...row.metadata,
+      regularizacionOp,
+    };
+
+    // La generación física anterior se perdió: su OCR ya no corresponde.
+    delete metadata.ocrCandidate;
+    delete metadata.destinoReservado;
+    delete metadata.promocionIdentity;
+
+    const [updated] = await c`
+      UPDATE documentos.carga_operaciones
+      SET payload_fingerprint = ${fingerprint},
+          request_id = ${actor.requestId},
+          correlation_id = ${actor.correlationId},
+          nombre_archivo_original = ${file.name},
+          content_type = ${file.mime},
+          tamano_bytes = ${file.size},
+          hash_sha256 = ${file.hash},
+          storage_provider = 'r2',
+          storage_bucket = ${bucket},
+          estado = 'iniciada',
+          almacenada_en = NULL,
+          promovida_en = NULL,
+          destino_storage_key = NULL,
+          expira_en = now() + interval '24 hours',
+          metadata = ${JSON.stringify(metadata)}::jsonb,
+          actualizado_en = now()
+      WHERE id = ${row.id}
+        AND operacion_tipo = 'tmp'
+        AND actor_id = ${actor.actorId}
+        AND workspace_id = ${actor.workspaceId}
+        AND empresa_codigo = ${actor.empresaCodigo}
+        AND cliente_destino_id = ${actor.clienteDestinoId}
+        AND promovida_en IS NULL
+      RETURNING *
+    `;
+
+    if (!updated) {
+      throw new ConflictException('TEMP_REGULARIZACION_OP_REEMPLAZO_CONFLICT');
+    }
+
+    await this.audit(c, row.id, actor, 'TMP_REGULARIZACION_OP_REEMPLAZADO', {
+      storageKey: updated.storage_key,
+      hash: file.hash,
+      tamanoBytes: file.size,
+      ordenPagoId: regularizacionOp.ordenPagoId,
+      tipoRegularizador: regularizacionOp.tipoRegularizador,
+    });
+
+    return updated;
+  }
+
+  async bindRegularizacionOp(
+    c: Connection,
+    id: number,
+    actor: Identity,
+    ordenPagoId: number,
+    tipoRegularizador: string,
+  ) {
+    const identity = {
+      consumer: 'REGULARIZACION_OP',
+      ordenPagoId,
+      tipoRegularizador,
+    };
+
+    await c`
+      UPDATE documentos.carga_operaciones
+      SET metadata = jsonb_set(
+            COALESCE(metadata, '{}'::jsonb),
+            '{regularizacionOp}',
+            ${JSON.stringify(identity)}::jsonb
+          ),
+          actualizado_en = now()
+      WHERE id = ${id}
+        AND operacion_tipo = 'tmp'
+        AND actor_id = ${actor.actorId}
+        AND workspace_id = ${actor.workspaceId}
+        AND empresa_codigo = ${actor.empresaCodigo}
+        AND cliente_destino_id = ${actor.clienteDestinoId}
+    `;
+  }
+
+  async findRegularizacionOp(
+    c: Connection,
+    actor: Identity,
+    ordenPagoId: number,
+    tipoRegularizador: string,
+  ): Promise<TmpRow | null> {
+    const [row] = await c`
+      SELECT *
+      FROM documentos.carga_operaciones
+      WHERE operacion_tipo = 'tmp'
+        AND actor_id = ${actor.actorId}
+        AND workspace_id = ${actor.workspaceId}
+        AND empresa_codigo = ${actor.empresaCodigo}
+        AND cliente_destino_id = ${actor.clienteDestinoId}
+        AND metadata->'regularizacionOp'->>'consumer' = 'REGULARIZACION_OP'
+        AND metadata->'regularizacionOp'->>'ordenPagoId' = ${String(ordenPagoId)}
+        AND metadata->'regularizacionOp'->>'tipoRegularizador' = ${tipoRegularizador}
+        AND promovida_en IS NULL
+      ORDER BY id DESC
+      LIMIT 1
+    `;
+
+    return row ?? null;
+  }
   async bind(c: Connection, row: TmpRow, destination: string, identity: string) {
     const metadata = { ...row.metadata, destinoReservado: destination, promocionIdentity: identity };
     await c`UPDATE documentos.carga_operaciones SET metadata=${JSON.stringify(metadata)}::jsonb, actualizado_en=now() WHERE id=${row.id}`;
+  }
+
+  async ocrProcessing(c: Connection, id: number, tipoEsperado: string) {
+    const candidate = {
+      status: 'PROCESSING',
+      tipoEsperado,
+      startedAt: new Date().toISOString(),
+    };
+    await c`UPDATE documentos.carga_operaciones
+      SET metadata=jsonb_set(metadata, '{ocrCandidate}', ${JSON.stringify(candidate)}::jsonb),
+          actualizado_en=now()
+      WHERE id=${id} AND operacion_tipo='tmp'`;
+  }
+
+  async ocrDone(c: Connection, id: number, tipoEsperado: string, resultado: unknown) {
+    const candidate = {
+      status: 'DONE',
+      tipoEsperado,
+      completedAt: new Date().toISOString(),
+      resultado,
+    };
+    await c`UPDATE documentos.carga_operaciones
+      SET metadata=jsonb_set(metadata, '{ocrCandidate}', ${JSON.stringify(candidate)}::jsonb),
+          actualizado_en=now()
+      WHERE id=${id} AND operacion_tipo='tmp'`;
   }
   async promoted(c: Connection, row: TmpRow, actor: Identity, destination: string, integration?: TmpIntegration) {
     await this.transaction(c, async tx => {

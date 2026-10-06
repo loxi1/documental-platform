@@ -20,7 +20,7 @@ export class FacturaTempMaterializationController {
     @Param('tempId') tempId: string,
     @Body() body: { metadata?: Record<string, any> },
   ) {
-    const resolvedIdentity = resolveCargaSeguraHttpIdentity({
+    const actor = resolveCargaSeguraHttpIdentity({
       workspaceId: headers['x-workspace-id'],
       empresaCodigo: headers['x-empresa-codigo'],
       clienteDestinoId: headers['x-cliente-destino-id'],
@@ -33,14 +33,14 @@ export class FacturaTempMaterializationController {
 
     return this.service.materializar(
       Number(tempId),
-      resolvedIdentity.idempotencyKey,
+      actor.idempotencyKey,
       {
-        id: resolvedIdentity.actorId,
-        workspaceId: resolvedIdentity.workspaceId,
-        empresaCodigo: resolvedIdentity.empresaCodigo,
-        clienteDestinoId: resolvedIdentity.clienteDestinoId,
-        requestId: resolvedIdentity.requestId,
-        correlationId: resolvedIdentity.correlationId,
+        id: actor.actorId,
+        workspaceId: actor.workspaceId,
+        empresaCodigo: actor.empresaCodigo,
+        clienteDestinoId: actor.clienteDestinoId,
+        requestId: actor.requestId,
+        correlationId: actor.correlationId,
       },
       body?.metadata as Record<string, any>,
     );

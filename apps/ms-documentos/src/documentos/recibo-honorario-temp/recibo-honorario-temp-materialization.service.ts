@@ -162,7 +162,8 @@ export class ReciboHonorarioTempMaterializationService {
               actor: repositoryActor,
               humanValidatedData,
               ocrCandidate:
-                row.metadata?.ocrCandidate?.status === 'DONE'
+                row.metadata?.ocrCandidate?.status === 'DONE' &&
+                row.metadata?.ocrCandidate?.resultado?.ok === true
                   ? row.metadata.ocrCandidate.resultado
                   : undefined,
             },
