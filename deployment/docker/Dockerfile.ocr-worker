@@ -7,6 +7,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     tesseract-ocr-spa \
     poppler-utils \
     ghostscript \
+    ocrmypdf \
+    qpdf \
     zbar-tools \
     libzbar0 \
     imagemagick \
