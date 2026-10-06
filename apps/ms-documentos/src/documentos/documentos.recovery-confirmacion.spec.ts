@@ -69,10 +69,16 @@ function fixture(options: { confirmed?: boolean; extra?: boolean; mismatch?: str
     expect(executor).toBe(tx); state.groups.push(args.facturaDocumentoId);
     return { grupoFactura: { id: 1 }, idempotente: false };
   }) };
-  const usecase = new OrquestarConfirmacionDocumentalV2UseCase(repo,
-    { buscarPorId: async () => ({ id: 2, tipoDocumental: 'OC' }) } as any, {} as any,
+  const usecase = new OrquestarConfirmacionDocumentalV2UseCase(
+    repo,
+    { buscarPorId: async () => ({ id: 2, tipoDocumental: 'OC' }) } as any,
+    {} as any,
+    {} as any,
     { execute: async () => ({ contenedorOperativo: { id: 1 } }) } as any,
-    { execute: async () => ({ documentoOperativoPrincipal: { id: 2 } }) } as any, group as any, {} as any);
+    { execute: async () => ({ documentoOperativoPrincipal: { id: 2 } }) } as any,
+    group as any,
+    {} as any,
+  );
   return { repo, usecase, queries, state: () => state };
 }
 describe('Recuperación de dos facturas provisionales iguales', () => {
