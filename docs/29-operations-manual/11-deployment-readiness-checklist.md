@@ -2,7 +2,9 @@
 
 ## Objetivo
 
-Validar que Documental Platform está lista para primer despliegue en AWS.
+Validar que Documental Platform está lista para su primer despliegue en AWS.
+
+Este checklist valida readiness de infraestructura y plataforma. El procedimiento de release se gobierna por `docs/31-governance/07-release-process.md`.
 
 ## Infraestructura objetivo
 
@@ -12,55 +14,87 @@ Validar que Documental Platform está lista para primer despliegue en AWS.
 | Base de datos | AWS RDS PostgreSQL db.m6g.large |
 | Archivos | Cloudflare R2 privado |
 | Reverse proxy | Traefik |
-| Contenedores | Docker Compose |
+| Servicios de aplicación | Docker Compose |
+| OCR productivo | Ubuntu host + Python venv + systemd |
 | Entrada pública | HTTPS vía Traefik/Cloudflare |
 
 ## Checklist EC2
 
-- [ ] EC2 comprada.
+- [ ] EC2 creada y accesible.
 - [ ] Ubuntu 24.04 instalado.
 - [ ] Acceso SSH validado.
 - [ ] Docker instalado.
 - [ ] Docker Compose instalado.
-- [ ] Usuario deploy configurado.
+- [ ] Usuario operativo configurado.
 - [ ] Firewall revisado.
 - [ ] Disco monitoreado.
+- [ ] PostgreSQL productivo no instalado localmente en EC2.
 
 ## Checklist RDS
 
 - [ ] RDS creado.
 - [ ] PostgreSQL accesible desde EC2.
 - [ ] RDS privado.
-- [ ] Security Group permite solo EC2 → RDS:5432.
-- [ ] Usuario app creado.
-- [ ] Base creada.
+- [ ] Security Group permite únicamente el acceso autorizado a PostgreSQL.
+- [ ] Usuario de aplicación creado.
+- [ ] Base productiva creada.
 - [ ] SSL definido.
 - [ ] Backup automático activo.
-- [ ] Snapshot manual antes de migraciones.
+- [ ] Snapshot manual realizado cuando el control de migración lo requiera.
+- [ ] Restore plan documentado.
 
 ## Checklist R2
 
 - [ ] Bucket privado creado.
 - [ ] Access Key creada.
-- [ ] Secret Key guardada.
+- [ ] Secret Key almacenada de forma segura.
 - [ ] Variables configuradas.
 - [ ] Prueba de subida realizada.
 - [ ] Prueba de signed URL realizada.
+- [ ] Credenciales no almacenadas en el repositorio.
 
-## Checklist Docker
+## Checklist Docker de aplicación
 
 - [ ] web-admin.
 - [ ] api-gateway.
 - [ ] ms-auth.
 - [ ] ms-documentos.
-- [ ] OCR Worker.
 - [ ] NATS.
 - [ ] Traefik.
+- [ ] OCR Worker no incorporado al stack Docker productivo.
+- [ ] MinIO no incorporado al entorno productivo.
+
+## Checklist OCR productivo
+
+La autoridad operativa es `docs/18-runbooks/ocr-worker-host.md`.
+
+- [ ] OCR Worker instalado nativamente en Ubuntu.
+- [ ] Python venv operativo.
+- [ ] `documental-ocr-worker.service` instalado.
+- [ ] servicio systemd activo.
+- [ ] logs accesibles mediante journalctl.
+- [ ] dependencias OCR del host validadas.
+- [ ] conectividad con NATS validada.
+- [ ] OCR procesa un archivo witness.
+
+## Checklist release inicial
+
+- [ ] entregable integrado y validado en SOURCE main.
+- [ ] commit SOURCE main identificado.
+- [ ] composición materializada y validada en Enterprise main.
+- [ ] commit Enterprise identificado.
+- [ ] Enterprise main publicado.
+- [ ] CI asociado al commit Enterprise = PASS.
+- [ ] imágenes GHCR correspondientes identificadas.
+- [ ] tags registrados.
+- [ ] digest registrado cuando esté disponible.
+- [ ] checkout EC2 configurado para consumir Enterprise main.
 
 ## Checklist aplicación
 
 - [ ] Variables `.env.production` completas.
-- [ ] Migraciones aplicadas.
+- [ ] `.env.production` no almacenado en Git.
+- [ ] Migraciones autorizadas aplicadas y verificadas.
 - [ ] Login funciona.
 - [ ] Workspace funciona.
 - [ ] Preview seguro funciona.
@@ -70,10 +104,10 @@ Validar que Documental Platform está lista para primer despliegue en AWS.
 
 ## Checklist seguridad
 
-- [ ] No exponer RDS públicamente.
-- [ ] No exponer NATS públicamente.
-- [ ] No exponer OCR Worker públicamente.
-- [ ] No subir `.env`.
+- [ ] RDS no expuesto públicamente.
+- [ ] NATS no expuesto públicamente.
+- [ ] OCR Worker no expuesto públicamente.
+- [ ] `.env` y secretos fuera del repositorio.
 - [ ] HTTPS activo.
 - [ ] R2 privado.
 - [ ] JWT secret fuerte.
@@ -83,16 +117,23 @@ Validar que Documental Platform está lista para primer despliegue en AWS.
 
 ### Go
 
-- Login, Workspace, RDS, R2 y Gateway funcionan.
-- Servicios levantan con healthcheck.
-- No hay secretos en repositorio.
-- Backup RDS activo.
-- Restore plan documentado.
+- infraestructura requerida validada;
+- RDS y R2 operativos y privados;
+- servicios Docker de aplicación preparados;
+- OCR host/systemd operativo;
+- release Enterprise/GHCR trazable;
+- backups y restore plan acreditados;
+- secretos fuera del repositorio.
 
 ### No-Go
 
-- RDS público sin justificación.
-- R2 público.
-- OCR Worker expuesto.
-- Migraciones no validadas.
-- Sin snapshot previo.
+- release sin provenance Enterprise → CI/GHCR;
+- RDS público sin justificación autorizada;
+- R2 público;
+- OCR Worker expuesto o tratado como contenedor productivo;
+- MinIO introducido en producción;
+- migraciones requeridas no validadas;
+- backup/snapshot requerido ausente;
+- secretos almacenados en el repositorio.
+
+Superar este checklist habilita el primer deploy; no sustituye el runtime witness ni el checklist de go-live posterior.
