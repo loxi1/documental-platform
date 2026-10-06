@@ -1,7 +1,7 @@
 FROM python:3.11-slim
 WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    tesseract-ocr tesseract-ocr-spa poppler-utils ghostscript zbar-tools \
+    tesseract-ocr tesseract-ocr-spa poppler-utils ghostscript ocrmypdf qpdf zbar-tools \
     libzbar0 imagemagick fonts-dejavu && rm -rf /var/lib/apt/lists/*
 COPY workers/ocr-worker/requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt

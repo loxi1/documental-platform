@@ -62,6 +62,7 @@ services:
       SERVICE_NAME: ms-documentos
       NATS_URL: nats://nats:4222
       OCR_REQUEST_SUBJECT: lab.ocr.procesar-archivo
+      DOCUMENTOS_CARGA_SEGURA_2_1C_ENABLED: ${DOCUMENTOS_CARGA_SEGURA_2_1C_ENABLED}
     ports:
       - "3202:3002"
     networks:
