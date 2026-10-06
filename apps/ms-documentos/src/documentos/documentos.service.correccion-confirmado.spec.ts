@@ -43,7 +43,7 @@ describe('DocumentosService corrección post-confirmación', () => {
       ),
     } as any;
 
-    const service = new DocumentosService(repo, eventos, nats);
+    const service = new DocumentosService(repo, {} as any, eventos, nats, {} as any);
 
     await expect(
       service.actualizarDocumentoManual(
@@ -72,7 +72,7 @@ describe('DocumentosService corrección post-confirmación', () => {
       ),
     } as any;
 
-    const service = new DocumentosService(repo, eventos, nats);
+    const service = new DocumentosService(repo, {} as any, eventos, nats, {} as any);
 
     await expect(
       service.actualizarDocumentoManual(
@@ -98,7 +98,7 @@ describe('DocumentosService corrección post-confirmación', () => {
       actualizarDocumentoManual: jest.fn().mockRejectedValue(technicalError),
     } as any;
 
-    const service = new DocumentosService(repo, eventos, nats);
+    const service = new DocumentosService(repo, {} as any, eventos, nats, {} as any);
 
     await expect(
       service.actualizarDocumentoManual(

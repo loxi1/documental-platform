@@ -28,6 +28,7 @@ function setup() {
     v2 as any,
     eventos as any,
     nats as any,
+    {} as any,
     gruposFactura as any,
   );
 

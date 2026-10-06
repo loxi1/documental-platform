@@ -4,7 +4,7 @@ jest.mock('@documental/shared', () => ({ NatsSubjects: {} }));
 import { ConflictException } from '@nestjs/common';
 import { sql } from '@documental/database';
 import { DocumentosRepository } from './documentos.repository';
-import { DocumentosService } from './documentos.service';
+import { ConfirmacionDocumentalService } from '../documental-v2/confirmacion-documental.service';
 
 describe('33H - draft validacionPendientePago', () => {
   const repo = {
@@ -13,11 +13,11 @@ describe('33H - draft validacionPendientePago', () => {
   } as any;
   const orquestador = { execute: jest.fn() } as any;
   const eventos = { registrarEvento: jest.fn() } as any;
-  let service: DocumentosService;
+  let service: ConfirmacionDocumentalService;
 
   beforeEach(() => {
     jest.clearAllMocks();
-    service = new DocumentosService(repo, orquestador, eventos, {} as any);
+    service = new ConfirmacionDocumentalService(repo, orquestador, eventos);
     repo.findOcrResultadoById.mockResolvedValue({
       id: 76,
       archivo_id: 73,
