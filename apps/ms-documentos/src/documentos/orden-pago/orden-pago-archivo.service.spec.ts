@@ -1,4 +1,7 @@
 jest.mock('@documental/database', () => ({ sql: { begin: jest.fn() } }));
+jest.mock('@documental/shared', () => ({
+  NatsSubjects: { OcrProcesarArchivo: 'ocr.procesar-archivo' },
+}));
 import { sql } from '@documental/database';
 import { createHash } from 'node:crypto';
 import { OrdenPagoService } from '../../documental-v2/finanzas/orden-pago.service';
@@ -11,7 +14,7 @@ import { OrdenPagoCreacionController } from './orden-pago-creacion.controller';
 
 const key = '571997eb-0175-4eb1-a287-11a8df3de272';
 const otherKey = '671997eb-0175-4eb1-a287-11a8df3de272';
-const body = { contenedorOperativoId: 7, fechaEmision: '2026-08-15', monto: '125.50', moneda: 'PEN', tipo: 'SEGUROS' };
+const body = { contenedorOperativoId: 7, fechaEmision: '2026-08-15', monto: '125.50', moneda: 'PEN', conceptoCodigo: 'SEGUROS', codigoPago: 'REF-TEST-001' };
 const actor = { id: 6, workspaceId: 12, empresaCodigo: 'BBTI', clienteDestinoId: 2, requestId: key, correlationId: key };
 const tmpActor = { ...actor, actorId: 6, idempotencyKey: key };
 const source = 'documentos/tmp/12/50';
@@ -27,7 +30,7 @@ describe('OP-01B T1/T2 y recuperación', () => {
     state = { row: { id: 50, actor_id: 6, workspace_id: 12, empresa_codigo: 'BBTI', cliente_destino_id: 2,
       estado: 'almacenada', metadata: {}, hash_sha256: 'a'.repeat(64), tamano_bytes: 9, storage_key: source,
       storage_bucket: 'lab', iniciada_en: '2026-09-15T12:00:00Z', nombre_archivo_original: 'pago.pdf', content_type: 'application/pdf' },
-      doc: null, principal: null, group: null, file: null, audits: [] };
+      doc: null, principal: null, group: null, obligationSnapshot: null, file: null, audits: [] };
     tx = jest.fn(async (parts: TemplateStringsArray, ...v: any[]) => {
       const q = parts.join('?').replace(/\s+/g, ' ').trim();
       if (q.includes('pg_advisory_xact_lock')) return [];
@@ -39,6 +42,12 @@ describe('OP-01B T1/T2 y recuperación', () => {
       }
       if (q.startsWith('INSERT INTO documentos.documentos_operativos_principales')) {
         state.principal = { id: 11, ordenPagoId: 11, documentoId: 10, contenedorOperativoId: 7, estado: 'activo', op_payload_hash: v.at(-1) }; return [{ id: 11 }];
+      }
+      if (q.startsWith('UPDATE documentos.documentos SET numero=') &&
+          q.includes("tipo_documental='ORDEN_PAGO'") &&
+          q.includes('numero IS NULL') &&
+          q.includes('RETURNING numero')) {
+        return [{ numero: '0000000011' }];
       }
       if (q.startsWith('INSERT INTO documentos.grupos_factura')) { state.group = { id: 12 }; return [state.group]; }
       if (q.startsWith('SELECT * FROM documentos.carga_operaciones')) {
@@ -83,6 +92,34 @@ describe('OP-01B T1/T2 y recuperación', () => {
       if (fail === 'creation') throw new Error('creation');
       state.audits.push(input);
     }) };
+    const catalogoConceptos: any = {
+      buscarPorCodigo: jest.fn(async (codigo: string, executor: any) => {
+        expect(executor).toBe(tx);
+        expect(inTransaction).toBe(true);
+        if (codigo !== 'SEGUROS') return undefined;
+        return {
+          id: 5,
+          codigo: 'SEGUROS',
+          clasificacion: 'SEGUROS',
+          activo: true,
+          requiereRegularizacion: true,
+          requierePeriodo: false,
+          usoCodigoPago: 'REQUERIDO',
+          usoBeneficiario: 'REQUERIDO',
+          tipoBeneficiario: 'PROVEEDOR',
+          modoSeleccionBeneficiario: 'CONFIGURADO',
+        };
+      }),
+    };
+
+    const obligacionesSnapshot: any = {
+      crear: jest.fn(async (input: any, executor: any) => {
+        expect(executor).toBe(tx);
+        expect(inTransaction).toBe(true);
+        state.obligationSnapshot = structuredClone(input);
+      }),
+      existePorGrupoFacturaId: jest.fn(),
+    };
     files = new Map([[source, { exists: true, tamanoBytes: 9, hashSha256: 'a'.repeat(64) }]]);
     storage = {
       statObject: jest.fn(async ({ key: k }) => files.get(k) || { exists: false }),
@@ -98,28 +135,77 @@ describe('OP-01B T1/T2 y recuperación', () => {
         if (fail === 'delete') throw new Error('delete'); files.delete(source);
       }),
     };
-    tmp = new TmpService(repo, {} as any, storage);
-    service = new OrdenPagoArchivoService(new OrdenPagoService(audit), new OrdenPagoArchivoRepository(audit), repo, tmp);
+    tmp = new TmpService(
+      repo,
+      {} as any,
+      storage,
+      { send: jest.fn() } as any,
+      { getTempPreviewUrl: jest.fn() } as any,
+    );
+    service = new OrdenPagoArchivoService(
+      new OrdenPagoService(
+        audit,
+        catalogoConceptos,
+        obligacionesSnapshot,
+        {
+          listarConfiguradosActivosPorConcepto: jest.fn(async () => ['FACTURA']),
+          congelarParaObligacion: jest.fn(),
+          listarCongeladosPorGrupoFacturaId: jest.fn(),
+          permiteTipoDocumental: jest.fn(),
+        } as any,
+        {
+          listarActivos: jest.fn(async (conceptoId: number, contenedorOperativoId: number, executor: any) => {
+            expect(conceptoId).toBe(5);
+            expect(contenedorOperativoId).toBe(7);
+            expect(executor).toBe(tx);
+            expect(inTransaction).toBe(true);
+            return [{ proveedorId: 966 }];
+          }),
+          estaHabilitado: jest.fn(),
+        } as any,
+        { listarActivos: jest.fn(), estaHabilitado: jest.fn() } as any,
+        { confirmarOcrResultadoConExpediente: jest.fn() } as any,
+      ),
+      new OrdenPagoArchivoRepository(audit),
+      repo,
+      tmp,
+    );
   });
   const withFile = () => ({ ...body, tempId: 50 });
   function counts() {
     expect(state.doc.id).toBe(10); expect(state.principal.id).toBe(11); expect(state.group.id).toBe(12);
+    expect(state.obligationSnapshot).toEqual({
+      grupoFacturaId: 12,
+      conceptoId: 5,
+      requiereRegularizacionAplicada: true,
+      estadoRegularizacion: 'PENDIENTE',
+      periodoAnio: null,
+      periodoMes: null,
+      codigoPago: 'REF-TEST-001',
+      tipoBeneficiarioAplicado: 'PROVEEDOR',
+      usoBeneficiarioAplicado: 'REQUERIDO',
+    });
     expect(state.file.documento_id).toBe(10);
     expect(state.audits.map((a: any) => a.accion)).toEqual(['ASOCIAR_DOCUMENTO_PRINCIPAL','ASOCIAR_ARCHIVO_INICIAL_OP','TMP_PROMOVIDO']);
     expect(storage.copyObject).toHaveBeenCalledTimes(1);
   }
   it('A: sin temp mantiene respuesta y fingerprint OP-01A', async () => {
     expect(await service.crear(body, key, actor)).toEqual({ documentoId: 10, ordenPagoId: 11, grupoFacturaId: 12, contenedorOperativoId: 7, idempotente: false });
-    const expected = createHash('sha256').update(JSON.stringify({ input: { contenedorOperativoId: 7,
-      fechaEmision: '2026-08-15', monto: '125.50', moneda: 'PEN', tipo: 'SEGUROS', subtipo: null, observacion: null },
-      actorId: 6, workspaceId: 12, empresa: 'BBTI', cliente: 2 })).digest('hex');
+    const inputNormalizado = validarOrdenPago(body, key);
+    const expected = createHash('sha256').update(JSON.stringify({
+      input: inputNormalizado,
+      actorId: 6,
+      workspaceId: 12,
+      empresa: 'BBTI',
+      cliente: 2,
+    })).digest('hex');
     expect(state.principal.op_payload_hash).toBe(expected);
     expect(await service.crear({ ...body, tempId: null }, key, actor)).toMatchObject({ idempotente: true });
     expect(state.file).toBeNull(); expect(storage.copyObject).not.toHaveBeenCalled();
   });
   it('B/G/L: una OP, archivo propio, actor/fecha y replay sin OCR ni duplicados', async () => {
-    const first = await service.crear(withFile(), key, actor);
-    const replay = await service.crear(withFile(), key, actor);
+    const first: any = await service.crear(withFile(), key, actor);
+    const replay: any = await service.crear(withFile(), key, actor);
     expect(replay).toEqual({ ...first, idempotente: true }); counts();
     expect(files.has(source)).toBe(false); expect(files.has(dest)).toBe(true);
     expect(first.archivoInicial).toEqual({ tempId: 50, archivoId: 20, estado: 'PROMOTED', destinoStorageKey: dest });
@@ -127,10 +213,16 @@ describe('OP-01B T1/T2 y recuperación', () => {
       ordenPagoId: 11, grupoFacturaId: 12, workspaceId: 12, clienteDestinoId: 2, creadoEn: '2026-09-15T12:01:00Z' } });
     expect(tx.mock.calls.map((c: any[]) => c[0].join(' ')).join('\n')).not.toMatch(/pending_ocr|outbox|ocr_resultados|documentos_factura/);
   });
-  it('T1 fallida revierte OP y reserva, TEMP reutilizable', async () => {
+  it('T1 fallida revierte OP, snapshot y reserva, TEMP reutilizable', async () => {
     fail = 'creation'; await expect(service.crear(withFile(), key, actor)).rejects.toThrow('creation');
-    expect(state.doc).toBeNull(); expect(state.row.metadata).toEqual({}); expect(state.audits).toHaveLength(0);
-    expect(files.has(source)).toBe(true); expect(storage.copyObject).not.toHaveBeenCalled();
+    expect(state.doc).toBeNull();
+    expect(state.principal).toBeNull();
+    expect(state.group).toBeNull();
+    expect(state.obligationSnapshot).toBeNull();
+    expect(state.row.metadata).toEqual({});
+    expect(state.audits).toHaveLength(0);
+    expect(files.has(source)).toBe(true);
+    expect(storage.copyObject).not.toHaveBeenCalled();
   });
   it('C: COPY falla, reserva durable y retry recupera', async () => {
     fail = 'copy'; await expect(service.crear(withFile(), key, actor)).rejects.toThrow('copy');

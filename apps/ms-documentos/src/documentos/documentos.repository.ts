@@ -798,6 +798,7 @@ export class DocumentosRepository {
       expedienteId: number;
       documentoBaseId?: number;
       grupoFacturaId?: number | null;
+      origenObligacion?: 'ORDEN_PAGO';
       tipoRelacion?: string;
       esPrincipal?: boolean;
       orden?: number;
@@ -823,6 +824,7 @@ export class DocumentosRepository {
       expedienteId: number;
       documentoBaseId?: number;
       grupoFacturaId?: number | null;
+      origenObligacion?: 'ORDEN_PAGO';
       tipoRelacion?: string;
       esPrincipal?: boolean;
       orden?: number;
@@ -957,9 +959,12 @@ export class DocumentosRepository {
         ORDER BY ed.orden ASC, ed.creado_en ASC, d.id ASC
       `;
 
-      const documentoBaseIdFinal = this.resolverDocumentoBaseConfirmacion(
+      const documentoBaseIdFinal = await this.resolverDocumentoBaseConfirmacion(
+        tx,
         {
           documentoBaseId: input.documentoBaseId,
+          grupoFacturaId: input.grupoFacturaId,
+          origenObligacion: input.origenObligacion,
           esPrincipal: input.esPrincipal === true,
           tipoRelacion: input.tipoRelacion,
           expedienteId: input.expedienteId,
@@ -2521,6 +2526,7 @@ export class DocumentosRepository {
     if (tipoKey === 'GUIA' || tipoKey === 'GUIA_REMISION') return 'adjunto_guia';
     if (tipoKey === 'NOTA_INGRESO') return 'adjunto_nota_ingreso';
     if (tipoKey === 'RECIBO_HONORARIO') return 'adjunto_recibo_honorario';
+    if (tipoKey === 'TRANSFERENCIA') return 'adjunto_transferencia';
 
     return 'adjunto_documento';
   }
@@ -2732,19 +2738,70 @@ export class DocumentosRepository {
   }
 
 
-  private resolverDocumentoBaseConfirmacion(
+  private async resolverDocumentoBaseConfirmacion(
+    tx: SqlExecutor,
     input: {
       documentoBaseId?: number;
+      grupoFacturaId?: number | null;
+      origenObligacion?: 'ORDEN_PAGO';
       esPrincipal: boolean;
       tipoRelacion?: string;
       expedienteId: number;
     },
     principales: Array<Record<string, any>>,
-  ): number | null {
+  ): Promise<number | null> {
     const relacion = String(input.tipoRelacion ?? '').trim().toLowerCase();
     const esAdjunto = !input.esPrincipal && !relacion.startsWith('principal_');
 
     if (!esAdjunto) return null;
+
+    if (input.origenObligacion === 'ORDEN_PAGO') {
+      const solicitado =
+        input.documentoBaseId == null ? null : Number(input.documentoBaseId);
+      const grupoFacturaId =
+        input.grupoFacturaId == null ? null : Number(input.grupoFacturaId);
+
+      if (
+        !Number.isSafeInteger(solicitado) ||
+        !solicitado ||
+        !Number.isSafeInteger(grupoFacturaId) ||
+        !grupoFacturaId
+      ) {
+        this.throwDomainError(
+          'DOCUMENTO_BASE_REQUERIDO',
+          'La Orden de Pago requiere documento base y grupo financiero válidos.',
+          { expedienteId: input.expedienteId },
+        );
+      }
+
+      const opRows = await tx`
+        SELECT dop.documento_id
+        FROM documentos.grupos_factura gf
+        JOIN documentos.documentos_operativos_principales dop
+          ON dop.id = gf.documento_operativo_principal_id
+        JOIN documentos.contenedores_operativos co
+          ON co.id = dop.contenedor_operativo_id
+        WHERE gf.id = ${grupoFacturaId}::bigint
+          AND dop.documento_id = ${solicitado}::bigint
+          AND co.expediente_v1_id = ${input.expedienteId}::bigint
+          AND dop.estado = 'activo'
+          AND UPPER(COALESCE(dop.tipo_principal, '')) = 'ORDEN_PAGO'
+      `;
+
+      if (opRows.length !== 1) {
+        this.throwDomainError(
+          'DOCUMENTO_BASE_INVALIDO',
+          'El documento base no corresponde a la Orden de Pago activa del contexto.',
+          {
+            expedienteId: input.expedienteId,
+            documentoBaseId: solicitado,
+            grupoFacturaId,
+          },
+        );
+      }
+
+      return solicitado;
+    }
 
     const activos = principales.filter((row) => {
       const id = Number(row.documento_id ?? row.documentoId ?? row.id);
@@ -2965,7 +3022,12 @@ export class DocumentosRepository {
     const hasAny = (...keys: string[]) => keys.some((key) => has(key));
 
     if (!has('codigoExpediente')) faltantes.push('codigoExpediente');
-    if (!has('fechaEmision')) faltantes.push('fechaEmision');
+    if (
+      !has('fechaEmision') &&
+      !(tipoKey === 'TRANSFERENCIA' && has('fechaPago'))
+    ) {
+      faltantes.push('fechaEmision');
+    }
 
     if (tipoKey === 'OC' || tipoKey === 'OS') {
       if (!has('numero')) faltantes.push('numero');

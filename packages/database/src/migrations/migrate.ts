@@ -29,14 +29,58 @@ export interface MigrationRunResult {
   skipped: string[];
 }
 
+function validateTargetVersion(
+  states: MigrationState[],
+  targetVersion: string,
+): void {
+  const targetExists = states.some(
+    (state) => state.entry.version === targetVersion,
+  );
+
+  if (!targetExists) {
+    throw new Error(
+      `TARGET_VERSION no administrado: ${targetVersion}`,
+    );
+  }
+
+  const appliedAfterTarget = states.find(
+    (state) =>
+      state.kind === 'applied' &&
+      state.entry.version > targetVersion,
+  );
+
+  if (appliedAfterTarget) {
+    throw new Error(
+      `TARGET_VERSION ${targetVersion} es menor que una migración ya aplicada: ` +
+        appliedAfterTarget.entry.version,
+    );
+  }
+}
+
 export function buildMigrationExecutionPlan(
   states: MigrationState[],
+  targetVersion?: string,
 ): MigrationExecutionPlan {
+  /*
+   * La validación de drift/checksum es global: TARGET_VERSION
+   * limita ejecución, nunca el universo administrado.
+   */
   assertNoBlockingMigrationState(states);
+
+  if (targetVersion !== undefined) {
+    validateTargetVersion(states, targetVersion);
+  }
 
   return {
     pending: states
-      .filter((state) => state.kind === 'pending')
+      .filter(
+        (state) =>
+          state.kind === 'pending' &&
+          (
+            targetVersion === undefined ||
+            state.entry.version <= targetVersion
+          ),
+      )
       .map((state) => state.entry),
     applied: states
       .filter((state) => state.kind === 'applied')
@@ -65,6 +109,7 @@ async function executePendingMigrations(
 export async function runMigrations(
   sql: MigrationSql,
   entries: VerifiedMigration[],
+  targetVersion?: string,
 ): Promise<MigrationRunResult> {
   const reservedSql = await sql.reserve();
 
@@ -89,7 +134,10 @@ export async function runMigrations(
     );
 
     const plan =
-      buildMigrationExecutionPlan(states);
+      buildMigrationExecutionPlan(
+        states,
+        targetVersion,
+      );
 
     const applied =
       await executePendingMigrations(

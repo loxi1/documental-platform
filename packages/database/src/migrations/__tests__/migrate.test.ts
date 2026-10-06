@@ -79,3 +79,109 @@ test('bloquea el plan cuando checksum administrado es NULL', () => {
     /checksum NULL/,
   );
 });
+
+
+test('target 0020 ejecuta pending hasta 0020 y deja 0023 fuera del plan', () => {
+  const plan = buildMigrationExecutionPlan(
+    [
+      state('0019', 'pending'),
+      state('0020', 'pending'),
+      state('0023', 'pending'),
+    ],
+    '0020',
+  );
+
+  assert.deepEqual(
+    plan.pending.map((item) => item.version),
+    ['0019', '0020'],
+  );
+});
+
+test('target 0020 aplicado produce no-op aunque 0023 siga pending', () => {
+  const plan = buildMigrationExecutionPlan(
+    [
+      state('0020', 'applied'),
+      state('0023', 'pending'),
+    ],
+    '0020',
+  );
+
+  assert.deepEqual(plan.pending, []);
+});
+
+test('target no administrado falla explicitamente', () => {
+  assert.throws(
+    () =>
+      buildMigrationExecutionPlan(
+        [
+          state('0020', 'pending'),
+          state('0023', 'pending'),
+        ],
+        '0021',
+      ),
+    /TARGET_VERSION no administrado: 0021/,
+  );
+});
+
+test('target menor que version aplicada bloquea downgrade', () => {
+  assert.throws(
+    () =>
+      buildMigrationExecutionPlan(
+        [
+          state('0020', 'pending'),
+          state('0023', 'applied'),
+        ],
+        '0020',
+      ),
+    /es menor que una migración ya aplicada: 0023/,
+  );
+});
+
+test('drift antes del target bloquea', () => {
+  const driftState = state('0019', 'drift');
+  driftState.databaseChecksum = 'b'.repeat(64);
+
+  assert.throws(
+    () =>
+      buildMigrationExecutionPlan(
+        [
+          driftState,
+          state('0020', 'pending'),
+          state('0023', 'pending'),
+        ],
+        '0020',
+      ),
+    /DRIFT detectado/,
+  );
+});
+
+test('drift despues del target bloquea igualmente', () => {
+  const driftState = state('0023', 'drift');
+  driftState.databaseChecksum = 'b'.repeat(64);
+
+  assert.throws(
+    () =>
+      buildMigrationExecutionPlan(
+        [
+          state('0019', 'pending'),
+          state('0020', 'pending'),
+          driftState,
+        ],
+        '0020',
+      ),
+    /DRIFT detectado/,
+  );
+});
+
+test('sin target conserva todas las pending administradas', () => {
+  const plan = buildMigrationExecutionPlan([
+    state('0019', 'pending'),
+    state('0020', 'pending'),
+    state('0023', 'pending'),
+  ]);
+
+  assert.deepEqual(
+    plan.pending.map((item) => item.version),
+    ['0019', '0020', '0023'],
+  );
+});

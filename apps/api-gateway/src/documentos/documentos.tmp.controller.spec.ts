@@ -190,6 +190,55 @@ describe('Gateway TEMP autenticado', () => {
     );
   });
 
+  it('bind regularización OP propaga contexto, idempotency y body', async () => {
+    const spy = jest.spyOn(axios, 'request').mockResolvedValue({
+      data: {
+        data: {
+          tempId: 15,
+          ordenPagoId: 7,
+          tipoRegularizador: 'RECIBO_HONORARIO',
+        },
+      },
+    });
+
+    const result = await controller().vincularRegularizacionOpTmp(
+      'Bearer token',
+      'req-bind-op',
+      'bind-op-key',
+      '15',
+      {
+        ordenPagoId: 7,
+        tipoRegularizador: 'RECIBO_HONORARIO',
+      },
+    );
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        tempId: 15,
+        ordenPagoId: 7,
+        tipoRegularizador: 'RECIBO_HONORARIO',
+      }),
+    );
+
+    expect(spy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        method: 'POST',
+        url: 'http://lab/api/v1/documentos/tmp/15/regularizacion-op',
+        headers: expect.objectContaining({
+          'x-actor-id': '6',
+          'x-workspace-id': '12',
+          'x-empresa-codigo': 'BBTI',
+          'x-cliente-destino-id': '2',
+          'idempotency-key': 'bind-op-key',
+        }),
+        data: {
+          ordenPagoId: 7,
+          tipoRegularizador: 'RECIBO_HONORARIO',
+        },
+      }),
+    );
+  });
+
   it.each([
     ['procesarOcrTmp', ['Bearer token', 'req', 'key', '../1', { tipoEsperado: 'FACTURA' }]],
     ['materializarFacturaOpTmp', ['Bearer token', 'req', 'key', '../1', { metadata: {} }]],

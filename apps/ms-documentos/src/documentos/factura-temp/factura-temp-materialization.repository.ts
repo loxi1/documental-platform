@@ -90,19 +90,25 @@ export class FacturaTempMaterializationRepository {
 
     const [documento] = await tx`
       INSERT INTO documentos.documentos (
-        cliente_abreviatura,
+        workspace_id,
+        empresa_codigo,
+        cliente_destino_id,
         tipo_documental,
         estado,
-        metadata
+        metadata,
+        creado_por
       )
       VALUES (
+        ${actor.workspaceId},
         ${actor.empresaCodigo},
+        ${actor.clienteDestinoId},
         'FACTURA',
         'pendiente_ocr',
         ${JSON.stringify({
           origen: 'TEMP_REGULARIZACION_OP',
           tempId: Number(row.id),
-        })}::jsonb
+        })}::jsonb,
+        ${actor.actorId}
       )
       RETURNING id
     `;
@@ -161,11 +167,15 @@ export class FacturaTempMaterializationRepository {
         id,
         tipo_documental,
         estado,
-        cliente_abreviatura,
+        workspace_id,
+        empresa_codigo,
+        cliente_destino_id,
         metadata
       FROM documentos.documentos
       WHERE id=${documentoId}
-        AND cliente_abreviatura=${actor.empresaCodigo}
+        AND workspace_id=${actor.workspaceId}
+        AND empresa_codigo=${actor.empresaCodigo}
+        AND cliente_destino_id=${actor.clienteDestinoId}
       FOR UPDATE
     `;
 
@@ -294,7 +304,9 @@ export class FacturaTempMaterializationRepository {
     const duplicados = await tx`
       SELECT d.id
       FROM documentos.documentos d
-      WHERE d.cliente_abreviatura=${actor.empresaCodigo}
+      WHERE d.workspace_id=${actor.workspaceId}
+        AND d.empresa_codigo=${actor.empresaCodigo}
+        AND d.cliente_destino_id=${actor.clienteDestinoId}
         AND d.id <> ${documentoId}
         AND COALESCE(d.estado, '') NOT IN ('anulado', 'duplicado_versionado')
         AND (
@@ -386,7 +398,6 @@ export class FacturaTempMaterializationRepository {
     const [updated] = await tx`
       UPDATE documentos.documentos
       SET
-        cliente_abreviatura=${actor.empresaCodigo},
         tipo_documental='FACTURA',
         razon_social_emisor=${proveedor},
         serie=${serie},
@@ -489,10 +500,14 @@ export class FacturaTempMaterializationRepository {
         id,
         tipo_documental,
         estado,
-        cliente_abreviatura
+        workspace_id,
+        empresa_codigo,
+        cliente_destino_id
       FROM documentos.documentos
       WHERE id=${documentoId}
-        AND cliente_abreviatura=${actor.empresaCodigo}
+        AND workspace_id=${actor.workspaceId}
+        AND empresa_codigo=${actor.empresaCodigo}
+        AND cliente_destino_id=${actor.clienteDestinoId}
       FOR UPDATE
     `;
 

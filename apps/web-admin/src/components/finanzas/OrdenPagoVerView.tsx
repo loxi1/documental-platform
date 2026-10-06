@@ -15,7 +15,11 @@ import { Modal } from "@/components/ui/modal";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { DocumentoArchivosVersionesResponse, DocumentoArchivoVersion } from "@/services/documentos";
 import type { GrupoFacturaDocumentoVinculoV2 } from "@/services/documental-v2-workspace";
-import type { OrdenPagoDetalle } from "@/services/finanzas";
+import type {
+  OrdenPagoDetalle,
+  ResumenFinancieroGrupo,
+  SustentoFinancieroGrupo,
+} from "@/services/finanzas";
 
 type UnknownRecord = Record<string, unknown>;
 type PreviewState = { archivoId: number | string; title: string } | null;
@@ -29,6 +33,9 @@ type Props = {
   documentosGrupo: GrupoFacturaDocumentoVinculoV2[];
   documentosGrupoLoading: boolean;
   documentosGrupoError: boolean;
+  resumenFinanciero: ResumenFinancieroGrupo | null;
+  resumenFinancieroLoading: boolean;
+  resumenFinancieroError: boolean;
   onRefresh?: () => void | Promise<void>;
 };
 
@@ -130,6 +137,84 @@ function Dato({ label, value }: { label: string; value: string }) {
   );
 }
 
+function montoPagoLabel(
+  monto: string | null | undefined,
+  moneda: string | null | undefined,
+) {
+  const value = String(monto ?? "").trim();
+  if (!value) return "Monto no disponible";
+
+  const currency = String(moneda ?? "").trim().toUpperCase();
+  return currency ? `${currency} ${value}` : value;
+}
+
+function SustentoPagoResumen({
+  sustento,
+  label,
+  onPreview,
+}: {
+  sustento: SustentoFinancieroGrupo;
+  label: string;
+  onPreview: (
+    sustento: SustentoFinancieroGrupo,
+    label: string,
+  ) => void;
+}) {
+  return (
+    <div className="rounded-lg border p-3">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="font-medium">{label}</p>
+
+          <p className="text-sm text-muted-foreground">
+            {[
+              sustento.banco,
+              sustento.numeroReferencia
+                ? `Op. ${sustento.numeroReferencia}`
+                : null,
+            ]
+              .filter(Boolean)
+              .join(" · ") || "Sin banco u operación informados"}
+          </p>
+
+          <p className="text-sm text-muted-foreground">
+            {[
+              sustento.fecha,
+              montoPagoLabel(sustento.monto, sustento.moneda),
+            ]
+              .filter(Boolean)
+              .join(" · ")}
+          </p>
+
+          {sustento.observacion ? (
+            <p className="mt-1 text-xs text-muted-foreground">
+              {sustento.observacion}
+            </p>
+          ) : null}
+
+          {sustento.motivo ? (
+            <p className="mt-1 text-xs text-muted-foreground">
+              Motivo: {sustento.motivo}
+            </p>
+          ) : null}
+        </div>
+
+        {sustento.archivoId ? (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => onPreview(sustento, label)}
+          >
+            <Eye className="mr-2 h-4 w-4" />
+            Ver
+          </Button>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 export function OrdenPagoVerView({
   detalle,
   archivosResponse,
@@ -138,6 +223,9 @@ export function OrdenPagoVerView({
   documentosGrupo,
   documentosGrupoLoading,
   documentosGrupoError,
+  resumenFinanciero,
+  resumenFinancieroLoading,
+  resumenFinancieroError,
   onRefresh,
 }: Props) {
   const router = useRouter();
@@ -146,6 +234,7 @@ export function OrdenPagoVerView({
   const [preview, setPreview] = useState<PreviewState>(null);
   const [editarOpen, setEditarOpen] = useState(false);
   const [regularizarOpen, setRegularizarOpen] = useState(false);
+  const [previewPago, setPreviewPago] = useState<PreviewState>(null);
 
   useEffect(() => {
     if (searchParams.get("accion") === "editar") {
@@ -478,6 +567,194 @@ export function OrdenPagoVerView({
           </div>
         </CardContent>
       </Card>
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle>Pagos y sustentos</CardTitle>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Resumen financiero del grupo asociado a la Orden de Pago.
+          </p>
+        </CardHeader>
+
+        <CardContent className="space-y-4">
+          {resumenFinancieroLoading ? (
+            <Skeleton className="h-28 w-full" />
+          ) : resumenFinancieroError ? (
+            <div className="rounded-lg border border-dashed p-3 text-sm text-muted-foreground">
+              No se pudo cargar el resumen financiero del grupo.
+            </div>
+          ) : resumenFinanciero ? (
+            <>
+              <div className="grid gap-3 sm:grid-cols-3">
+                <div>
+                  <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                    Estado de pago
+                  </p>
+                  <p className="font-semibold">
+                    {resumenFinanciero.pago.estado}
+                  </p>
+                </div>
+
+                <div>
+                  <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                    Pagado acumulado
+                  </p>
+                  <p className="font-semibold">
+                    {montoPagoLabel(
+                      resumenFinanciero.pago.pagado,
+                      resumenFinanciero.obligacion.moneda,
+                    )}
+                  </p>
+                </div>
+
+                <div>
+                  <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                    Saldo
+                  </p>
+                  <p className="font-semibold">
+                    {montoPagoLabel(
+                      resumenFinanciero.pago.saldo,
+                      resumenFinanciero.obligacion.moneda,
+                    )}
+                  </p>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <div>
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                    Sustentos de pago activos
+                  </p>
+
+                  {resumenFinanciero.sustentosActivos.length ? (
+                    <div className="space-y-2">
+                      {resumenFinanciero.sustentosActivos.map(
+                        (sustento, index) => (
+                          <SustentoPagoResumen
+                            key={`activo-${sustento.vinculoId ?? sustento.documentoId}-${index}`}
+                            sustento={sustento}
+                            label={`Pago ${index + 1}`}
+                            onPreview={(item, label) => {
+                              if (item.archivoId) {
+                                setPreviewPago({
+                                  archivoId: item.archivoId,
+                                  title: label,
+                                });
+                              }
+                            }}
+                          />
+                        ),
+                      )}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">
+                      Sin sustentos de pago activos.
+                    </p>
+                  )}
+                </div>
+
+                {resumenFinanciero.sustentosObservados.length ? (
+                  <details className="rounded-lg border p-3">
+                    <summary className="cursor-pointer text-sm font-semibold">
+                      Sustentos observados (
+                      {resumenFinanciero.sustentosObservados.length})
+                    </summary>
+
+                    <div className="mt-3 space-y-2">
+                      {resumenFinanciero.sustentosObservados.map(
+                        (sustento, index) => (
+                          <SustentoPagoResumen
+                            key={`observado-${sustento.vinculoId ?? sustento.documentoId}-${index}`}
+                            sustento={sustento}
+                            label={`Sustento observado ${index + 1}`}
+                            onPreview={(item, label) => {
+                              if (item.archivoId) {
+                                setPreviewPago({
+                                  archivoId: item.archivoId,
+                                  title: label,
+                                });
+                              }
+                            }}
+                          />
+                        ),
+                      )}
+                    </div>
+                  </details>
+                ) : null}
+
+                {resumenFinanciero.sustentosAnulados.length ? (
+                  <details className="rounded-lg border p-3">
+                    <summary className="cursor-pointer text-sm font-semibold">
+                      Sustentos anulados (
+                      {resumenFinanciero.sustentosAnulados.length})
+                    </summary>
+
+                    <div className="mt-3 space-y-2">
+                      {resumenFinanciero.sustentosAnulados.map(
+                        (sustento, index) => (
+                          <SustentoPagoResumen
+                            key={`anulado-${sustento.vinculoId ?? sustento.documentoId}-${index}`}
+                            sustento={sustento}
+                            label={`Sustento anulado ${index + 1}`}
+                            onPreview={(item, label) => {
+                              if (item.archivoId) {
+                                setPreviewPago({
+                                  archivoId: item.archivoId,
+                                  title: label,
+                                });
+                              }
+                            }}
+                          />
+                        ),
+                      )}
+                    </div>
+                  </details>
+                ) : null}
+              </div>
+
+              {resumenFinanciero.pago.estado !== "COMPLETO" ? (
+                <Button asChild variant="outline">
+                  <Link
+                    href={`/finanzas/ordenes-pago/${encodeURIComponent(
+                      String(detalle.ordenPagoId),
+                    )}/adjuntar-pago`}
+                  >
+                    <ReceiptText className="mr-2 h-4 w-4" />
+                    {resumenFinanciero.sustentosActivos.length
+                      ? "Adjuntar otro pago"
+                      : "Adjuntar sustento de pago"}
+                  </Link>
+                </Button>
+              ) : null}
+            </>
+          ) : (
+            <div className="rounded-lg border border-dashed p-3 text-sm text-muted-foreground">
+              Sin resumen financiero disponible.
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Modal
+        isOpen={Boolean(previewPago)}
+        onClose={() => setPreviewPago(null)}
+        className="mx-4 max-w-6xl p-5 md:p-6"
+      >
+        {previewPago ? (
+          <div className="space-y-4">
+            <div className="pr-10">
+              <div className="text-lg font-semibold">Vista previa</div>
+              <div className="mt-1 text-sm text-muted-foreground">
+                {previewPago.title}
+              </div>
+            </div>
+            <PreviewDocumento
+              archivoId={previewPago.archivoId}
+              title={previewPago.title}
+            />
+          </div>
+        ) : null}
+      </Modal>
+
       <EditarOrdenPagoModal
         open={editarOpen}
         ordenPago={detalle}

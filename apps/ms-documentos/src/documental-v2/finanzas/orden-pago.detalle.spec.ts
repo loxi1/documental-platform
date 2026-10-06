@@ -1,27 +1,58 @@
 jest.mock('@documental/database', () => ({ sql: jest.fn() }));
 import { sql } from '@documental/database';
-import { NotFoundException } from '@nestjs/common';
+import { ConflictException, NotFoundException } from '@nestjs/common';
 import { OrdenPagoService } from './orden-pago.service';
 import { OrdenPagoController } from './orden-pago.controller';
 
 const actor = { id: 6, workspaceId: 13, empresaCodigo: 'BBTI', clienteDestinoId: 2 };
 const row = { ordenPagoId: '151', documentoId: 441, grupoFacturaId: '114', contenedorOperativoId: '7',
+  empresaCodigo: 'BBTI',
   fechaEmision: '2026-08-15', monto: '19.50', moneda: 'PEN', tipo: 'SEGUROS', subtipo: null,
   observacion: 'OP', estado: 'confirmado', contexto: { codigo: '050201', nombre: 'Contexto', centroCostoCodigo: '050201' }, archivoInicial: null };
 describe('Detalle OP READ ONLY', () => {
   const audit = { registrarCreacion: jest.fn() };
-  const service = new OrdenPagoService(audit as any);
-  beforeEach(() => { jest.clearAllMocks(); (sql as unknown as jest.Mock).mockResolvedValue([row]); });
+  const catalogoConceptos = { buscarPorCodigo: jest.fn() };
+  const obligacionesSnapshot = { crear: jest.fn(), existePorGrupoFacturaId: jest.fn() };
+  const regularizadoresObligacion = {
+    listarConfiguradosActivosPorConcepto: jest.fn(),
+    congelarParaObligacion: jest.fn(),
+    listarCongeladosPorGrupoFacturaId: jest.fn(),
+    permiteTipoDocumental: jest.fn(),
+  };
+  const service = new OrdenPagoService(
+    audit as any,
+    catalogoConceptos as any,
+    obligacionesSnapshot as any,
+    regularizadoresObligacion as any,
+    { listarActivos: jest.fn(), estaHabilitado: jest.fn() } as any,
+    { listarActivos: jest.fn(), estaHabilitado: jest.fn() } as any,
+    { confirmarOcrResultadoConExpediente: jest.fn() } as any,
+  );
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (sql as unknown as jest.Mock).mockResolvedValue([row]);
+    regularizadoresObligacion.listarCongeladosPorGrupoFacturaId.mockResolvedValue([]);
+  });
   it('detalle válido sin archivo devuelve IDs, metadata y numeración visual', async () => {
-    expect(await service.obtenerDetalle(151, actor)).toEqual({ ...row, ordenPagoId: 151, grupoFacturaId: 114,
-      contenedorOperativoId: 7, numero: 'OP-151' });
+    expect(await service.obtenerDetalle(151, actor)).toEqual({
+      ...row,
+      ordenPagoId: 151,
+      grupoFacturaId: 114,
+      contenedorOperativoId: 7,
+      expedienteId: null,
+      numero: 'OP-151',
+      conceptoCodigo: null,
+      conceptoNombre: null,
+      tiposDocumentalesRegularizadoresPermitidos: [],
+    });
     expect(audit.registrarCreacion).not.toHaveBeenCalled();
   });
   it('archivo inicial vigente conserva campos funcionales sin credenciales', async () => {
     const file = { archivoId: 441, nombreArchivo: 'inicial.pdf', mime: 'application/pdf', tamanoBytes: 125,
       hashSha256: 'a'.repeat(64), storageKey: 'documentos/final.pdf' };
     (sql as unknown as jest.Mock).mockResolvedValue([{ ...row, archivoInicial: file }]);
-    expect((await service.obtenerDetalle(151, actor)).archivoInicial).toEqual(file);
+    const detalle: any = await service.obtenerDetalle(151, actor);
+    expect(detalle.archivoInicial).toEqual(file);
   });
   it('aplica scope real y filtros de principal/documento/contexto/grupo/archivo en SQL', async () => {
     await service.obtenerDetalle(151, actor);
@@ -58,5 +89,169 @@ describe('Detalle OP READ ONLY', () => {
       'x-user-id': '6', 'x-workspace-id': '13', 'x-empresa-codigo': 'BBTI', 'x-cliente-destino-id': '2',
     }, '151');
     expect(op.obtenerDetalle).toHaveBeenCalledWith(151, expect.objectContaining(actor));
+  });
+  it('OP nueva con snapshot expone concepto, edición temprana y regularización canónicos', async () => {
+    (sql as unknown as jest.Mock).mockResolvedValue([{
+      ...row,
+      tieneSnapshot: true,
+      conceptoCodigo: 'AGUA',
+      conceptoNombre: 'Agua',
+      requiereRegularizacion: true,
+      estadoRegularizacion: 'PENDIENTE',
+      periodoAnio: 2026,
+      periodoMes: 8,
+      codigoPago: 'REF-001',
+      tipoBeneficiario: 'PROVEEDOR',
+      usoBeneficiario: 'REQUERIDO',
+      proveedorId: 77,
+      beneficiarioClienteDestinoId: null,
+      beneficiarioUsuarioId: null,
+      beneficiarioNombreLibre: null,
+      tipo: 'SERVICIOS_GENERALES',
+      subtipo: 'AGUA',
+    }]);
+
+    const detalle = await service.obtenerDetalle(151, actor);
+
+    expect(detalle).toEqual(expect.objectContaining({
+      conceptoCodigo: 'AGUA',
+      conceptoNombre: 'Agua',
+      requiereRegularizacion: true,
+      estadoRegularizacion: 'PENDIENTE',
+      periodoAnio: 2026,
+      periodoMes: 8,
+      codigoPago: 'REF-001',
+      tipoBeneficiario: 'PROVEEDOR',
+      usoBeneficiario: 'REQUERIDO',
+      proveedorId: 77,
+      beneficiarioClienteDestinoId: null,
+      beneficiarioUsuarioId: null,
+      beneficiarioNombreLibre: null,
+    }));
+    expect(detalle.tipo).toBeNull();
+    expect(detalle.subtipo).toBeNull();
+  });
+
+  it('OP histórica sin snapshot conserva fallback tipo/subtipo', async () => {
+    const detalle = await service.obtenerDetalle(151, actor);
+
+    expect(detalle.conceptoCodigo).toBeNull();
+    expect(detalle.conceptoNombre).toBeNull();
+    expect(detalle.tipo).toBe('SEGUROS');
+    expect(detalle.subtipo).toBeNull();
+  });
+
+  it('snapshot PENDIENTE expone FACTURA sólo cuando está congelada', async () => {
+    regularizadoresObligacion.listarCongeladosPorGrupoFacturaId.mockResolvedValue(['FACTURA']);
+    (sql as unknown as jest.Mock).mockResolvedValue([{
+      ...row,
+      tieneSnapshot: true,
+      conceptoCodigo: 'AGUA',
+      conceptoNombre: 'Agua',
+      requiereRegularizacion: true,
+      estadoRegularizacion: 'PENDIENTE',
+    }]);
+
+    const detalle = await service.obtenerDetalle(151, actor);
+
+    expect(detalle.tiposDocumentalesRegularizadoresPermitidos).toEqual(['FACTURA']);
+    expect(regularizadoresObligacion.listarCongeladosPorGrupoFacturaId)
+      .toHaveBeenCalledWith(114);
+    expect(catalogoConceptos.buscarPorCodigo).not.toHaveBeenCalled();
+  });
+
+  it('PENDIENTE sin FACTURA congelada no introduce FACTURA', async () => {
+    regularizadoresObligacion.listarCongeladosPorGrupoFacturaId
+      .mockResolvedValue(['RECIBO_HONORARIO']);
+    (sql as unknown as jest.Mock).mockResolvedValue([{
+      ...row,
+      tieneSnapshot: true,
+      conceptoCodigo: 'SERVICIO',
+      conceptoNombre: 'Servicio',
+      requiereRegularizacion: true,
+      estadoRegularizacion: 'PENDIENTE',
+    }]);
+
+    const detalle = await service.obtenerDetalle(151, actor);
+
+    expect(detalle.tiposDocumentalesRegularizadoresPermitidos)
+      .toEqual(['RECIBO_HONORARIO']);
+    expect(detalle.tiposDocumentalesRegularizadoresPermitidos)
+      .not.toContain('FACTURA');
+  });
+
+  it('preserva N tipos congelados sin filtrar por consumidor actual', async () => {
+    regularizadoresObligacion.listarCongeladosPorGrupoFacturaId
+      .mockResolvedValue(['FACTURA', 'RECIBO_HONORARIO']);
+    (sql as unknown as jest.Mock).mockResolvedValue([{
+      ...row,
+      tieneSnapshot: true,
+      conceptoCodigo: 'SERVICIO',
+      conceptoNombre: 'Servicio',
+      requiereRegularizacion: true,
+      estadoRegularizacion: 'PENDIENTE',
+    }]);
+
+    const detalle = await service.obtenerDetalle(151, actor);
+
+    expect(detalle.tiposDocumentalesRegularizadoresPermitidos)
+      .toEqual(['FACTURA', 'RECIBO_HONORARIO']);
+  });
+
+  it('REGULARIZADO preserva la colección histórica congelada', async () => {
+    regularizadoresObligacion.listarCongeladosPorGrupoFacturaId
+      .mockResolvedValue(['FACTURA']);
+    (sql as unknown as jest.Mock).mockResolvedValue([{
+      ...row,
+      tieneSnapshot: true,
+      conceptoCodigo: 'AGUA',
+      conceptoNombre: 'Agua',
+      requiereRegularizacion: true,
+      estadoRegularizacion: 'REGULARIZADO',
+    }]);
+
+    const detalle = await service.obtenerDetalle(151, actor);
+
+    expect(detalle.tiposDocumentalesRegularizadoresPermitidos)
+      .toEqual(['FACTURA']);
+  });
+
+  it('NO_REQUIERE no inventa regularizadores cuando snapshot congelado está vacío', async () => {
+    regularizadoresObligacion.listarCongeladosPorGrupoFacturaId.mockResolvedValue([]);
+    (sql as unknown as jest.Mock).mockResolvedValue([{
+      ...row,
+      tieneSnapshot: true,
+      conceptoCodigo: 'OTRO',
+      conceptoNombre: 'Otro',
+      requiereRegularizacion: false,
+      estadoRegularizacion: 'NO_REQUIERE',
+    }]);
+
+    const detalle = await service.obtenerDetalle(151, actor);
+
+    expect(detalle.tiposDocumentalesRegularizadoresPermitidos).toEqual([]);
+  });
+
+  it('legacy sin snapshot devuelve colección vacía y no consulta autoridad congelada ni catálogo', async () => {
+    const detalle = await service.obtenerDetalle(151, actor);
+
+    expect(detalle.tiposDocumentalesRegularizadoresPermitidos).toEqual([]);
+    expect(regularizadoresObligacion.listarCongeladosPorGrupoFacturaId)
+      .not.toHaveBeenCalled();
+    expect(catalogoConceptos.buscarPorCodigo).not.toHaveBeenCalled();
+  });
+
+  it('snapshot presente con concepto irresoluble falla explícitamente sin fallback histórico', async () => {
+    (sql as unknown as jest.Mock).mockResolvedValue([{
+      ...row,
+      tieneSnapshot: true,
+      conceptoCodigo: null,
+      conceptoNombre: null,
+    }]);
+
+    await expect(service.obtenerDetalle(151, actor))
+      .rejects.toEqual(
+        new ConflictException('OBLIGACION_SNAPSHOT_INCONSISTENTE'),
+      );
   });
 });

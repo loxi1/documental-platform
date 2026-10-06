@@ -24,6 +24,11 @@ type SupportedCommand =
   | 'status'
   | 'migrate';
 
+export interface MigrationCliArguments {
+  command: SupportedCommand;
+  targetVersion?: string;
+}
+
 export function parseCommand(
   rawCommand: string | undefined,
 ): SupportedCommand {
@@ -40,8 +45,45 @@ export function parseCommand(
   );
 }
 
+export function parseCliArguments(
+  argv: string[],
+): MigrationCliArguments {
+  const command = parseCommand(argv[0]);
+  const extraArguments = argv.slice(1);
+
+  if (extraArguments.length === 0) {
+    return { command };
+  }
+
+  if (
+    command !== 'migrate' ||
+    extraArguments.length !== 2 ||
+    extraArguments[0] !== '--target'
+  ) {
+    throw new Error(
+      'Argumentos inválidos. Uso: migrate [--target NNNN]',
+    );
+  }
+
+  const targetVersion = extraArguments[1];
+
+  if (!targetVersion || !/^\d{4}$/.test(targetVersion)) {
+    throw new Error(
+      'TARGET_VERSION inválido: debe ser una versión exacta de 4 dígitos',
+    );
+  }
+
+  return {
+    command,
+    targetVersion,
+  };
+}
+
 async function main(): Promise<void> {
-  const command = parseCommand(process.argv[2]);
+  const {
+    command,
+    targetVersion,
+  } = parseCliArguments(process.argv.slice(2));
 
   const repositoryRoot =
     await findRepositoryRoot();
@@ -110,6 +152,7 @@ async function main(): Promise<void> {
     const result = await runMigrations(
       sql,
       verification.entries,
+      targetVersion,
     );
 
     logInfo('Ejecución de migraciones finalizada', {

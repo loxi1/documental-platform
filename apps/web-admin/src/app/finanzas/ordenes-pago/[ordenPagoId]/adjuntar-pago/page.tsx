@@ -63,12 +63,18 @@ export default function OrdenPagoAdjuntarPagoPage() {
   return (
     <OrdenPagoAdjuntarPagoView
       ordenPagoId={String(detalle.ordenPagoId)}
+      expedienteId={detalle.expedienteId}
+      empresaCodigo={detalle.empresaCodigo}
+      documentoBaseId={detalle.documentoId}
+      grupoFacturaId={detalle.grupoFacturaId}
       resumen={{
         codigo: detalle.numero,
         centroCostoCodigo: detalle.contexto.centroCostoCodigo ?? detalle.contexto.codigo,
         centroCostoDescripcion: detalle.contexto.nombre,
         tipo: detalle.tipo,
         subtipo: detalle.subtipo,
+        conceptoCodigo: detalle.conceptoCodigo,
+        conceptoNombre: detalle.conceptoNombre,
         fechaEmision: detalle.fechaEmision,
         moneda: financiero.obligacion.moneda,
         monto: financiero.obligacion.monto,
