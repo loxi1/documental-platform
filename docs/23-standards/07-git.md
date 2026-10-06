@@ -47,6 +47,12 @@ Antes del commit deben poder acreditarse:
 
 Contenido descubierto durante el cierre debe clasificarse como `RELEASE_CONTENT`, `VALIDATION_ONLY`, `PREEXISTING_BASELINE` o `SEPARATE_GAP`. El descubrimiento de una dependencia no amplía silenciosamente el manifest.
 
+`CANDIDATE_DISCOVERED != RELEASE_AUTHORIZED`.
+
+Un candidato descubierto, recuperado o reconstruido no adquiere autoridad de release por existir. Antes de su promoción debe completar los gates que correspondan al alcance: materialización controlada cuando aplique, manifest exacto, tests focales, regresión/cross-flow, build y validación de composición/runtime LAB cuando corresponda.
+
+Un cambio de `TEST/HARNESS` puede formar parte legítima del entregable cuando existe una dependencia funcional acreditada, pero no debe clasificarse por sí mismo como corrección productiva.
+
 No utilizar como mecanismo de composición de release:
 
 - `git add -A`

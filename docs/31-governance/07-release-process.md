@@ -197,6 +197,14 @@ No forma parte del procedimiento normal de release.
 
 Sólo corresponde utilizar análisis Git forense extendido cuando existe evidencia real de una brecha histórica de composición.
 
+`RECOVERY_HISTORY != CURRENT_RELEASE_AUTHORITY`.
+
+`CANDIDATE_DISCOVERED != RELEASE_AUTHORIZED`.
+
+Un candidato obtenido mediante rescate histórico debe volver a una frontera controlada de release: materialización cuando aplique, manifest, tests, build y validaciones de composición/runtime correspondientes antes de solicitar promoción. La evidencia histórica preserva provenance; no sustituye la autorización actual.
+
+Los cambios de `TEST/HARNESS` recuperados o descubiertos durante este proceso pueden ser necesarios para acreditar el comportamiento funcional, pero no constituyen por sí mismos una corrección productiva sin dependencia funcional acreditada.
+
 ## Regla operativa
 
 READ → VALIDATE → AUTHORIZE → MUTATE → WITNESS → CLOSE → STOP → NEXT AUTHORIZATION
