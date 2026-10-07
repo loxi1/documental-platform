@@ -81,4 +81,8 @@ MinIO pertenece al entorno LAB y no debe introducirse en producción mediante es
 
 Este runbook no autoriza cambios de aplicación, base de datos, migraciones, GIS, OCR, secretos ni recuperación destructiva del checkout.
 
+Cuando la release incluya un `migration set`, la migración conserva un gate independiente de `DB_WRITE` y debe seguir `docs/06-database/02-migraciones.md`.
+
+La actualización del checkout EC2 desde Enterprise puede ser una precondición para acreditar la identidad productiva de una migración, pero no constituye autorización para ejecutarla.
+
 Ante una divergencia, detener el deploy y regresar al control de release.

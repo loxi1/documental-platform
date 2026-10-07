@@ -43,6 +43,18 @@ La secuencia normal es:
 6. verificar API y Web;
 7. ejecutar el smoke específico del entregable.
 
+## Migraciones asociadas
+
+Si la release contiene un `migration set`, seguir además:
+
+`docs/06-database/02-migraciones.md`
+
+La migración requiere autorización independiente de `DB_WRITE`.
+
+El orden `migración → aplicación` o `aplicación → migración` debe estar definido por compatibilidad para la release concreta; no se infiere automáticamente.
+
+La actualización del checkout EC2 desde Enterprise permite acreditar la identidad publicada, pero no ejecuta ni autoriza por sí misma la migración.
+
 ## Cierre
 
 Una actualización no queda cerrada únicamente porque los contenedores estén levantados.

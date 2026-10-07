@@ -183,6 +183,25 @@ Antes de `CLOSED_PASS` deben acreditarse:
 
 Las migraciones, escrituras o restauraciones de base de datos requieren su propia autorización y validación de compatibilidad cuando correspondan.
 
+Una migración administrada constituye una unidad inseparable de identidad:
+
+`MIGRATION_UNIT = SQL + MANIFEST_SHA256_ENTRY`
+
+El SQL y su entrada en `infra/postgres/migrations/manifest.sha256` deben atravesar SOURCE y Enterprise dentro de la composición autorizada y conservar identidad verificable.
+
+La ejecución productiva se realiza mediante el runner administrado únicamente después de acreditar en el checkout productivo:
+
+- commit Enterprise esperado;
+- identidad del SQL y checksum;
+- `db:migrate:verify = PASS`;
+- `db:migrate:status = PASS`;
+- estado objetivo `pending`;
+- autorización explícita de `DB_WRITE`.
+
+El procedimiento operativo está definido en `docs/06-database/02-migraciones.md`.
+
+La actualización de aplicación, la migración de base de datos y la operación OCR son fronteras separadas. Ninguna autoriza implícitamente a las otras.
+
 OCR abre una frontera especializada cuando el entregable lo afecta. La implementación productiva vigente se gobierna por su documentación arquitectónica/runbook especializado y no debe inferirse como regla eterna de este estándar.
 
 GIS permanece fuera del alcance de un release de aplicación salvo autorización explícita.
