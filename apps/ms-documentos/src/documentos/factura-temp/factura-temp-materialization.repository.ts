@@ -90,25 +90,19 @@ export class FacturaTempMaterializationRepository {
 
     const [documento] = await tx`
       INSERT INTO documentos.documentos (
-        workspace_id,
-        empresa_codigo,
-        cliente_destino_id,
+        cliente_abreviatura,
         tipo_documental,
         estado,
-        metadata,
-        creado_por
+        metadata
       )
       VALUES (
-        ${actor.workspaceId},
         ${actor.empresaCodigo},
-        ${actor.clienteDestinoId},
         'FACTURA',
         'pendiente_ocr',
         ${JSON.stringify({
           origen: 'TEMP_REGULARIZACION_OP',
           tempId: Number(row.id),
-        })}::jsonb,
-        ${actor.actorId}
+        })}::jsonb
       )
       RETURNING id
     `;
@@ -167,15 +161,11 @@ export class FacturaTempMaterializationRepository {
         id,
         tipo_documental,
         estado,
-        workspace_id,
-        empresa_codigo,
-        cliente_destino_id,
+        cliente_abreviatura,
         metadata
       FROM documentos.documentos
       WHERE id=${documentoId}
-        AND workspace_id=${actor.workspaceId}
-        AND empresa_codigo=${actor.empresaCodigo}
-        AND cliente_destino_id=${actor.clienteDestinoId}
+        AND cliente_abreviatura=${actor.empresaCodigo}
       FOR UPDATE
     `;
 
@@ -304,9 +294,7 @@ export class FacturaTempMaterializationRepository {
     const duplicados = await tx`
       SELECT d.id
       FROM documentos.documentos d
-      WHERE d.workspace_id=${actor.workspaceId}
-        AND d.empresa_codigo=${actor.empresaCodigo}
-        AND d.cliente_destino_id=${actor.clienteDestinoId}
+      WHERE d.cliente_abreviatura=${actor.empresaCodigo}
         AND d.id <> ${documentoId}
         AND COALESCE(d.estado, '') NOT IN ('anulado', 'duplicado_versionado')
         AND (
@@ -500,14 +488,10 @@ export class FacturaTempMaterializationRepository {
         id,
         tipo_documental,
         estado,
-        workspace_id,
-        empresa_codigo,
-        cliente_destino_id
+        cliente_abreviatura
       FROM documentos.documentos
       WHERE id=${documentoId}
-        AND workspace_id=${actor.workspaceId}
-        AND empresa_codigo=${actor.empresaCodigo}
-        AND cliente_destino_id=${actor.clienteDestinoId}
+        AND cliente_abreviatura=${actor.empresaCodigo}
       FOR UPDATE
     `;
 

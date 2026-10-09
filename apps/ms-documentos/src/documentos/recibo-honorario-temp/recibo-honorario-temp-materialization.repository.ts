@@ -91,25 +91,19 @@ export class ReciboHonorarioTempMaterializationRepository {
 
     const [documento] = await tx`
       INSERT INTO documentos.documentos (
-        workspace_id,
-        empresa_codigo,
-        cliente_destino_id,
+        cliente_abreviatura,
         tipo_documental,
         estado,
-        metadata,
-        creado_por
+        metadata
       )
       VALUES (
-        ${actor.workspaceId},
         ${actor.empresaCodigo},
-        ${actor.clienteDestinoId},
         'RECIBO_HONORARIO',
         'pendiente_ocr',
         ${JSON.stringify({
           origen: 'TEMP_REGULARIZACION_OP',
           tempId: Number(row.id),
-        })}::jsonb,
-        ${actor.actorId}
+        })}::jsonb
       )
       RETURNING id
     `;
@@ -168,15 +162,11 @@ export class ReciboHonorarioTempMaterializationRepository {
         id,
         tipo_documental,
         estado,
-        workspace_id,
-        empresa_codigo,
-        cliente_destino_id,
+        cliente_abreviatura,
         metadata
       FROM documentos.documentos
       WHERE id=${documentoId}
-        AND workspace_id=${actor.workspaceId}
-        AND empresa_codigo=${actor.empresaCodigo}
-        AND cliente_destino_id=${actor.clienteDestinoId}
+        AND cliente_abreviatura=${actor.empresaCodigo}
       FOR UPDATE
     `;
 
@@ -553,14 +543,10 @@ export class ReciboHonorarioTempMaterializationRepository {
         id,
         tipo_documental,
         estado,
-        workspace_id,
-        empresa_codigo,
-        cliente_destino_id
+        cliente_abreviatura
       FROM documentos.documentos
       WHERE id=${documentoId}
-        AND workspace_id=${actor.workspaceId}
-        AND empresa_codigo=${actor.empresaCodigo}
-        AND cliente_destino_id=${actor.clienteDestinoId}
+        AND cliente_abreviatura=${actor.empresaCodigo}
       FOR UPDATE
     `;
 
