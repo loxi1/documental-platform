@@ -191,9 +191,11 @@ export class AsociarGrupoFacturaV2UseCase {
     input: AsociarGrupoFacturaV2Input,
     executor?: SqlExecutor,
   ): Promise<AsociarGrupoFacturaV2Result> {
-    return executor
-      ? this.executeConExecutor(input, executor)
-      : sql.begin((tx) => this.executeConExecutor(input, tx));
+    if (!executor) return sql.begin((tx) => this.executeConExecutor(input, tx));
+    if ('begin' in executor) {
+      return executor.begin((tx) => this.executeConExecutor(input, tx));
+    }
+    return this.executeConExecutor(input, executor);
   }
 
   private async executeConExecutor(
@@ -360,13 +362,17 @@ export class AsociarGrupoFacturaV2UseCase {
 
     let creadoInicial: GrupoFacturaRow;
     try {
-      creadoInicial = await this.gruposFactura.crear({
+      const crearGrupo = (tx: SqlExecutor) => this.gruposFactura.crear({
         documentoOperativoPrincipalId,
         facturaDocumentoId,
         estado: ESTADO_GRUPO_FACTURA_INICIAL,
         metadata: metadataCreacion,
         creadoPor: input.usuario?.id ?? null,
-      }, executor);
+      }, tx);
+      // PostgreSQL must roll back the failed INSERT before the recovery SELECT.
+      creadoInicial = 'savepoint' in executor
+        ? await executor.savepoint((tx) => crearGrupo(tx))
+        : await crearGrupo(executor);
     } catch (error: any) {
       if (error?.code !== '23505') throw error;
 

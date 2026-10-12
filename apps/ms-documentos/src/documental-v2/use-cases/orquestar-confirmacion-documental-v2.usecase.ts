@@ -4,6 +4,7 @@ import { sql } from '@documental/database';
 import { DocumentosRepository } from '../../documentos/documentos.repository';
 import { DocumentoExistenteReadonlyRepository } from '../documento-existente-readonly.repository';
 import { GrupoFacturaRepository } from '../grupo-factura.repository';
+import { DocumentoOperativoPrincipalRepository } from '../documento-operativo-principal.repository';
 import type { SqlExecutor } from '../sql-executor';
 import type { AccionDecisionCorrespondencia } from '../finanzas/correspondencia-pago-factura.types';
 import { MaterializarContextoOperativoV2UseCase } from './materializar-contexto-operativo-v2.usecase';
@@ -51,6 +52,7 @@ export class OrquestarConfirmacionDocumentalV2UseCase {
     private readonly asociarPrincipal: AsociarDocumentoPrincipalV2UseCase,
     private readonly asociarGrupoFactura: AsociarGrupoFacturaV2UseCase,
     private readonly asociarDocumentoGrupo: AsociarDocumentoGrupoFacturaV2UseCase,
+    private readonly documentosOperativosPrincipales: DocumentoOperativoPrincipalRepository,
   ) {}
 
   execute(
@@ -185,29 +187,64 @@ export class OrquestarConfirmacionDocumentalV2UseCase {
       }
 
       const tipoPrincipal = String(documentoBase.tipoDocumental ?? '').trim().toUpperCase();
-      const principal = await this.asociarPrincipal.execute(
-        {
-          contenedorOperativoId: contexto.contenedorOperativo.id,
-          documentoId: documentoBaseId,
-          tipoPrincipal,
-          crearProveedorSiNoExiste: esPrincipalOperativoV2,
-          usuario,
-        },
-        tx,
-      );
+      const principal =
+        tipoPrincipal === 'ORDEN_PAGO'
+          ? {
+              documentoOperativoPrincipal:
+                await this.documentosOperativosPrincipales.buscarActivoPorDocumentoId(
+                  documentoBaseId,
+                  tx,
+                ),
+            }
+          : await this.asociarPrincipal.execute(
+              {
+                contenedorOperativoId: contexto.contenedorOperativo.id,
+                documentoId: documentoBaseId,
+                tipoPrincipal,
+                crearProveedorSiNoExiste: esPrincipalOperativoV2,
+                usuario,
+              },
+              tx,
+            );
+
+      if (tipoPrincipal === 'ORDEN_PAGO') {
+        const op = principal.documentoOperativoPrincipal;
+        if (
+          !op ||
+          Number(op.documentoId) !== documentoBaseId ||
+          op.tipoPrincipal !== 'ORDEN_PAGO' ||
+          op.estado !== 'activo' ||
+          op.esPrincipalActivo !== true ||
+          Number(op.contenedorOperativoId) !== Number(contexto.contenedorOperativo.id)
+        ) {
+          throw new ConflictException({
+            code: 'PRINCIPAL_OP_EXISTENTE_INVALIDO',
+            message: 'El principal OP existente no corresponde al documento y contexto activo',
+          });
+        }
+      }
+
+      if (!principal.documentoOperativoPrincipal) {
+        throw new NotFoundException({
+          code: 'PRINCIPAL_OPERATIVO_NO_ENCONTRADO',
+          message: `No existe principal operativo activo para documento base ${documentoBaseId}`,
+        });
+      }
 
       let grupoFactura: any = null;
       let documentoGrupoFactura: any = null;
 
       if (esFacturaGrupoV2) {
-        grupoFactura = await this.asociarGrupoFactura.execute(
-          {
-            documentoOperativoPrincipalId: principal.documentoOperativoPrincipal.id,
-            facturaDocumentoId: documentoId,
-            usuario,
-          },
-          tx,
-        );
+        if (input.origenObligacion !== 'ORDEN_PAGO') {
+          grupoFactura = await this.asociarGrupoFactura.execute(
+            {
+              documentoOperativoPrincipalId: principal.documentoOperativoPrincipal.id,
+              facturaDocumentoId: documentoId,
+              usuario,
+            },
+            tx,
+          );
+        }
       } else if (esAdjuntoGrupoV2) {
         const grupoFacturaId = await this.resolverGrupoFacturaId(
           principal.documentoOperativoPrincipal.id,

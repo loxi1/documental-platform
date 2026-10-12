@@ -81,6 +81,8 @@ export class GrupoFacturaDocumentoRepository {
         actualizado_en AS "actualizadoEn",
         anulado_por AS "anuladoPor",
         anulado_en AS "anuladoEn",
+        NULL::text AS serie,
+        NULL::text AS numero,
         motivo_anulacion AS "motivoAnulacion"
     `;
 
@@ -102,6 +104,8 @@ export class GrupoFacturaDocumentoRepository {
         actualizado_en AS "actualizadoEn",
         anulado_por AS "anuladoPor",
         anulado_en AS "anuladoEn",
+        NULL::text AS serie,
+        NULL::text AS numero,
         motivo_anulacion AS "motivoAnulacion"
       FROM documentos.grupo_factura_documentos
       WHERE id = ${id}::bigint
@@ -126,6 +130,8 @@ export class GrupoFacturaDocumentoRepository {
         actualizado_en AS "actualizadoEn",
         anulado_por AS "anuladoPor",
         anulado_en AS "anuladoEn",
+        NULL::text AS serie,
+        NULL::text AS numero,
         motivo_anulacion AS "motivoAnulacion"
       FROM documentos.grupo_factura_documentos
       WHERE documento_id = ${documentoId}::bigint
@@ -171,6 +177,8 @@ export class GrupoFacturaDocumentoRepository {
         actualizado_en AS "actualizadoEn",
         anulado_por AS "anuladoPor",
         anulado_en AS "anuladoEn",
+        NULL::text AS serie,
+        NULL::text AS numero,
         motivo_anulacion AS "motivoAnulacion"
       FROM documentos.grupo_factura_documentos
       WHERE grupo_factura_id = ${params.grupoFacturaId}::bigint
@@ -298,6 +306,8 @@ export class GrupoFacturaDocumentoRepository {
         actualizado_en AS "actualizadoEn",
         anulado_por AS "anuladoPor",
         anulado_en AS "anuladoEn",
+        NULL::text AS serie,
+        NULL::text AS numero,
         motivo_anulacion AS "motivoAnulacion"
     `;
 
@@ -328,6 +338,8 @@ export class GrupoFacturaDocumentoRepository {
         actualizado_en AS "actualizadoEn",
         anulado_por AS "anuladoPor",
         anulado_en AS "anuladoEn",
+        NULL::text AS serie,
+        NULL::text AS numero,
         motivo_anulacion AS "motivoAnulacion"
     `;
 
