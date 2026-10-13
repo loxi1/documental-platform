@@ -69,3 +69,75 @@ Se requiere acreditar:
 Sólo entonces corresponde `CLOSED_PASS`.
 
 No desplegar desde SOURCE directamente, desde un branch de desarrollo, desde un worktree ni desde el index.
+
+### Regla de identidad del runtime
+
+La actualización de EC2 no se considera cerrada únicamente por
+actualizar el checkout Enterprise.
+
+Debe acreditarse la relación:
+
+`EC2_CHECKOUT_TARGET → TARGET_SERVICE → RUNNING_IMAGE_REFERENCE → RUNTIME_IMAGE_DIGEST`
+
+y conservarse la configuración operativa necesaria:
+
+- PORTS
+- NETWORKS
+- DEPENDENCIES
+
+Si el release no contiene migración:
+
+`DB_MIGRATION=NOT_APPLICABLE`
+
+No se ejecutan migraciones pendientes como efecto automático de la
+actualización de versión.
+
+## Regla de composición e identidad del runtime
+
+La actualización de producción debe distinguir entre:
+
+- Compose productivo permanente;
+- override efímero específico de un release;
+- selección de imágenes versionadas;
+- runtime efectivamente ejecutado.
+
+La referencia permanente de composición es:
+
+`deployment/docker/docker-compose.production.yml`
+
+El override histórico R4-P2:
+
+`/tmp/r4_p2_ec2_override_execution_r2.yml`
+
+es una referencia efímera y no debe convertirse en dependencia
+permanente del procedimiento.
+
+Cuando no se conserve el contenido histórico del override, debe
+declararse `UNKNOWN`. No se deben reconstruir comandos, parámetros,
+puertos, redes, dependencias ni otras opciones a partir de inferencias.
+
+La identidad de una release debe poder relacionar:
+
+`Enterprise commit → image name → image tag → OCI digest`
+
+`latest` no es autoridad de release.
+
+El witness final debe conservar, sin secretos:
+
+- checkout objetivo;
+- servicio afectado;
+- referencia de imagen;
+- digest de runtime;
+- puertos;
+- redes;
+- dependencias relevantes;
+- configuración efectiva utilizada para la composición.
+
+Un checkout, commit o tag aislado no acredita por sí mismo la identidad
+del runtime.
+
+La referencia `docker-compose.ec2.yml` queda como
+`NO_ACREDITADO_COMO_CANÓNICO` para R4-P2 mientras no exista evidencia
+específica de su utilización.
+
+Los valores históricos no acreditados deben permanecer `UNKNOWN`.

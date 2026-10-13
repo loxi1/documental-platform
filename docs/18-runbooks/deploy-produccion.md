@@ -86,3 +86,93 @@ Cuando la release incluya un `migration set`, la migración conserva un gate ind
 La actualización del checkout EC2 desde Enterprise puede ser una precondición para acreditar la identidad productiva de una migración, pero no constituye autorización para ejecutarla.
 
 Ante una divergencia, detener el deploy y regresar al control de release.
+
+### Identidad completa de la imagen y del runtime
+
+Para cada servicio autorizado debe acreditarse:
+
+`ENTERPRISE_COMMIT → IMAGE_NAME → IMAGE_TAG → OCI_DIGEST`
+
+El tag basado en SHA y el digest OCI son evidencias distintas.
+
+`latest` no constituye autoridad de identidad del release.
+
+El witness de EC2 debe acreditar como mínimo:
+
+- checkout objetivo;
+- servicio objetivo;
+- referencia de imagen en ejecución;
+- digest de imagen en ejecución;
+- puertos;
+- redes;
+- dependencias relevantes.
+
+Un checkout Git, commit o tag por sí solo no acredita la identidad
+exacta del runtime.
+
+La actualización debe preservar los servicios e infraestructura
+fuera del alcance autorizado, incluyendo Traefik, NATS, OCR, DB y GIS
+según corresponda al release.
+
+## Composición productiva efectiva y override efímero histórico
+
+La composición productiva permanente de referencia es:
+
+`deployment/docker/docker-compose.production.yml`
+
+Durante R4-P2 existe una referencia histórica a un override
+efímero:
+
+`/tmp/r4_p2_ec2_override_execution_r2.yml`
+
+El override histórico no debe convertirse en una configuración
+permanente del proyecto.
+
+El contenido efectivo, los parámetros exclusivos, el orden exacto
+de los archivos Compose y las opciones históricas de ejecución del
+override R2 permanecen `UNKNOWN` cuando no existe evidencia
+conservada suficiente.
+
+Por tanto, no deben reconstruirse comandos históricos ni atribuirse
+al override puertos, redes, dependencias, montajes u otras opciones
+que no estén acreditadas.
+
+Cuando un release utilice una composición distinta del Compose base,
+la documentación del release debe identificar explícitamente:
+
+- composición utilizada;
+- orden de archivos Compose;
+- servicios afectados;
+- selección de imágenes versionadas;
+- evidencia de configuración efectiva;
+- witness final del runtime.
+
+La referencia `docker-compose.ec2.yml` no se considera archivo
+canónico de R4-P2 sin evidencia específica que acredite su utilización.
+
+### Selección de imágenes
+
+El Compose base puede contener instrucciones `build`; eso no demuestra
+por sí solo que el release productivo deba construir localmente las
+imágenes.
+
+La selección de las imágenes autorizadas debe quedar vinculada a:
+
+`Enterprise commit → image name → image tag → OCI digest`
+
+El tag basado en SHA y el digest OCI son evidencias distintas.
+
+`latest` no constituye autoridad de identidad del release.
+
+### Witness
+
+El cierre del deployment debe conservar evidencia suficiente para
+relacionar la configuración utilizada con el runtime resultante.
+
+La identidad del runtime debe acreditarse mediante el witness
+correspondiente y no únicamente mediante el checkout Git, un commit o
+un tag.
+
+Los detalles históricos que no puedan acreditarse permanecen
+`UNKNOWN`; la ausencia de evidencia no se convierte en evidencia de
+ausencia.
