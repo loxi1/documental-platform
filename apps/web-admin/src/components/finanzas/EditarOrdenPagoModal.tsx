@@ -288,7 +288,7 @@ export function EditarOrdenPagoModal({
 
     if (earlyLocked) return payload;
 
-    const periodoMatch = /^(\\d{2})-(\\d{4})$/.exec(periodo);
+    const periodoMatch = /^(\d{2})-(\d{4})$/.exec(periodo);
     payload.periodoAnio = periodoMatch ? Number(periodoMatch[2]) : null;
     payload.periodoMes = periodoMatch ? Number(periodoMatch[1]) : null;
     payload.codigoPago = codigoPago.trim() || null;
