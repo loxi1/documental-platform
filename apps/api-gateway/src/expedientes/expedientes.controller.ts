@@ -747,6 +747,7 @@ export class ExpedientesGatewayController {
       authorization,
       requestId,
       query: scopedQuery,
+      contexto,
     });
   }
 
@@ -831,12 +832,32 @@ export class ExpedientesGatewayController {
     requestId?: string;
     query?: Record<string, unknown>;
     body?: unknown;
+    contexto?: any;
   }) {
     try {
+      const headers = this.buildHeaders(params.authorization, params.requestId);
+
+      if (params.contexto) {
+        const workspaceId = Number(params.contexto?.workspaceId ?? NaN);
+        const clienteDestinoId =
+          this.getClienteDestinoIdFromContext(params.contexto);
+        const empresaCodigo = this.getEmpresaFromContext(params.contexto);
+
+        if (Number.isFinite(workspaceId) && workspaceId > 0) {
+          headers['x-workspace-id'] = String(workspaceId);
+        }
+        if (empresaCodigo) {
+          headers['x-empresa-codigo'] = empresaCodigo;
+        }
+        if (clienteDestinoId) {
+          headers['x-cliente-destino-id'] = String(clienteDestinoId);
+        }
+      }
+
       const response = await axios.request({
         method: params.method,
         url: `${this.msDocumentosUrl}${params.path}`,
-        headers: this.buildHeaders(params.authorization, params.requestId),
+        headers,
         params: params.query,
         data: params.body,
       });
