@@ -2,7 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
-import { Eye, Plus, Search, X } from "lucide-react";
+import { CheckCircle2, Eye, Plus, Search, X } from "lucide-react";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
@@ -16,6 +16,8 @@ import {
   obtenerBandejaCompras,
   type BandejaComprasFila,
 } from "@/services/expedientes";
+
+import { persistencePresentation, principalHref } from "@/lib/compras-principal";
 
 const PAGE_SIZE = 8;
 
@@ -84,7 +86,7 @@ export function ComprasBandeja() {
   const currentPage = page + 1;
   const totalPages = Math.max(1, Math.ceil(total / limit));
 
-  const returnTo = useMemo(() => pathname, [pathname]);
+  const returnTo = useMemo(() => `${pathname}${searchParams.toString() ? `?${searchParams.toString()}` : ""}`, [pathname, searchParams]);
 
   return (
     <main className="space-y-4">
@@ -203,32 +205,35 @@ export function ComprasBandeja() {
               <tbody>
                 {bandeja.isLoading ? <LoadingRows /> : null}
                 {!bandeja.isLoading ? rows.map((fila) => {
-                  const params = new URLSearchParams();
-                  params.set("returnTo", returnTo);
-                  params.set("principalId", String(fila.principal.documentoId));
-                  const href = `/compras/${fila.expedienteId}/ver?${params.toString()}`;
+                  const esPendienteValidacion = fila.estado === "pendiente_validacion";
+                  const href = esPendienteValidacion ? null : principalHref(fila.expedienteId, fila.principal.documentoId, "ver", searchParams.toString(), returnTo);
+                  const persisted = persistencePresentation(fila.persistencia);
                   const proveedor = text(fila.proveedor?.nombre, "");
                   const ruc = text(fila.proveedor?.ruc, "");
-                  const esPendienteValidacion = fila.estado === "pendiente_validacion";
                   const puedeContinuarValidacion =
                     esPendienteValidacion && fila.ocrResultadoId != null;
 
                   const hrefAccion = esPendienteValidacion
                     ? puedeContinuarValidacion
-                      ? `/compras/nuevo?ocrResultadoId=${encodeURIComponent(String(fila.ocrResultadoId))}&expedienteId=${encodeURIComponent(String(fila.expedienteId))}`
+                      ? `/compras/nuevo?ocrResultadoId=${encodeURIComponent(String(fila.ocrResultadoId))}&expedienteId=${encodeURIComponent(String(fila.expedienteId))}&returnTo=${encodeURIComponent(returnTo)}`
                       : null
-                    : `/compras/${fila.expedienteId}/editar?principalId=${fila.principal.documentoId}`;
+                    : principalHref(fila.expedienteId, fila.principal.documentoId, "editar", searchParams.toString(), returnTo);
                   return <tr key={`${fila.expedienteId}-${fila.principal.documentoId}`} className="border-b align-top hover:bg-muted/30">
-                    <td className="px-4 py-2.5 font-semibold">{principalLabel(fila)}</td>
+                    <td className="px-4 py-2.5 font-semibold">{principalLabel(fila)}
+                      <div className="mt-1 flex items-center gap-1 text-xs font-normal">
+                        {persisted.saved ? <><CheckCircle2 className="h-4 w-4 text-emerald-600" aria-label="Documento y archivo guardados" /><span>Guardado</span></> : <span>Persistencia sin verificar</span>}
+                      </div>
+                      <Badge variant="outline" className="mt-1">{persisted.label}</Badge>
+                    </td>
                     <td className="px-4 py-2.5"><div className="font-mono font-semibold">{text(fila.codigoExpediente)}</div><div className="mt-1 max-w-[280px] text-xs text-muted-foreground">{text(fila.descripcion)}</div></td>
                     <td className="px-4 py-2.5"><div className="max-w-[280px] font-medium">{proveedor || "—"}</div>{ruc ? <div className="mt-1 font-mono text-xs text-muted-foreground">RUC {ruc}</div> : null}</td>
                     <td className="px-4 py-2.5">{fila.facturas.length ? <div className="flex max-w-[300px] flex-wrap gap-1.5">{fila.facturas.map((f) => <Badge key={`${f.documentoId}-${f.grupoFacturaId}`} variant="outline">{facturaLabel(f)}</Badge>)}</div> : <span className="text-muted-foreground">—</span>}</td>
 
                     <td className="px-4 py-2.5 text-right">
                       <div className="flex justify-end gap-2">
-                        <Button asChild size="sm" variant="outline">
+                        {href ? <Button asChild size="sm" variant="outline">
                           <Link href={href}><Eye className="mr-2 h-4 w-4" />Ver</Link>
-                        </Button>
+                        </Button> : <Button size="sm" variant="outline" disabled title="La OC/OS requiere validación humana antes de ser principal">Ver</Button>}
                         {hrefAccion ? (
                           <Button asChild size="sm">
                             <Link href={hrefAccion}>

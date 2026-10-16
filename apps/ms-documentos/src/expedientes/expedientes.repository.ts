@@ -1033,6 +1033,9 @@ export class ExpedientesRepository {
           e.estado AS expediente_estado,
           dp.tipo_documental AS principal_tipo,
           dp.numero AS principal_numero,
+          dp.estado AS principal_estado,
+          (SELECT da.id FROM documentos.documentos_archivos da WHERE da.documento_id = dp.id ORDER BY da.es_version_actual DESC NULLS LAST, da.version DESC, da.id DESC LIMIT 1) AS principal_archivo_id,
+          (SELECT o.estado FROM documentos.ocr_resultados o WHERE o.documento_id = dp.id ORDER BY o.id DESC LIMIT 1) AS principal_ocr_estado,
           dp.razon_social_emisor AS proveedor_nombre,
           dp.ruc_emisor AS proveedor_ruc
         FROM documentos.documentos_operativos_principales dop
@@ -1118,6 +1121,9 @@ export class ExpedientesRepository {
         pp.codigo_expediente AS "codigoExpediente",
         pp.descripcion,
         pp.expediente_estado AS estado,
+        jsonb_build_object('documentoId', pp.principal_documento_id, 'archivoId', pp.principal_archivo_id,
+          'documentoPersistido', true, 'archivoPersistido', pp.principal_archivo_id IS NOT NULL,
+          'estadoDocumento', pp.principal_estado, 'estadoOcr', pp.principal_ocr_estado) AS persistencia,
         jsonb_build_object(
           'documentoId', pp.principal_documento_id,
           'tipo', pp.principal_tipo,
@@ -1183,6 +1189,9 @@ export class ExpedientesRepository {
       SELECT DISTINCT ON (d.id) e.id AS "expedienteId", e.codigo_expediente AS "codigoExpediente",
         e.descripcion, 'pendiente_validacion'::text AS estado,
         ocr.id AS "ocrResultadoId",
+        jsonb_build_object('documentoId', d.id, 'archivoId', da.id,
+          'documentoPersistido', true, 'archivoPersistido', true,
+          'estadoDocumento', d.estado, 'estadoOcr', ocr.estado) AS persistencia,
         jsonb_build_object('documentoId', d.id, 'tipo', d.tipo_documental,
           'numero', COALESCE(d.numero, ocr.metadata->'metadata'->>'numero')) AS principal,
         CASE WHEN COALESCE(d.razon_social_emisor, ocr.metadata->'metadata'->>'proveedor') IS NULL

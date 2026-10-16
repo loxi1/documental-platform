@@ -282,6 +282,7 @@ export type BandejaComprasProveedor = {
 };
 
 export type BandejaComprasFila = {
+  persistencia?: import("@/lib/compras-principal").ComprasPersistencia | null;
   expedienteId: string | number;
   codigoExpediente?: string | null;
   descripcion?: string | null;

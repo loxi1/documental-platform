@@ -751,6 +751,40 @@ export class ExpedientesGatewayController {
     });
   }
 
+  @ApiOperation({ summary: 'Detalle de Orden de Pago para revisión contable' })
+  @Get('revision-contable/orden-pago/:ordenPagoId')
+  async getOrdenPagoRevisionContable(
+    @Headers('authorization') authorization: string | undefined,
+    @Headers(REQUEST_ID_HEADER) requestId: string | undefined,
+    @Param('ordenPagoId') ordenPagoId: string,
+  ) {
+    const contexto = await this.validateAuthorization(authorization);
+
+    const usuarioId = Number(contexto?.sub ?? contexto?.usuarioId ?? NaN);
+    const clienteDestinoId = contexto?.clienteDestinoId;
+
+    if (
+      !Number.isSafeInteger(usuarioId) || usuarioId <= 0 ||
+      !this.getEmpresaFromContext(contexto) ||
+      (clienteDestinoId != null && (
+        !Number.isSafeInteger(Number(clienteDestinoId)) ||
+        Number(clienteDestinoId) <= 0
+      ))
+    ) {
+      throw new ForbiddenException(
+        'Contexto autenticado requerido para consultar la Orden de Pago',
+      );
+    }
+
+    return this.proxy({
+      method: 'GET',
+      path: `/expedientes/revision-contable/orden-pago/${ordenPagoId}`,
+      authorization,
+      requestId,
+      contexto,
+    });
+  }
+
   @ApiOperation({ summary: 'Revisión contable vía API Gateway' })
   @Get('revision-contable')
   async getRevisionContable(
@@ -838,6 +872,10 @@ export class ExpedientesGatewayController {
       const headers = this.buildHeaders(params.authorization, params.requestId);
 
       if (params.contexto) {
+        const usuarioId = Number(params.contexto?.sub ?? params.contexto?.usuarioId ?? NaN);
+        if (Number.isSafeInteger(usuarioId) && usuarioId > 0) {
+          headers['x-user-id'] = String(usuarioId);
+        }
         const workspaceId = Number(params.contexto?.workspaceId ?? NaN);
         const clienteDestinoId =
           this.getClienteDestinoIdFromContext(params.contexto);

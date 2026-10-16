@@ -1178,6 +1178,8 @@ function buildResultadoConContexto(
   };
 }
 
+import { principalHref, selectPrincipal } from "@/lib/compras-principal";
+
 export function CompraExpedienteEditor({
   id,
   modoSoloLectura = false,
@@ -1188,6 +1190,8 @@ export function CompraExpedienteEditor({
   const queryClient = useQueryClient();
   const router = useRouter();
   const searchParams = useSearchParams();
+  const requestedReturnTo = searchParams.get("returnTo");
+  const returnTo = requestedReturnTo && /^\/compras(?:[/?]|$)/.test(requestedReturnTo) ? requestedReturnTo : "/compras";
   const { data: expediente, isLoading, error } = useExpediente(id);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [modalAbierto, setModalAbierto] = useState(false);
@@ -1281,13 +1285,11 @@ export function CompraExpedienteEditor({
     ? Number(principalIdParam)
     : null;
 
-  const principalSeleccionado = useMemo(
-    () =>
-      documentosPrincipales.find(
-        (doc) => getDocumentoId(doc) === principalIdSeleccionado,
-      ) ?? null,
-    [documentosPrincipales, principalIdSeleccionado],
+  const principalSelection = useMemo(
+    () => selectPrincipal(documentosPrincipales, principalIdParam, getDocumentoId),
+    [documentosPrincipales, principalIdParam],
   );
+  const principalSeleccionado = principalSelection.selected;
 
   const principalPendientesId = getDocumentoId(principalSeleccionado);
   const contextoPendienteRef = useRef({ expedienteId: String(id), principalId: principalPendientesId, readOnly: modoSoloLectura });
@@ -1364,14 +1366,6 @@ export function CompraExpedienteEditor({
     [documentosSinPrincipal],
   );
 
-  useEffect(() => {
-    if (documentosPrincipales.length !== 1 || principalSeleccionado) return;
-
-    const unicoId = getDocumentoId(documentosPrincipales[0]);
-    if (!unicoId) return;
-
-    router.replace(`/compras/${id}/editar?principalId=${unicoId}`);
-  }, [documentosPrincipales, principalSeleccionado, router, id]);
 
   const seleccionPrincipalRequerida =
     documentosPrincipales.length > 1 && !principalSeleccionado;
@@ -2881,9 +2875,25 @@ export function CompraExpedienteEditor({
           </div>
 
           <Button asChild variant="outline" size="sm" className="h-8 shrink-0 px-3">
-            <Link href="/compras">Volver</Link>
+            <Link href={returnTo}>Volver</Link>
           </Button>
         </div>
+
+        {principalSelection.invalid && !documentosQuery.isLoading ? <p role="alert" className="rounded-xl border p-4 text-sm text-red-600">La OC/OS solicitada no pertenece a los documentos disponibles de este expediente. Selecciona una principal válida.</p> : null}
+        {documentosPrincipales.length > 0 && (!principalSeleccionado || documentosPrincipales.length > 1) ? (
+          <section aria-label="Seleccionar OC/OS principal" className="rounded-xl border p-4">
+            <p className="mb-3 text-sm font-medium">Selecciona la OC/OS para ver sus facturas y documentos asociados.</p>
+            <div className="flex flex-wrap gap-2">
+              {documentosPrincipales.map((doc) => (
+                <Button key={String(getDocumentoId(doc))} asChild variant={getDocumentoId(doc) === principalIdSeleccionado ? "default" : "outline"} size="sm">
+                  <Link href={principalHref(id, getDocumentoId(doc), modoSoloLectura ? "ver" : "editar", searchParams.toString()) ?? "/compras"}>
+                    {text(doc.tipo_documental ?? doc.tipoDocumental, "OC/OS")} {text(doc.numero, String(getDocumentoId(doc)))}
+                  </Link>
+                </Button>
+              ))}
+            </div>
+          </section>
+        ) : null}
 
         {mensajeValidacion ? (
           <div className="space-y-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-300">
@@ -2910,14 +2920,14 @@ export function CompraExpedienteEditor({
                   <>
                     <Button asChild size="sm" variant="outline">
                       <Link
-                        href={`/compras/${prevalidacionExistente.expedienteId}/ver?returnTo=%2Fcompras&principalId=${principalIdNavegacion}`}
+                        href={principalHref(prevalidacionExistente.expedienteId, principalIdNavegacion, "ver", searchParams.toString(), returnTo) ?? returnTo}
                       >
                         Ver
                       </Link>
                     </Button>
                     <Button asChild size="sm" variant="outline">
                       <Link
-                        href={`/compras/${prevalidacionExistente.expedienteId}/editar?principalId=${principalIdNavegacion}`}
+                        href={principalHref(prevalidacionExistente.expedienteId, principalIdNavegacion, "editar", searchParams.toString(), returnTo) ?? returnTo}
                       >
                         Editar
                       </Link>
@@ -2987,7 +2997,9 @@ export function CompraExpedienteEditor({
                     />
                   ) : (
                     <div className="rounded-xl border border-dashed px-4 py-6 text-sm text-muted-foreground">
-                      No hay una OC/OS principal activa para este centro de costo.
+                      {documentosPrincipales.length > 0
+                        ? "Selecciona una OC/OS principal para ver su detalle."
+                        : "No hay una OC/OS principal activa para este centro de costo."}
                     </div>
                   )}
                 </div>

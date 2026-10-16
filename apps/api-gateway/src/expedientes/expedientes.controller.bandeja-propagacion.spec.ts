@@ -40,5 +40,5 @@ describe('Bandeja contable: recuperación ancestral de contexto',()=>{
   nats.send.mockReturnValue(of({valid:true,payload}));await request(app.getHttpServer()).get(endpoint).set('Authorization','Bearer unit-token').expect(200);
   const call=(axios.request as jest.Mock).mock.calls[0][0];expect(call.headers['x-cliente-destino-id']).toBe(String(payload.clienteDestinoId));expect(call.headers['x-empresa-codigo']).toBe(payload.empresa);expect(call.headers['x-workspace-id']).toBe(String(payload.workspaceId));expect(call.params).toEqual({empresa:payload.empresa});
  });
- it('no incorpora detalle OP, sin ejecutar esa ruta',()=>{expect('getOrdenPagoRevisionContable' in app.get(ExpedientesGatewayController)).toBe(false);expect(axios.request).not.toHaveBeenCalled();});
+ it('la ruta OP recuperada no se ejecuta al verificar bandeja',()=>{expect('getOrdenPagoRevisionContable' in app.get(ExpedientesGatewayController)).toBe(true);expect(axios.request).not.toHaveBeenCalled();});
 });
