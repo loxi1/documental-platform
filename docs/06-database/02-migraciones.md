@@ -29,7 +29,10 @@ El SHA-256 se calcula sobre los bytes exactos del SQL definitivo. Si cambia el a
 
 Desde la raíz del repositorio deben acreditarse como mínimo:
 
-    sha256sum -c infra/postgres/migrations/manifest.sha256
+    (
+      cd infra/postgres/migrations &&
+      sha256sum -c manifest.sha256
+    )
     pnpm --dir packages/database db:migrate:verify
 
 Además:
@@ -122,3 +125,19 @@ El orden entre migración y actualización de aplicación debe definirse para ca
 - `../18-runbooks/deploy-produccion.md`
 - `../29-operations-manual/06-actualizar-version.md`
 - `../31-governance/07-release-process.md`
+
+### Regla de compatibilidad y orden por release
+
+La publicación del SQL y de su entrada SHA-256 en el manifest, la ejecución de la migración y la actualización de la aplicación son actos distintos.
+
+Antes de ejecutar una migración en producción, el SQL y el manifest autorizados deben haber atravesado la ruta de publicación indicada en este documento y su identidad debe estar acreditada en el checkout productivo. Esta publicación no ejecuta ni autoriza por sí sola la migración.
+
+El orden entre la ejecución autorizada de la migración y la actualización de la aplicación debe definirse para cada release según la compatibilidad de esquema, las dependencias funcionales, el estado del ledger y las autorizaciones correspondientes. No existe una secuencia universal «migración → aplicación» o «aplicación → migración».
+
+La ejecución productiva de migraciones mantiene su autorización independiente de DB_WRITE y sus verificaciones previas y posteriores.
+
+Si el release no contiene migración:
+
+`DB_MIGRATION=NOT_APPLICABLE`
+
+No se ejecutan migraciones pendientes por efecto automático del deploy.
