@@ -82,6 +82,9 @@ describe('OrquestarConfirmacionDocumentalV2UseCase', () => {
   const asociarDocumentoGrupo = {
     execute: jest.fn(),
   };
+  const principales = {
+    buscarActivoPorDocumentoId: jest.fn(),
+  };
 
   let useCase: OrquestarConfirmacionDocumentalV2UseCase;
 
@@ -110,6 +113,10 @@ describe('OrquestarConfirmacionDocumentalV2UseCase', () => {
       documentoGrupoFactura: { id: 801, grupoFacturaId: 701 },
       idempotente: false,
     });
+    principales.buscarActivoPorDocumentoId.mockResolvedValue({
+      id: 601, documentoId: 46, tipoPrincipal: 'ORDEN_PAGO',
+      estado: 'activo', esPrincipalActivo: true, contenedorOperativoId: 501,
+    });
     gruposFactura.listarPorDocumentoOperativoPrincipal.mockResolvedValue([
       { id: 701, estado: 'pendiente_revision' },
     ]);
@@ -122,6 +129,7 @@ describe('OrquestarConfirmacionDocumentalV2UseCase', () => {
       asociarPrincipal as any,
       asociarGrupoFactura as any,
       asociarDocumentoGrupo as any,
+      principales as any,
     );
   });
 
@@ -376,6 +384,63 @@ describe('OrquestarConfirmacionDocumentalV2UseCase', () => {
       }),
       tx,
     );
+  });
+
+
+  describe('R8-P13-N: reutilización de principal OP', () => {
+    const confirmarOp = (grupoFacturaId = 701) => useCase.execute(900, {
+      expedienteId: 15,
+      documentoBaseId: 46,
+      grupoFacturaId,
+      origenObligacion: 'ORDEN_PAGO',
+      tipoRelacion: 'adjunto_transferencia',
+      decisionCorrespondencia: { accion: 'ACEPTAR', motivo: 'Validación OP' },
+    });
+
+    beforeEach(() => {
+      documentosV2.buscarPorId.mockResolvedValue({ id: 46, tipoDocumental: 'ORDEN_PAGO' });
+      documentosLegacy.confirmarOcrResultadoConExpedienteConExecutor.mockResolvedValue(
+        confirmado({ documentoId: 100, documentoBaseId: 46,
+          tipoDocumental: 'TRANSFERENCIA', tipoRelacion: 'adjunto_transferencia' }),
+      );
+    });
+
+    it('reutiliza principal existente sin crear otro y conserva relación y decisión', async () => {
+      const result = await confirmarOp();
+      expect(principales.buscarActivoPorDocumentoId).toHaveBeenCalledWith(46, tx);
+      expect(asociarPrincipal.execute).not.toHaveBeenCalled();
+      expect(asociarGrupoFactura.execute).not.toHaveBeenCalled();
+      expect(gruposFactura.listarPorDocumentoOperativoPrincipal).toHaveBeenCalledWith(601, tx);
+      expect(asociarDocumentoGrupo.execute).toHaveBeenCalledWith(
+        expect.objectContaining({ grupoFacturaId: 701, documentoId: 100,
+          tipoRelacion: 'adjunto_transferencia',
+          decisionCorrespondencia: { accion: 'ACEPTAR', motivo: 'Validación OP' } }), tx);
+      expect((result as any).documentalV2.documentoOperativoPrincipal.id).toBe(601);
+    });
+
+    it.each([
+      ['ausente', null],
+      ['documento incorrecto', { documentoId: 99 }],
+      ['tipo incorrecto', { tipoPrincipal: 'OC' }],
+      ['anulado', { estado: 'anulado' }],
+      ['principal inactivo', { esPrincipalActivo: false }],
+      ['otro contenedor', { contenedorOperativoId: 999 }],
+    ])('rechaza principal OP %s', async (_caso, override) => {
+      const valido = { id: 601, documentoId: 46, tipoPrincipal: 'ORDEN_PAGO',
+        estado: 'activo', esPrincipalActivo: true, contenedorOperativoId: 501 };
+      principales.buscarActivoPorDocumentoId.mockResolvedValue(
+        override === null ? null : { ...valido, ...override });
+      await expectExceptionCode(confirmarOp(), ConflictException, 'PRINCIPAL_OP_EXISTENTE_INVALIDO');
+      expect(asociarPrincipal.execute).not.toHaveBeenCalled();
+      expect(asociarDocumentoGrupo.execute).not.toHaveBeenCalled();
+    });
+
+    it('rechaza grupo ajeno al principal OP', async () => {
+      await expectExceptionCode(confirmarOp(999), ConflictException,
+        'GRUPO_FACTURA_NO_PERTENECE_AL_PRINCIPAL');
+      expect(asociarDocumentoGrupo.execute).not.toHaveBeenCalled();
+      expect(asociarPrincipal.execute).not.toHaveBeenCalled();
+    });
   });
 
   it('no continúa cuando V1 falla', async () => {
