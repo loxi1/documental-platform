@@ -23,7 +23,7 @@ function between(startMarker, endMarker) {
 test('bandeja-contable preserva scopedQuery y propaga contexto autenticado al proxy', () => {
   const block = between(
     "@Get('bandeja-contable')",
-    "@Get('revision-contable')",
+    "@ApiOperation({ summary: 'Detalle de Orden de Pago para revisión contable' })",
   );
 
   assert.match(
