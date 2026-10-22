@@ -372,11 +372,21 @@ export async function reemplazarArchivoInicialOrdenPago(
 
 export type OrdenPagoTempRegularizacionRecuperada = {
   tempId: number;
+  estado?: 'PROMOTED';
+  ordenPagoId?: number;
+  documentoId?: number;
+  archivoId?: number;
+  documento?: {
+    serie: string | null; numero: string | null; fechaEmision: string | null;
+    rucEmisor: string | null; razonSocialEmisor: string | null;
+    moneda: string | null; montoTotal: string | null;
+  };
   disponible: boolean;
   motivo?: 'TEMP_EXPIRADO' | 'TMP_STORAGE_NOT_FOUND' | string;
   nombreOriginal?: string | null;
   mime?: string | null;
   preview?: {
+    archivoId?: number;
     tempId?: number | string | null;
     filename?: string | null;
     contentType?: string | null;
@@ -389,6 +399,7 @@ export type OrdenPagoTempRegularizacionRecuperada = {
     tipoEsperado?: string | null;
     resultado?: unknown;
   } | null;
+  materializationAttempt?: { tempId: number; idempotencyKey: string } | null;
   tipoRegularizador?: string | null;
 };
 
@@ -443,7 +454,13 @@ export async function recuperarTempRegularizacionOrdenPago(
   const { data } = await api.get(
     `/documentos/tmp/regularizacion-op/${encodeURIComponent(String(ordenPagoId))}/${encodeURIComponent(tipoRegularizador)}`,
   );
-  return (data?.data ?? data) as OrdenPagoTempRegularizacionRecuperada | null;
+  // A null payload must remain null even when Gateway preserves an upstream envelope.
+  let result: unknown = data;
+  for (let depth = 0; depth < 3; depth++) {
+    if (!result || typeof result !== 'object' || !Object.prototype.hasOwnProperty.call(result, 'data')) break;
+    result = (result as { data: unknown }).data;
+  }
+  return result as OrdenPagoTempRegularizacionRecuperada | null;
 }
 
 export async function procesarOcrTemporalOrdenPago(

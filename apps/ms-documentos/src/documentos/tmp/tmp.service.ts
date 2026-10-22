@@ -203,6 +203,21 @@ export class TmpService {
     });
   }
 
+  private recoverMaterializationAttempt(row: TmpRow, actor: Identity, ordenPagoId: number, tipo: string) {
+    const claim = row.metadata?.integration;
+    const operation = row.metadata?.regularizacionOp;
+    // Only the owner of this exact live FACTURA candidate may resume its claim.
+    if (tipo !== 'FACTURA' || row.estado !== 'almacenada' || row.promovida_en || row.archivo_id ||
+        !Number.isSafeInteger(Number(row.documento_id)) || Number(row.documento_id) <= 0 ||
+        Number(row.actor_id) !== actor.actorId || Number(row.workspace_id) !== actor.workspaceId ||
+        row.empresa_codigo !== actor.empresaCodigo || Number(row.cliente_destino_id) !== actor.clienteDestinoId ||
+        operation?.consumer !== 'REGULARIZACION_OP' || operation.ordenPagoId !== ordenPagoId ||
+        operation.tipoRegularizador !== tipo || claim?.consumer !== 'OP_FACTURA_REGULARIZER_MATERIALIZATION' ||
+        claim.completed !== false || typeof claim.identity !== 'string' || !claim.identity.trim() ||
+        claim.identity !== claim.identity.trim().toLowerCase() || row.metadata?.promocionIdentity !== claim.identity) return null;
+    return { tempId: Number(row.id), idempotencyKey: claim.identity };
+  }
+
   async recoverRegularizacionOp(
     actor: Identity,
     ordenPagoId: number,
@@ -228,6 +243,45 @@ export class TmpService {
         );
 
         if (!row) return null;
+
+        if (row.promovida_en) {
+          const consumer = tipo === 'FACTURA'
+            ? 'OP_FACTURA_REGULARIZER_MATERIALIZATION'
+            : 'OP_RECIBO_HONORARIO_REGULARIZER_MATERIALIZATION';
+          if (!['almacenada', 'completada'].includes(row.estado) ||
+              row.metadata?.integration?.consumer !== consumer ||
+              row.metadata?.integration?.completed !== true ||
+              !Number.isSafeInteger(Number(row.documento_id)) || Number(row.documento_id) <= 0 ||
+              !Number.isSafeInteger(Number(row.archivo_id)) || Number(row.archivo_id) <= 0) {
+            throw new ConflictException('TEMP_REGULARIZACION_OP_PROMOTED_IDENTITY_CONFLICT');
+          }
+          const persisted = await this.repository.promotedRegularizacionOpIdentity(c, row, actor, ordenPagoId, tipo);
+          if (persisted.storage_provider !== row.destino_storage_provider ||
+              persisted.storage_provider !== 'r2' ||
+              persisted.storage_bucket !== row.destino_storage_bucket ||
+              persisted.storage_key !== row.destino_storage_key ||
+              persisted.hash_sha256 !== row.hash_sha256 || row.destino_hash_sha256 !== row.hash_sha256 ||
+              Number(row.destino_tamano_bytes) !== Number(row.tamano_bytes)) {
+            throw new ConflictException('TEMP_REGULARIZACION_OP_PROMOTED_IDENTITY_CONFLICT');
+          }
+          const stat = await this.storage.statObject({ provider: 'r2', bucket: persisted.storage_bucket, key: persisted.storage_key });
+          if (!stat.exists || stat.hashSha256 !== row.hash_sha256 || stat.tamanoBytes !== Number(row.tamano_bytes)) {
+            throw new ConflictException('TMP_STORAGE_VERIFICATION_FAILED');
+          }
+          const preview = await this.preview.getArchivoPreviewUrl(Number(persisted.archivoId));
+          return {
+            tempId: Number(row.id), estado: 'PROMOTED' as const, disponible: true,
+            ordenPagoId, tipoRegularizador: tipo,
+            documentoId: Number(persisted.documentoId), archivoId: Number(persisted.archivoId),
+            nombreOriginal: row.nombre_archivo_original ?? null, mime: row.content_type ?? null,
+            preview,
+            documento: {
+              serie: persisted.serie, numero: persisted.numero, fechaEmision: persisted.fechaEmision,
+              rucEmisor: persisted.rucEmisor, razonSocialEmisor: persisted.razonSocialEmisor,
+              moneda: persisted.moneda, montoTotal: persisted.montoTotal,
+            },
+          };
+        }
 
         const expiraEn = row.expira_en instanceof Date
           ? row.expira_en
@@ -271,6 +325,7 @@ export class TmpService {
           preview,
           ocrCandidate: row.metadata?.ocrCandidate ?? null,
           tipoRegularizador: tipo,
+          materializationAttempt: this.recoverMaterializationAttempt(row, actor, ordenPagoId, tipo),
         };
       },
     );

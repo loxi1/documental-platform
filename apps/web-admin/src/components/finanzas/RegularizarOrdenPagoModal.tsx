@@ -17,6 +17,7 @@ import {
   subirArchivoInicialOrdenPago,
   vincularTempRegularizacionOrdenPago,
   type OrdenPagoDetalle,
+  type OrdenPagoTempRegularizacionRecuperada,
 } from "@/services/finanzas";
 
 type RegularizadorOperativo = "FACTURA" | "RECIBO_HONORARIO";
@@ -257,6 +258,13 @@ function mensajeError(error: unknown) {
   );
 }
 
+function recoveredMaterializationAttempt(recovered: { tempId: number | string; materializationAttempt?: { tempId: number; idempotencyKey: string } | null }) {
+  const attempt = recovered.materializationAttempt;
+  if (!attempt || String(attempt.tempId) !== String(recovered.tempId) ||
+      typeof attempt.idempotencyKey !== "string" || !attempt.idempotencyKey.trim()) return null;
+  return { tempId: String(recovered.tempId), key: attempt.idempotencyKey };
+}
+
 function newIdempotencyKey(prefix: string) {
   const uuid =
     typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
@@ -304,6 +312,8 @@ export function RegularizarOrdenPagoModal({
   const [ocrMessage, setOcrMessage] = useState<string | null>(null);
   const [ocrRaw, setOcrRaw] = useState<unknown>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewExpiresAt, setPreviewExpiresAt] = useState<string | null>(null);
+  const [tempUnavailable, setTempUnavailable] = useState(false);
   const [previewNombre, setPreviewNombre] = useState<string | null>(null);
   const [previewMime, setPreviewMime] = useState<string | null>(null);
   const [tempIdReutilizable, setTempIdReutilizable] =
@@ -313,6 +323,95 @@ export function RegularizarOrdenPagoModal({
     useState<number | null>(null);
   const [confirmando, setConfirmando] = useState(false);
   const [confirmError, setConfirmError] = useState<string | null>(null);
+  const [duplicateDocumentoId, setDuplicateDocumentoId] = useState<number | null>(null);
+  const [duplicateNavigation, setDuplicateNavigation] = useState<{ href: string; label: string } | null>(null);
+  const materializationAttempt = useRef<{ tempId: string; key: string } | null>(null);
+  const generation = useRef(0);
+
+  function clearDocumentFields() {
+    setFactura({ serie: "", numero: "", fechaEmision: "", rucEmisor: "", razonSocialEmisor: "", montoTotal: "", moneda: "PEN" });
+    setReciboHonorario({ serie: "", numero: "", fechaEmision: "", rucEmisor: "", razonSocialEmisor: "", montoTotal: "", moneda: "PEN" });
+    setMaterializedDocumentoId(null);
+    setDuplicateDocumentoId(null);
+    setDuplicateNavigation(null);
+    materializationAttempt.current = null;
+  }
+
+  function applyPromotedRecovery(recovered: OrdenPagoTempRegularizacionRecuperada) {
+    const validId = (value: unknown) => Number.isSafeInteger(value) && Number(value) > 0;
+    if (recovered.estado !== "PROMOTED" || !recovered.disponible ||
+        recovered.ordenPagoId !== ordenPago?.ordenPagoId || recovered.tipoRegularizador !== tipoSeleccionado ||
+        !validId(recovered.tempId) || !validId(recovered.documentoId) || !validId(recovered.archivoId) ||
+        recovered.preview?.archivoId !== recovered.archivoId || !recovered.documento) {
+      throw new Error("No se pudo acreditar la identidad del documento materializado.");
+    }
+    const fields = tipoSeleccionado === "FACTURA"
+      ? facturaDesdeOcr(recovered.documento) : reciboHonorarioDesdeOcr(recovered.documento);
+    clearDocumentFields();
+    if (tipoSeleccionado === "FACTURA") setFactura(current => ({ ...current, ...fields }));
+    else setReciboHonorario(current => ({ ...current, ...fields }));
+    setMaterializedDocumentoId(recovered.documentoId!);
+    setTempUnavailable(false); setArchivo(null); setTempId(String(recovered.tempId)); setTempIdReutilizable(null);
+    setPreviewUrl(recovered.preview?.signedUrl ?? null); setPreviewExpiresAt(recovered.preview?.expiresAt ?? null);
+    setPreviewNombre(recovered.preview?.filename ?? recovered.nombreOriginal ?? null);
+    setPreviewMime(recovered.preview?.contentType ?? recovered.mime ?? null);
+    setOcrRaw(null); setOcrStage("IDLE");
+    setOcrMessage("Documento materializado recuperado. Puedes continuar su vinculación a la Orden de Pago.");
+    ocrDispatchedTempRef.current = String(recovered.tempId);
+    return recovered.documentoId!;
+  }
+
+  async function renovarPreview() {
+    if (!ordenPago || !tipoSeleccionado) return false;
+    const version = generation.current;
+    try {
+      const recovered = await recuperarTempRegularizacionOrdenPago(ordenPago.ordenPagoId, tipoSeleccionado);
+      if (version !== generation.current) return false;
+      if (recovered?.estado === "PROMOTED") {
+        if (String(recovered.tempId) !== tempId) throw new Error("El documento recuperado ha cambiado. Reabre el modal para consultar su estado.");
+        return { documentoId: applyPromotedRecovery(recovered) };
+      }
+      if (!recovered || !recovered.disponible) {
+        clearDocumentFields();
+        setArchivo(null); setTempId(null); setTempIdReutilizable(recovered?.tempId == null ? null : String(recovered.tempId));
+        setPreviewUrl(null); setPreviewNombre(null); setPreviewMime(null); setOcrRaw(null); setOcrStage("IDLE");
+        setPreviewExpiresAt(null); setTempUnavailable(true); setConfirmError(null);
+        setOcrMessage(recovered?.motivo === "TEMP_EXPIRADO"
+          ? "El archivo temporal ha caducado. Adjunta nuevamente el documento para continuar"
+          : "El archivo temporal no está disponible. Adjunta nuevamente el documento para continuar");
+        return false;
+      }
+      if (String(recovered.tempId) !== tempId) {
+        setOcrMessage("El candidato recuperado ha cambiado. Reabre el modal para recuperar su estado.");
+        return false;
+      }
+      const reservedAttempt = recoveredMaterializationAttempt(recovered);
+      if (reservedAttempt) materializationAttempt.current = reservedAttempt;
+      setPreviewUrl(recovered.preview?.signedUrl ?? null);
+      setPreviewExpiresAt(recovered.preview?.expiresAt ?? null);
+      return true;
+    } catch (error) { setOcrMessage(mensajeError(error)); return false; }
+  }
+
+  useEffect(() => {
+    if (!open || !tempId) return;
+    void renovarPreview();
+    const refresh = () => { void renovarPreview(); };
+    window.addEventListener("focus", refresh);
+    return () => window.removeEventListener("focus", refresh);
+    // Refresh the current TEMP only; no upload or OCR is dispatched.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, tempId]);
+
+  useEffect(() => {
+    if (!open || !tempId || !previewExpiresAt) return;
+    const expiry = Date.parse(previewExpiresAt);
+    if (!Number.isFinite(expiry)) return;
+    const timer = window.setTimeout(() => { void renovarPreview(); }, Math.max(1000, expiry - Date.now() - 5000));
+    return () => window.clearTimeout(timer);
+    // This is the signed URL expiry supplied by the server, never a local TEMP expiry.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, tempId, previewExpiresAt]);
 
   // Impide un segundo dispatch OCR para el mismo TEMP durante esta sesión.
   const ocrDispatchedTempRef = useRef<string | null>(null);
@@ -401,8 +500,13 @@ export function RegularizarOrdenPagoModal({
     setPreviewMime(null);
     setTempIdReutilizable(null);
     setMaterializedDocumentoId(null);
+    setTempUnavailable(false); setPreviewExpiresAt(null);
     setConfirmando(false);
     setConfirmError(null);
+    setDuplicateDocumentoId(null);
+    setDuplicateNavigation(null);
+    materializationAttempt.current = null;
+    generation.current += 1;
     ocrDispatchedTempRef.current = null;
 
     setFactura({
@@ -441,6 +545,7 @@ export function RegularizarOrdenPagoModal({
     if (!open || !ordenPago || !tipoSeleccionado) return;
 
     let cancelled = false;
+    const version = generation.current;
 
     void (async () => {
       try {
@@ -449,12 +554,19 @@ export function RegularizarOrdenPagoModal({
           tipoSeleccionado,
         );
 
-        if (cancelled || !recovered) return;
+        if (cancelled || version !== generation.current) return;
 
-        if (!recovered.disponible) {
+        if (recovered?.estado === "PROMOTED") {
+          applyPromotedRecovery(recovered);
+          return;
+        }
+
+        if (!recovered || !recovered.disponible) {
+          clearDocumentFields();
+          setPreviewExpiresAt(null); setTempUnavailable(true);
           const reusableTempId =
-            recovered.tempId !== null &&
-            recovered.tempId !== undefined &&
+            recovered?.tempId !== null &&
+            recovered?.tempId !== undefined &&
             String(recovered.tempId).trim() !== ""
               ? String(recovered.tempId)
               : null;
@@ -467,12 +579,17 @@ export function RegularizarOrdenPagoModal({
           setPreviewMime(null);
           setOcrRaw(null);
           setOcrStage("IDLE");
-          setOcrMessage(null);
+          setOcrMessage(recovered?.motivo === "TEMP_EXPIRADO"
+            ? "El archivo temporal ha caducado. Adjunta nuevamente el documento para continuar"
+            : "El archivo temporal no está disponible. Adjunta nuevamente el documento para continuar");
           ocrDispatchedTempRef.current = null;
           return;
         }
 
+        setTempUnavailable(false);
+        setPreviewExpiresAt(recovered.preview?.expiresAt ?? null);
         const recoveredTempId = String(recovered.tempId);
+        materializationAttempt.current = recoveredMaterializationAttempt(recovered);
 
         setArchivo(null);
         setTempId(recoveredTempId);
@@ -559,10 +676,11 @@ export function RegularizarOrdenPagoModal({
             "Documento recuperado. El OCR no dejó datos utilizables; completa los campos manualmente.",
           );
         }
-      } catch {
-        if (cancelled) return;
+      } catch (error) {
+        if (cancelled || version !== generation.current) return;
 
         // La recuperación no bloquea una nueva selección manual.
+        clearDocumentFields();
         setArchivo(null);
         setTempId(null);
         setPreviewUrl(null);
@@ -570,7 +688,7 @@ export function RegularizarOrdenPagoModal({
         setPreviewMime(null);
         setOcrRaw(null);
         setOcrStage("IDLE");
-        setOcrMessage(null);
+        setOcrMessage(mensajeError(error));
         ocrDispatchedTempRef.current = null;
       }
     })();
@@ -593,6 +711,11 @@ export function RegularizarOrdenPagoModal({
 
     const ordenPagoId = ordenPago.ordenPagoId;
 
+    generation.current += 1;
+    setTempUnavailable(false); setPreviewExpiresAt(null);
+    clearDocumentFields();
+    setConfirmError(null);
+    setPreviewUrl(null);
     setArchivo(file);
     setTempId(null);
     setPreviewNombre(file.name);
@@ -733,6 +856,9 @@ export function RegularizarOrdenPagoModal({
   function handleTipoChange(value: string) {
     const nextTipo = (value || null) as RegularizadorOperativo | null;
 
+    generation.current += 1;
+    setTempUnavailable(false); setPreviewExpiresAt(null);
+    clearDocumentFields();
     setTipoSeleccionado(nextTipo);
     setArchivo(null);
     setTempId(null);
@@ -744,8 +870,13 @@ export function RegularizarOrdenPagoModal({
     setOcrMessage(null);
     setOcrStage("IDLE");
     setMaterializedDocumentoId(null);
+    setTempUnavailable(false); setPreviewExpiresAt(null);
     setConfirmando(false);
     setConfirmError(null);
+    setDuplicateDocumentoId(null);
+    setDuplicateNavigation(null);
+    materializationAttempt.current = null;
+    generation.current += 1;
     ocrDispatchedTempRef.current = null;
 
     setFactura({
@@ -803,6 +934,7 @@ export function RegularizarOrdenPagoModal({
       !ordenPago ||
       !tipoSeleccionado ||
       !tempId ||
+      tempUnavailable ||
       confirmando ||
       (tipoSeleccionado === "FACTURA" && !facturaCompleta) ||
       (tipoSeleccionado === "RECIBO_HONORARIO" &&
@@ -815,9 +947,14 @@ export function RegularizarOrdenPagoModal({
     setConfirmError(null);
 
     try {
-      let documentoId = materializedDocumentoId;
+      const refreshed = await renovarPreview();
+      if (!refreshed) return;
+      let documentoId = typeof refreshed === "object" ? refreshed.documentoId : materializedDocumentoId;
 
       if (!documentoId) {
+        if (materializationAttempt.current?.tempId !== tempId) {
+          materializationAttempt.current = { tempId, key: newIdempotencyKey("op-regularizador-materializar") };
+        }
         const materializada =
           tipoSeleccionado === "FACTURA"
             ? await materializarFacturaTemporalOrdenPago(
@@ -833,7 +970,7 @@ export function RegularizarOrdenPagoModal({
                     montoTotal: factura.montoTotal.trim(),
                   },
                 },
-                newIdempotencyKey("op-factura-materializar"),
+                materializationAttempt.current.key,
               )
             : await materializarReciboHonorarioTemporalOrdenPago(
                 tempId,
@@ -849,7 +986,7 @@ export function RegularizarOrdenPagoModal({
                     montoTotal: reciboHonorario.montoTotal.trim(),
                   },
                 },
-                newIdempotencyKey("op-recibo-honorario-materializar"),
+                materializationAttempt.current.key,
               );
 
         documentoId = Number(materializada.documentoId);
@@ -960,7 +1097,7 @@ export function RegularizarOrdenPagoModal({
                   <Input
                     type="file"
                     accept="application/pdf,image/*"
-                    disabled={!tipoSeleccionado}
+                    disabled={!tipoSeleccionado || confirmando || ocrStage === "UPLOADING" || ocrStage === "PROCESSING"}
                     onChange={(event) => {
                       const file = event.target.files?.[0] ?? null;
                       event.target.value = "";
@@ -1124,6 +1261,10 @@ export function RegularizarOrdenPagoModal({
                   Datos del documento regularizador
                 </p>
 
+                {tempUnavailable ? (
+                  <p role="alert" className="mt-3 text-sm text-amber-700">{ocrMessage}</p>
+                ) : null}
+
                 {ocrStage !== "IDLE" ? (
                   <div className="mt-3 rounded-lg border bg-muted/20 p-3 text-sm">
                     <div className="flex items-center justify-between gap-3">
@@ -1162,8 +1303,8 @@ export function RegularizarOrdenPagoModal({
                   </div>
                 ) : null}
 
-                {tipoSeleccionado === "FACTURA" ? (
-                  <div className="mt-3 grid grid-cols-2 gap-3">
+                {!tempUnavailable && tipoSeleccionado === "FACTURA" ? (
+                  <fieldset disabled={materializedDocumentoId !== null} className="mt-3 grid grid-cols-2 gap-3">
                     <label className="text-sm">
                       <span className="mb-1 block font-medium">Serie</span>
                       <Input
@@ -1262,11 +1403,11 @@ export function RegularizarOrdenPagoModal({
                         <option value="USD">USD</option>
                       </select>
                     </label>
-                  </div>
+                  </fieldset>
                 ) : null}
 
-                {tipoSeleccionado === "RECIBO_HONORARIO" ? (
-                  <div className="mt-3 grid grid-cols-2 gap-3">
+                {!tempUnavailable && tipoSeleccionado === "RECIBO_HONORARIO" ? (
+                  <fieldset disabled={materializedDocumentoId !== null} className="mt-3 grid grid-cols-2 gap-3">
                     <label className="text-sm">
                       <span className="mb-1 block font-medium">Serie</span>
                       <Input
@@ -1367,7 +1508,7 @@ export function RegularizarOrdenPagoModal({
                         <option value="USD">USD</option>
                       </select>
                     </label>
-                  </div>
+                  </fieldset>
                 ) : null}
 
                 <p className="mt-3 text-xs text-muted-foreground">

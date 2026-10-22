@@ -196,7 +196,67 @@ export class TmpRepository {
       LIMIT 1
     `;
 
-    return row ?? null;
+    if (row) return row;
+
+    // Historical TEMP operations are not unique per OP/type. Never choose an
+    // arbitrary promoted document when the pending candidate no longer exists.
+    const promoted = await c`
+      SELECT * FROM documentos.carga_operaciones
+      WHERE operacion_tipo='tmp' AND actor_id=${actor.actorId}
+        AND workspace_id=${actor.workspaceId} AND empresa_codigo=${actor.empresaCodigo}
+        AND cliente_destino_id=${actor.clienteDestinoId}
+        AND metadata->'regularizacionOp'->>'consumer'='REGULARIZACION_OP'
+        AND metadata->'regularizacionOp'->>'ordenPagoId'=${String(ordenPagoId)}
+        AND metadata->'regularizacionOp'->>'tipoRegularizador'=${tipoRegularizador}
+        AND promovida_en IS NOT NULL
+      ORDER BY id DESC LIMIT 2
+    `;
+    if (promoted.length > 1) throw new ConflictException('TEMP_REGULARIZACION_OP_RECOVERY_AMBIGUOUS');
+    return promoted[0] ?? null;
+  }
+
+  async promotedRegularizacionOpIdentity(c: Connection, row: TmpRow, actor: Identity, ordenPagoId: number, tipo: string) {
+    const rows = await c`
+      SELECT d.id AS "documentoId", a.id AS "archivoId",
+        d.serie, d.numero, d.fecha_emision::text AS "fechaEmision",
+        d.ruc_emisor AS "rucEmisor", d.razon_social_emisor AS "razonSocialEmisor",
+        d.moneda, d.monto_total::text AS "montoTotal",
+        a.storage_provider, a.storage_bucket, a.storage_key, a.hash_sha256
+      FROM documentos.documentos_operativos_principales p
+      JOIN documentos.contenedores_operativos co ON co.id=p.contenedor_operativo_id
+      JOIN documentos.documentos principal ON principal.id=p.documento_id
+      JOIN documentos.documentos d ON d.id=${row.documento_id}
+      JOIN documentos.documentos_archivos a ON a.id=${row.archivo_id} AND a.documento_id=d.id
+      WHERE p.id=${ordenPagoId} AND p.tipo_principal='ORDEN_PAGO'
+        AND p.estado='activo' AND p.es_principal_activo=true AND co.estado='activo'
+        AND principal.tipo_documental='ORDEN_PAGO'
+        AND principal.estado NOT IN ('anulado','observado','duplicado_versionado')
+        AND co.empresa_codigo=${actor.empresaCodigo} AND co.cliente_destino_id=${actor.clienteDestinoId}
+        AND principal.cliente_abreviatura=${actor.empresaCodigo}
+        AND d.cliente_abreviatura=${actor.empresaCodigo} AND d.tipo_documental=${tipo} AND d.estado='confirmado'
+        AND a.workspace_id=${actor.workspaceId} AND a.empresa_codigo=${actor.empresaCodigo}
+        AND a.cliente_destino_id=${actor.clienteDestinoId} AND a.carga_operacion_id=${row.id}
+        AND a.estado NOT IN ('anulado','duplicado_absorbido') AND a.es_version_actual=true
+        AND NOT EXISTS (
+          SELECT 1 FROM documentos.grupos_factura g
+          WHERE g.factura_documento_id=d.id AND g.estado<>'anulado'
+        )
+        AND NOT EXISTS (
+          SELECT 1 FROM documentos.grupo_factura_documentos rel
+          JOIN documentos.grupos_factura g ON g.id=rel.grupo_factura_id
+          WHERE rel.estado='activo' AND rel.documento_id=d.id
+            AND (g.documento_operativo_principal_id<>p.id OR g.origen_obligacion<>'ORDEN_PAGO' OR g.estado='anulado')
+        )
+        AND NOT EXISTS (
+          SELECT 1 FROM documentos.grupos_factura g
+          JOIN documentos.grupo_factura_documentos rel ON rel.grupo_factura_id=g.id
+          WHERE g.documento_operativo_principal_id=p.id AND g.origen_obligacion='ORDEN_PAGO'
+            AND rel.estado='activo' AND rel.tipo_relacion IN ('regularizador_factura','regularizador_recibo_honorario')
+            AND rel.documento_id<>d.id
+        )
+    `;
+    if (rows.length !== 1) throw new ConflictException('TEMP_REGULARIZACION_OP_PROMOTED_IDENTITY_CONFLICT');
+    return rows[0];
   }
   async bind(c: Connection, row: TmpRow, destination: string, identity: string) {
     const metadata = { ...row.metadata, destinoReservado: destination, promocionIdentity: identity };
