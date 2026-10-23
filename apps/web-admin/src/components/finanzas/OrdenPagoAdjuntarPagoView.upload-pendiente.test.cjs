@@ -48,7 +48,7 @@ test("seleccionar archivo desde el botón dispara pipeline automáticamente", ()
 
 test("pipeline representa carga y OCR sin segundo click", () => {
   assert.match(view, /setMensajePipeline\("Cargando archivo…"\)/);
-  assert.match(view, /setMensajePipeline\("Procesando OCR…"\)/);
+  assert.match(view, /await iniciarOcrCargaNueva\(uploadPersistido\)/);
   assert.doesNotMatch(view, /Guardar sustento/);
 });
 
@@ -59,7 +59,7 @@ test("archivoId persistido cambia autoridad antes de OCR", () => {
     persisted,
   );
   const ocr = view.indexOf(
-    "const resultadoProcesamiento = await procesarArchivoOcr",
+    "await continuarValidacion(uploadPersistido)",
     persisted,
   );
 
@@ -71,21 +71,21 @@ test("archivoId persistido cambia autoridad antes de OCR", () => {
 
 test("primera carga abre modal automáticamente con OCR obtenido", () => {
   const getResult = view.indexOf(
-    "const resultadoOcr = await getOcrResultado(resultadoId)",
+    "const resultado = await getOcrResultado(id)",
   );
-  const open = view.indexOf("setOcrResultado(resultadoOcr)", getResult);
+  const open = view.indexOf("setOcrResultado(resultado)", getResult);
 
   assert.ok(getResult > 0);
   assert.ok(open > getResult);
-  assert.match(view, /open=\{ocrResultado !== null\}/);
+  assert.match(view, /open=\{ocrResultado !== null \|\| ocrInicialArchivoId !== null\}/);
 });
 
 test("reload conserva Ver y Revisar OCR manual", () => {
   assert.match(view, />\s*Ver\s*</);
-  assert.match(view, />\s*Revisar OCR\s*</);
+  assert.match(view, /Editar OCR/);
   assert.match(
     view,
-    /numeroPositivo\(recuperacionUpload\?\.ocr\?\.ocrResultadoId\)/,
+    /numeroPositivo\(observacion\?\.ocrResultadoId \?\? recuperacionUpload\?\.ocr\?\.ocrResultadoId\)/,
   );
   assert.match(view, /const resultado = await getOcrResultado\(id\)/);
 });

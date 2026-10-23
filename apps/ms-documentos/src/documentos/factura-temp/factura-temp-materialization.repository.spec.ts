@@ -189,6 +189,10 @@ describe('R26-D2 FACTURA TEMP repository fiscal', () => {
           return [];
         }
 
+        if (q.includes('SELECT p.id AS "principalId"')) {
+          return []; // No associated obligation: retain the generic duplicate conflict.
+        }
+
         throw new Error(`SQL_NO_MOCKEADO: ${q}`);
       },
     );

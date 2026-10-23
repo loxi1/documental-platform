@@ -119,7 +119,7 @@ const modalCode = ts.transpileModule(modalSource, { compilerOptions: { module: t
 function modal(modo, readOnly = false) {
   const exports = {};
   vm.runInNewContext(modalCode, { exports, React, require(name) {
-    if (name === 'react') return { useState: initial => [typeof initial === 'function' ? initial() : initial, () => {}], useMemo: fn => fn(), useEffect() {} };
+    if (name === 'react') return { useState: initial => [typeof initial === 'function' ? initial() : initial, () => {}], useMemo: fn => fn(), useEffect() {}, useRef: value => ({ current: value }) };
     if (name.includes('catalogos')) return { BANCO_OPTIONS: [], MONEDA_OPTIONS: [], hasCatalogValue: () => true };
     return {};
   } });

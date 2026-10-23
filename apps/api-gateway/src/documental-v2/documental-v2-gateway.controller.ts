@@ -994,6 +994,19 @@ export class DocumentalV2GatewayController {
     }
   }
 
+  @Post('finanzas/ordenes-pago/:ordenPagoId/pagos/:vinculoId/observar')
+  async observarPagoConfirmadoOp(@Headers('authorization') authorization: string | undefined,
+    @Headers(REQUEST_ID_HEADER) requestId: string | undefined, @Param('ordenPagoId') ordenPagoId: string,
+    @Param('vinculoId') vinculoId: string, @Body() body: unknown) {
+    const contexto = await this.validateAuthorization(authorization);
+    this.assertFinanzasOp(contexto);
+    try {
+      const response = await axios.post(`${this.getBaseUrl()}/documental-v2/finanzas/ordenes-pago/${encodeURIComponent(ordenPagoId)}/pagos/${encodeURIComponent(vinculoId)}/observar`, body,
+        { headers: this.buildDocumentosForwardHeaders(authorization, requestId, contexto) });
+      return this.unwrap(response);
+    } catch (error: any) { this.throwUpstreamHttpException(error); }
+  }
+
   @Post('finanzas/ordenes-pago/:ordenPagoId/confirmar-pago')
   async confirmarPagoOrdenPago(
     @Headers('authorization') authorization: string | undefined,

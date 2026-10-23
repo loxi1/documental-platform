@@ -437,6 +437,7 @@ export class ExpedientesGatewayController {
       authorization,
       requestId,
       query: scopedQuery,
+      contexto,
     });
   }
 
@@ -801,6 +802,7 @@ export class ExpedientesGatewayController {
       authorization,
       requestId,
       query: scopedQuery,
+      contexto,
     });
   }
 
@@ -820,6 +822,7 @@ export class ExpedientesGatewayController {
       authorization,
       requestId,
       query: scopedQuery,
+      contexto,
     });
   }
 
@@ -830,6 +833,7 @@ export class ExpedientesGatewayController {
     requestId?: string;
     query?: Record<string, unknown>;
     body?: unknown;
+    contexto?: any;
   }) {
     const result = await this.proxy(params);
     return result?.data ?? result;
@@ -872,15 +876,17 @@ export class ExpedientesGatewayController {
       const headers = this.buildHeaders(params.authorization, params.requestId);
 
       if (params.contexto) {
-        const usuarioId = Number(params.contexto?.sub ?? params.contexto?.usuarioId ?? NaN);
-        if (Number.isSafeInteger(usuarioId) && usuarioId > 0) {
-          headers['x-user-id'] = String(usuarioId);
-        }
+        const usuarioId = Number(
+          params.contexto?.sub ?? params.contexto?.usuarioId ?? NaN,
+        );
         const workspaceId = Number(params.contexto?.workspaceId ?? NaN);
         const clienteDestinoId =
           this.getClienteDestinoIdFromContext(params.contexto);
         const empresaCodigo = this.getEmpresaFromContext(params.contexto);
 
+        if (Number.isSafeInteger(usuarioId) && usuarioId > 0) {
+          headers['x-user-id'] = String(usuarioId);
+        }
         if (Number.isFinite(workspaceId) && workspaceId > 0) {
           headers['x-workspace-id'] = String(workspaceId);
         }

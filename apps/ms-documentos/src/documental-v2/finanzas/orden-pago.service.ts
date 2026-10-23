@@ -92,6 +92,7 @@ export class OrdenPagoService {
         AND a.metadata->>'grupoFacturaId' = ${String(grupoFacturaId)}
         AND a.metadata->>'tipoRelacion' = 'adjunto_transferencia'
         AND COALESCE(a.estado, '') NOT IN ('anulado', 'duplicado_absorbido')
+        AND COALESCE(d.estado, '') <> 'observado'
         AND NOT EXISTS (
           SELECT 1
           FROM documentos.ocr_resultados o_resuelto
@@ -212,6 +213,7 @@ export class OrdenPagoService {
         os.grupo_factura_id IS NOT NULL AS "tieneSnapshot",
         co.codigo AS "conceptoCodigo",
         co.nombre AS "conceptoNombre",
+        co.clasificacion AS "conceptoClasificacion",
         os.requiere_regularizacion_aplicada AS "requiereRegularizacion",
         os.estado_regularizacion AS "estadoRegularizacion",
         os.periodo_anio AS "periodoAnio",
@@ -264,6 +266,10 @@ export class OrdenPagoService {
       ? String(row.conceptoNombre)
       : null;
 
+    const conceptoClasificacion = row.tieneSnapshot && row.conceptoClasificacion != null
+      ? String(row.conceptoClasificacion)
+      : null;
+
     const tipo = row.tieneSnapshot ? null : row.tipo;
     const subtipo = row.tieneSnapshot ? null : row.subtipo;
     const tiposDocumentalesRegularizadoresPermitidos = row.tieneSnapshot
@@ -286,10 +292,99 @@ export class OrdenPagoService {
           : `OP-${row.ordenPagoId}`,
       conceptoCodigo,
       conceptoNombre,
+      conceptoClasificacion,
       tiposDocumentalesRegularizadoresPermitidos,
       tipo,
       subtipo,
     };
+  }
+
+  /** Reversión OP: conserva OCR/archivo y la decisión previa; solo retira el vínculo financiero. */
+  async observarPagoConfirmado(ordenPagoId: number, vinculoId: number, body: unknown, actor: OrdenPagoActor) {
+    validarActorOp(actor);
+    if (![ordenPagoId, vinculoId].every(id => Number.isSafeInteger(id) && id > 0)) throw new BadRequestException('Identidad de pago inválida');
+    if (!body || typeof body !== 'object' || Array.isArray(body) || Object.keys(body).some(k => k !== 'motivo')) throw new BadRequestException('Solicitud de observación inválida');
+    const motivo = (body as { motivo?: unknown }).motivo;
+    if (typeof motivo !== 'string' || !motivo.trim() || motivo.trim().length > 2000) throw new BadRequestException('Motivo obligatorio, máximo 2000 caracteres');
+    return sql.begin(async tx => {
+      // La OP y su vínculo se acreditan con relaciones persistidas y el actor reenviado por Gateway.
+      const rows = await tx`
+        SELECT v.id, v.documento_id AS "documentoId", a.id AS "archivoId", v.estado,
+          d.estado AS "estadoDocumento", v.motivo_anulacion AS motivo,
+          v.anulado_por AS "usuarioId", v.anulado_en AS fecha, o.id AS "ocrResultadoId",
+          o.metadata->'validacionPendientePago' AS decision, g.id AS "grupoFacturaId", p.documento_id AS "documentoBaseId", c.expediente_v1_id AS "expedienteId"
+        FROM documentos.grupo_factura_documentos v
+        JOIN documentos.grupos_factura g ON g.id=v.grupo_factura_id AND g.origen_obligacion='ORDEN_PAGO' AND g.estado<>'anulado'
+        JOIN documentos.documentos_operativos_principales p ON p.id=g.documento_operativo_principal_id
+          AND p.id=${ordenPagoId} AND p.tipo_principal='ORDEN_PAGO' AND p.estado='activo' AND p.es_principal_activo=true
+        JOIN documentos.documentos principal ON principal.id=p.documento_id AND principal.tipo_documental='ORDEN_PAGO' AND principal.estado<>'anulado'
+        JOIN documentos.contenedores_operativos c ON c.id=p.contenedor_operativo_id AND c.estado='activo'
+        JOIN documentos.documentos d ON d.id=v.documento_id AND d.tipo_documental='TRANSFERENCIA' AND d.cliente_abreviatura=c.empresa_codigo
+        JOIN documentos.documentos_archivos a ON a.documento_id=d.id AND a.es_version_actual=true
+          AND a.workspace_id=${actor.workspaceId} AND a.empresa_codigo=${actor.empresaCodigo}
+          AND a.cliente_destino_id IS NOT DISTINCT FROM ${actor.clienteDestinoId}::bigint
+          AND a.expediente_id=c.expediente_v1_id
+          AND a.metadata->>'documentoBaseId'=p.documento_id::text
+          AND a.metadata->>'grupoFacturaId'=g.id::text AND a.metadata->>'tipoRelacion'='adjunto_transferencia'
+          AND COALESCE(a.estado,'') NOT IN ('anulado','duplicado_absorbido')
+        JOIN documentos.ocr_resultados o ON o.documento_id=d.id AND o.archivo_id=a.id AND o.estado='confirmado'
+        WHERE v.id=${vinculoId} AND v.tipo_relacion='adjunto_transferencia'
+          AND c.empresa_codigo=${actor.empresaCodigo} AND principal.cliente_abreviatura=c.empresa_codigo
+          AND c.cliente_destino_id IS NOT DISTINCT FROM ${actor.clienteDestinoId}::bigint
+        FOR UPDATE OF a, d, o, v
+      `;
+      if (rows.length !== 1) throw new NotFoundException('Sustento confirmado no disponible para esta OP');
+      const row = rows[0];
+      if (row.estado === 'anulado' && row.estadoDocumento === 'observado') {
+        const [evento] = await tx`SELECT id FROM core.auditoria_eventos
+          WHERE entidad='grupo_factura_documento' AND entidad_id=${String(vinculoId)}
+            AND accion='CORRESPONDENCIA_PAGO_FACTURA_DECIDIDA'
+            AND despues->>'accion'='OBSERVAR' AND despues->>'estadoResultante'='OBSERVADA'
+          LIMIT 1`;
+        if (!evento) throw new ConflictException('Observación sin trazabilidad acreditada');
+        return { vinculoId, documentoId: Number(row.documentoId), archivoId: Number(row.archivoId), estado: 'OBSERVADO', motivo: row.motivo, idempotente: true };
+      }
+      if (row.estado !== 'activo' || row.estadoDocumento !== 'confirmado') throw new ConflictException('El sustento no es un pago confirmado activo');
+      // d ya está bloqueado FOR UPDATE. Sus FK inmediatas impiden insertar/mover
+      // referencias hacia él durante esta transición. Bloquear también las filas
+      // existentes evita que se reactiven o cambien de contexto tras verificarlas.
+      // No se consideran prueba de exclusividad los metadatos del archivo por sí solos.
+      const documentoId = Number(row.documentoId);
+      const vinculos = await tx`SELECT id, estado FROM documentos.grupo_factura_documentos WHERE documento_id=${documentoId} ORDER BY id FOR UPDATE`;
+      const principales = await tx`SELECT estado FROM documentos.documentos_operativos_principales WHERE documento_id=${documentoId} ORDER BY id FOR UPDATE`;
+      const obligaciones = await tx`SELECT estado FROM documentos.grupos_factura WHERE factura_documento_id=${documentoId} ORDER BY id FOR UPDATE`;
+      const expedientes = await tx`SELECT expediente_id, tipo_relacion, es_principal FROM documentos.expediente_documentos WHERE documento_id=${documentoId} ORDER BY expediente_id FOR UPDATE`;
+      const grupos = await tx`SELECT id FROM documentos.grupo_documentos WHERE documento_id=${documentoId} ORDER BY id FOR UPDATE`;
+      const relaciones = await tx`SELECT id FROM documentos.documento_relaciones WHERE documento_origen_id=${documentoId} OR documento_destino_id=${documentoId} ORDER BY id FOR UPDATE`;
+      const asientos = await tx`SELECT id FROM documentos.asientos_documentos WHERE documento_id=${documentoId} ORDER BY id FOR UPDATE`;
+      const compartido = vinculos.some(v => Number(v.id) !== vinculoId && v.estado === 'activo') ||
+        principales.some(p => p.estado === 'activo') || obligaciones.some(g => g.estado !== 'anulado') ||
+        expedientes.some(e => Number(e.expediente_id) !== Number(row.expedienteId) || e.es_principal !== false || e.tipo_relacion !== 'adjunto_transferencia') ||
+        grupos.length > 0 || relaciones.length > 0 || asientos.length > 0;
+      if (compartido) throw new ConflictException({ code: 'OP_PAGO_DOCUMENTO_COMPARTIDO', message: 'El sustento tiene otras referencias documentales y no puede observarse desde esta Orden de Pago.' });
+      const changed = await tx`UPDATE documentos.grupo_factura_documentos
+        SET estado='anulado', motivo_anulacion=${motivo.trim()}, anulado_por=${actor.id}, anulado_en=now(), actualizado_por=${actor.id}, actualizado_en=now()
+        WHERE id=${vinculoId} AND estado='activo' RETURNING id`;
+      if (changed.length !== 1) throw new ConflictException('El pago cambió durante la observación');
+      await tx`UPDATE documentos.documentos SET estado='observado' WHERE id=${Number(row.documentoId)} AND estado='confirmado'`;
+      // Una confirmación ordinaria puede no tener draft. Consumir solo la decisión aún no resuelta
+      // mantiene la protección existente sin modificar ni reemplazar decisiones consumidas previas.
+      if (row.decision?.estado !== 'CONSUMIDO') {
+        const identidad = { ocrResultadoId: Number(row.ocrResultadoId), documentoId: Number(row.documentoId), archivoId: Number(row.archivoId),
+          expedienteId: Number(row.expedienteId), documentoBaseId: Number(row.documentoBaseId), grupoFacturaId: Number(row.grupoFacturaId), facturaDocumentoId: null };
+        const consumed = await tx`UPDATE documentos.ocr_resultados SET metadata=jsonb_set(COALESCE(metadata,'{}'::jsonb), '{validacionPendientePago}',
+          COALESCE(metadata->'validacionPendientePago','{}'::jsonb) || jsonb_build_object('estado','CONSUMIDO','accion','OBSERVAR','motivo',${motivo.trim()}::text,'consumidoEn',now(),'identidad',${JSON.stringify(identidad)}::jsonb),true)
+          WHERE id=${Number(row.ocrResultadoId)} AND COALESCE(metadata #>> '{validacionPendientePago,estado}','')<>'CONSUMIDO' RETURNING id`;
+        if (consumed.length !== 1) throw new ConflictException('La decisión financiera cambió durante la observación');
+      }
+      await this.auditoria.registrarDecisionCorrespondencia({
+        accion: 'CORRESPONDENCIA_PAGO_FACTURA_DECIDIDA', entidad: 'grupo_factura_documento', entidadId: vinculoId,
+        descripcion: 'Observación de sustento OP confirmado y reversión de su vínculo financiero.', empresaCodigo: actor.empresaCodigo, usuario: actor,
+        antes: { estado: 'activo', estadoDocumento: 'confirmado', documentoId: Number(row.documentoId), archivoId: Number(row.archivoId) },
+        despues: { accion: 'OBSERVAR', estadoResultante: 'OBSERVADA', estado: 'anulado', motivo: motivo.trim(), documentoId: Number(row.documentoId), archivoId: Number(row.archivoId), ordenPagoId },
+      }, tx);
+      return { vinculoId, documentoId: Number(row.documentoId), archivoId: Number(row.archivoId), estado: 'OBSERVADO', motivo: motivo.trim(), idempotente: false };
+    });
   }
 
   async confirmarPago(

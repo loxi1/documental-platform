@@ -38,7 +38,7 @@ test("T18 Ver OP conserva loader e identidad propios de Orden de Pago", () => {
   assert.match(page, /getOrdenPago\(ordenPagoId\)/);
   assert.match(
     page,
-    /getDocumentoArchivos\(detalle!\.documentoId\)/,
+    /getDocumentoEconomicoOp\(regularizadorId\)/,
   );
   assert.match(
     page,
@@ -56,8 +56,7 @@ test("T19 Ver OP alinea jerarquía visual sin identidad de expediente", () => {
     "Beneficiario",
     "Estado regularización",
     "Referencia",
-    "Sustento de la orden",
-    "Documento regularizador",
+    "Documento económico",
   ]) {
     assert.match(view, new RegExp(label));
   }
@@ -88,7 +87,7 @@ test("Ver OP representa FACTURA y RH como documentos económicos", () => {
 test("Ver OP conserva estado vacío y preview por archivoId", () => {
   assert.match(
     view,
-    /Sin documento regularizador asociado\./,
+    /Sin documento económico asociado\./,
   );
   assert.match(
     view,
@@ -96,15 +95,11 @@ test("Ver OP conserva estado vacío y preview por archivoId", () => {
   );
 });
 
-test("archivoInicial se deduplica exclusivamente por archivoId", () => {
-  assert.match(
-    view,
-    /new Map<number, SustentoOrden>\(\)/,
-  );
-  assert.match(
-    view,
-    /!unique\.has\(inicial\.archivoId\)/,
-  );
+test("principal conserva solo el botón de su archivo inicial", () => {
+  assert.doesNotMatch(view, /Sustento de la orden/);
+  assert.match(view, /archivoId: detalle\.archivoInicial!\.archivoId/);
+  assert.doesNotMatch(view, /label="Estado"/);
+  assert.match(view, /label="Estado regularización"/);
 });
 
 test("principal lógico no fabrica PreviewDocumento", () => {
@@ -112,9 +107,7 @@ test("principal lógico no fabrica PreviewDocumento", () => {
     view.indexOf("export function OrdenPagoVerView"),
   );
   const jsx = component.slice(component.indexOf("  return ("));
-  const principal = jsx.split(
-    "Sustento de la orden",
-  )[0];
+  const principal = jsx.split("Documento económico")[0];
 
   assert.doesNotMatch(principal, /<PreviewDocumento/);
 });
@@ -243,7 +236,7 @@ test("V05-V06 Ver OP conserva route identity ordenPagoId y loader propio", () =>
   assert.match(page, /getOrdenPago\(ordenPagoId\)/);
   assert.match(
     page,
-    /getDocumentoArchivos\(detalle!\.documentoId\)/,
+    /getDocumentoEconomicoOp\(regularizadorId\)/,
   );
   assert.match(
     page,
@@ -267,7 +260,7 @@ test("V07 OP permanece como documento principal", () => {
 
 test("V08 documento económico permanece separado del principal", () => {
   const principal = view.indexOf("Documento principal");
-  const regularizador = view.indexOf("Documento regularizador");
+  const regularizador = view.indexOf("Documento económico");
 
   assert.ok(principal >= 0);
   assert.ok(regularizador > principal);
@@ -282,25 +275,11 @@ test("V08 documento económico permanece separado del principal", () => {
   );
 });
 
-test("V09 archivos y sustentos de la orden permanecen separados del documento económico", () => {
-  const sustento = view.indexOf("Sustento de la orden");
-  const regularizador = view.indexOf("Documento regularizador");
-
-  assert.ok(sustento >= 0);
-  assert.ok(regularizador > sustento);
-
-  assert.match(
-    view,
-    /const unique = new Map<number, SustentoOrden>\(\);/,
-  );
-  assert.match(
-    view,
-    /!unique\.has\(inicial\.archivoId\)/,
-  );
-  assert.match(
-    view,
-    /Sin sustento inicial asociado a la orden\./,
-  );
+test("V09 elimina el bloque redundante sin quitar pagos o el documento económico", () => {
+  assert.doesNotMatch(view, /Sustento de la orden/);
+  assert.match(view, /Documento económico/);
+  assert.match(view, /sustentosActivos/);
+  assert.match(view, /resumen\.archivoId/);
 });
 
 test("V10 estado de regularización permanece visible y autoritativo", () => {
@@ -329,4 +308,56 @@ test("V11 Ver OP conserva estructura visual de familia Finanzas", () => {
   );
 
   assert.doesNotMatch(view, /detalle\.expedienteId/);
+});
+
+// Execute the actual presentation/selection functions without HTTP or database access.
+const vm = require('node:vm');
+const ts = require('typescript');
+function viewFunction(name) {
+  const tree = ts.createSourceFile('view.tsx', view, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  const names = ['asRecord', 'text', 'nestedRecord', 'documentoSources', 'pickFromSources', 'tipoEconomico', 'seleccionarRegularizadorActivo', 'documentoEconomicoResumen'];
+  const code = tree.statements.filter(n => ts.isFunctionDeclaration(n) && names.includes(n.name?.text)).map(n => n.getText(tree).replace(/^export /, '')).join('\n');
+  return vm.runInNewContext(ts.transpileModule(code + '\nresult = '+name, {compilerOptions: {target: ts.ScriptTarget.ES2021}}).outputText, {});
+}
+const selectActive = viewFunction('seleccionarRegularizadorActivo');
+const economicSummary = viewFunction('documentoEconomicoResumen');
+const invoice = {documentoId: 42, estado: 'activo', tipoRelacion: 'regularizador_factura', documento: {tipo_documental: 'FACTURA', estado: 'activo', serie: 'F001', numero: '123', razon_social_emisor: 'Emisor fixture', ruc_emisor: '20123456789', fecha_emision: '2026-10-20', monto_total: '25', moneda: 'PEN'}, archivoId: 84};
+test('documento económico uses only active regularizer links, never arbitrary invoices', () => {
+  assert.equal(selectActive([]), null);
+  assert.equal(selectActive([{...invoice, tipoRelacion: 'adjunto_factura'}]), null);
+  for (const estado of ['anulado', 'observado']) {
+    assert.equal(selectActive([{...invoice, estado}]), null);
+    assert.equal(selectActive([{...invoice, documento: {...invoice.documento, estado}}]), null);
+  }
+  assert.equal(selectActive([invoice]), invoice);
+  assert.equal(selectActive([invoice, {...invoice, documentoId: 43}]), null);
+});
+test('Factura displays its identity, issuer, amount and own file', () => {
+  const result = economicSummary(invoice);
+  assert.equal(result.numero, 'F001-123');
+  assert.equal(result.emisor, 'Emisor fixture');
+  assert.equal(result.ruc, '20123456789');
+  assert.equal(result.fecha, '2026-10-20');
+  assert.equal(result.monto, '25');
+  assert.equal(result.moneda, 'PEN');
+  assert.equal(result.archivoId, 84);
+});
+test('RH uses the associated receipt and its issuer name', () => {
+  const rh = {...invoice, tipoRelacion: 'regularizador_recibo_honorario', documento: {...invoice.documento, tipo_documental: 'RECIBO_HONORARIO', razon_social_emisor: 'Persona fixture'}};
+  assert.equal(selectActive([rh]), rh);
+  assert.equal(economicSummary(rh).label, 'RECIBO POR HONORARIOS');
+  assert.equal(economicSummary(rh).emisor, 'Persona fixture');
+});
+test('missing economic file preserves data without borrowing an old or principal file', () => {
+  const missing = {...invoice, archivoId: null, metadata: {archivoId: 999}};
+  const result = economicSummary(missing);
+  assert.equal(result.archivoId, null);
+  assert.equal(result.numero, 'F001-123');
+  assert.equal(result.emisor, 'Emisor fixture');
+});
+
+test("vista utiliza concepto/clasificación y nunca tipo/subtipo legacy", () => {
+  assert.match(view, /label="Concepto" value=\{text\(detalle\.conceptoNombre, "Sin concepto asociado"\)\}/);
+  assert.match(view, /label="Clasificación" value=\{text\(detalle\.conceptoClasificacion, "—"\)\}/);
+  assert.doesNotMatch(view, /detalle\.tipo\b|detalle\.subtipo\b|label="Tipo"|label="Subtipo"/);
 });

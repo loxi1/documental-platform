@@ -4,7 +4,9 @@ import { useParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 
 import { OrdenPagoAdjuntarPagoView } from "@/components/finanzas/OrdenPagoAdjuntarPagoView";
-import { getOrdenPago, getResumenFinancieroGrupo } from "@/services/finanzas";
+import { getOrdenPago, getResumenFinancieroGrupo, getDocumentoEconomicoOp } from "@/services/finanzas";
+import { getGrupoFacturaDocumentosV2 } from "@/services/documental-v2-workspace";
+import { seleccionarRegularizadorActivo, documentoEconomicoResumen } from "@/components/finanzas/OrdenPagoVerView";
 import { getContexto } from "@/lib/auth-storage";
 
 export default function OrdenPagoAdjuntarPagoPage() {
@@ -38,6 +40,29 @@ export default function OrdenPagoAdjuntarPagoPage() {
       grupoFacturaIdValido,
   });
 
+  const documentosGrupo = useQuery({
+    queryKey: ["op-adjuntar-documentos-grupo", contexto?.workspaceId, contexto?.sub, grupoFacturaId],
+    queryFn: () => getGrupoFacturaDocumentosV2(grupoFacturaId),
+    enabled: idValido && !!contexto?.workspaceId && grupoFacturaIdValido && !consulta.isError,
+  });
+  const regularizador = seleccionarRegularizadorActivo(documentosGrupo.data ?? []);
+  const regularizadorId = Number(regularizador?.documentoId ?? regularizador?.documento_id);
+  const economico = useQuery({
+    queryKey: ["op-adjuntar-documento-economico", contexto?.workspaceId, contexto?.sub, regularizadorId],
+    queryFn: () => getDocumentoEconomicoOp(regularizadorId),
+    enabled: !!contexto?.workspaceId && Number.isSafeInteger(regularizadorId) && regularizadorId > 0,
+  });
+  const documentoConfirmado = regularizador && economico.data &&
+    Number(economico.data.documento.id) === regularizadorId &&
+    String(economico.data.documento.estado).toLowerCase() === "confirmado" &&
+    ["FACTURA", "RECIBO_HONORARIO"].includes(String(economico.data.documento.tipo_documental ?? economico.data.documento.tipoDocumental).toUpperCase());
+  const documentoEconomico = documentoConfirmado ? documentoEconomicoResumen({
+    ...regularizador, ...economico.data!.documento, estado: regularizador.estado,
+    documento: economico.data!.documento,
+    archivoId: economico.data!.actual?.id ?? null,
+    archivo_id: null, archivoActualId: null, archivo_actual_id: null,
+  }) : null;
+
   if (!idValido) return <main><p role="alert">Orden de Pago no disponible.</p></main>;
   if (!contexto?.workspaceId) return <main><p role="alert">Seleccione un contexto para consultar la Orden de Pago.</p></main>;
   if (consulta.isPending) return <main><p role="status">Cargando Orden de Pago…</p></main>;
@@ -63,6 +88,10 @@ export default function OrdenPagoAdjuntarPagoPage() {
   return (
     <OrdenPagoAdjuntarPagoView
       ordenPagoId={String(detalle.ordenPagoId)}
+      detalleDocumental={detalle}
+      documentoEconomico={documentoEconomico}
+      documentoEconomicoLoading={documentosGrupo.isFetching || economico.isFetching}
+      documentoEconomicoError={documentosGrupo.isError || economico.isError}
       expedienteId={detalle.expedienteId}
       empresaCodigo={detalle.empresaCodigo}
       documentoBaseId={detalle.documentoId}
@@ -88,6 +117,10 @@ export default function OrdenPagoAdjuntarPagoPage() {
         ...financiero.sustentosAnulados,
       ].map((item) => ({
         id: item.vinculoId ?? item.documentoId,
+        vinculoId: item.vinculoId,
+        archivoId: item.archivoId,
+        documentoId: item.documentoId,
+        ocrResultadoId: item.ocrResultadoId,
         fecha: item.fecha,
         banco: item.banco,
         referencia: item.numeroReferencia,

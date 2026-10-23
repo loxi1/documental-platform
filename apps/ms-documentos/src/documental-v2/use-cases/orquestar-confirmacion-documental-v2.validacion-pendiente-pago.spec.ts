@@ -88,4 +88,18 @@ describe('33H - consumo atómico del draft', () => {
     expect(sql.begin).toHaveBeenCalledTimes(1);
   });
 
+  function setupOp() {
+    documentosV2.buscarPorId.mockResolvedValue({ id: 21, tipoDocumental: 'ORDEN_PAGO' });
+    (useCase as any).documentosOperativosPrincipales = { buscarActivoPorDocumentoId: jest.fn().mockResolvedValue({ id: 601, documentoId: 21, tipoPrincipal: 'ORDEN_PAGO', estado: 'activo', esPrincipalActivo: true, contenedorOperativoId: 501 }) };
+  }
+  it('OP observation without draft supplies complete canonical identity to same transactional consumption', async () => {
+    setupOp();
+    await useCase.execute(76, { expedienteId: 53, documentoBaseId: 21, grupoFacturaId: 3, origenObligacion: 'ORDEN_PAGO', metadata: { moneda: 'PEN' }, decisionCorrespondencia: { accion: 'OBSERVAR', motivo: 'No corresponde' } }, { usuarioId: 1 });
+    expect(documentosLegacy.consumirValidacionPendientePagoConExecutor).toHaveBeenCalledWith(tx,76,'OBSERVAR','No corresponde',expect.objectContaining({identidad:{ocrResultadoId:76,documentoId:89,archivoId:73,expedienteId:53,documentoBaseId:21,grupoFacturaId:3,facturaDocumentoId:null},request:{metadata:{moneda:'PEN'},observacion:null}}));
+  });
+  it('OP observation rolls back if consumption did not record the decision', async () => {
+    setupOp();documentosLegacy.consumirValidacionPendientePagoConExecutor.mockResolvedValueOnce(null);
+    await expect(useCase.execute(76,{expedienteId:53,documentoBaseId:21,grupoFacturaId:3,origenObligacion:'ORDEN_PAGO',decisionCorrespondencia:{accion:'OBSERVAR',motivo:'No corresponde'}},{usuarioId:1})).rejects.toMatchObject({response:{code:'PAGO_OBSERVACION_NO_CONSUMIDA'}});
+  });
+
 });

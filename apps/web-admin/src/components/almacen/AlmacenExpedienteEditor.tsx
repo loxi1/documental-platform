@@ -548,6 +548,8 @@ function buildResultadoConContexto(
   return {
     ...resultado,
     archivoId: resultado.archivoId ?? extra.archivoId,
+    nombreArchivo: extra.filename,
+    tipoDocumental: resultado.tipoDocumental ?? normalizeTipoDocumentalParaBackend(accion.tipoEsperado),
     tipoRelacionSugerida: accion.tipoRelacionSugerida,
     contextoCarga: {
       origen: "ALMACEN_EDITAR_UPLOAD",
@@ -1714,7 +1716,7 @@ const principalGrupoSeleccionado = grupoFacturaSeleccionado
           documentoBaseId: contextoV2.documentoBaseId,
           tipoRelacionSugerida: accion.tipoRelacionSugerida,
           canalIngreso,
-          reprocesar: true,
+          reprocesar: false,
         });
 
         ensureRecoveryGeneration(recoveryGeneration);
@@ -1780,9 +1782,9 @@ const principalGrupoSeleccionado = grupoFacturaSeleccionado
         accion.tipoEsperado,
       );
 
-      if (tipoEsperado !== "FACTURA") {
+      if (tipoEsperado !== "FACTURA" && tipoEsperado !== "GUIA_REMISION") {
         throw new Error(
-          "La promoción directa de versión solo está habilitada para Factura.",
+          "Solo Factura y Guía admiten adjuntar una versión sin OCR nuevo.",
         );
       }
 
@@ -1804,7 +1806,7 @@ const principalGrupoSeleccionado = grupoFacturaSeleccionado
       await resolverVersionAntiguaAlmacen(documentoId, archivoId, {
         tipoVersion: "escaneado",
         observacion:
-          "Archivo escaneado agregado directamente como versión de Factura desde Almacén.",
+          "Archivo agregado como evidencia del documento existente desde Almacén, sin OCR nuevo.",
         marcarComoActual: true,
       });
     },
@@ -1816,7 +1818,7 @@ const principalGrupoSeleccionado = grupoFacturaSeleccionado
       setVersionDocumentoDestinoDoc(null);
 
       setMensajeValidacion(
-        `Archivo agregado como nueva versión de la Factura ${documentoId}.`,
+        `Archivo agregado como nueva versión del documento ${documentoId}.`,
       );
 
       await Promise.all([
@@ -1835,10 +1837,10 @@ const principalGrupoSeleccionado = grupoFacturaSeleccionado
     onError: async (err, { documentoId }) => {
       setProcessingStep("error");
       setProcessingError(
-        `No se pudo agregar la nueva versión de Factura. ${err.message}`,
+        `No se pudo agregar la nueva versión del documento. ${err.message}`,
       );
       setMensajeValidacion(
-        `No se pudo agregar la nueva versión de Factura. ${err.message}`,
+        `No se pudo agregar la nueva versión del documento. ${err.message}`,
       );
 
       // Una respuesta perdida no demuestra rollback:
@@ -1854,95 +1856,6 @@ const principalGrupoSeleccionado = grupoFacturaSeleccionado
       queryClient.invalidateQueries({
         queryKey: ["almacen-documento-versiones-contador", documentoId],
       });
-    },
-  });
-
-  const versionRealMutation = useMutation<
-    ProcesarOcrResultado,
-    Error,
-    UploadVersionYProcesarArgs
-  >({
-    mutationFn: async ({ accion, file, documentoId }) => {
-      const contextoV2 = requireContextoV2();
-      const tipoEsperado = normalizeTipoDocumentalParaBackend(accion.tipoEsperado);
-
-      if (tipoEsperado !== "FACTURA" && tipoEsperado !== "GUIA_REMISION") {
-        throw new Error("Solo Factura y Guía admiten nuevas versiones en Almacén.");
-      }
-
-      const clienteAbreviatura = text(
-        (expediente as any)?.empresa_codigo ??
-          (expediente as any)?.empresaCodigo ??
-          (expediente as any)?.cliente_abreviatura ??
-          (expediente as any)?.clienteAbreviatura,
-        "",
-      );
-      if (!clienteAbreviatura) {
-        throw new Error("No se pudo resolver clienteAbreviatura del expediente.");
-      }
-
-      setProcessingFileName(file.name);
-      setProcessingError(null);
-      setProcessingStep("uploading");
-
-      const uploadResponse = await subirArchivoVersion(documentoId, file);
-      const uploadRecord = uploadResponse as Record<string, unknown>;
-      const archivoId = getArchivoId(uploadRecord);
-      if (!archivoId) {
-        throw new Error("El upload directo de versión no devolvió archivoId.");
-      }
-
-      setProcessingStep("processing_ocr");
-      const resultado = await procesarArchivoOcr(archivoId, {
-        tipoEsperado,
-        areaOrigen: "ALMACEN",
-        clienteAbreviatura,
-        expedienteId: id,
-        documentoBaseId: contextoV2.documentoBaseId,
-        tipoRelacionSugerida: accion.tipoRelacionSugerida,
-        canalIngreso: "ALMACEN_VERSION_UPLOAD",
-        reprocesar: true,
-      });
-
-      setProcessingStep("preparing_preview");
-      return buildResultadoConContexto(
-        {
-          ...resultado,
-          documentoIdExistente: documentoId,
-          archivoIdActual: archivoId,
-        } as ProcesarOcrResultado,
-        accion,
-        { archivoId, filename: file.name, uploadResponse: uploadRecord },
-      );
-    },
-    onSuccess: (resultado, { accion, documentoId }) => {
-      setAccionActual(accion);
-      setVersionDocumentoDestinoId(documentoId);
-      setResultadoModal(resultado);
-      const empresaActual = text(
-        (expediente as any)?.empresa_codigo ?? (expediente as any)?.empresaCodigo,
-        "",
-      );
-      const rucCompradorActual = getRucComprador(expediente, empresaActual);
-      setMensajeValidacion(
-        getMensajeMismatchCliente(
-          resultado as Record<string, unknown>,
-          empresaActual,
-          rucCompradorActual,
-        ),
-      );
-      setProcessingStep("ready");
-      window.setTimeout(() => {
-        setProcessingStep("idle");
-        setModalAbierto(true);
-      }, 450);
-    },
-    onError: (err, { accion }) => {
-      setAccionActual(accion);
-      const message = `No se pudo subir/procesar la nueva versión de ${accion.label}. ${err.message}`;
-      setProcessingStep("error");
-      setProcessingError(message);
-      setMensajeValidacion(message);
     },
   });
 
@@ -2008,7 +1921,7 @@ const principalGrupoSeleccionado = grupoFacturaSeleccionado
         accionActual.tipoEsperado,
       );
 
-      if (tipoEsperado === "FACTURA") {
+      if (tipoEsperado === "FACTURA" || tipoEsperado === "GUIA_REMISION") {
         versionFacturaDirectaMutation.mutate({
           accion: accionActual,
           file,
@@ -2017,11 +1930,7 @@ const principalGrupoSeleccionado = grupoFacturaSeleccionado
         return;
       }
 
-      versionRealMutation.mutate({
-        accion: accionActual,
-        file,
-        documentoId: versionDocumentoDestinoId,
-      });
+      setMensajeValidacion("Solo Factura y Guía admiten nuevas versiones en Almacén.");
       return;
     }
 
@@ -2045,7 +1954,7 @@ const principalGrupoSeleccionado = grupoFacturaSeleccionado
   const empresa = text((expediente as any).empresa_codigo ?? (expediente as any).empresaCodigo, "");
   const descripcion = text((expediente as any).descripcion, "");
   const rucComprador = getRucComprador(expediente, empresa);
-  const procesando = cargaRealMutation.isPending || versionRealMutation.isPending;
+  const procesando = cargaRealMutation.isPending || versionFacturaDirectaMutation.isPending;
   const archivoIdModal = getArchivoId(resultadoModal as Record<string, unknown> | null) ?? undefined;
 
   async function persistirEdicionOcr(form: OcrValidationFormState, observacion: string) {
@@ -2689,6 +2598,7 @@ const principalGrupoSeleccionado = grupoFacturaSeleccionado
             : undefined
         }
         tiposDocumentalesPermitidos={ALMACEN_TIPOS_DOCUMENTALES_PERMITIDOS}
+        tipoDocumentalInicial={accionActual?.tipoEsperado}
         tipoDocumentalBloqueado={Boolean(accionActual?.tipoEsperado)}
         formularioContexto="ALMACEN"
       />
