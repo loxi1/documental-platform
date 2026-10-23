@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { BadRequestException, ConflictException, Inject, Injectable, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { CARGA_SEGURA_STORAGE } from '../carga-segura/carga-segura.constants';
@@ -39,8 +39,9 @@ export class TmpService {
       return this.repository.locked(String(row.id), async locked => {
         const current = await this.repository.own(locked, Number(row.id), actor);
         if (current.estado === 'iniciada') {
-          await this.storage.putObject({ ...this.source(current), body: file.buffer, contentType: mime, hashSha256: hash });
+          const put = await this.storage.putObject({ ...this.source(current), body: file.buffer, contentType: mime, hashSha256: hash });
           await this.verify(current, current.storage_key);
+          if (put?.kind === 'CREATED' && put.provider === 'r2' && put.bucket === current.storage_bucket && put.key === current.storage_key) await this.repository.markPhysicalOwnership(locked, current);
           await this.repository.staged(locked, Number(row.id));
         }
         return this.result(await this.repository.own(locked, Number(row.id), actor));
@@ -54,6 +55,7 @@ export class TmpService {
     file: { originalname: string; mimetype: string; buffer: Buffer },
   ) {
     this.id(id);
+    if (typeof actor.idempotencyKey !== 'string' || !actor.idempotencyKey.trim()) throw new BadRequestException('Idempotency-Key requerido');
 
     if (!Number.isSafeInteger(ordenPagoId) || ordenPagoId <= 0) {
       throw new BadRequestException('ordenPagoId inválido');
@@ -97,6 +99,7 @@ export class TmpService {
         throw new ConflictException('TEMP_REGULARIZACION_OP_YA_PROMOVIDO');
       }
 
+      if (!['iniciada', 'almacenada'].includes(row.estado) || row.documento_id || row.archivo_id || row.metadata?.integration) throw new ConflictException('TEMP_REPLACEMENT_DOCUMENT_PROTECTED');
       const identity = row.metadata?.regularizacionOp;
       if (
         !identity ||
@@ -107,52 +110,106 @@ export class TmpService {
         throw new ConflictException('TEMP_REGULARIZACION_OP_CONFLICT');
       }
 
-      const expiraEn = row.expira_en instanceof Date
-        ? row.expira_en
-        : new Date(row.expira_en);
-
-      const expired =
-        !row.expira_en ||
-        Number.isNaN(expiraEn.getTime()) ||
-        expiraEn.getTime() <= Date.now();
-
-      let objectExists = false;
-
-      if (!expired) {
-        const stat = await this.storage.statObject(this.source(row));
-        objectExists = Boolean(stat?.exists);
+      const previousAttempt = row.metadata?.replacement;
+      if (previousAttempt?.attemptIdentity === actor.idempotencyKey) {
+        if (previousAttempt.fingerprint !== fingerprint) throw new ConflictException('TEMP_REPLACEMENT_IDEMPOTENCY_CONFLICT');
+        if (row.estado !== 'almacenada' || row.storage_key !== previousAttempt.storageKey) throw new ConflictException('TEMP_REPLACEMENT_INCOMPLETE');
+        await this.verify(row, row.storage_key);
+        await this.cleanupPreviousPdf(c, row);
+        return { ...this.result(await this.repository.own(c, id, actor)), cleanup: row.metadata?.replacement?.cleanup };
+      }
+      if (previousAttempt?.cleanup?.status === 'PENDING_RECONCILIATION' || previousAttempt?.cleanup?.status === 'PENDING') {
+        await this.cleanupPreviousPdf(c, row);
+        const checked = await this.repository.own(c, id, actor);
+        if (checked.metadata?.replacement?.cleanup?.status !== 'DELETED') throw new ConflictException('TEMP_REPLACEMENT_CLEANUP_PENDING');
       }
 
-      // Nunca reemplazar silenciosamente un objeto todavía válido.
-      if (!expired && objectExists) {
-        throw new ConflictException(
-          'TEMP_REGULARIZACION_OP_ARCHIVO_AUN_DISPONIBLE',
-        );
+      const generationId = randomUUID();
+      const generation = {
+        storageKey: `documentos/tmp/${actor.workspaceId}/${id}/${generationId}`,
+        generationId,
+        attemptIdentity: actor.idempotencyKey,
+      };
+      let created: { provider: 'r2'; bucket: string; key: string } | null = null;
+      let putUncertain = false;
+      let replacementResult: any;
+      let committedRow: TmpRow | undefined;
+      try {
+        replacementResult = await this.repository.transaction(c, async tx => {
+          const updated = await this.repository.replaceLostRegularizacionOp(
+            tx, row, actor, { name, mime, size: file.buffer.length, hash }, fingerprint, bucket, generation,
+          );
+          // A fresh generation must never target the historical object.
+          if (updated.storage_key !== generation.storageKey || updated.storage_key === row.storage_key) {
+            throw new ConflictException('TEMP_REPLACEMENT_KEY_CONFLICT');
+          }
+          const target = this.source(updated);
+          putUncertain = true;
+          const put = await this.storage.putObject({ ...target, body: file.buffer, contentType: mime, hashSha256: hash });
+          if (put.kind === 'CREATED' && put.provider === target.provider && put.bucket === target.bucket && put.key === target.key) {
+            created = target;
+            putUncertain = false;
+          } else if (put.kind === 'PREEXISTING') {
+            // Matching bytes do not confer ownership, including for later cleanup.
+            putUncertain = false;
+          } else {
+            throw new ConflictException('TEMP_REPLACEMENT_PUT_RESULT_INVALID');
+          }
+          try { await this.verify(updated, updated.storage_key); }
+          catch (verificationError) {
+            if (put.kind === 'PREEXISTING') throw new ConflictException({ code: 'TEMP_REPLACEMENT_PREEXISTING_CONFLICT', message: 'El objeto preexistente no coincide. Se conservó sin modificar; requiere reconciliación.', details: { tempId: id, generationId } });
+            throw verificationError;
+          }
+          if (put.kind === 'PREEXISTING') throw new ConflictException({ code: 'TEMP_REPLACEMENT_PREEXISTING_UNOWNED', message: 'El objeto preexistente coincide, pero su propiedad no está acreditada. Se conservó; reintente con una generación nueva.', details: { tempId: id, generationId } });
+          await this.repository.staged(tx, Number(updated.id));
+          const finalRow = await this.repository.own(tx, Number(updated.id), actor);
+          if (finalRow.estado !== 'almacenada' || finalRow.storage_key !== generation.storageKey) throw new ConflictException('TEMP_REPLACEMENT_INCOMPLETE');
+          committedRow = finalRow;
+          return this.result(finalRow);
+        });
+      } catch (error) {
+        // A lost COMMIT response is not proof of rollback. Re-read under the
+        // same advisory lock before considering compensation of our new key.
+        let current: TmpRow;
+        try { current = await this.repository.own(c, id, actor); }
+        catch {
+          throw new ServiceUnavailableException({ code: 'TEMP_REPLACEMENT_RECONCILIATION_REQUIRED', message: 'No se pudo acreditar el resultado del reemplazo. Conservar objetos y reconciliar.', details: { tempId: id, generationId } });
+        }
+        if (current.storage_key === generation.storageKey || putUncertain) {
+          throw new ServiceUnavailableException({ code: 'TEMP_REPLACEMENT_RECONCILIATION_REQUIRED', message: 'Resultado de almacenamiento o commit indeterminado. No se eliminó el objeto.', details: { tempId: id, generationId } });
+        }
+        if (created) {
+          try { await this.storage.deleteObject(created); }
+          catch {
+            throw new ServiceUnavailableException({ code: 'TEMP_REPLACEMENT_COMPENSATION_FAILED', message: 'Falló la compensación del objeto nuevo. Requiere reconciliación.', details: { tempId: id, generationId } });
+          }
+        }
+        throw error;
       }
-
-      const updated = await this.repository.replaceLostRegularizacionOp(
-        c,
-        row,
-        actor,
-        { name, mime, size: file.buffer.length, hash },
-        fingerprint,
-        bucket,
-      );
-
-      await this.storage.putObject({
-        ...this.source(updated),
-        body: file.buffer,
-        contentType: mime,
-        hashSha256: hash,
-      });
-
-      await this.verify(updated, updated.storage_key);
-      await this.repository.staged(c, Number(updated.id));
-
-      return this.result(
-        await this.repository.own(c, Number(updated.id), actor),
-      );
+      // Cleanup failure must never turn a committed replacement into an upload failure.
+      const committed = committedRow!;
+      await this.cleanupPreviousPdf(c, committed);
+      return { ...replacementResult, cleanup: committed.metadata?.replacement?.cleanup };
     });
+  }
+
+  private async cleanupPreviousPdf(c: any, row: TmpRow) {
+    const cleanup = row.metadata?.replacement?.cleanup;
+    if (!cleanup || cleanup.status === 'DELETED') return;
+    const pending = { ...cleanup, status: 'PENDING_RECONCILIATION' };
+    try {
+      if (!cleanup.owned || cleanup.oldOcrPending || row.promovida_en || row.documento_id || row.archivo_id || row.metadata?.integration ||
+          cleanup.key === row.storage_key || !(cleanup.key === `documentos/tmp/${row.workspace_id}/${row.id}` || String(cleanup.key).startsWith(`documentos/tmp/${row.workspace_id}/${row.id}/`)) ||
+          !(await this.repository.oldObjectUnreferenced(c, row, cleanup.bucket, cleanup.key))) {
+        pending.error = 'OWNERSHIP_OR_REFERENCE_NOT_CLEARED';
+      } else {
+        await this.storage.deleteObject({ provider: 'r2', bucket: cleanup.bucket, key: cleanup.key });
+        pending.status = 'DELETED'; pending.error = null;
+      }
+    } catch { pending.error = 'OLD_PDF_DELETE_FAILED'; }
+    row.metadata.replacement.cleanup = pending;
+    try { await this.repository.cleanupState(c, row, pending); }
+    catch { row.metadata.replacement.cleanup = { ...pending, status: 'PENDING_RECONCILIATION', error: 'CLEANUP_RESULT_NOT_PERSISTED' }; }
   }
 
   async bindRegularizacionOp(
@@ -203,6 +260,21 @@ export class TmpService {
     });
   }
 
+  private recoverMaterializationAttempt(row: TmpRow, actor: Identity, ordenPagoId: number, tipo: string) {
+    const claim = row.metadata?.integration;
+    const operation = row.metadata?.regularizacionOp;
+    // Only the owner of this exact live FACTURA candidate may resume its claim.
+    if (tipo !== 'FACTURA' || row.estado !== 'almacenada' || row.promovida_en || row.archivo_id ||
+        !Number.isSafeInteger(Number(row.documento_id)) || Number(row.documento_id) <= 0 ||
+        Number(row.actor_id) !== actor.actorId || Number(row.workspace_id) !== actor.workspaceId ||
+        row.empresa_codigo !== actor.empresaCodigo || Number(row.cliente_destino_id) !== actor.clienteDestinoId ||
+        operation?.consumer !== 'REGULARIZACION_OP' || operation.ordenPagoId !== ordenPagoId ||
+        operation.tipoRegularizador !== tipo || claim?.consumer !== 'OP_FACTURA_REGULARIZER_MATERIALIZATION' ||
+        claim.completed !== false || typeof claim.identity !== 'string' || !claim.identity.trim() ||
+        claim.identity !== claim.identity.trim().toLowerCase() || row.metadata?.promocionIdentity !== claim.identity) return null;
+    return { tempId: Number(row.id), idempotencyKey: claim.identity };
+  }
+
   async recoverRegularizacionOp(
     actor: Identity,
     ordenPagoId: number,
@@ -228,6 +300,45 @@ export class TmpService {
         );
 
         if (!row) return null;
+
+        if (row.promovida_en) {
+          const consumer = tipo === 'FACTURA'
+            ? 'OP_FACTURA_REGULARIZER_MATERIALIZATION'
+            : 'OP_RECIBO_HONORARIO_REGULARIZER_MATERIALIZATION';
+          if (!['almacenada', 'completada'].includes(row.estado) ||
+              row.metadata?.integration?.consumer !== consumer ||
+              row.metadata?.integration?.completed !== true ||
+              !Number.isSafeInteger(Number(row.documento_id)) || Number(row.documento_id) <= 0 ||
+              !Number.isSafeInteger(Number(row.archivo_id)) || Number(row.archivo_id) <= 0) {
+            throw new ConflictException('TEMP_REGULARIZACION_OP_PROMOTED_IDENTITY_CONFLICT');
+          }
+          const persisted = await this.repository.promotedRegularizacionOpIdentity(c, row, actor, ordenPagoId, tipo);
+          if (persisted.storage_provider !== row.destino_storage_provider ||
+              persisted.storage_provider !== 'r2' ||
+              persisted.storage_bucket !== row.destino_storage_bucket ||
+              persisted.storage_key !== row.destino_storage_key ||
+              persisted.hash_sha256 !== row.hash_sha256 || row.destino_hash_sha256 !== row.hash_sha256 ||
+              Number(row.destino_tamano_bytes) !== Number(row.tamano_bytes)) {
+            throw new ConflictException('TEMP_REGULARIZACION_OP_PROMOTED_IDENTITY_CONFLICT');
+          }
+          const stat = await this.storage.statObject({ provider: 'r2', bucket: persisted.storage_bucket, key: persisted.storage_key });
+          if (!stat.exists || stat.hashSha256 !== row.hash_sha256 || stat.tamanoBytes !== Number(row.tamano_bytes)) {
+            throw new ConflictException('TMP_STORAGE_VERIFICATION_FAILED');
+          }
+          const preview = await this.preview.getArchivoPreviewUrl(Number(persisted.archivoId));
+          return {
+            tempId: Number(row.id), estado: 'PROMOTED' as const, disponible: true,
+            ordenPagoId, tipoRegularizador: tipo,
+            documentoId: Number(persisted.documentoId), archivoId: Number(persisted.archivoId),
+            nombreOriginal: row.nombre_archivo_original ?? null, mime: row.content_type ?? null,
+            preview,
+            documento: {
+              serie: persisted.serie, numero: persisted.numero, fechaEmision: persisted.fechaEmision,
+              rucEmisor: persisted.rucEmisor, razonSocialEmisor: persisted.razonSocialEmisor,
+              moneda: persisted.moneda, montoTotal: persisted.montoTotal,
+            },
+          };
+        }
 
         const expiraEn = row.expira_en instanceof Date
           ? row.expira_en
@@ -271,6 +382,7 @@ export class TmpService {
           preview,
           ocrCandidate: row.metadata?.ocrCandidate ?? null,
           tipoRegularizador: tipo,
+          materializationAttempt: this.recoverMaterializationAttempt(row, actor, ordenPagoId, tipo),
         };
       },
     );
@@ -458,12 +570,14 @@ export class TmpService {
         throw new ConflictException('TMP_STORAGE_NOT_FOUND');
       }
 
-      await this.repository.ocrProcessing(c, tempId, tipo);
+      const attemptId = randomUUID();
+      await this.repository.ocrProcessing(c, tempId, tipo, { storageKey, attemptId });
 
       return {
         dispatch: true as const,
         row,
         storageKey,
+        attemptId,
       };
     });
 
@@ -527,10 +641,18 @@ export class TmpService {
         .pipe(timeout(120000)),
     );
 
-    await this.repository.locked(String(tempId), async c => {
+    const accepted = await this.repository.locked(String(tempId), async c => {
       const current = await this.repository.own(c, tempId, actor);
       const candidate = current.metadata?.ocrCandidate;
 
+      if (current.storage_key !== decision.storageKey || candidate?.storageKey !== decision.storageKey || candidate?.attemptId !== decision.attemptId) {
+        const cleanup = current.metadata?.replacement?.cleanup;
+        if (cleanup?.key === decision.storageKey && cleanup.oldOcrPending) {
+          cleanup.oldOcrPending = false;
+          await this.cleanupPreviousPdf(c, current);
+        }
+        return false;
+      }
       if (
         candidate?.status !== 'PROCESSING' ||
         candidate?.tipoEsperado !== tipo
@@ -538,8 +660,10 @@ export class TmpService {
         throw new ConflictException('TEMP_OCR_CLAIM_INVALIDO');
       }
 
-      await this.repository.ocrDone(c, tempId, tipo, resultado);
+      await this.repository.ocrDone(c, tempId, tipo, resultado, { storageKey: decision.storageKey, attemptId: decision.attemptId });
+      return true;
     });
+    if (!accepted) throw new ConflictException('TEMP_OCR_STALE_RESULT_DISCARDED');
 
     return {
       ...(resultado && typeof resultado === 'object' ? resultado : {}),

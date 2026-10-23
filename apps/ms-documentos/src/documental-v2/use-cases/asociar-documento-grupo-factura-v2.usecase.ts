@@ -220,8 +220,13 @@ export class AsociarDocumentoGrupoFacturaV2UseCase {
     this.validarDocumentoAutorizado(documento, contexto.contenedor);
     this.validarDocumentoActivo(documento);
 
+    const esObservacionOp = contexto.grupo.origenObligacion === 'ORDEN_PAGO' &&
+      tipoRelacion === 'adjunto_transferencia' && input.decisionCorrespondencia?.accion === 'OBSERVAR';
     const existenteActivoDocumento = await this.grupoFacturaDocumentos.buscarActivoPorDocumentoId(documentoId, executor);
     if (existenteActivoDocumento) {
+      if (esObservacionOp) {
+        throw new ConflictException(crearError('El sustento ya tiene una asociación financiera activa', 'PAGO_YA_CONFIRMADO'));
+      }
       const mismoGrupo = Number(existenteActivoDocumento.grupoFacturaId) === grupoFacturaId;
       const mismaRelacion = existenteActivoDocumento.tipoRelacion === tipoRelacion;
 
@@ -387,7 +392,7 @@ export class AsociarDocumentoGrupoFacturaV2UseCase {
         evaluacionCorrespondencia.requiereDecisionHumana ||
         !evaluacionCorrespondencia.permiteAsociacionOrdinaria;
 
-      if (requiereDecision) {
+      if (requiereDecision || esObservacionOp) {
         if (!input.decisionCorrespondencia) {
           throw new ConflictException(
             crearError(

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
-import { ArrowLeft, Eye, Pencil, ReceiptText } from "lucide-react";
+import { ArrowLeft, Eye, Pencil, ReceiptText, FileText } from "lucide-react";
 
 import { PreviewDocumento } from "@/components/common/PreviewDocumento";
 import { EditarOrdenPagoModal } from "@/components/finanzas/EditarOrdenPagoModal";
@@ -13,7 +13,6 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Modal } from "@/components/ui/modal";
 import { Skeleton } from "@/components/ui/skeleton";
-import type { DocumentoArchivosVersionesResponse, DocumentoArchivoVersion } from "@/services/documentos";
 import type { GrupoFacturaDocumentoVinculoV2 } from "@/services/documental-v2-workspace";
 import type {
   OrdenPagoDetalle,
@@ -23,13 +22,9 @@ import type {
 
 type UnknownRecord = Record<string, unknown>;
 type PreviewState = { archivoId: number | string; title: string } | null;
-type SustentoOrden = { archivoId: number; nombre: string; tipo: string };
 
 type Props = {
   detalle: OrdenPagoDetalle;
-  archivosResponse: DocumentoArchivosVersionesResponse | null;
-  archivosLoading: boolean;
-  archivosError: boolean;
   documentosGrupo: GrupoFacturaDocumentoVinculoV2[];
   documentosGrupoLoading: boolean;
   documentosGrupoError: boolean;
@@ -88,16 +83,33 @@ function tipoEconomico(item: GrupoFacturaDocumentoVinculoV2) {
   return text(pickFromSources(item, ["tipoDocumental", "tipo_documental"]), "").toUpperCase();
 }
 
-function documentoEconomicoResumen(item: GrupoFacturaDocumentoVinculoV2) {
+export function seleccionarRegularizadorActivo(items: GrupoFacturaDocumentoVinculoV2[]) {
+  const activos = items.filter(item => {
+    const relacion = text(item.tipoRelacion ?? item.tipo_relacion, "");
+    const esperado = relacion === "regularizador_factura" ? "FACTURA"
+      : relacion === "regularizador_recibo_honorario" ? "RECIBO_HONORARIO" : null;
+    const estadoDocumento = text(asRecord(item.documento)?.estado, "").toLowerCase();
+    const id = Number(item.documentoId ?? item.documento_id);
+    return esperado && text(item.estado, "").toLowerCase() === "activo" &&
+      !["anulado", "anulada", "observado", "observada", "duplicado_versionado"].includes(estadoDocumento) &&
+      (!tipoEconomico(item) || tipoEconomico(item) === esperado) && Number.isSafeInteger(id) && id > 0;
+  });
+  return activos.length === 1 ? activos[0] : null;
+}
+
+export function documentoEconomicoResumen(item: GrupoFacturaDocumentoVinculoV2) {
   const tipo = tipoEconomico(item);
   const serie = text(pickFromSources(item, ["serie"]), "");
   const numero = text(pickFromSources(item, ["numero", "numeroDocumento", "numero_documento"]), "");
-  const archivoIdRaw = pickFromSources(item, ["archivoId", "archivo_id", "archivoActualId", "archivo_actual_id"]);
+  const archivoIdRaw = Object.prototype.hasOwnProperty.call(item, "archivoId")
+    ? item.archivoId
+    : pickFromSources(item, ["archivoId", "archivo_id", "archivoActualId", "archivo_actual_id"]);
   const archivoId = Number(archivoIdRaw);
   return {
     tipo,
     label: tipo === "RECIBO_HONORARIO" ? "RECIBO POR HONORARIOS" : "FACTURA",
     numero: serie && numero ? `${serie}-${numero}` : numero || serie || "—",
+    emisor: text(pickFromSources(item, ["razonSocialEmisor", "razon_social_emisor", "nombreCompleto", "nombre_completo", "razonSocial", "razon_social", "proveedor"]), ""),
     ruc: text(pickFromSources(item, ["rucEmisor", "ruc_emisor", "rucProveedor", "ruc_proveedor"]), ""),
     fecha: text(pickFromSources(item, ["fechaEmision", "fecha_emision", "fecha"]), ""),
     monto: text(pickFromSources(item, ["montoTotal", "monto_total", "monto"]), ""),
@@ -107,15 +119,7 @@ function documentoEconomicoResumen(item: GrupoFacturaDocumentoVinculoV2) {
   };
 }
 
-function soporteDesdeArchivo(archivo: DocumentoArchivoVersion): SustentoOrden {
-  return {
-    archivoId: archivo.id,
-    nombre: text(archivo.nombre_archivo, `Archivo ${archivo.id}`),
-    tipo: text(firstValue(archivo.tipo_version, archivo.origen_archivo), ""),
-  };
-}
-
-function formatDate(value: string) {
+export function formatDate(value: string) {
   if (!value) return "—";
   const match = value.match(/^(\d{4})-(\d{2})-(\d{2})/);
   return match ? `${match[3]}/${match[2]}/${match[1]}` : value;
@@ -128,7 +132,7 @@ function formatMonto(moneda: string, monto: string) {
   return new Intl.NumberFormat("es-PE", { style: "currency", currency, minimumFractionDigits: 2 }).format(numeric);
 }
 
-function Dato({ label, value }: { label: string; value: string }) {
+export function Dato({ label, value }: { label: string; value: string }) {
   return (
     <div className="min-w-0">
       <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</div>
@@ -217,9 +221,6 @@ function SustentoPagoResumen({
 
 export function OrdenPagoVerView({
   detalle,
-  archivosResponse,
-  archivosLoading,
-  archivosError,
   documentosGrupo,
   documentosGrupoLoading,
   documentosGrupoError,
@@ -243,27 +244,12 @@ export function OrdenPagoVerView({
   }, [searchParams]);
 
   const documentosEconomicos = useMemo(
-    () => documentosGrupo.filter((item) => TIPOS_ECONOMICOS.has(tipoEconomico(item))).slice(0, 1),
+    () => {
+      const activo = seleccionarRegularizadorActivo(documentosGrupo);
+      return activo && TIPOS_ECONOMICOS.has(tipoEconomico(activo)) ? [activo] : [];
+    },
     [documentosGrupo],
   );
-
-  const sustentos = useMemo(() => {
-    const unique = new Map<number, SustentoOrden>();
-    const archivos = archivosResponse?.data ?? archivosResponse?.archivos ?? [];
-    for (const archivo of archivos) {
-      if (!Number.isSafeInteger(archivo.id) || archivo.id <= 0) continue;
-      unique.set(archivo.id, soporteDesdeArchivo(archivo));
-    }
-    const inicial = detalle.archivoInicial;
-    if (inicial && Number.isSafeInteger(inicial.archivoId) && inicial.archivoId > 0 && !unique.has(inicial.archivoId)) {
-      unique.set(inicial.archivoId, {
-        archivoId: inicial.archivoId,
-        nombre: text(inicial.nombreArchivo, `Archivo ${inicial.archivoId}`),
-        tipo: text(inicial.mime, ""),
-      });
-    }
-    return [...unique.values()];
-  }, [archivosResponse, detalle.archivoInicial]);
 
   const codigoLegacy = `OP-${detalle.ordenPagoId}`;
   const numeroPresentacion = text(detalle.numero, codigoLegacy);
@@ -279,7 +265,7 @@ export function OrdenPagoVerView({
     detalle.conceptoNombre || detalle.conceptoCodigo,
     "—",
   );
-  const beneficiario = text(detalle.beneficiarioNombreLibre, "—");
+  const beneficiario = text(detalle.proveedorRazonSocial || detalle.beneficiarioNombreLibre, "—");
   const estadoRegularizacion = text(
     detalle.estadoRegularizacion,
     "—",
@@ -392,23 +378,32 @@ export function OrdenPagoVerView({
                   <div className="mt-3">
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <div className="flex min-w-0 items-center gap-2">
+                        <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
                         <span className="truncate font-semibold">
                           OP {numeroPresentacion}
                         </span>
                       </div>
 
-                      <Badge variant="outline">Orden de pago</Badge>
+                      <div className="flex shrink-0 items-center gap-2">
+                        <Badge variant="outline">Orden de pago</Badge>
+                        {detalle.archivoInicial && Number.isSafeInteger(detalle.archivoInicial.archivoId) && detalle.archivoInicial.archivoId > 0 ? (
+                          <Button type="button" variant="outline" size="sm" onClick={() => setPreview({ archivoId: detalle.archivoInicial!.archivoId, title: `OP ${numeroPresentacion}` })}>
+                            <Eye className="mr-1.5 h-3.5 w-3.5" />Ver
+                          </Button>
+                        ) : null}
+                      </div>
                     </div>
 
                     <dl className="mt-4 grid gap-x-5 gap-y-4 text-sm sm:grid-cols-2 lg:grid-cols-3">
                       <Dato label="Periodo" value={periodo} />
                       <Dato label="Beneficiario" value={beneficiario} />
+                      <Dato label="RUC beneficiario" value={text(detalle.proveedorRuc, "—")} />
                       <Dato
                         label="Estado regularización"
                         value={estadoRegularizacion}
                       />
-                      <Dato label="Tipo" value={text(detalle.tipo, "—")} />
-                      <Dato label="Subtipo" value={text(detalle.subtipo, "—")} />
+                      <Dato label="Concepto" value={text(detalle.conceptoNombre, "Sin concepto asociado")} />
+                      <Dato label="Clasificación" value={text(detalle.conceptoClasificacion, "—")} />
                       <Dato label="Moneda" value={text(detalle.moneda, "—")} />
                       <Dato
                         label="Monto"
@@ -441,58 +436,6 @@ export function OrdenPagoVerView({
 
                 <section className="border-t pt-4">
                   <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                    Sustento de la orden
-                  </p>
-
-                  {archivosLoading ? (
-                    <Skeleton className="mt-3 h-12 w-full" />
-                  ) : archivosError ? (
-                    <p className="mt-2 text-sm text-muted-foreground">
-                      No se pudo cargar el sustento inicial.
-                    </p>
-                  ) : sustentos.length ? (
-                    <div className="mt-2 space-y-2">
-                      {sustentos.map((item) => (
-                        <div
-                          key={item.archivoId}
-                          className="flex flex-wrap items-center justify-between gap-3"
-                        >
-                          <div className="min-w-0">
-                            <p className="truncate font-semibold">{item.nombre}</p>
-                            {item.tipo ? (
-                              <p className="text-xs text-muted-foreground">
-                                {item.tipo}
-                              </p>
-                            ) : null}
-                          </div>
-
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            className="h-7 px-2.5"
-                            onClick={() =>
-                              setPreview({
-                                archivoId: item.archivoId,
-                                title: item.nombre,
-                              })
-                            }
-                          >
-                            <Eye className="mr-1.5 h-3.5 w-3.5" />
-                            Ver
-                          </Button>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="mt-2 text-sm text-muted-foreground">
-                      Sin sustento inicial asociado a la orden.
-                    </p>
-                  )}
-                </section>
-
-                <section className="border-t pt-4">
-                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
                     Documento económico
                   </p>
 
@@ -512,7 +455,8 @@ export function OrdenPagoVerView({
                           className="mt-3"
                         >
                           <div className="flex flex-wrap items-center justify-between gap-3">
-                            <div className="min-w-0">
+                            <div className="flex min-w-0 items-center gap-2">
+                              <ReceiptText className="h-4 w-4 shrink-0 text-muted-foreground" />
                               <p className="font-semibold">
                                 {resumen.label} {resumen.numero}
                               </p>
@@ -542,6 +486,8 @@ export function OrdenPagoVerView({
                           </div>
 
                           <dl className="mt-3 grid gap-x-5 gap-y-3 text-sm sm:grid-cols-2">
+                            <Dato label="Emisor" value={resumen.emisor} />
+                            <Dato label="RUC emisor" value={resumen.ruc} />
                             <Dato
                               label="Fecha"
                               value={formatDate(resumen.fecha)}

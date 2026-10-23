@@ -1,4 +1,5 @@
 import { api } from './api';
+import { getDocumento, getDocumentoArchivos } from './documentos';
 import type { RevisionContableItem } from '@/types/revision-contable';
 
 type FinanzasBandejaItem = RevisionContableItem & {
@@ -136,6 +137,7 @@ export type OrdenPagoDetalle = {
   subtipo: string | null; observacion: string | null; estado: string;
   conceptoCodigo: string | null;
   conceptoNombre: string | null;
+  conceptoClasificacion: string | null;
   periodoAnio?: number | null;
   periodoMes?: number | null;
   codigoPago?: string | null;
@@ -146,6 +148,8 @@ export type OrdenPagoDetalle = {
   usoBeneficiario?: string | null;
   modoSeleccionBeneficiario?: string | null;
   proveedorId?: number | null;
+  proveedorRuc?: string | null;
+  proveedorRazonSocial?: string | null;
   beneficiarioClienteDestinoId?: number | null;
   beneficiarioUsuarioId?: number | null;
   beneficiarioNombreLibre?: string | null;
@@ -240,6 +244,7 @@ export type UploadPendienteOrdenPago = {
         grupoFacturaId?: number | null;
       } | null;
       metadata?: Record<string, unknown> | null;
+      request?: { metadata?: Record<string, unknown> | null } | null;
     };
   };
 };
@@ -279,6 +284,7 @@ export async function confirmarPagoOrdenPago(
 }
 
 export type SustentoFinancieroGrupo = {
+  ocrResultadoId?: number | null;
   vinculoId: number | null;
   documentoId: number;
   archivoId: number | null;
@@ -372,11 +378,21 @@ export async function reemplazarArchivoInicialOrdenPago(
 
 export type OrdenPagoTempRegularizacionRecuperada = {
   tempId: number;
+  estado?: 'PROMOTED';
+  ordenPagoId?: number;
+  documentoId?: number;
+  archivoId?: number;
+  documento?: {
+    serie: string | null; numero: string | null; fechaEmision: string | null;
+    rucEmisor: string | null; razonSocialEmisor: string | null;
+    moneda: string | null; montoTotal: string | null;
+  };
   disponible: boolean;
   motivo?: 'TEMP_EXPIRADO' | 'TMP_STORAGE_NOT_FOUND' | string;
   nombreOriginal?: string | null;
   mime?: string | null;
   preview?: {
+    archivoId?: number;
     tempId?: number | string | null;
     filename?: string | null;
     contentType?: string | null;
@@ -389,6 +405,7 @@ export type OrdenPagoTempRegularizacionRecuperada = {
     tipoEsperado?: string | null;
     resultado?: unknown;
   } | null;
+  materializationAttempt?: { tempId: number; idempotencyKey: string } | null;
   tipoRegularizador?: string | null;
 };
 
@@ -443,7 +460,13 @@ export async function recuperarTempRegularizacionOrdenPago(
   const { data } = await api.get(
     `/documentos/tmp/regularizacion-op/${encodeURIComponent(String(ordenPagoId))}/${encodeURIComponent(tipoRegularizador)}`,
   );
-  return (data?.data ?? data) as OrdenPagoTempRegularizacionRecuperada | null;
+  // A null payload must remain null even when Gateway preserves an upstream envelope.
+  let result: unknown = data;
+  for (let depth = 0; depth < 3; depth++) {
+    if (!result || typeof result !== 'object' || !Object.prototype.hasOwnProperty.call(result, 'data')) break;
+    result = (result as { data: unknown }).data;
+  }
+  return result as OrdenPagoTempRegularizacionRecuperada | null;
 }
 
 export async function procesarOcrTemporalOrdenPago(
@@ -529,4 +552,20 @@ export async function subirArchivoInicialOrdenPago(file: File, key: string) {
     throw new Error('El archivo no quedó preparado. Vuelva a seleccionarlo.');
   }
   return { tempId: result.tempId, estado: result.estado, nombreOriginal: result.nombreOriginal };
+}
+
+export async function observarPagoConfirmadoOp(ordenPagoId: number, vinculoId: number, motivo: string): Promise<void> {
+  await api.post(`/documental-v2/finanzas/ordenes-pago/${ordenPagoId}/pagos/${vinculoId}/observar`, { motivo });
+}
+
+/** Consulta documental compartida por Ver OP y Adjuntar pago, sin escrituras. */
+export async function getDocumentoEconomicoOp(documentoId: number) {
+  const documento = await getDocumento(documentoId);
+  const archivos = await getDocumentoArchivos(documentoId).catch(() => null);
+  const actual = (archivos?.data ?? archivos?.archivos ?? []).find(archivo =>
+    Number(archivo.documento_id) === documentoId && archivo.es_version_actual === true &&
+    !["anulado", "observado"].includes(String(archivo.estado ?? "").toLowerCase()) &&
+    Boolean(archivo.storage_key || archivo.ruta_archivo),
+  );
+  return { documento, actual };
 }

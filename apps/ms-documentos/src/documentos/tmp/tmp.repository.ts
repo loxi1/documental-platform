@@ -81,6 +81,7 @@ export class TmpRepository {
     file: { name: string; mime: string; size: number; hash: string },
     fingerprint: string,
     bucket: string,
+    generation: { storageKey: string; generationId: string; attemptIdentity: string },
   ): Promise<TmpRow> {
     const regularizacionOp = row.metadata?.regularizacionOp;
 
@@ -94,6 +95,10 @@ export class TmpRepository {
     const metadata = {
       ...row.metadata,
       regularizacionOp,
+      replacement: { ...generation, ownership: 'CREATED', previousStorageKey: row.storage_key, fingerprint,
+        cleanup: { bucket: row.storage_bucket, key: row.storage_key, status: 'PENDING',
+          owned: row.metadata?.physicalFile?.key === row.storage_key && row.metadata?.physicalFile?.bucket === row.storage_bucket || row.metadata?.replacement?.storageKey === row.storage_key && row.metadata?.replacement?.ownership === 'CREATED',
+          oldOcrPending: row.metadata?.ocrCandidate?.status === 'PROCESSING' } },
     };
 
     // La generación física anterior se perdió: su OCR ya no corresponde.
@@ -112,12 +117,13 @@ export class TmpRepository {
           hash_sha256 = ${file.hash},
           storage_provider = 'r2',
           storage_bucket = ${bucket},
+          storage_key = ${generation.storageKey},
           estado = 'iniciada',
           almacenada_en = NULL,
           promovida_en = NULL,
           destino_storage_key = NULL,
           expira_en = now() + interval '24 hours',
-          metadata = ${JSON.stringify(metadata)}::jsonb,
+          metadata = ${JSON.stringify(metadata)}::text::jsonb,
           actualizado_en = now()
       WHERE id = ${row.id}
         AND operacion_tipo = 'tmp'
@@ -135,6 +141,8 @@ export class TmpRepository {
 
     await this.audit(c, row.id, actor, 'TMP_REGULARIZACION_OP_REEMPLAZADO', {
       storageKey: updated.storage_key,
+      previousStorageKey: row.storage_key,
+      generationId: generation.generationId,
       hash: file.hash,
       tamanoBytes: file.size,
       ordenPagoId: regularizacionOp.ordenPagoId,
@@ -196,16 +204,99 @@ export class TmpRepository {
       LIMIT 1
     `;
 
-    return row ?? null;
+    if (row) return row;
+
+    // Historical TEMP operations are not unique per OP/type. Never choose an
+    // arbitrary promoted document when the pending candidate no longer exists.
+    const promoted = await c`
+      SELECT * FROM documentos.carga_operaciones
+      WHERE operacion_tipo='tmp' AND actor_id=${actor.actorId}
+        AND workspace_id=${actor.workspaceId} AND empresa_codigo=${actor.empresaCodigo}
+        AND cliente_destino_id=${actor.clienteDestinoId}
+        AND metadata->'regularizacionOp'->>'consumer'='REGULARIZACION_OP'
+        AND metadata->'regularizacionOp'->>'ordenPagoId'=${String(ordenPagoId)}
+        AND metadata->'regularizacionOp'->>'tipoRegularizador'=${tipoRegularizador}
+        AND promovida_en IS NOT NULL
+      ORDER BY id DESC LIMIT 2
+    `;
+    if (promoted.length > 1) throw new ConflictException('TEMP_REGULARIZACION_OP_RECOVERY_AMBIGUOUS');
+    return promoted[0] ?? null;
+  }
+
+  async promotedRegularizacionOpIdentity(c: Connection, row: TmpRow, actor: Identity, ordenPagoId: number, tipo: string) {
+    const rows = await c`
+      SELECT d.id AS "documentoId", a.id AS "archivoId",
+        d.serie, d.numero, d.fecha_emision::text AS "fechaEmision",
+        d.ruc_emisor AS "rucEmisor", d.razon_social_emisor AS "razonSocialEmisor",
+        d.moneda, d.monto_total::text AS "montoTotal",
+        a.storage_provider, a.storage_bucket, a.storage_key, a.hash_sha256
+      FROM documentos.documentos_operativos_principales p
+      JOIN documentos.contenedores_operativos co ON co.id=p.contenedor_operativo_id
+      JOIN documentos.documentos principal ON principal.id=p.documento_id
+      JOIN documentos.documentos d ON d.id=${row.documento_id}
+      JOIN documentos.documentos_archivos a ON a.id=${row.archivo_id} AND a.documento_id=d.id
+      WHERE p.id=${ordenPagoId} AND p.tipo_principal='ORDEN_PAGO'
+        AND p.estado='activo' AND p.es_principal_activo=true AND co.estado='activo'
+        AND principal.tipo_documental='ORDEN_PAGO'
+        AND principal.estado NOT IN ('anulado','observado','duplicado_versionado')
+        AND co.empresa_codigo=${actor.empresaCodigo} AND co.cliente_destino_id=${actor.clienteDestinoId}
+        AND principal.cliente_abreviatura=${actor.empresaCodigo}
+        AND d.cliente_abreviatura=${actor.empresaCodigo} AND d.tipo_documental=${tipo} AND d.estado='confirmado'
+        AND a.workspace_id=${actor.workspaceId} AND a.empresa_codigo=${actor.empresaCodigo}
+        AND a.cliente_destino_id=${actor.clienteDestinoId} AND a.carga_operacion_id=${row.id}
+        AND a.estado NOT IN ('anulado','duplicado_absorbido') AND a.es_version_actual=true
+        AND NOT EXISTS (
+          SELECT 1 FROM documentos.grupos_factura g
+          WHERE g.factura_documento_id=d.id AND g.estado<>'anulado'
+        )
+        AND NOT EXISTS (
+          SELECT 1 FROM documentos.grupo_factura_documentos rel
+          JOIN documentos.grupos_factura g ON g.id=rel.grupo_factura_id
+          WHERE rel.estado='activo' AND rel.documento_id=d.id
+            AND (g.documento_operativo_principal_id<>p.id OR g.origen_obligacion<>'ORDEN_PAGO' OR g.estado='anulado')
+        )
+        AND NOT EXISTS (
+          SELECT 1 FROM documentos.grupos_factura g
+          JOIN documentos.grupo_factura_documentos rel ON rel.grupo_factura_id=g.id
+          WHERE g.documento_operativo_principal_id=p.id AND g.origen_obligacion='ORDEN_PAGO'
+            AND rel.estado='activo' AND rel.tipo_relacion IN ('regularizador_factura','regularizador_recibo_honorario')
+            AND rel.documento_id<>d.id
+        )
+    `;
+    if (rows.length !== 1) throw new ConflictException('TEMP_REGULARIZACION_OP_PROMOTED_IDENTITY_CONFLICT');
+    return rows[0];
   }
   async bind(c: Connection, row: TmpRow, destination: string, identity: string) {
     const metadata = { ...row.metadata, destinoReservado: destination, promocionIdentity: identity };
     await c`UPDATE documentos.carga_operaciones SET metadata=${JSON.stringify(metadata)}::jsonb, actualizado_en=now() WHERE id=${row.id}`;
   }
 
-  async ocrProcessing(c: Connection, id: number, tipoEsperado: string) {
+  async markPhysicalOwnership(c: Connection, row: TmpRow) {
+    await c`UPDATE documentos.carga_operaciones SET metadata=jsonb_set(metadata, '{physicalFile}', ${JSON.stringify({ key: row.storage_key, bucket: row.storage_bucket })}::jsonb) WHERE id=${row.id}`;
+  }
+  async cleanupState(c: Connection, row: TmpRow, cleanup: Record<string, any>) {
+    await c`UPDATE documentos.carga_operaciones SET metadata=jsonb_set(metadata, '{replacement,cleanup}', ${JSON.stringify(cleanup)}::jsonb) WHERE id=${row.id} AND storage_key=${row.storage_key}`;
+  }
+  async oldObjectUnreferenced(c: Connection, row: TmpRow, bucket: string, key: string): Promise<boolean> {
+    const [result] = await c`SELECT NOT EXISTS (
+      SELECT 1 FROM documentos.carga_operaciones WHERE
+        (storage_bucket=${bucket} AND storage_key=${key}) OR
+        (destino_storage_bucket=${bucket} AND destino_storage_key=${key}) OR
+        metadata->'ocrCandidate'->>'storageKey'=${key} OR
+        (id <> ${row.id} AND metadata #>> '{replacement,cleanup,key}'=${key})
+    ) AND NOT EXISTS (
+      SELECT 1 FROM documentos.documentos_archivos WHERE (storage_bucket=${bucket} OR storage_bucket IS NULL) AND (storage_key=${key} OR ruta_archivo=${key})
+    ) AND NOT EXISTS (
+      SELECT 1 FROM documentos.ocr_resultados WHERE metadata->>'storageKey'=${key}
+        OR metadata->>'storage_key'=${key}
+    ) AS safe`;
+    return result?.safe === true;
+  }
+
+  async ocrProcessing(c: Connection, id: number, tipoEsperado: string, identity?: { storageKey: string; attemptId: string }) {
     const candidate = {
       status: 'PROCESSING',
+      ...identity,
       tipoEsperado,
       startedAt: new Date().toISOString(),
     };
@@ -215,9 +306,10 @@ export class TmpRepository {
       WHERE id=${id} AND operacion_tipo='tmp'`;
   }
 
-  async ocrDone(c: Connection, id: number, tipoEsperado: string, resultado: unknown) {
+  async ocrDone(c: Connection, id: number, tipoEsperado: string, resultado: unknown, identity?: { storageKey: string; attemptId: string }) {
     const candidate = {
       status: 'DONE',
+      ...identity,
       tipoEsperado,
       completedAt: new Date().toISOString(),
       resultado,

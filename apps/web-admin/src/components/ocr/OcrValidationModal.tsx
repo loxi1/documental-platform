@@ -8,7 +8,7 @@ import {
   getDocumentoDuplicadoDetailsFromError,
   type DocumentoDuplicadoEnExpedienteDetails,
 } from "@/services/ocr-procesamiento";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 const TIPOS_DOCUMENTALES = [
   "OC",
@@ -82,8 +82,18 @@ type OcrValidationModalProps = {
    */
   formularioContexto?: "ALMACEN" | "COMPRAS" | "FINANZAS";
   modo?: "ocr" | "pendiente_manual" | "pendiente_manual_almacen";
+  preserveEditedFieldsOnResult?: boolean;
+  actionsDisabled?: boolean;
+  statusMessage?: string | null;
+  readOnlyDescription?: string;
   readOnly?: boolean;
 };
+
+function mergeOcrFields(current: FormState, incoming: FormState, edited: Set<keyof FormState>): FormState {
+  const merged = { ...incoming };
+  for (const key of edited) Object.assign(merged, { [key]: current[key] });
+  return merged;
+}
 
 function texto(value: unknown, fallback = "—") {
   if (value === null || value === undefined || value === "") return fallback;
@@ -786,6 +796,10 @@ export function OcrValidationModal({
   formularioContexto,
   modo = "ocr",
   readOnly = false,
+  readOnlyDescription,
+  preserveEditedFieldsOnResult = false,
+  actionsDisabled = false,
+  statusMessage,
 }: OcrValidationModalProps) {
   const esModoVersionDocumentoExistente = Boolean(
     modoVersionDocumentoExistente,
@@ -807,6 +821,8 @@ export function OcrValidationModal({
     };
   };
 
+  const editedFields = useRef(new Set<keyof FormState>());
+  const formSession = useRef<string | null>(null);
   const [form, setForm] = useState<FormState>(() => buildFormInicial());
   const [localMessage, setLocalMessage] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -819,8 +835,14 @@ export function OcrValidationModal({
   const [proveedorOrigen, setProveedorOrigen] = useState<string>("");
 
   useEffect(() => {
+    if (!open) formSession.current = null;
     if (open) {
-      setForm(buildFormInicial());
+      const session = String(fallbackArchivoId ?? "");
+      const preserve = preserveEditedFieldsOnResult && formSession.current === session;
+      if (!preserve) editedFields.current.clear();
+      const incoming = buildFormInicial();
+      setForm(current => preserve ? mergeOcrFields(current, incoming, editedFields.current) : incoming);
+      formSession.current = session;
       setLocalMessage(null);
       setActionError(null);
       setDuplicadoDetails(null);
@@ -834,6 +856,8 @@ export function OcrValidationModal({
     modoVersionDocumentoExistente,
     modo,
     tipoDocumentalInicial,
+    fallbackArchivoId,
+    preserveEditedFieldsOnResult,
   ]);
 
   useEffect(() => {
@@ -1052,11 +1076,12 @@ const esFactura = tipoProveedor === "FACTURA";
 
   function updateField(name: keyof FormState, value: string) {
     if (readOnly) return;
+    editedFields.current.add(name);
     setForm((current) => ({ ...current, [name]: value }));
   }
 
   async function runAction(action: "save" | "confirm" | "reject", callback?: (form: FormState) => void | Promise<void>) {
-    if (readOnly || !callback) return;
+    if (readOnly || actionsDisabled || !callback) return;
 
     setSubmittingAction(action);
     setActionError(null);
@@ -1426,9 +1451,10 @@ const esFactura = tipoProveedor === "FACTURA";
               </div>
               ) : null}
 
+              {statusMessage ? <p role="status" className="mb-3 text-sm text-muted-foreground">{statusMessage}</p> : null}
               {readOnly ? (
                 <div className="rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm text-blue-700 dark:border-blue-900/60 dark:bg-blue-950/30 dark:text-blue-300">
-                  Modo consulta: este documento ya está confirmado. Para modificarlo, usa un flujo de edición o carga una nueva versión.
+                  {readOnlyDescription ?? "Modo consulta: este documento ya está confirmado. Para modificarlo, usa un flujo de edición o carga una nueva versión."}
                 </div>
               ) : null}
 
@@ -1538,7 +1564,7 @@ const esFactura = tipoProveedor === "FACTURA";
                       <button
                         type="button"
                         onClick={handleSave}
-                        disabled={submittingAction !== null}
+                        disabled={actionsDisabled || submittingAction !== null}
                         className="inline-flex h-9 items-center justify-center rounded-lg border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100 dark:hover:bg-slate-900"
                       >
                         {submittingAction === "save" ? "Guardando..." : "Guardar cambios"}
@@ -1547,7 +1573,7 @@ const esFactura = tipoProveedor === "FACTURA";
                     <button
                       type="button"
                       onClick={handleConfirm}
-                      disabled={submittingAction !== null}
+                      disabled={actionsDisabled || submittingAction !== null}
                       className="inline-flex h-9 items-center justify-center rounded-lg bg-slate-950 px-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-slate-100 dark:text-slate-950 dark:hover:bg-white"
                     >
                       {submittingAction === "confirm" ? "Confirmando..." : "Guardar y confirmar"}

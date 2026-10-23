@@ -179,8 +179,8 @@ export class AuditoriaOperativaV2Repository {
         ${String(input.entidadId)},
         ${input.accion},
         ${input.descripcion},
-        ${input.antes ? JSON.stringify(input.antes) : null}::jsonb,
-        ${JSON.stringify(despues)}::jsonb
+        ${input.antes ? JSON.stringify(input.antes) : null}::text::jsonb,
+        ${JSON.stringify(despues)}::text::jsonb
       )
     `;
   }
