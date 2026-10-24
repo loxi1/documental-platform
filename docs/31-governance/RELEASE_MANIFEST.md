@@ -1,3 +1,27 @@
+# Manifest vigente reportado — R2
+
+Fecha de continuidad: 23/10/2026. **CURRENT_PRODUCTION=R2**, **DEPLOY_TECHNICAL_PASS=REPORTED_BY_PO_MSII**, **MVP_FUNCTIONAL_ACCEPTANCE=PENDING**. Sustituye como referencia actual al registro Actions #28 conservado más abajo; no se revalidó producción en esta orden.
+
+Enterprise local comprobado: `e1f099faeb4dfdc9f2b49b9984fe211935875ff3`; main y origin/main local apuntan al mismo commit. La rama activa es `integration/enterprise-r2-po-20261023`. SOURCE tiene identidad distinta y cambios pendientes: [inventario](BRANCH_INVENTORY.md).
+
+| Servicio | Referencia GHCR R2 reportada en Config.Image |
+|---|---|
+| api-gateway | `ghcr.io/bbti-sac/documental-platform-bbti-prod/api-gateway@sha256:4ba59c185f52d308cffd163179819b26bbfa4b8b27968be1864c65eccb11ec0a` |
+| ms-auth | `ghcr.io/bbti-sac/documental-platform-bbti-prod/ms-auth@sha256:e299d52aa019c9d76e37618641ba2bce61b740b2df9c4523e8935e2df4a726b5` |
+| ms-documentos | `ghcr.io/bbti-sac/documental-platform-bbti-prod/ms-documentos@sha256:949f9510bdc00c03842bb1218ffa817f941076d5eebc3bfa700a5a355ee7541f` |
+| web-admin | `ghcr.io/bbti-sac/documental-platform-bbti-prod/web-admin@sha256:bab1a81e88262ac89d0c15bef87f20e1e80c6e5f1d370693e3f562fcf6ff49ad` |
+
+Las cuatro referencias fueron reportadas running; frontend y gateway HTTP 200; OCR activo, NATS y Traefik running. Finanzas: confirmación visual PO. Esto no acredita aceptación integral. Pruebas previas: 122 PASS / 2 FAIL de expectativas de contrato, no bloqueantes según reconciliación previa; no convertir los fallos en PASS ni afirmar nueva ejecución.
+
+Checkout EC2 reportado: `/home/ubuntu/apps/documental-platform-bbti-prod`; proyecto Compose `docker`; base `deployment/docker/docker-compose.production.yml`; entorno `deployment/env/.env.production`. Override release `/home/ubuntu/releases/documental-platform-bbti/r2-e1f099fa-r1/release.images.yml`; rollback C1 en el mismo directorio, `rollback.images.yml`. No confundir estas rutas EC2 con los repositorios locales.
+
+Fuentes: paquete MSII y actualización ME del 23/10/2026 en `/home/loxi1/Descargas/`. [Deploy R2](../18-runbooks/DEPLOYMENT_RUNBOOK.md), [verificación](../18-runbooks/DEPLOYMENT_VERIFICATION.md), [rollback](../18-runbooks/ROLLBACK_RUNBOOK.md). Rollback preparado, no ensayado. Los digests históricos de abajo pertenecen a otros expedientes; no usarlos como override C1 R2 sin acreditar el archivo correspondiente.
+
+
+---
+
+## Registro histórico anterior (conservado)
+
 # Manifest de release MVP — Actions #28
 
 Control: `MVP-RELEASE-DOCUMENTARY-CONSOLIDATION-R11-FINAL`. Fecha: 2026-10-16. Estado: **CONSOLIDADO PARA REVISIÓN FINAL Y PUBLICACIÓN DOCUMENTAL CONTROLADA**. Despliegue NO autorizado.

@@ -1,3 +1,40 @@
+# Rollback R2 → C1 — preparado, no ensayado
+
+## Continuidad R2 — 23/10/2026
+
+Fuente: paquete MSII `PAQUETE_CODEX_R2_DOCUMENTACION_INVENTARIO_2026-10-23.md` y actualización ME `ACTUALIZACION_BIBLIOTECARIO_TECNICO_R2_2026-10-23.md`, ambos en `/home/loxi1/Descargas/`. Producción R2 = **DEPLOY_TECHNICAL_PASS reportado por PO/MSII**; aceptación funcional integral = **PENDING**, E2E = **NOT_VERIFIED**. Esta actualización documental no accedió a EC2/GHCR/RDS ni autoriza operaciones.
+
+Commit Enterprise R2: `e1f099faeb4dfdc9f2b49b9984fe211935875ff3`. Ver [manifest vigente](../31-governance/RELEASE_MANIFEST.md), [deploy](../18-runbooks/DEPLOYMENT_RUNBOOK.md) y [rollback](../18-runbooks/ROLLBACK_RUNBOOK.md).
+
+Baseline objetivo C1: commit `da19e9f09c2ebe6ab08504e48111f5b4346d4063`. Override reportado: `/home/ubuntu/releases/documental-platform-bbti/r2-e1f099fa-r1/rollback.images.yml`. No se leyó ese archivo EC2 durante esta orden; no reconstruir sus cuatro digests desde la tabla histórica inferior.
+
+Antes de ejecutar, acreditar autorización PO o protocolo de incidente, cuatro digests C1 exactos y disponibles, configuración preservada y compatibilidad con datos actuales. El dictamen previo de compatibilidad por código fue PASS sin migración requerida; no equivale a un ensayo operativo tras operaciones reales.
+
+Referencia futura, solo dentro de autorización independiente y desde el checkout EC2 acreditado para C1:
+
+```bash
+docker compose \
+  --project-name docker \
+  --env-file deployment/env/.env.production \
+  -f deployment/docker/docker-compose.production.yml \
+  -f /home/ubuntu/releases/documental-platform-bbti/r2-e1f099fa-r1/rollback.images.yml \
+  config --images
+docker compose \
+  --project-name docker \
+  --env-file deployment/env/.env.production \
+  -f deployment/docker/docker-compose.production.yml \
+  -f /home/ubuntu/releases/documental-platform-bbti/r2-e1f099fa-r1/rollback.images.yml \
+  up -d --no-deps --no-build --pull never \
+  api-gateway ms-auth ms-documentos web-admin
+```
+
+Si se requiere recreación forzada, acreditar necesidad e interrupción autorizada. Verificar después Config.Image C1 exacto 4/4, contenedores, HTTP, auxiliares y smoke autorizado. No declarar cierre por Started o HTTP solamente. Revertir imágenes no revierte datos; no restaurar RDS, migraciones, OCR, NATS o Traefik automáticamente. No se ejecutó rollback.
+
+
+---
+
+## Registro histórico anterior (conservado)
+
 # Rollback de aplicación — Actions #28
 
 Control: `MVP-RELEASE-DOCUMENTARY-CONSOLIDATION-R11-FINAL`. Fecha: 2026-10-16. Estado: **CONSOLIDADO PARA REVISIÓN FINAL Y PUBLICACIÓN DOCUMENTAL CONTROLADA**. Despliegue NO autorizado.

@@ -1,3 +1,53 @@
+# Despliegue R2 — continuidad y procedimiento focal
+
+## Continuidad R2 — 23/10/2026
+
+Fuente: paquete MSII `PAQUETE_CODEX_R2_DOCUMENTACION_INVENTARIO_2026-10-23.md` y actualización ME `ACTUALIZACION_BIBLIOTECARIO_TECNICO_R2_2026-10-23.md`, ambos en `/home/loxi1/Descargas/`. Producción R2 = **DEPLOY_TECHNICAL_PASS reportado por PO/MSII**; aceptación funcional integral = **PENDING**, E2E = **NOT_VERIFIED**. Esta actualización documental no accedió a EC2/GHCR/RDS ni autoriza operaciones.
+
+Commit Enterprise R2: `e1f099faeb4dfdc9f2b49b9984fe211935875ff3`. Ver [manifest vigente](../31-governance/RELEASE_MANIFEST.md), [deploy](../18-runbooks/DEPLOYMENT_RUNBOOK.md) y [rollback](../18-runbooks/ROLLBACK_RUNBOOK.md).
+
+## Configuración efectiva y alcance
+
+Desde `/home/ubuntu/apps/documental-platform-bbti-prod`, registrar commit autorizado, configuración efectiva, cuatro imágenes locales por digest, disco, salud previa y rollback preparado. Preservar entorno privado, redes, volúmenes, RDS/R2. No construir en EC2 ni ejecutar migraciones implícitas.
+
+Comando de referencia READ_ONLY; no ejecutado en esta orden:
+
+```bash
+docker compose \
+  --project-name docker \
+  --env-file deployment/env/.env.production \
+  -f deployment/docker/docker-compose.production.yml \
+  -f /home/ubuntu/releases/documental-platform-bbti/r2-e1f099fa-r1/release.images.yml \
+  config --images
+```
+
+Comparar exactamente las cuatro referencias con el manifest. NATS y Traefik pueden aparecer como dependencias de la configuración; no son servicios objetivo de recreación.
+
+## Activación documentada, requiere autorización PO independiente
+
+```bash
+docker compose \
+  --project-name docker \
+  --env-file deployment/env/.env.production \
+  -f deployment/docker/docker-compose.production.yml \
+  -f /home/ubuntu/releases/documental-platform-bbti/r2-e1f099fa-r1/release.images.yml \
+  up -d --force-recreate --no-deps --no-build --pull never \
+  api-gateway ms-auth ms-documentos web-admin
+```
+
+`--force-recreate` solo corresponde cuando el preflight acredita necesidad y alcance y el PO autoriza la interrupción; no es regla universal. No hacer down ni reiniciar OCR/NATS/Traefik por defecto.
+
+## Incidente reportado y gate de cierre
+
+El primer up indicó Started 4/4, pero Config.Image continuó en C1. Config --images resolvía R2. La segunda activación focal con force-recreate fue seguida de identidad R2 4/4 y disponibilidad. Causa interna de la no recreación inicial: **NO ACREDITADA**.
+
+Separar COMPOSE_STARTED, EFFECTIVE_IMAGE_IDENTITY, HEALTH y FUNCTIONAL_ACCEPTANCE. `.Image` es ID local; `.Config.Image` conserva la referencia de creación. Aplicar [verificación](DEPLOYMENT_VERIFICATION.md). Los comandos históricos de abajo corresponden a Actions #28 y no deben combinarse con R2.
+
+
+---
+
+## Registro histórico anterior (conservado)
+
 # Despliegue manual propuesto — Actions #28
 
 Control: `MVP-RELEASE-DOCUMENTARY-CONSOLIDATION-R11-FINAL`. Fecha: 2026-10-16. Estado: **CONSOLIDADO PARA REVISIÓN FINAL Y PUBLICACIÓN DOCUMENTAL CONTROLADA**. Despliegue NO autorizado.

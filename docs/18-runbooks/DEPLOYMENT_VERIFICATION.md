@@ -1,3 +1,30 @@
+# Verificación R2 — identidad, salud y aceptación separadas
+
+## Continuidad R2 — 23/10/2026
+
+Fuente: paquete MSII `PAQUETE_CODEX_R2_DOCUMENTACION_INVENTARIO_2026-10-23.md` y actualización ME `ACTUALIZACION_BIBLIOTECARIO_TECNICO_R2_2026-10-23.md`, ambos en `/home/loxi1/Descargas/`. Producción R2 = **DEPLOY_TECHNICAL_PASS reportado por PO/MSII**; aceptación funcional integral = **PENDING**, E2E = **NOT_VERIFIED**. Esta actualización documental no accedió a EC2/GHCR/RDS ni autoriza operaciones.
+
+Commit Enterprise R2: `e1f099faeb4dfdc9f2b49b9984fe211935875ff3`. Ver [manifest vigente](../31-governance/RELEASE_MANIFEST.md), [deploy](../18-runbooks/DEPLOYMENT_RUNBOOK.md) y [rollback](../18-runbooks/ROLLBACK_RUNBOOK.md).
+
+Estado reportado al 23/10/2026: identidad R2 4/4 y running; frontend/gateway HTTP 200; OCR activo; NATS/Traefik running; Finanzas visual PO. Aceptación integral pendiente. Para una operación futura autorizada, conservar salida fechada de:
+
+```bash
+for name in dp_api_gateway dp_ms_auth dp_ms_documentos dp_web_admin; do
+  docker inspect --format '{{.Name}}|{{.State.Status}}|{{.Config.Image}}' "$name"
+done
+systemctl is-active documental-ocr-worker.service
+docker inspect --format '{{.Name}}|{{.State.Status}}' dp_nats dp_traefik
+curl -sS -o /dev/null --max-time 15 -w 'FRONTEND_HTTP=%{http_code}\n' https://bbtecnologia.com/
+curl -sS -o /dev/null --max-time 15 -w 'GATEWAY_HEALTH_HTTP=%{http_code}\n' https://api.bbtecnologia.com/api/v1/health
+```
+
+Estos comandos no se ejecutaron durante la actualización documental. Comparar Config.Image con cada referencia del manifest. Las rutas autenticadas READ_ONLY para baseline son `GET /api/v1/documental-v2/finanzas/ordenes-pago/:ordenPagoId`, `GET /api/v1/documental-v2/grupos-factura/:grupoFacturaId/documentos` y `GET /api/v1/documental-v2/finanzas/grupos-factura/:grupoFacturaId/resumen`; el detalle OP incluye estadoRegularizacion. Acreditar IDs y contexto actuales, no reutilizar testigos históricos sin validación. No crear/cargar/confirmar/materializar operaciones para cerrar este expediente documental.
+
+
+---
+
+## Registro histórico anterior (conservado)
+
 # Verificación y aceptación — Actions #28
 
 Control: `MVP-RELEASE-DOCUMENTARY-CONSOLIDATION-R11-FINAL`. Fecha: 2026-10-16. Estado: **CONSOLIDADO PARA REVISIÓN FINAL Y PUBLICACIÓN DOCUMENTAL CONTROLADA**. Despliegue NO autorizado.

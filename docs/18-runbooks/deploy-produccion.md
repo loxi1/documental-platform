@@ -176,3 +176,7 @@ un tag.
 Los detalles históricos que no puedan acreditarse permanecen
 `UNKNOWN`; la ausencia de evidencia no se convierte en evidencia de
 ausencia.
+
+## Precisión operativa incorporada en R2 (23/10/2026)
+
+La secuencia genérica anterior requiere la composición efectiva aprobada, incluidos proyecto, env-file y override por digest. No usar comandos bare de pull/up como receta R2. Véase [procedimiento R2](DEPLOYMENT_RUNBOOK.md) y [verificación](DEPLOYMENT_VERIFICATION.md): imágenes ya disponibles, no-build/pull never, servicios explícitos y Config.Image exacto. Force-recreate requiere necesidad y autorización de interrupción. Started y HTTP 200 no certifican promoción ni aceptación funcional integral.

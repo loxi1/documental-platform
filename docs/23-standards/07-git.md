@@ -119,3 +119,9 @@ El commit de cada gate debe poder relacionarse con el manifest autorizado.
 La arqueología HEAD / INDEX / WORKTREE utilizada para recuperar composiciones históricas no forma parte del flujo Git normal.
 
 Sólo corresponde cuando existe evidencia de una brecha histórica de composición. No debe convertirse en procedimiento ordinario ni utilizarse para ampliar el manifest sin autorización.
+
+## Inventario SOURCE/Enterprise — continuidad 23/10/2026
+
+Ver [inventario completo](../31-governance/BRANCH_INVENTORY.md). SOURCE main presenta cambios pendientes y divergencia 1/1 frente a origin/main local. No integrar ni promover automáticamente. Las refs remotas son las almacenadas localmente, sin fetch.
+
+Un contrato funcional coherente corresponde a un commit focal verificable, con sus pruebas y evidencia. No imponer un commit por archivo ni agrupar las 45 rutas por conveniencia. La clasificación por hunks y matriz CONTRACT/PATHS/TESTS/DEPENDENCIES/BASE/RISK/PO_AUTHORIZATION es un siguiente expediente de diseño; esta orden no autoriza staging, commits ni reconciliación de historia.

@@ -49,3 +49,13 @@ Los runbooks ejecutan operaciones concretas; no sustituyen la gobernanza de rele
 Este índice enumera únicamente runbooks materializados en este directorio.
 
 No deben anunciarse procedimientos inexistentes como si fueran runbooks operativos disponibles.
+
+## Continuidad vigente reportada: R2, 23/10/2026
+
+- [Manifest vigente e identidades](../31-governance/RELEASE_MANIFEST.md).
+- [Procedimiento focal R2 e incidente de recreación](DEPLOYMENT_RUNBOOK.md).
+- [Verificación y aceptación pendiente](DEPLOYMENT_VERIFICATION.md).
+- [Rollback R2 → C1 preparado, no ensayado](ROLLBACK_RUNBOOK.md).
+- [Inventario local SOURCE/Enterprise y ramas](../31-governance/BRANCH_INVENTORY.md).
+
+Estos registros distinguen producción reportada por PO/MSII de inspección local directa; no autorizan ejecutar sus comandos.

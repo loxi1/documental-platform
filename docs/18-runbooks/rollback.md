@@ -118,3 +118,7 @@ Registrar:
 Sólo entonces corresponde cerrar el rollback.
 
 Si el rollback de aplicación no recupera el servicio, detener nuevas mutaciones y escalar al procedimiento específico correspondiente.
+
+## Continuidad R2 → C1 (23/10/2026)
+
+El override C1 se reporta preparado, no ensayado. Véase [procedimiento y límites R2](ROLLBACK_RUNBOOK.md). No inferir digests C1 de manifests históricos ni ejecutar restore RDS o reinicios auxiliares como consecuencia del rollback de imágenes.
