@@ -123,7 +123,7 @@ export class TmpRepository {
           promovida_en = NULL,
           destino_storage_key = NULL,
           expira_en = now() + interval '24 hours',
-          metadata = ${JSON.stringify(metadata)}::jsonb,
+          metadata = ${JSON.stringify(metadata)}::text::jsonb,
           actualizado_en = now()
       WHERE id = ${row.id}
         AND operacion_tipo = 'tmp'

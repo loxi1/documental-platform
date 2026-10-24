@@ -252,7 +252,7 @@ function errorRegularizacion(error: unknown) {
   const response = recordOf(raw.response);
   const data = recordOf(response.data);
   const nested = recordOf(data.error);
-  const sources = [nested, recordOf(data.message), data, raw];
+  const sources = [nested, recordOf(nested.details), recordOf(data.message), data, raw];
   const texts = sources.flatMap(source => [source.code, source.message, source.mensaje, source.error])
     .flatMap(value => Array.isArray(value) ? value : [value])
     .filter((value): value is string => typeof value === "string" && Boolean(value.trim()));
@@ -278,7 +278,16 @@ function errorRegularizacion(error: unknown) {
       navigation = { href: `/finanzas/${origin.expedienteId}/ver?grupoFacturaId=${origin.grupoFacturaId}`, label: origin.type === "OC" ? "Ver Orden de Compra" : "Ver Orden de Servicio" };
     }
   }
-  return { message, documentoId, navigation };
+  const requestId = [data.requestId, nested.requestId, raw.requestId]
+    .find((value): value is string => typeof value === "string" && /^[a-zA-Z0-9._:-]{1,128}$/.test(value)) ?? null;
+  const resolvedCode = code ?? texts.find(value => /^[A-Z][A-Z0-9_]+$/.test(value) && value !== "CONFLICT") ?? null;
+  return {
+    message: requestId ? `${message} (Referencia: ${requestId})` : message,
+    code: resolvedCode,
+    requestId,
+    documentoId,
+    navigation,
+  };
 }
 
 function mensajeError(error: unknown) {

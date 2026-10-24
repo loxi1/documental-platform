@@ -383,6 +383,12 @@ export class DocumentosGatewayController {
         ? { 'x-cliente-destino-id': String(clienteDestinoId) }
         : {}),
       ...(requestId ? { 'x-correlation-id': requestId } : {}),
+      // Derived only from the server-validated workspace, never request headers/body.
+      'x-finanzas-correspondencia-autorizar-excepcion': String(
+        this.getActionsFromContext(contexto).includes(
+          'documental_v2.finanzas.correspondencia.autorizar_excepcion',
+        ),
+      ),
     };
   }
 

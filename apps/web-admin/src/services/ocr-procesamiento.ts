@@ -331,7 +331,18 @@ export async function procesarArchivoOcr(
     payload,
   );
 
-  return unwrapDeep<ProcesarOcrResultado>(data);
+  const resultado = unwrapDeep<ProcesarOcrResultado>(data);
+  if (resultado?.ok === false) {
+    const detail = resultado.error;
+    const message = typeof detail === "string" && detail.trim()
+      ? detail.trim()
+      : "No se pudo procesar el OCR. El archivo guardado puede recuperarse sin volver a subirlo.";
+    throw new OcrApiError(message, {
+      code: "OCR_PROCESSING_FAILED",
+      details: { archivoId, requestId: (data as any)?.requestId },
+    });
+  }
+  return resultado;
 }
 
 export async function editarOcrResultado(

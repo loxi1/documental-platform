@@ -20,8 +20,19 @@ import {
 } from './documentos.repository';
 import { limpiarCamposLegacyOcr as normalizarCamposLegacyOcr } from './ocr-metadata-normalizer';
 
+type ProcesarArchivoOcrContexto = {
+  tipoEsperado?: string;
+  areaOrigen?: string;
+  expedienteId?: number;
+  documentoBaseId?: number;
+  tipoRelacionSugerida?: string;
+  canalIngreso?: string;
+  reprocesar?: boolean;
+};
+
 @Injectable()
 export class DocumentosService {
+  private readonly ocrEnCurso = new Map<string, Promise<any>>();
   constructor(
     private readonly repo: DocumentosRepository,
     private readonly orquestarConfirmacionV2: OrquestarConfirmacionDocumentalV2UseCase,
@@ -267,17 +278,25 @@ export class DocumentosService {
     };
   }
 
-  async procesarOcrArchivo(
+  async procesarOcrArchivo(archivoId: number, contexto: ProcesarArchivoOcrContexto = {}) {
+    // Explicit historical reprocessing keeps its semantics. Normal uploads/recovery
+    // share extraction in this process; the repository serializes cross-process saves.
+    if (contexto.reprocesar === true) return this.procesarOcrArchivoInterno(archivoId, contexto);
+    const key = JSON.stringify([archivoId, contexto.tipoEsperado ?? null,
+      contexto.areaOrigen ?? null, contexto.expedienteId ?? null,
+      contexto.documentoBaseId ?? null, contexto.tipoRelacionSugerida ?? null,
+      contexto.canalIngreso ?? null]);
+    const current = this.ocrEnCurso.get(key);
+    if (current) return current;
+    const pending = this.procesarOcrArchivoInterno(archivoId, contexto);
+    this.ocrEnCurso.set(key, pending);
+    try { return await pending; }
+    finally { if (this.ocrEnCurso.get(key) === pending) this.ocrEnCurso.delete(key); }
+  }
+
+  private async procesarOcrArchivoInterno(
     archivoId: number,
-    contexto: {
-      tipoEsperado?: string;
-      areaOrigen?: string;
-      expedienteId?: number;
-      documentoBaseId?: number;
-      tipoRelacionSugerida?: string;
-      canalIngreso?: string;
-      reprocesar?: boolean;
-    } = {},
+    contexto: ProcesarArchivoOcrContexto,
   ) {
     const archivo = await this.repo.findArchivoById(archivoId);
 
