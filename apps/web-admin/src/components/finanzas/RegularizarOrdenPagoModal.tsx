@@ -247,15 +247,42 @@ function estadoOcr(value: unknown): string {
   ).toUpperCase();
 }
 
-function mensajeError(error: unknown) {
+function errorRegularizacion(error: unknown) {
   const raw = recordOf(error);
   const response = recordOf(raw.response);
   const data = recordOf(response.data);
+  const nested = recordOf(data.error);
+  const sources = [nested, recordOf(data.message), data, raw];
+  const texts = sources.flatMap(source => [source.code, source.message, source.mensaje, source.error])
+    .flatMap(value => Array.isArray(value) ? value : [value])
+    .filter((value): value is string => typeof value === "string" && Boolean(value.trim()));
+  const code = texts.find(value => value === "FACTURA_TEMP_DOCUMENT_DUPLICATE" || value === "FACTURA_TEMP_ALREADY_RESERVED");
+  let message = code === "FACTURA_TEMP_DOCUMENT_DUPLICATE"
+    ? "Esta factura coincide con un documento existente. Puedes seleccionar otro archivo."
+    : code === "FACTURA_TEMP_ALREADY_RESERVED"
+      ? "El documento temporal tiene una reserva incompatible. Recupera su estado antes de continuar."
+      : texts.find(value => value !== "[object Object]" && value !== "CONFLICT") || "No se pudo completar la operación.";
+  const details = recordOf(nested.details ?? data.details);
+  const id = details.documentoId;
+  const documentoId = code === "FACTURA_TEMP_DOCUMENT_DUPLICATE" && details.authorized === true &&
+    typeof id === "number" && Number.isSafeInteger(id) && id > 0 ? id : null;
+  const origin = recordOf(details.origin);
+  const validId = (value: unknown): value is number => typeof value === "number" && Number.isSafeInteger(value) && value > 0;
+  let navigation: { href: string; label: string } | null = null;
+  if (documentoId && typeof origin.number === "string" && origin.number.trim()) {
+    if (origin.type === "OP" && validId(origin.ordenPagoId)) {
+      message = `Esta factura ya está registrada en la OP ${origin.number.trim()}`;
+      navigation = { href: `/finanzas/ordenes-pago/${origin.ordenPagoId}/ver`, label: "Ver Orden de Pago" };
+    } else if ((origin.type === "OC" || origin.type === "OS") && validId(origin.expedienteId) && validId(origin.grupoFacturaId)) {
+      message = `Esta factura ya está registrada en la ${origin.type} ${origin.number.trim()}`;
+      navigation = { href: `/finanzas/${origin.expedienteId}/ver?grupoFacturaId=${origin.grupoFacturaId}`, label: origin.type === "OC" ? "Ver Orden de Compra" : "Ver Orden de Servicio" };
+    }
+  }
+  return { message, documentoId, navigation };
+}
 
-  return (
-    firstText([data, raw], ["message", "mensaje", "error"]) ||
-    "No se pudo completar la operación."
-  );
+function mensajeError(error: unknown) {
+  return errorRegularizacion(error).message;
 }
 
 function recoveredMaterializationAttempt(recovered: { tempId: number | string; materializationAttempt?: { tempId: number; idempotencyKey: string } | null }) {
@@ -1015,7 +1042,10 @@ export function RegularizarOrdenPagoModal({
       await onCompleted?.();
       onClose();
     } catch (error) {
-      setConfirmError(mensajeError(error));
+      const normalized = errorRegularizacion(error);
+      setConfirmError(normalized.message);
+      setDuplicateDocumentoId(normalized.documentoId);
+      setDuplicateNavigation(normalized.navigation);
     } finally {
       setConfirmando(false);
     }
@@ -1129,7 +1159,7 @@ export function RegularizarOrdenPagoModal({
                     <iframe
                       title={`Vista previa de ${previewNombre}`}
                       src={previewUrl}
-                      className="min-h-[430px] flex-1 bg-muted/20"
+                      className="min-h-[430px] w-full flex-1 border-0 bg-muted/20"
                     />
                   ) : previewMime?.startsWith("image/") ? (
                     <div className="flex min-h-[430px] flex-1 items-center justify-center overflow-auto bg-muted/20 p-4">
@@ -1535,6 +1565,7 @@ export function RegularizarOrdenPagoModal({
                     role="alert"
                   >
                     {confirmError}
+                    {duplicateNavigation ? <a href={duplicateNavigation.href} target="_blank" rel="noopener noreferrer" className="ml-2 underline">{duplicateNavigation.label}</a> : duplicateDocumentoId ? <a href={`/documentos/${duplicateDocumentoId}`} target="_blank" rel="noopener noreferrer" className="ml-2 underline">Ver documento</a> : null}
                   </div>
                 ) : null}
               </section>

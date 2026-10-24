@@ -128,6 +128,22 @@ export class CargaSeguraHttpExceptionFilter implements ExceptionFilter {
   private mapHttpException(exception: HttpException): PublicError {
     const status = exception.getStatus();
 
+    const body = exception.getResponse();
+    const value = typeof body === 'object' && body !== null
+      ? body as Record<string, unknown> : {};
+    const domainCode = typeof value.code === 'string' ? value.code : value.message;
+    if (status === 409 && (domainCode === 'FACTURA_TEMP_DOCUMENT_DUPLICATE' || domainCode === 'FACTURA_TEMP_ALREADY_RESERVED')) {
+      const details = value.details as Record<string, unknown> | undefined;
+      const id = details?.duplicateCandidateId;
+      return {
+        status,
+        code: domainCode,
+        message: domainCode,
+        details: domainCode === 'FACTURA_TEMP_DOCUMENT_DUPLICATE' && typeof id === 'number' && Number.isSafeInteger(id) && id > 0
+          ? { duplicateCandidateId: id, duplicateOrigin: details?.duplicateOrigin ?? null } : null,
+      };
+    }
+
     if (status === 413) {
       return {
         status: HttpStatus.PAYLOAD_TOO_LARGE,

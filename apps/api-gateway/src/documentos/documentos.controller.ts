@@ -1034,7 +1034,47 @@ export class DocumentosGatewayController {
         timeout: SECURE_UPLOAD.timeoutMs, maxBodyLength: SECURE_UPLOAD.multipartTotalBytes });
       return result.data?.data ?? result.data;
     } catch (error) {
-      if (axios.isAxiosError(error) && error.response) throw new HttpException(error.response.data?.error ?? error.response.data, error.response.status);
+      if (axios.isAxiosError(error) && error.response) {
+        const upstream = error.response.data?.error ?? error.response.data;
+        // The global ms-documentos filter wraps the domain exception in details
+        // and uses CONFLICT as the outer code. Normalize before authorization.
+        const domainCodes = ['FACTURA_TEMP_DOCUMENT_DUPLICATE', 'FACTURA_TEMP_ALREADY_RESERVED'];
+        const domainCode = [upstream?.code, upstream?.message].find(value => domainCodes.includes(value));
+        const nested = upstream?.details;
+        const domain = nested && typeof nested === 'object' &&
+          (nested.code === domainCode || nested.message === domainCode) ? nested : upstream;
+        if (error.response.status === 409 && domainCode === 'FACTURA_TEMP_ALREADY_RESERVED') {
+          throw new HttpException({ code: domainCode, message: domainCode, details: null }, 409);
+        }
+        if (error.response.status === 409 && domainCode === 'FACTURA_TEMP_DOCUMENT_DUPLICATE') {
+          const candidate = domain.details?.duplicateCandidateId;
+          let details: { documentoId: number; authorized: true; origin?: { type: string; number: string; ordenPagoId?: number; expedienteId?: number; grupoFacturaId?: number } } | null = null;
+          if (typeof candidate === 'number' && Number.isSafeInteger(candidate) && candidate > 0) {
+            try {
+              const context = await this.validateAuthorization(headers.authorization);
+              await this.assertDocumentoPermitido(String(candidate), context, headers['x-request-id']);
+              details = { documentoId: candidate, authorized: true };
+              const origin = domain.details?.duplicateOrigin;
+              const menus = context?.permisos?.menus ?? context?.permissions?.menus ?? [];
+              const validId = (id: unknown) => typeof id === 'number' && Number.isSafeInteger(id) && id > 0;
+              if (Array.isArray(menus) && menus.includes('finanzas') && typeof origin?.number === 'string' && origin.number.trim() &&
+                  validId(origin.obligationDocumentId) && validId(origin.groupId)) {
+                try {
+                  await this.assertDocumentoPermitido(String(origin.obligationDocumentId), context, headers['x-request-id']);
+                  if (origin.type === 'OP' && validId(origin.ordenPagoId) && validId(origin.associationId)) {
+                    details.origin = { type: 'OP', number: origin.number.trim(), ordenPagoId: origin.ordenPagoId };
+                  } else if (['OC', 'OS'].includes(origin.type) && origin.linkKind === 'FACTURA_FUNDADORA' && validId(origin.expedienteId)) {
+                    await this.assertExpedientePermitido(origin.expedienteId, context, headers['x-request-id']);
+                    details.origin = { type: origin.type, number: origin.number.trim(), expedienteId: origin.expedienteId, grupoFacturaId: origin.groupId };
+                  }
+                } catch { /* Keep the authorized document, never disclose an unauthorized origin. */ }
+              }
+            } catch { /* Fail closed: retain conflict without disclosing the identifier. */ }
+          }
+          throw new HttpException({ code: domainCode, message: domainCode, details }, 409);
+        }
+        throw new HttpException(upstream, error.response.status);
+      }
       throw new HttpException('Servicio TEMP no disponible', 502);
     }
   }

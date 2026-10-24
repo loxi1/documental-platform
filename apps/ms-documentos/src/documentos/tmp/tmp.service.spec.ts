@@ -137,21 +137,23 @@ describe('TEMP OCR candidato sin persistencia documental', () => {
     const repo = {
       locked: jest.fn(async (_key: string, work: any) => work({})),
       own: jest.fn(async () => row),
-      ocrProcessing: jest.fn(async (_c: any, _id: number, tipoEsperado: string) => {
+      ocrProcessing: jest.fn(async (_c: any, _id: number, tipoEsperado: string, identity: any) => {
         row.metadata = {
           ...row.metadata,
           ocrCandidate: {
             status: 'PROCESSING',
+            ...identity,
             tipoEsperado,
             startedAt: '2026-09-23T16:00:00.000Z',
           },
         };
       }),
-      ocrDone: jest.fn(async (_c: any, _id: number, tipoEsperado: string, resultado: any) => {
+      ocrDone: jest.fn(async (_c: any, _id: number, tipoEsperado: string, resultado: any, identity: any) => {
         row.metadata = {
           ...row.metadata,
           ocrCandidate: {
             status: 'DONE',
+            ...identity,
             tipoEsperado,
             completedAt: '2026-09-23T16:00:01.000Z',
             resultado,
