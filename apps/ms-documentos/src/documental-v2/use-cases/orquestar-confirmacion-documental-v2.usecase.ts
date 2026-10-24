@@ -271,12 +271,26 @@ export class OrquestarConfirmacionDocumentalV2UseCase {
           accionDecision === 'OBSERVAR' ||
           accionDecision === 'AUTORIZAR_EXCEPCION'
         ) {
-          await this.documentosLegacy.consumirValidacionPendientePagoConExecutor(
+          const consumida = await this.documentosLegacy.consumirValidacionPendientePagoConExecutor(
             tx,
             ocrResultadoId,
             accionDecision,
             input.decisionCorrespondencia?.motivo ?? null,
+            ...(input.origenObligacion === 'ORDEN_PAGO' && accionDecision === 'OBSERVAR' ? [{
+              version: 1,
+              identidad: {
+                ocrResultadoId, documentoId,
+                archivoId: Number(confirmado.ocrResultado?.archivo_id),
+                expedienteId: Number(expediente.id), documentoBaseId, grupoFacturaId,
+                facturaDocumentoId: null,
+              },
+              request: { metadata: input.metadata ?? {}, observacion: input.observacion ?? null },
+              evaluacion: documentoGrupoFactura?.correspondencia ?? null,
+            }] : []),
           );
+          if (input.origenObligacion === 'ORDEN_PAGO' && accionDecision === 'OBSERVAR' && !consumida) {
+            throw new ConflictException({ code: 'PAGO_OBSERVACION_NO_CONSUMIDA', message: 'No se pudo registrar la observación de forma consistente' });
+          }
         }
       }
 

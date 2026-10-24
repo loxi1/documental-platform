@@ -3,13 +3,13 @@
 import { useParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 
-import { OrdenPagoVerView } from "@/components/finanzas/OrdenPagoVerView";
+import { OrdenPagoVerView, seleccionarRegularizadorActivo } from "@/components/finanzas/OrdenPagoVerView";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { getDocumentoArchivos } from "@/services/documentos";
 import { getGrupoFacturaDocumentosV2 } from "@/services/documental-v2-workspace";
 import {
   getOrdenPago,
+  getDocumentoEconomicoOp,
   getResumenFinancieroGrupo,
 } from "@/services/finanzas";
 
@@ -31,12 +31,6 @@ export default function OrdenPagoVerPage() {
 
   const detalle = ordenQuery.data ?? null;
 
-  const archivosQuery = useQuery({
-    queryKey: ["finanzas-orden-pago-ver-archivos", detalle?.documentoId],
-    queryFn: () => getDocumentoArchivos(detalle!.documentoId),
-    enabled: Boolean(detalle?.documentoId),
-  });
-
   const documentosGrupoQuery = useQuery({
     queryKey: [
       "finanzas-orden-pago-ver-documentos-grupo",
@@ -45,6 +39,25 @@ export default function OrdenPagoVerPage() {
     queryFn: () => getGrupoFacturaDocumentosV2(detalle!.grupoFacturaId),
     enabled: Boolean(detalle?.grupoFacturaId),
   });
+
+  const regularizador = seleccionarRegularizadorActivo(documentosGrupoQuery.data ?? []);
+  const regularizadorId = Number(regularizador?.documentoId ?? regularizador?.documento_id);
+  const economicoQuery = useQuery({
+    queryKey: ["finanzas-op-documento-economico", regularizadorId],
+    enabled: Number.isSafeInteger(regularizadorId) && regularizadorId > 0,
+    queryFn: () => getDocumentoEconomicoOp(regularizadorId),
+  });
+  const documentosEconomicos = regularizador && economicoQuery.data ? [{
+    ...regularizador,
+    ...economicoQuery.data.documento,
+    estado: regularizador.estado,
+    documento: economicoQuery.data.documento,
+    // Never borrow the principal OP's file or an unverified metadata file ID.
+    archivoId: economicoQuery.data.actual?.id ?? null,
+    archivo_id: null,
+    archivoActualId: null,
+    archivo_actual_id: null,
+  }] : [];
 
   const resumenFinancieroQuery = useQuery({
     queryKey: [
@@ -66,9 +79,9 @@ export default function OrdenPagoVerPage() {
     }
 
     await Promise.all([
-      archivosQuery.refetch(),
       documentosGrupoQuery.refetch(),
       resumenFinancieroQuery.refetch(),
+      ...(Number.isSafeInteger(regularizadorId) && regularizadorId > 0 ? [economicoQuery.refetch()] : []),
     ]);
   }
 
@@ -105,12 +118,9 @@ export default function OrdenPagoVerPage() {
   return (
     <OrdenPagoVerView
       detalle={detalle}
-      archivosResponse={archivosQuery.data ?? null}
-      archivosLoading={archivosQuery.isLoading}
-      archivosError={Boolean(archivosQuery.error)}
-      documentosGrupo={documentosGrupoQuery.data ?? []}
-      documentosGrupoLoading={documentosGrupoQuery.isLoading}
-      documentosGrupoError={Boolean(documentosGrupoQuery.error)}
+      documentosGrupo={documentosEconomicos}
+      documentosGrupoLoading={documentosGrupoQuery.isLoading || economicoQuery.isLoading}
+      documentosGrupoError={Boolean(documentosGrupoQuery.error || economicoQuery.error)}
       resumenFinanciero={resumenFinancieroQuery.data ?? null}
       resumenFinancieroLoading={resumenFinancieroQuery.isLoading}
       resumenFinancieroError={Boolean(resumenFinancieroQuery.error)}

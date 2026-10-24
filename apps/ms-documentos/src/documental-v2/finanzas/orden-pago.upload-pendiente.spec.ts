@@ -153,6 +153,7 @@ describe('R4P - recuperación READ ONLY de upload pendiente OP', () => {
     const query = strings.join(' ? ');
 
     expect(query).toContain('NOT EXISTS');
+    expect(query).toContain("COALESCE(d.estado, '') <> 'observado'");
     expect(query).toContain('gfd.documento_id = d.id');
     expect(query).toContain('gfd.grupo_factura_id =');
     expect(query).toContain("gfd.tipo_relacion = 'adjunto_transferencia'");

@@ -13,7 +13,7 @@ import type {
 export class GrupoFacturaDocumentoRepository {
   async listarSustentosFinancieros(grupoFacturaId: number, executor: SqlExecutor): Promise<PagoGrupoReadRow[]> {
     const rows = await executor`
-      SELECT v.id AS "vinculoId", d.id AS "documentoId", a.id AS "archivoId",
+      SELECT v.id AS "vinculoId", d.id AS "documentoId", a.id AS "archivoId", ocr."ocrResultadoId",
         v.estado AS "estadoVinculo", d.estado AS "estadoDocumento", d.metadata,
         d.monto_total::text AS monto, d.moneda, d.numero, d.fecha_emision::text AS fecha,
         v.motivo_anulacion AS motivo, v.anulado_en::text AS "fechaAnulacion"
@@ -23,6 +23,10 @@ export class GrupoFacturaDocumentoRepository {
         SELECT id FROM documentos.documentos_archivos WHERE documento_id=d.id AND es_version_actual=true
         ORDER BY id DESC LIMIT 1
       ) a ON true
+      LEFT JOIN LATERAL (
+        SELECT CASE WHEN count(*)=1 THEN min(id) ELSE NULL END AS "ocrResultadoId"
+        FROM documentos.ocr_resultados WHERE documento_id=d.id AND archivo_id=a.id
+      ) ocr ON true
       WHERE v.grupo_factura_id=${grupoFacturaId}::bigint AND v.tipo_relacion='adjunto_transferencia'
       ORDER BY v.id DESC
     `;
@@ -31,7 +35,7 @@ export class GrupoFacturaDocumentoRepository {
 
   async listarDecisionesObservadas(grupoFacturaId: number, empresa: string, executor: SqlExecutor): Promise<PagoGrupoReadRow[]> {
     const rows = await executor`
-      SELECT NULL::bigint AS "vinculoId", d.id AS "documentoId", a.id AS "archivoId",
+      SELECT NULL::bigint AS "vinculoId", d.id AS "documentoId", a.id AS "archivoId", o.id AS "ocrResultadoId",
         NULL::text AS "estadoVinculo", d.estado AS "estadoDocumento", d.metadata,
         d.monto_total::text AS monto, d.moneda, d.numero, d.fecha_emision::text AS fecha,
         o.metadata->'validacionPendientePago' AS decision, a.metadata->>'grupoFacturaId' AS "grupoArchivo"

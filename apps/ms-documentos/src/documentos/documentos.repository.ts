@@ -1,7 +1,7 @@
 import { AlmacenRecuperacionRepository, AlmacenContexto, AlmacenScope } from './almacen-recuperacion.repository';
 import { buildClaveDocumental } from './identidad-documental';
 import { ExpedientesRepository } from '../expedientes/expedientes.repository';
-import { Injectable } from '@nestjs/common';
+import { ConflictException, Injectable } from '@nestjs/common';
 import { sql } from '@documental/database';
 import type { SqlExecutor } from '../documental-v2/sql-executor';
 
@@ -930,6 +930,7 @@ export class DocumentosRepository {
         true
       )
       WHERE id = ${id}::int
+        AND COALESCE(metadata #>> '{validacionPendientePago,estado}', '') <> 'CONSUMIDO'
       RETURNING *
     `;
     return rows[0] ?? null;
@@ -940,13 +941,14 @@ export class DocumentosRepository {
     id: number,
     accion: 'ACEPTAR' | 'OBSERVAR' | 'AUTORIZAR_EXCEPCION',
     motivo: string | null,
+    contextoObservacion?: Record<string, any>,
   ) {
     const rows = await tx`
       UPDATE documentos.ocr_resultados
       SET metadata = jsonb_set(
         COALESCE(metadata, '{}'::jsonb),
         '{validacionPendientePago}',
-        COALESCE(metadata->'validacionPendientePago', '{}'::jsonb)
+        COALESCE(metadata->'validacionPendientePago', ${JSON.stringify(contextoObservacion ?? {})}::jsonb)
           || jsonb_build_object(
             'estado', 'CONSUMIDO',
             'consumidoEn', now(),
@@ -956,7 +958,9 @@ export class DocumentosRepository {
         true
       )
       WHERE id = ${id}::int
-        AND metadata->'validacionPendientePago'->>'estado' = 'PENDIENTE_DECISION'
+        AND (metadata->'validacionPendientePago'->>'estado' = 'PENDIENTE_DECISION'
+          OR (${accion === 'OBSERVAR' && contextoObservacion != null}::boolean
+            AND metadata->'validacionPendientePago' IS NULL))
       RETURNING *
     `;
     return rows[0] ?? null;
@@ -1111,6 +1115,36 @@ export class DocumentosRepository {
           `Expediente ${input.expedienteId} no encontrado`,
           { expedienteId: input.expedienteId },
         );
+      }
+
+      if (input.origenObligacion === 'ORDEN_PAGO' &&
+          (input.decisionCorrespondencia?.accion === 'OBSERVAR' ||
+           ocr.metadata?.validacionPendientePago?.estado === 'CONSUMIDO')) {
+        // archivo -> documento -> OCR are already locked by the caller.
+        const m = archivo.metadata ?? {};
+        const draft = ocr.metadata?.validacionPendientePago;
+        const identidad = draft?.identidad;
+        const matches = Number(archivo.expediente_id) === Number(input.expedienteId) &&
+          String(archivo.empresa_codigo) === String(expediente.empresa_codigo) &&
+          Number(archivo.cliente_destino_id) === Number(expediente.cliente_destino_id) &&
+          Number(m.documentoBaseId) === Number(input.documentoBaseId) &&
+          Number(m.grupoFacturaId) === Number(input.grupoFacturaId) &&
+          m.tipoRelacion === 'adjunto_transferencia' &&
+          (!identidad || (Number(identidad.ocrResultadoId) === Number(id) &&
+            Number(identidad.documentoId) === Number(ocr.documento_id) &&
+            Number(identidad.archivoId) === Number(archivo.id) &&
+            Number(identidad.expedienteId) === Number(input.expedienteId) &&
+            Number(identidad.documentoBaseId) === Number(input.documentoBaseId) &&
+            Number(identidad.grupoFacturaId) === Number(input.grupoFacturaId)));
+        if (!matches || !Number.isSafeInteger(usuarioId) || Number(usuarioId) <= 0) {
+          throw new ConflictException({ code: 'PAGO_OBSERVACION_CONTEXTO_INVALIDO', message: 'El sustento no corresponde al contexto autorizado' });
+        }
+        if (draft?.estado === 'CONSUMIDO') {
+          throw new ConflictException({ code: 'PAGO_DECISION_YA_CONSUMIDA', message: 'El sustento ya tiene una decisión financiera resuelta' });
+        }
+        if (!String(input.decisionCorrespondencia?.motivo ?? '').trim()) {
+          throw new ConflictException({ code: 'PAGO_OBSERVACION_MOTIVO_REQUERIDO', message: 'Observar requiere motivo' });
+        }
       }
 
       const principalesRows = await tx`

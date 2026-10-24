@@ -12,6 +12,7 @@ export type SustentoFinanciero = {
   vinculoId: number | null;
   documentoId: number;
   archivoId: number | null;
+  ocrResultadoId?: number | null;
   banco: string | null;
   fecha: string | null;
   monto: string | null;
@@ -26,6 +27,7 @@ export type PagoGrupoReadRow = {
   vinculoId: number | null;
   documentoId: number;
   archivoId: number | null;
+  ocrResultadoId?: number | null;
   estadoVinculo: string | null;
   estadoDocumento: string;
   metadata: Record<string, any>;

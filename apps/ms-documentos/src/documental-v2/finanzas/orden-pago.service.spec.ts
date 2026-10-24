@@ -309,6 +309,42 @@ describe('OP-01A creación atómica', () => {
     expect(detalle.numero).toBe('OP-153');
   });
 
+  it('detalle expone clasificación del catálogo referenciado por snapshot sin cambiar regularización', async () => {
+    const read = sql as unknown as jest.Mock;
+    read.mockReset();
+    read.mockResolvedValueOnce([{ ordenPagoId: 14, documentoId: 70, grupoFacturaId: 14,
+      contenedorOperativoId: 7, tieneSnapshot: true, conceptoCodigo: 'SEGUROS',
+      conceptoNombre: 'Seguros', conceptoClasificacion: 'SEGUROS',
+      estadoRegularizacion: 'REGULARIZADO', tipo: 'LEGACY', subtipo: 'LEGACY' }]);
+    regularizadoresObligacion.listarCongeladosPorGrupoFacturaId.mockResolvedValueOnce(['FACTURA']);
+    const result = await service.obtenerDetalle(14, actor);
+    expect(result).toMatchObject({ conceptoCodigo: 'SEGUROS', conceptoNombre: 'Seguros',
+      conceptoClasificacion: 'SEGUROS', tipo: null, subtipo: null, estadoRegularizacion: 'REGULARIZADO' });
+    expect(result.tiposDocumentalesRegularizadoresPermitidos).toEqual(['FACTURA']);
+    expect(read.mock.calls[0][0].join(' ')).toContain('co.clasificacion AS "conceptoClasificacion"');
+    expect(sql.begin).not.toHaveBeenCalled();
+  });
+
+  it('detalle sin snapshot no deriva concepto desde metadata y conserva contrato legacy', async () => {
+    const read = sql as unknown as jest.Mock;
+    read.mockReset();
+    read.mockResolvedValueOnce([{ ordenPagoId: 14, documentoId: 70, grupoFacturaId: 14,
+      contenedorOperativoId: 7, tieneSnapshot: false, conceptoCodigo: 'IGNORAR',
+      conceptoNombre: 'Ignorar', conceptoClasificacion: 'IGNORAR', tipo: 'LEGACY', subtipo: 'ANTIGUO' }]);
+    const result = await service.obtenerDetalle(14, actor);
+    expect(result).toMatchObject({ conceptoCodigo: null, conceptoNombre: null,
+      conceptoClasificacion: null, tipo: 'LEGACY', subtipo: 'ANTIGUO' });
+    expect(regularizadoresObligacion.listarCongeladosPorGrupoFacturaId).not.toHaveBeenCalled();
+    expect(sql.begin).not.toHaveBeenCalled();
+  });
+
+  it('detalle mantiene rechazo de snapshot inconsistente', async () => {
+    const read = sql as unknown as jest.Mock;
+    read.mockReset();
+    read.mockResolvedValueOnce([{ tieneSnapshot: true, conceptoCodigo: null, conceptoNombre: null }]);
+    await expect(service.obtenerDetalle(14, actor)).rejects.toThrow('OBLIGACION_SNAPSHOT_INCONSISTENTE');
+  });
+
   it('replay conserva IDs y no repite inserciones ni auditoría', async () => {
     created(); await service.crear(body, key, actor);
     const hash = tx.mock.calls[5].at(-1);

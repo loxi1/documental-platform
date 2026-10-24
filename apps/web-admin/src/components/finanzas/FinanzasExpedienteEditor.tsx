@@ -53,8 +53,10 @@ import {
 } from "@/services/carga-segura";
 import {
   getDocumentoDetalleV2,
+  getGrupoFacturaDocumentosV2,
   getWorkspaceDocumentalV2,
 } from "@/services/documental-v2-workspace";
+import { validarRecuperacionOcrPago, mensajeErrorSustentoOcOs, type RecuperacionOcrPago } from "./FinanzasGrupoFacturaPagoPanel";
 import { actualizarDocumentoManual } from "@/services/documentos";
 import { getDocumentoArchivoPreviewUrl } from "@/services/documentos-preview";
 import {
@@ -842,6 +844,55 @@ export function FinanzasExpedienteEditor({ id }: { id: string | number }) {
     queryFn: () => getOcrResultado(ocrResultadoIdRecuperar!),
   });
 
+  const recuperacionSesionRef = useRef(false);
+  const recuperacionVersionRef = useRef(0);
+  useEffect(() => {
+    recuperacionVersionRef.current += 1;
+    if (recuperacionSesionRef.current) {
+      recuperacionSesionRef.current = false;
+      setModalAbierto(false); setResultadoModal(null); setAccionActual(null);
+    }
+    return () => { recuperacionVersionRef.current += 1; };
+  }, [id, grupoFacturaId]);
+
+  async function recuperarOcrPersistido(identidad: RecuperacionOcrPago) {
+    if (modalAbierto || cargaRealMutation.isPending) throw new Error("Termina la validación actual antes de recuperar otro sustento.");
+    const contexto = requireContextoV2();
+    const version = ++recuperacionVersionRef.current;
+    if (Number(id) !== identidad.expedienteId || contexto.grupoFacturaId !== identidad.grupoFacturaId) {
+      throw new Error("El sustento no pertenece al expediente y grupo seleccionados.");
+    }
+    const recuperado = await Promise.all([
+      getOcrResultado(identidad.ocrResultadoId), getDocumentoDetalleV2(identidad.documentoId),
+      getGrupoFacturaDocumentosV2(identidad.grupoFacturaId),
+    ]).catch(error => {
+      if (version !== recuperacionVersionRef.current) return null;
+      throw error;
+    });
+    if (!recuperado) return;
+    const [ocr, documento, vinculos] = recuperado;
+    if (version !== recuperacionVersionRef.current) return;
+    if (!validarRecuperacionOcrPago(identidad, ocr as unknown as Record<string, unknown>, documento, vinculos) ||
+        Number((documento?.metadata as Record<string, unknown> | undefined)?.documentoBaseId) !== contexto.documentoBaseId) {
+      throw new Error("El OCR no corresponde a un sustento pendiente recuperable de este grupo.");
+    }
+    const option = DOCUMENTO_FINANZAS_ADJUNTO_OPTIONS.find(candidate =>
+      normalizeTipoDocumentalParaBackend(String(candidate.tipoEsperado ?? "")) === "TRANSFERENCIA");
+    if (!option) throw new Error("No se encontró la acción existente de sustento de pago.");
+    const accion = { ...option, grupo: "adjunto" as const };
+    const resultado = {
+      ...ocr.metadata, ocrResultadoId: ocr.id, documentoId: ocr.documento_id,
+      archivoId: ocr.archivo_id, tipoDocumental: ocr.tipo_propuesto,
+      claveDocumental: ocr.clave_documental,
+    } as unknown as ProcesarOcrResultado;
+    setAccionActual(accion);
+    setResultadoModal(buildResultadoConContexto(resultado, accion, {
+      archivoId: String(identidad.archivoId), filename: ocr.nombre_archivo || "documento.pdf", uploadResponse: {},
+    }));
+    recuperacionSesionRef.current = true;
+    setModalAbierto(true);
+  }
+
   const ocrRecuperadoRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -1082,7 +1133,7 @@ export function FinanzasExpedienteEditor({ id }: { id: string | number }) {
       });
     },
     onError: (err: Error) => {
-      setMensajeValidacion(`No se pudo actualizar el pago. ${err.message}`);
+      setMensajeValidacion(`No se pudo actualizar el pago. ${mensajeErrorSustentoOcOs(err, "Intente nuevamente.")}`);
     },
   });
 
@@ -1439,7 +1490,7 @@ export function FinanzasExpedienteEditor({ id }: { id: string | number }) {
         return;
       }
 
-      const message = `No se pudo cargar/procesar OCR para ${accion.label}. ${err.message}`;
+      const message = `No se pudo cargar/procesar OCR para ${accion.label}. ${mensajeErrorSustentoOcOs(err, "Intente nuevamente.")}`;
       setAccionActual(accion);
       setProcessingStep("error");
       setProcessingError(message);
@@ -1448,6 +1499,8 @@ export function FinanzasExpedienteEditor({ id }: { id: string | number }) {
   });
 
   function iniciarSeleccionArchivo(option: DocumentoCargaOption) {
+    recuperacionVersionRef.current += 1;
+    recuperacionSesionRef.current = false;
     setAccionActual({ ...option, grupo: "adjunto" });
     setMensajeValidacion(null);
     setDuplicadoHash(null);
@@ -1557,6 +1610,8 @@ export function FinanzasExpedienteEditor({ id }: { id: string | number }) {
     });
 
     queryClient.invalidateQueries({ queryKey: ["ocr-resultados"] });
+    queryClient.invalidateQueries({ queryKey: ["finanzas-ocr-pago-pendiente-grupo"] });
+    queryClient.invalidateQueries({ queryKey: ["finanzas-ocr-recuperable"] });
     queryClient.invalidateQueries({
       queryKey: ["expediente-documentos", String(id)],
     });
@@ -1698,7 +1753,9 @@ export function FinanzasExpedienteEditor({ id }: { id: string | number }) {
         setModalAbierto(false);
         return;
       }
-      throw error;
+      const message = mensajeErrorSustentoOcOs(error, "No se pudo confirmar el sustento.");
+      if (error instanceof Error && error.message === message) throw error;
+      throw new Error(message);
     }
 
     setDecisionCorrespondenciaRequerida(false);
@@ -1709,6 +1766,8 @@ export function FinanzasExpedienteEditor({ id }: { id: string | number }) {
       `Documento confirmado y vinculado al expediente ${codigo || id}.`,
     );
     queryClient.invalidateQueries({ queryKey: ["ocr-resultados"] });
+    queryClient.invalidateQueries({ queryKey: ["finanzas-ocr-pago-pendiente-grupo"] });
+    queryClient.invalidateQueries({ queryKey: ["finanzas-ocr-recuperable"] });
     queryClient.invalidateQueries({
       queryKey: ["expediente-documentos", String(id)],
     });
@@ -1737,12 +1796,20 @@ export function FinanzasExpedienteEditor({ id }: { id: string | number }) {
       `OCR rechazado para ${accionActual?.label ?? "documento"}.`,
     );
     queryClient.invalidateQueries({ queryKey: ["ocr-resultados"] });
+    queryClient.invalidateQueries({ queryKey: ["finanzas-ocr-pago-pendiente-grupo"] });
+    queryClient.invalidateQueries({ queryKey: ["finanzas-ocr-recuperable"] });
     queryClient.invalidateQueries({
       queryKey: ["expediente-documentos", String(id)],
     });
   }
 
   async function cancelarOcrFinanzas() {
+    recuperacionVersionRef.current += 1;
+    if (recuperacionSesionRef.current) {
+      recuperacionSesionRef.current = false;
+      setModalAbierto(false); setResultadoModal(null); setAccionActual(null);
+      return;
+    }
     const resultadoActual = resultadoModal as Record<string, unknown> | null;
     const ocrResultadoId = getOcrResultadoId(resultadoActual);
 
@@ -1990,6 +2057,7 @@ export function FinanzasExpedienteEditor({ id }: { id: string | number }) {
           }}
           onAdjuntarTransferencia={iniciarAdjuntarTransferencia}
           onEditarPago={(doc) => abrirPagoModal(doc, "editar")}
+          onRecuperarOcr={recuperarOcrPersistido}
         />
 
         <Card className="hidden border-dashed bg-muted/20">

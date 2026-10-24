@@ -21,6 +21,7 @@ import {
   evaluarCorrespondenciaPagoFactura,
   getDocumentosCandidatosGrupoFacturaV2,
   getGrupoFacturaDocumentosV2,
+  getDocumentoDetalleV2,
   getWorkspaceDocumentalV2,
   type FinanzasCorrespondenciaEvaluacion,
 } from "@/services/documental-v2-workspace";
@@ -48,6 +49,64 @@ import {
   type FinanzasPaymentItem,
   type FinanzasPaymentObservedItem,
 } from "@/components/finanzas/FinanzasPaymentPanel";
+
+
+export type RecuperacionOcrPago = {
+  expedienteId: number; grupoFacturaId: number; documentoId: number;
+  archivoId: number; ocrResultadoId: number;
+};
+
+// La pertenencia procede del documento persistido, nunca del nombre o hash.
+export function validarRecuperacionOcrPago(
+  identidad: RecuperacionOcrPago, ocr: Record<string, unknown>,
+  documento: Record<string, unknown> | null, vinculos: Array<unknown>,
+) {
+  const record = (value: unknown): Record<string, unknown> =>
+    value && typeof value === "object" && !Array.isArray(value)
+      ? value as Record<string, unknown> : {};
+  const igual = (value: unknown, expected: number) =>
+    value !== null && value !== undefined && Number.isSafeInteger(Number(value)) && Number(value) === expected;
+  if (!Object.values(identidad).every(value => Number.isSafeInteger(value) && value > 0)) return false;
+  const metadata = record(documento?.metadata);
+  const ocrMetadata = record(ocr.metadata);
+  const interna = record(ocrMetadata.metadata);
+  const decision = record(ocrMetadata.validacionPendientePago ?? interna.validacionPendientePago);
+  const archivos = Array.isArray(documento?.archivos) ? documento.archivos : [];
+  return igual(ocr.id, identidad.ocrResultadoId) &&
+    igual(ocr.documento_id ?? ocr.documentoId, identidad.documentoId) &&
+    igual(ocr.archivo_id ?? ocr.archivoId, identidad.archivoId) &&
+    igual(ocr.grupoFacturaId ?? ocr.grupo_factura_id, identidad.grupoFacturaId) &&
+    igual(documento?.id, identidad.documentoId) &&
+    igual(metadata.expedienteId, identidad.expedienteId) &&
+    igual(metadata.grupoFacturaId, identidad.grupoFacturaId) &&
+    archivos.some(archivo => igual(record(archivo).id, identidad.archivoId)) &&
+    String(ocr.tipo_propuesto ?? ocr.tipoPropuesto).toUpperCase() === "TRANSFERENCIA" &&
+    ["pendiente_validacion", "editado"].includes(String(ocr.estado).toLowerCase()) &&
+    !["observado", "anulado", "confirmado"].includes(String(documento?.estado).toLowerCase()) &&
+    !["CONSUMIDO", "PENDIENTE_DECISION"].includes(String(decision.estado).toUpperCase()) &&
+    !vinculos.some(value => {
+      const vinculo = record(value);
+      return igual(vinculo.documentoId ?? vinculo.documento_id, identidad.documentoId) &&
+        String(vinculo.estado).toLowerCase() === "activo";
+    });
+}
+
+export function mensajeErrorSustentoOcOs(error: unknown, fallback: string): string {
+  const codes: Record<string, string> = {
+    DOCUMENTO_DUPLICADO_EN_EXPEDIENTE: "Ya existe un comprobante con el mismo banco y número de operación. Revisa los datos antes de continuar.",
+    DECISION_CORRESPONDENCIA_REQUERIDA: "Revisa la sección Decisión requerida para continuar.",
+  };
+  const visit = (value: unknown, depth: number): string | null => {
+    if (depth > 6 || !value || typeof value !== "object") return null;
+    const item = value as Record<string, unknown>;
+    for (const key of ["code", "message"]) if (typeof item[key] === "string" && codes[item[key] as string]) return codes[item[key] as string];
+    for (const key of ["response", "data", "error", "details"]) {
+      const found = visit(item[key], depth + 1); if (found) return found;
+    }
+    return null;
+  };
+  return visit(error, 0) ?? (error instanceof Error ? error.message : fallback);
+}
 
 function hasAdjunto(grupo: WorkspaceV2GrupoFactura, aliases: string[]) {
   const normalized = aliases.map((alias) => alias.toUpperCase());
@@ -631,6 +690,7 @@ function GrupoPagoCard({
   onDecisionResuelta,
   onAdjuntarTransferencia,
   onEditarPago,
+  onRecuperarOcr,
 }: {
   workspace: unknown;
   grupo: WorkspaceV2GrupoFactura;
@@ -644,6 +704,7 @@ function GrupoPagoCard({
   onDecisionResuelta?: () => void;
   onAdjuntarTransferencia?: (grupoFacturaId: string | number) => void;
   onEditarPago?: (documento: Record<string, unknown>) => void;
+  onRecuperarOcr?: (identidad: RecuperacionOcrPago) => Promise<void>;
 }) {
   const [previewPagoAbierto, setPreviewPagoAbierto] = useState(false);
   const [previewPagoPersistido, setPreviewPagoPersistido] = useState<{
@@ -926,6 +987,29 @@ function GrupoPagoCard({
         grupoFacturaId: grupoFacturaIdNumerico,
       }),
   });
+
+  const recuperables = (ocrResultadosGrupoQuery.data ?? []).filter(ocr =>
+    ["pendiente_validacion", "editado"].includes(String(ocr.estado).toLowerCase()) &&
+    String(ocr.tipo_propuesto).toUpperCase() === "TRANSFERENCIA" &&
+    Number(ocr.grupoFacturaId) === Number(grupoFacturaId) &&
+    Number(ocr.documento_id) > 0 && Number(ocr.archivo_id) > 0);
+  const recuperacionQueries = useQueries({ queries: recuperables.map(ocr => ({
+    queryKey: ["finanzas-ocr-recuperable", expedienteId, grupoFacturaId, ocr.id],
+    enabled: Boolean(editable && onRecuperarOcr && vinculosGrupoQuery.isSuccess),
+    queryFn: async () => {
+      const [detalle, documento] = await Promise.all([
+        getOcrResultado(ocr.id), getDocumentoDetalleV2(ocr.documento_id!),
+      ]);
+      const identidad: RecuperacionOcrPago = {
+        expedienteId: Number(expedienteId), grupoFacturaId: Number(grupoFacturaId),
+        documentoId: Number(ocr.documento_id), archivoId: Number(ocr.archivo_id), ocrResultadoId: ocr.id,
+      };
+      return validarRecuperacionOcrPago(identidad, detalle as unknown as Record<string, unknown>, documento, vinculosGrupo)
+        ? { identidad, nombre: detalle.nombre_archivo } : null;
+    },
+  })) });
+  const [recuperacionError, setRecuperacionError] = useState<string | null>(null);
+  const [recuperandoOcr, setRecuperandoOcr] = useState(false);
 
   const ocrTransferenciasPendientes =
     ocrResultadosGrupoQuery.data?.filter((ocr) => {
@@ -1581,9 +1665,7 @@ function GrupoPagoCard({
       onDecisionResuelta?.();
     } catch (error) {
       setDecisionInlineError(
-        error instanceof Error
-          ? error.message
-          : "No se pudo registrar la decisión humana.",
+        mensajeErrorSustentoOcOs(error, "No se pudo registrar la decisión humana."),
       );
     } finally {
       setDecisionInlineEnviando(false);
@@ -2198,6 +2280,29 @@ function GrupoPagoCard({
               )}
             </>
           ) : null}
+          {editable && onRecuperarOcr && !validacionPendientePagoValida ? (
+            <div className="w-full space-y-2">
+              {recuperacionQueries.map((query) => {
+                const candidate = query.data;
+                if (!candidate || recuperables.filter(row =>
+                  Number(row.documento_id) === candidate.identidad.documentoId &&
+                  Number(row.archivo_id) === candidate.identidad.archivoId).length !== 1) return null;
+                return <div key={candidate.identidad.ocrResultadoId} className="rounded border p-3 space-y-2">
+                  <p>Pendiente de validación OCR · {candidate.nombre || "Sustento de pago"}</p>
+                  <Button type="button" variant="outline" onClick={() => setPreviewPagoPersistido({archivoId: candidate.identidad.archivoId, title: candidate.nombre || "Sustento de pago"})}>Ver</Button>
+                  <Button type="button" variant="outline" disabled={recuperandoOcr} onClick={async () => {
+                    setRecuperandoOcr(true); setRecuperacionError(null);
+                    try { await onRecuperarOcr(candidate.identidad); }
+                    catch (error) { setRecuperacionError(mensajeErrorSustentoOcOs(error, "No se pudo recuperar el OCR.")); }
+                    finally { setRecuperandoOcr(false); }
+                  }}>Editar OCR</Button>
+                </div>;
+              })}
+              {recuperacionQueries.some(query => query.isError) ? <p role="alert">No se pudo verificar el OCR pendiente. Vuelve a consultar antes de continuar.</p> : null}
+              {recuperables.some(row => recuperables.filter(other => other.documento_id === row.documento_id && other.archivo_id === row.archivo_id).length > 1) ? <p role="alert">Hay varios resultados OCR para el mismo archivo. No se seleccionará uno automáticamente.</p> : null}
+              {recuperacionError ? <p role="alert">{recuperacionError}</p> : null}
+            </div>
+          ) : null}
           {pagoDocumentoIdRecuperado &&
           validacionPendientePagoValida &&
           evaluacionCorrespondenciaEfectiva &&
@@ -2465,6 +2570,7 @@ export function FinanzasGrupoFacturaPagoPanel({
   onDecisionResuelta,
   onAdjuntarTransferencia,
   onEditarPago,
+  onRecuperarOcr,
 }: {
   id: string | number;
   editable?: boolean;
@@ -2475,6 +2581,7 @@ export function FinanzasGrupoFacturaPagoPanel({
   onDecisionResuelta?: () => void;
   onAdjuntarTransferencia?: (grupoFacturaId: string | number) => void;
   onEditarPago?: (documento: Record<string, unknown>) => void;
+  onRecuperarOcr?: (identidad: RecuperacionOcrPago) => Promise<void>;
 }) {
   const capabilities = useWorkspaceV2Capabilities();
 
@@ -2560,6 +2667,7 @@ export function FinanzasGrupoFacturaPagoPanel({
               onDecisionResuelta={onDecisionResuelta}
               onAdjuntarTransferencia={onAdjuntarTransferencia}
               onEditarPago={onEditarPago}
+              onRecuperarOcr={onRecuperarOcr}
             />
           ))
         ) : (

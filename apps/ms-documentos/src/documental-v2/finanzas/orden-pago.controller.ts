@@ -58,6 +58,12 @@ export class OrdenPagoController {
     return this.op.editar(Number(id), body, this.actor(headers));
   }
 
+  @Post('ordenes-pago/:ordenPagoId/pagos/:vinculoId/observar')
+  observarPagoConfirmado(@Headers() headers: Record<string, string>, @Param('ordenPagoId') id: string,
+    @Param('vinculoId') vinculoId: string, @Body() body: unknown) {
+    return this.op.observarPagoConfirmado(Number(id), Number(vinculoId), body, this.actor(headers));
+  }
+
   @Post('ordenes-pago/:ordenPagoId/confirmar-pago')
   confirmarPago(
     @Headers() headers: Record<string, string>,

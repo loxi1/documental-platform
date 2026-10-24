@@ -19,6 +19,8 @@ export type FinanzasPaymentItem = {
   operacion?: string | null;
   observacion?: string | null;
   visualizable?: boolean;
+  onVerDatosOcr?: () => void;
+  onObservar?: () => void;
   contenidoExtra?: ReactNode;
 };
 
@@ -30,6 +32,7 @@ export type FinanzasPaymentObservedItem = {
   motivo?: string | null;
   fechaDecision?: string | null;
   visualizable?: boolean;
+  onVerDatosOcr?: () => void;
 };
 
 export type FinanzasPaymentCancelledItem = {
@@ -149,6 +152,7 @@ export function FinanzasPaymentPanel({
               <div className="flex items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
                   <span className="font-medium">Pago {index + 1}</span>
+                  {item.onVerDatosOcr ? <Button type="button" variant="outline" size="sm" onClick={item.onVerDatosOcr}>Ver datos OCR</Button> : null}
 
                   {onVerPago ? (
                     <Button
@@ -166,6 +170,7 @@ export function FinanzasPaymentPanel({
                       {previewLoadingId === item.id ? "Abriendo..." : "Ver"}
                     </Button>
                   ) : null}
+                  {item.onObservar ? <Button type="button" variant="outline" size="sm" onClick={item.onObservar}>Observar</Button> : null}
                 </div>
 
                 <span className="font-semibold">{item.montoLabel}</span>
@@ -242,6 +247,7 @@ export function FinanzasPaymentPanel({
                     </p>
                   ) : null}
 
+                  {item.onVerDatosOcr ? <Button type="button" variant="outline" size="sm" onClick={item.onVerDatosOcr}>Ver datos OCR</Button> : null}
                   {onVerObservado ? (
                     <Button
                       type="button"

@@ -43,6 +43,12 @@ export class GrupoFacturaService {
           items.set(Number(row.documentoId), this.proyectarSustento(row, 'activo'));
         }
       }
+      // Solo OP: la observación posterior conserva el documento y revierte el vínculo con los estados existentes.
+      if (grupo.origenObligacion === 'ORDEN_PAGO') for (const row of vinculados) {
+        if (!items.has(Number(row.documentoId)) && row.estadoVinculo === 'anulado' && row.estadoDocumento === 'observado') {
+          items.set(Number(row.documentoId), this.proyectarSustento(row, 'observado'));
+        }
+      }
       for (const row of observados) {
         this.validarDecision(row, grupo, id);
         if (!items.has(Number(row.documentoId)) && row.estadoDocumento !== 'anulado') {
@@ -113,9 +119,10 @@ export class GrupoFacturaService {
       return value == null ? null : String(value);
     };
     return { vinculoId: row.vinculoId == null ? null : Number(row.vinculoId), documentoId: Number(row.documentoId),
-      archivoId: row.archivoId == null ? null : Number(row.archivoId), estado,
+      archivoId: row.archivoId == null ? null : Number(row.archivoId),
+      ocrResultadoId: row.ocrResultadoId == null ? null : Number(row.ocrResultadoId), estado,
       banco: texto(ocr.banco, m.banco), fecha: texto(estado === 'anulado' ? row.fechaAnulacion : null,
-        estado === 'observado' ? row.decision?.consumidoEn : null, ocr.fechaPago, ocr.fechaEmision, row.fecha),
+        estado === 'observado' ? row.decision?.consumidoEn ?? row.fechaAnulacion : null, ocr.fechaPago, ocr.fechaEmision, row.fecha),
       monto: pago.importe == null || !Number.isFinite(Number(pago.importe)) ? null : Number(pago.importe).toFixed(2),
       moneda: pago.moneda ?? null, numeroReferencia: texto(ocr.numeroOperacion, ocr.numero, m.numeroOperacion, m.numero_operacion, row.numero),
       observacion: texto(row.decision?.request?.observacion, m.observacion, ocr.observacion),

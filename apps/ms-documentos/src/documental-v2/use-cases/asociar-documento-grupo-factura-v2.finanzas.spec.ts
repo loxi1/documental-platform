@@ -1107,4 +1107,42 @@ describe('AsociarDocumentoGrupoFacturaV2UseCase - correspondencia financiera', (
     });
   });
 
+  it.each([evaluacion('VALIDADA', false, true), evaluacion('INCOMPATIBLE', true, false)])('OC/OS preserves previous explicit-decision semantics', async evaluation => {
+    const ctx = buildUseCase({ evaluacion: evaluation });
+    const result = await ctx.useCase.execute({ ...ctx.input, decisionCorrespondencia: { accion: 'OBSERVAR', motivo: 'Documento no corresponde' } });
+    if (evaluation.estado === 'VALIDADA') {
+      expect(result.documentoGrupoFactura).not.toBeNull();
+      expect(ctx.grupoFacturaDocumentos.crear).toHaveBeenCalledTimes(1);
+    } else {
+      expect(result.documentoGrupoFactura).toBeNull();
+      expect(result.correspondencia?.estado).toBe('OBSERVADA');
+      expect(ctx.grupoFacturaDocumentos.crear).not.toHaveBeenCalled();
+    }
+  });
+  it('compatible OP observation requires reason', async () => {
+    const ctx = buildUseCase({origenObligacion:'ORDEN_PAGO',facturaDocumentoId:null,tipoPrincipal:'ORDEN_PAGO'});
+    await expect(ctx.useCase.execute({ ...ctx.input, decisionCorrespondencia: { accion: 'OBSERVAR', motivo: ' ' } })).rejects.toBeInstanceOf(ConflictException);
+    expect(ctx.grupoFacturaDocumentos.crear).not.toHaveBeenCalled();
+  });
+
+  it('explicit observation cannot reclassify a financially active payment', async () => {
+    const ctx=buildUseCase({origenObligacion:'ORDEN_PAGO',facturaDocumentoId:null,tipoPrincipal:'ORDEN_PAGO',existente:{id:11,grupoFacturaId:4,tipoRelacion:'adjunto_transferencia',estado:'activo'}});
+    await expect(ctx.useCase.execute({...ctx.input,decisionCorrespondencia:{accion:'OBSERVAR',motivo:'No corresponde'}})).rejects.toMatchObject({response:{code:'PAGO_YA_CONFIRMADO'}});
+    expect(ctx.grupoFacturaDocumentos.crear).not.toHaveBeenCalled();
+    expect(ctx.auditoria.registrarDecisionCorrespondencia).not.toHaveBeenCalled();
+  });
+
+  it.each(['PEN','USD'])('OP manual observation in %s leaves active paid links untouched', async moneda => {
+    const ctx=buildUseCase({origenObligacion:'ORDEN_PAGO',facturaDocumentoId:null,tipoPrincipal:'ORDEN_PAGO',pago:{id:29,tipoDocumental:'TRANSFERENCIA',clienteAbreviatura:'BBTI',estado:'confirmado',moneda,montoTotal:100,metadata:{}}});
+    const result=await ctx.useCase.execute({...ctx.input,decisionCorrespondencia:{accion:'OBSERVAR',motivo:'No corresponde a esta OP'}});
+    expect(result.documentoGrupoFactura).toBeNull();expect(result.correspondencia?.estado).toBe('OBSERVADA');
+    expect(ctx.grupoFacturaDocumentos.crear).not.toHaveBeenCalled();expect(ctx.grupoFacturaDocumentos.actualizar).not.toHaveBeenCalled();
+  });
+
+  it('OC/OS existing active link retains its previous idempotent return even with decision payload', async () => {
+    const ctx=buildUseCase({existente:{id:11,grupoFacturaId:4,tipoRelacion:'adjunto_transferencia',estado:'activo'}});
+    const result=await ctx.useCase.execute({...ctx.input,decisionCorrespondencia:{accion:'OBSERVAR',motivo:'Payload existente'}});
+    expect(result.idempotente).toBe(true);expect(ctx.grupoFacturaDocumentos.crear).not.toHaveBeenCalled();
+  });
+
 });

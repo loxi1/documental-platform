@@ -1700,4 +1700,15 @@ describe('DocumentalV2GatewayController', () => {
     expect(axios.patch).not.toHaveBeenCalled();
   });
 
+  it('observación confirmada OP reenvía contexto autenticado por ruta focal', async () => {
+    const {controller}=buildController({sub:7,workspaceId:3,permisos:{menus:['finanzas']}});
+    (axios.post as jest.Mock).mockResolvedValueOnce({data:{success:true,data:{estado:'OBSERVADO'}}});
+    await expect(controller.observarPagoConfirmadoOp('Bearer valido','req-obs','31','35',{motivo:'No corresponde'})).resolves.toEqual({estado:'OBSERVADO'});
+    expect(axios.post).toHaveBeenCalledWith('http://ms-documentos:3002/api/v1/documental-v2/finanzas/ordenes-pago/31/pagos/35/observar',{motivo:'No corresponde'},expect.objectContaining({headers:expect.objectContaining({'x-user-id':'7','x-workspace-id':'3'})}));
+  });
+  it('observación confirmada OP sin permiso Finanzas no realiza POST', async () => {
+    const {controller}=buildController({sub:7,workspaceId:3,permisos:{menus:['almacen']}});
+    await expect(controller.observarPagoConfirmadoOp('Bearer valido','req-obs','31','35',{motivo:'X'})).rejects.toThrow();
+    expect(axios.post).not.toHaveBeenCalled();
+  });
 });

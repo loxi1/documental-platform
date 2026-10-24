@@ -30,6 +30,14 @@ describe('Resumen financiero canónico READ', () => {
     pagos.listarSustentosFinancieros.mockResolvedValue([]);
     pagos.listarDecisionesObservadas.mockResolvedValue([]);
   });
+  it('proyecta OCR exacto del sustento activo y observado sin cambiar el saldo', async () => {
+    pagos.listarSustentosFinancieros.mockResolvedValue([{ ...pago, documentoId: 93, archivoId: 94, ocrResultadoId: 66 }]);
+    pagos.listarDecisionesObservadas.mockResolvedValue([{ ...pago, documentoId: 94, archivoId: 95, ocrResultadoId: 67, estadoVinculo: null, grupoArchivo: '116', decision: { estado: 'CONSUMIDO', accion: 'OBSERVAR', motivo: 'NO debe agregarse', identidad: { grupoFacturaId: 116, expedienteId: null, facturaDocumentoId: null } } }]);
+    const result = await service.obtenerResumenFinanciero(116, actor);
+    expect(result.sustentosActivos[0]).toMatchObject({ documentoId: 93, archivoId: 94, ocrResultadoId: 66 });
+    expect(result.sustentosObservados[0]).toMatchObject({ documentoId: 94, archivoId: 95, ocrResultadoId: 67, motivo: 'NO debe agregarse' });
+    expect(result.pago).toEqual({ pagado: '0.00', saldo: '100.00', estado: 'PENDIENTE DE PAGO' });
+  });
   it.each([
     [0, [], '0.00', '100.00', 'SIN PAGOS'],
     [40, [pago], '40.00', '60.00', 'PENDIENTE DE PAGO'],
@@ -128,6 +136,26 @@ describe('Resumen financiero canónico READ', () => {
       'x-user-id': '1', 'x-workspace-id': '1', 'x-empresa-codigo': 'LAB',
     });
     expect(obtenerResumenFinanciero).toHaveBeenCalledWith(116, actor);
+  });
+  it('OC/OS keeps the previous annulled-link classification', async () => {
+    repo.buscarObligacionScoped.mockResolvedValue({ ...grupo, origenObligacion:'FACTURA', tipoPrincipal:'OC', facturaDocumentoId:443 });
+    docs.buscarPorId.mockResolvedValue({ ...doc, tipoDocumental:'FACTURA' });
+    pagos.listarSustentosFinancieros.mockResolvedValue([{ ...pago,estadoVinculo:'anulado',estadoDocumento:'observado' }]);
+    const r=await service.obtenerResumenFinanciero(116,actor);
+    expect(r.sustentosObservados).toHaveLength(0);expect(r.sustentosAnulados).toHaveLength(1);
+  });
+  it('F5 projects a reversed confirmed payment as observed, keeps another payment active and recalculates saldo', async () => {
+
+      pagos.listarSustentosFinancieros.mockResolvedValue([
+        { ...pago, documentoId: 93, archivoId: 94, ocrResultadoId: 66, estadoVinculo: 'anulado', estadoDocumento: 'observado', motivo: 'No corresponde', fechaAnulacion: '2026-10-21' },
+        { ...pago, vinculoId: 36, documentoId: 95, archivoId: 96, estadoVinculo: 'activo', estadoDocumento: 'confirmado' },
+      ]);
+      pagos.listarDecisionesObservadas.mockResolvedValue([]);
+      pagos.sumarMontoTransferenciasActivas.mockResolvedValue(40);
+      const r = await service.obtenerResumenFinanciero(116, actor);
+      expect(r.sustentosObservados).toEqual([expect.objectContaining({documentoId:93,archivoId:94,ocrResultadoId:66,motivo:'No corresponde',estado:'observado'})]);
+      expect(r.sustentosActivos).toHaveLength(1); expect(r.pago.pagado).toBe('40.00');
+      expect(r.pago.saldo).toBe((Number(r.obligacion.monto)-40).toFixed(2));
   });
 });
 
