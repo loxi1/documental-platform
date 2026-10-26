@@ -8,7 +8,7 @@ import { createHash,randomUUID } from 'node:crypto';
 import { createPrivateDelivery,runGpg } from './private-delivery.mjs';
 import { validateApproval,executeAdministrative,SCOPE } from './production-entrypoint.mjs';
 import { provision,recoverDelivery,verifyIntegrity,TARGETS,PERMISSIONS_A,PERMISSIONS_G } from './provision.mjs';
-const evidenceRoot=join(homedir(),'evidencias/documental-platform/auth-users-final-components-r1');
+const evidenceRoot=process.env.BBTI_COMPONENT_EVIDENCE_DIR??join(homedir(),'evidencias/documental-platform/auth-users-final-components-r1');
 const checks={};const digest=b=>createHash('sha256').update(b).digest('hex');
 const approval=integrity=>({environment:'production',database:'gestion_documental',role:'document_platform',scope:SCOPE,
  artifactIntegrity:integrity,dbWriteAuthorized:true,privateDeliveryApproved:true,administrativeRotationApproved:true,
@@ -79,6 +79,37 @@ test('final production components only; no LAB baseline, RDS or real credentials
   assert.equal(digest(before),digest(await readFile(join(custody,operationId,'acueva.gpg'))));
   checks.ENCRYPTED_ENVELOPES='PASS';checks.PARTIAL_SIGNED_ACK_RECOVERY='PASS';checks.NO_REGENERATION='PASS';checks.NO_PLAINTEXT_FILES='PASS';
  });
+ await t.test('PO_MANAGED works with one public key, four encrypted envelopes and PO acknowledgements',async()=>{
+  const poHome=join(fixture,'po-public-only'),poCustody=join(fixture,'po-custody'),poDelivery=join(fixture,'po-delivery');
+  for(const dir of [poHome,poCustody,poDelivery])await mkdir(dir,{mode:0o700});
+  const publicKey=(await runGpg(home,['--armor','--export',fingerprints[0]])).output;
+  await runGpg(poHome,['--import'],publicKey);
+  const po=await createPrivateDelivery({custodyMode:'PO_MANAGED',custodyRoot:poCustody,gpgHome:poHome,
+    custodianFingerprint:fingerprints[0],custodianDeliveryDirectory:poDelivery,
+    forbiddenRoots:[process.cwd()],verifiedKeysApproval:'PO_SYNTHETIC_APPROVAL'});
+  const id=randomUUID(),i=await verifyIntegrity(),payload='PO_SYNTHETIC_PAYLOAD_NO_ACCOUNT';
+  await po.prepare({operationId:id,integrity:i,credentials:TARGETS.map(t=>({email:t.email,temporaryPassword:payload}))});
+  await assert.rejects(po.deliver({operationId:id,integrity:i}));
+  const before=[];
+  for(let n=0;n<4;n++) {
+    const user=TARGETS[n],name=id+'-'+user.email.split('@')[0],cipher=await readFile(join(poDelivery,name+'.gpg'));
+    before.push(digest(cipher));assert.ok(!cipher.includes(Buffer.from(payload)));
+    const {output,status}=await runGpg(home,['--status-fd','3','--decrypt'],cipher);
+    const decoded=JSON.parse(output.toString());assert.ok(decoded.email===user.email&&decoded.temporaryPassword===payload);
+    assert.ok(status.includes(fingerprints[0]));output.fill(0);
+    const ack=Buffer.from(JSON.stringify({operationId:id,integrity:i,email:user.email,envelopeSha256:digest(cipher)}));
+    const signature=(await runGpg(home,['--pinentry-mode','loopback','--passphrase','','--local-user',fingerprints[0],'--detach-sign','--output','-'],ack)).output;
+    await writeFile(join(poDelivery,name+'.ack.json'),ack,{mode:0o600});await writeFile(join(poDelivery,name+'.ack.json.sig'),signature,{mode:0o600});
+    if(n<3)await assert.rejects(po.deliver({operationId:id,integrity:i}));
+  }
+  await po.deliver({operationId:id,integrity:i});await po.deliver({operationId:id,integrity:i});
+  for(let n=0;n<4;n++)assert.equal(before[n],digest(await readFile(join(poDelivery,id+'-'+TARGETS[n].email.split('@')[0]+'.gpg'))));
+  const a=approval(i);delete a.administrativeRotationApproved;delete a.rotationApprovalId;delete a.recipients;
+  assert.equal(validateApproval({...a,custodyMode:'PO_MANAGED',custodianDeliveryDirectory:poDelivery},i),true);
+  assert.throws(()=>validateApproval(a,i));
+  checks.PO_SINGLE_PUBLIC_KEY='PASS';checks.PO_FOUR_DISTINCT_ENVELOPES='PASS';
+  checks.PO_SIGNED_ACK_RECOVERY='PASS';checks.PO_ROTATION_OUT_OF_SCOPE='PASS';
+ });
  await t.test('reject unverified keys, unsafe paths and altered receipts',async()=>{
   await assert.rejects(createPrivateDelivery({...config,verifiedKeysApproval:''}));
   await assert.rejects(createPrivateDelivery({...config,recipients:recipients.slice(1)}));
@@ -123,7 +154,7 @@ test('final production components only; no LAB baseline, RDS or real credentials
   assert.equal(run.status,1);assert.equal(run.stdout,'');assert.equal(run.stderr.trim(),'ADMIN_EXECUTION_BLOCKED_OR_OUTCOME_REQUIRES_READONLY_VERIFICATION');
   checks.SOURCE_EXECUTION_BLOCKED='PASS';checks.ERROR_OUTPUT_SANITIZED='PASS';
  });
- const record={action:'BBTI_AUTH_USERS_FINAL_IMPLEMENTATION_RESULT_R1',checks,status:Object.keys(checks).length===17?'PASS':'FAIL',
+ const record={action:'BBTI_AUTH_USERS_PO_MANAGED_ADAPTER_RESULT_R1',checks,status:Object.keys(checks).length===21?'PASS':'FAIL',
    syntheticTestKeysOnly:true,realCredentialsGenerated:false,productionConnected:false,labBaselineRepeated:false,
    fixturePath:fixture,artifactIntegrity:await verifyIntegrity(),recordedAt:new Date().toISOString()};
  await writeFile(join(evidenceRoot,'result.json'),JSON.stringify(record,null,2)+'\n');

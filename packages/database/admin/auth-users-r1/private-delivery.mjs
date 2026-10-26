@@ -38,7 +38,13 @@ async function exclusive(path,bytes) {
   const handle=await open(path,'wx',0o600);
   try{await handle.writeFile(bytes);await handle.sync();}finally{await handle.close();}
 }
-export async function createPrivateDelivery({custodyRoot,gpgHome,custodianFingerprint,recipients,forbiddenRoots,verifiedKeysApproval}) {
+export async function createPrivateDelivery({custodyRoot,gpgHome,custodianFingerprint,recipients,forbiddenRoots,verifiedKeysApproval,custodyMode='INDIVIDUAL',custodianDeliveryDirectory}) {
+  if(!['INDIVIDUAL','PO_MANAGED'].includes(custodyMode))error('CUSTODY_MODE_INVALID');
+  const poManaged=custodyMode==='PO_MANAGED';
+  if(poManaged) {
+    if(recipients?.some(r=>r.fingerprint&&r.fingerprint!==custodianFingerprint))error('PO_EXCLUSIVE_CUSTODY_REQUIRED');
+    recipients=(recipients??TARGETS.map(t=>({email:t.email}))).map(r=>({...r,fingerprint:custodianFingerprint,deliveryDirectory:custodianDeliveryDirectory}));
+  }
   if(!verifiedKeysApproval||!Array.isArray(forbiddenRoots)||!forbiddenRoots.length)error('VERIFIED_KEYS_APPROVAL_REQUIRED');
   const root=await privateDirectory(custodyRoot,forbiddenRoots),home=await privateDirectory(gpgHome,forbiddenRoots);
   if(!fingerprint(custodianFingerprint))error('INVALID_FINGERPRINT');
@@ -51,18 +57,19 @@ export async function createPrivateDelivery({custodyRoot,gpgHome,custodianFinger
     if(route===root||within(root,route)||within(route,root))error('DELIVERY_CUSTODY_OVERLAP');
     routes.set(r.email,{...r,deliveryDirectory:route});
   }
-  if(new Set([custodianFingerprint,...recipients.map(r=>r.fingerprint)]).size!==5||new Set([...routes.values()].map(r=>r.deliveryDirectory)).size!==4)error('RECIPIENTS_NOT_INDEPENDENT');
-  for(const fpr of [custodianFingerprint,...recipients.map(r=>r.fingerprint)]) {
+  if(!poManaged&&(new Set([custodianFingerprint,...recipients.map(r=>r.fingerprint)]).size!==5||new Set([...routes.values()].map(r=>r.deliveryDirectory)).size!==4))error('RECIPIENTS_NOT_INDEPENDENT');
+  for(const fpr of new Set([custodianFingerprint,...recipients.map(r=>r.fingerprint)])) {
     const {output}=await runGpg(home,['--with-colons','--fixed-list-mode','--list-keys',fpr]);
     const lines=output.toString('utf8').split('\n').map(l=>l.split(':'));
     const pub=lines.find(l=>l[0]==='pub'),primary=lines.find(l=>l[0]==='fpr');
+    if(poManaged&&pub&&!/[sS]/.test(pub[11]??''))error('PO_KEY_SIGNING_CAPABILITY_REQUIRED');
     if(!pub||primary?.[9]!==fpr||['r','e','d'].includes(pub[1])||!/[eE]/.test(pub[11]??'')||(pub[6]&&Number(pub[6])*1000<Date.now()))error('VERIFIED_KEY_UNUSABLE');
   }
   async function journal(id,integrity) {
     if(!operation(id)||!/^[a-f0-9]{64}$/.test(integrity??''))error('INVALID_OPERATION');
     const dir=await privateDirectory(join(root,id),forbiddenRoots);
     const data=JSON.parse((await load(join(dir,'operation.json'))).toString('utf8'));
-    if(data.operationId!==id||data.integrity!==integrity||data.keysApproval!==verifiedKeysApproval)error('PREPARATION_IDENTITY_MISMATCH');
+    if(data.operationId!==id||data.integrity!==integrity||data.keysApproval!==verifiedKeysApproval||(data.custodyMode??'INDIVIDUAL')!==custodyMode)error('PREPARATION_IDENTITY_MISMATCH');
     return {dir,data};
   }
   return Object.freeze({
@@ -75,12 +82,12 @@ export async function createPrivateDelivery({custodyRoot,gpgHome,custodianFinger
         const r=routes.get(c.email),filename=c.email.split('@')[0]+'.gpg';
         const bytes=Buffer.from(JSON.stringify({operationId,integrity,email:c.email,temporaryPassword:c.temporaryPassword}));
         let encrypted;
-        try{encrypted=(await runGpg(home,['--trust-model','always','--encrypt','--recipient',r.fingerprint,'--recipient',custodianFingerprint],bytes)).output;}finally{bytes.fill(0);}
+        try{const args=['--trust-model','always','--encrypt','--recipient',r.fingerprint];if(!poManaged)args.push('--recipient',custodianFingerprint);encrypted=(await runGpg(home,args,bytes)).output;}finally{bytes.fill(0);}
         if(!encrypted.length)error('EMPTY_ENVELOPE');
         await exclusive(join(dir,filename),encrypted);
         items.push({email:c.email,filename,sha256:digest(encrypted),fingerprint:r.fingerprint});
       }
-      await exclusive(join(dir,'operation.json'),JSON.stringify({operationId,integrity,keysApproval:verifiedKeysApproval,items}));
+      await exclusive(join(dir,'operation.json'),JSON.stringify({operationId,integrity,custodyMode,keysApproval:verifiedKeysApproval,items}));
       await syncDirectory(dir);await syncDirectory(root);
     },
     deliver:async({operationId,integrity})=>{
@@ -89,10 +96,11 @@ export async function createPrivateDelivery({custodyRoot,gpgHome,custodianFinger
         const r=routes.get(item.email);
         if(!r||r.fingerprint!==item.fingerprint||item.filename!==item.email.split('@')[0]+'.gpg')error('RECIPIENT_IDENTITY_MISMATCH');
         const envelope=await load(join(dir,item.filename));if(digest(envelope)!==item.sha256)error('ENVELOPE_INTEGRITY_MISMATCH');
-        const delivery=join(r.deliveryDirectory,operationId+'.gpg');
+        const deliveryId=poManaged?operationId+'-'+item.email.split('@')[0]:operationId;
+        const delivery=join(r.deliveryDirectory,deliveryId+'.gpg');
         try{await exclusive(delivery,envelope);}catch(e){if(e.code!=='EEXIST')throw e;if(digest(await load(delivery))!==item.sha256)error('DELIVERY_CONFLICT');}
         await syncDirectory(r.deliveryDirectory);
-        const ack=join(r.deliveryDirectory,operationId+'.ack.json'),signature=ack+'.sig';
+        const ack=join(r.deliveryDirectory,deliveryId+'.ack.json'),signature=ack+'.sig';
         try {
           const ackBytes=await load(ack);await load(signature);
           const content=JSON.parse(ackBytes.toString('utf8'));

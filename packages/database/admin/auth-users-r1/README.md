@@ -173,3 +173,24 @@ sí sola escrituras. No se usa el runner ni se generan imágenes.
 Validación nueva, únicamente componentes y conexión simulada (sin LAB/RDS):
 `node --test packages/database/admin/auth-users-r1/production.test.mjs`.
 Evidencia en `~/evidencias/documental-platform/auth-users-final-components-r1/`.
+
+## Custodia exclusiva PO — ajuste autorizado
+
+`custodyMode: "PO_MANAGED"` selecciona expresamente custodia exclusiva del Product Owner.
+Requiere solo `custodianFingerprint`, `custodianDeliveryDirectory`, llavero público y
+custodia privada; los cuatro usuarios objetivo conservan exactamente sus identidades y
+workspaces, sin exigirles claves OpenPGP. Se cifran cuatro sobres separados exclusivamente
+para el PO. La entrega usa `UUID-usuario.gpg` y acuses individuales `UUID-usuario.ack.json`
+con firma separada del PO; no hay entrega antes de COMMIT ni regeneración por reintentos.
+El journal fija la modalidad para impedir recuperaciones cruzadas entre modos.
+
+En la aprobación externa PO_MANAGED siguen siendo obligatorios alcance, digest, custodio,
+operador, autorizaciones DB_WRITE/entrega, huella verificada, canal, commits e identidad RDS.
+`administrativeRotationApproved` y `rotationApprovalId` no se exigen en esta modalidad:
+rotación y mantenimiento de usuarios están fuera del alcance. No se implementa caducidad
+ni cambio obligatorio al primer login. INDIVIDUAL conserva sus controles anteriores.
+La clave del PO debe permitir cifrado y firma; las privadas nunca se importan a EC2.
+
+Validación focal sin LAB/RDS, evidencias externas sin sobres productivos:
+`BBTI_COMPONENT_EVIDENCE_DIR=~/evidencias/documental-platform/auth-users-po-managed-r1 node --test packages/database/admin/auth-users-r1/production.test.mjs`.
+Este ajuste requiere aceptación y promoción antes de ejecutarse en Enterprise/EC2.

@@ -12,11 +12,15 @@ const fail=code=>{throw new Error(code);};
 const hash=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 export const SCOPE='4_USERS_8_WORKSPACES_ONLY';
 export function validateApproval(a,integrity,now=Date.now()) {
-  if(!a||a.environment!=='production'||a.database!=='gestion_documental'||a.role!=='document_platform'||a.scope!==SCOPE||a.artifactIntegrity!==integrity||a.dbWriteAuthorized!==true||a.privateDeliveryApproved!==true||a.administrativeRotationApproved!==true)fail('PRODUCTION_APPROVAL_INCOMPLETE');
-  if(!a.approvalId||!a.custodian||!a.operator||!a.keysApprovalId||!a.deliveryChannelApprovalId||!a.rotationApprovalId)fail('OPERATIONAL_RESPONSIBILITIES_REQUIRED');
+  if(!a||a.environment!=='production'||a.database!=='gestion_documental'||a.role!=='document_platform'||a.scope!==SCOPE||a.artifactIntegrity!==integrity||a.dbWriteAuthorized!==true||a.privateDeliveryApproved!==true||((a.custodyMode??'INDIVIDUAL')!=='PO_MANAGED'&&a.administrativeRotationApproved!==true))fail('PRODUCTION_APPROVAL_INCOMPLETE');
+  if(!a.approvalId||!a.custodian||!a.operator||!a.keysApprovalId||!a.deliveryChannelApprovalId||((a.custodyMode??'INDIVIDUAL')!=='PO_MANAGED'&&!a.rotationApprovalId))fail('OPERATIONAL_RESPONSIBILITIES_REQUIRED');
   if(!Number.isFinite(Date.parse(a.expiresAt))||Date.parse(a.expiresAt)<=now)fail('PRODUCTION_APPROVAL_EXPIRED');
   if(!/^[a-f0-9]{40}$/.test(a.enterpriseCommit??'')||!/^[a-f0-9]{40}$/.test(a.sourceCommit??'')||!a.enterpriseRoot?.startsWith('/')||!a.expectedServer||!a.expectedHost?.endsWith('.rds.amazonaws.com'))fail('PROMOTED_IDENTITY_REQUIRED');
-  if(!a.recipients||a.recipients.length!==4||TARGETS.some(t=>!a.recipients.some(r=>r.email===t.email)))fail('PRODUCTION_RECIPIENT_SCOPE_INVALID');
+  const mode=a.custodyMode??'INDIVIDUAL';
+  if(!['INDIVIDUAL','PO_MANAGED'].includes(mode))fail('CUSTODY_MODE_INVALID');
+  if(mode==='PO_MANAGED'&&!a.custodianDeliveryDirectory?.startsWith('/'))fail('PO_PRIVATE_CHANNEL_REQUIRED');
+  const recipients=a.recipients??(mode==='PO_MANAGED'?TARGETS:[]);
+  if(recipients.length!==4||new Set(recipients.map(r=>r.email)).size!==4||TARGETS.some(t=>!recipients.some(r=>r.email===t.email)))fail('PRODUCTION_RECIPIENT_SCOPE_INVALID');
   return true;
 }
 async function snapshot(sql) {
@@ -78,7 +82,7 @@ export async function main(argv=process.argv.slice(2)) {
     const expand=s=>String(s??'').replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g,(_,key)=>{if(!(key in config))fail('CONFIG_REFERENCE_MISSING');return config[key];});
     const url=new URL(expand(config.DATABASE_URL));
     if(url.hostname!==approval.expectedHost||decodeURIComponent(url.pathname.slice(1))!==approval.database||decodeURIComponent(url.username)!==approval.role)fail('AUTHORIZED_CONNECTION_MISMATCH');
-    const sink=await createPrivateDelivery({custodyRoot:approval.custodyRoot,gpgHome:approval.gpgHome,
+    const sink=await createPrivateDelivery({custodyMode:approval.custodyMode??'INDIVIDUAL',custodianDeliveryDirectory:approval.custodianDeliveryDirectory,custodyRoot:approval.custodyRoot,gpgHome:approval.gpgHome,
       custodianFingerprint:approval.custodianFingerprint,recipients:approval.recipients,
       forbiddenRoots:[root,approval.sourceRoot??'/home/loxi1/projects/apps/documental-platform'],verifiedKeysApproval:approval.keysApprovalId});
     sql=require('postgres')(url.toString(),{max:1,debug:false,onnotice:()=>{},connect_timeout:10,
