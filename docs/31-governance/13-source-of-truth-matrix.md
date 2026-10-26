@@ -16,6 +16,7 @@ Definir una fuente oficial por tema para evitar contradicciones.
 | API REST | `16-api/README.md` | Domain Architect | `28-api-cookbook/` |
 | Data Dictionary | `27-data-dictionary/README.md` | Domain Architect | `06-database/` |
 | Infraestructura | `07-infraestructura/01-despliegue.md` | Chief Architect | `29-operations-manual/` |
+| Ciclo SOURCE, gates, evidencia y continuidad | [Estándar R1](../23-standards/11-source-development-and-release.md) (Review; aceptación MSII/PO pendiente) | Product Architect | [Git](../23-standards/07-git.md), [release](07-release-process.md), [operaciones](../29-operations-manual/README.md) |
 | Runbooks | `18-runbooks/README.md` | Chief Architect | `29-operations-manual/` |
 
 ## Regla

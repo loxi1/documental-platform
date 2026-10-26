@@ -4,7 +4,11 @@
 
 Este documento define el procedimiento estándar permanente de release de Documental Platform, desde un requerimiento hasta producción.
 
-## Ruta obligatoria
+## Aplicación y gates
+
+El [estándar canónico R1](../23-standards/11-source-development-and-release.md), preparado para aceptación MSII/PO, regula el desarrollo NORMAL, las categorías de evidencia y los cuatro gates máximos. La secuencia técnica de abajo describe una RELEASE decidida; sus pasos no son subgates ni exigencias de manifiesto histórico para cambios focales. En NORMAL se aplica evidencia focal y validaciones según impacto, con N/A justificado. G3 registra aceptación y autorización de integración/push SOURCE; G4 requiere autorización expresa PO para promoción productiva. Se conservan las competencias oficiales y las fronteras especializadas.
+
+## Ruta obligatoria de una RELEASE
 
 REQUERIMIENTO
 → BRANCH DESDE SOURCE MAIN LIMPIO
@@ -62,7 +66,7 @@ La frontera autorizada debe permitir acreditar:
 
 Si aparece contenido necesario fuera de la frontera autorizada, se detiene la composición y se solicita nueva autorización.
 
-## Gate del branch
+## Validación del branch para RELEASE (dentro de G2/G3)
 
 Antes del commit del branch son obligatorios:
 

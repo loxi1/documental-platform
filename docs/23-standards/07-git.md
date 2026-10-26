@@ -1,5 +1,9 @@
 # Git Standard
 
+## Aplicación proporcional — R1
+
+El [estándar canónico de desarrollo y release](11-source-development-and-release.md), preparado para aceptación MSII/PO, define NORMAL, RELEASE y RECOVERY. En NORMAL basta evidencia focal; las exigencias de manifest exacto de este documento corresponden a composición RELEASE o recuperación que lo requiera, no a reconstrucción histórica rutinaria. Typecheck/build y regresión se ejecutan según impacto, con N/A motivado cuando corresponda. G3 debe registrar autorización de integración y push SOURCE; producción exige autorización expresa PO en G4.
+
 ## Autoridades
 
 Documental Platform separa desarrollo y release:
@@ -22,7 +26,7 @@ Ruta:
 
 El branch debe contener únicamente el trabajo correspondiente al entregable.
 
-## Cierre del branch
+## Cierre del branch para composición RELEASE
 
 Antes de integrar el branch son obligatorios:
 
@@ -74,7 +78,7 @@ Este estándar no fija una estrategia única.
 Después de integrar:
 
 - tests requeridos PASS;
-- build PASS;
+- build aplicable PASS o N/A motivado;
 - commit SOURCE main identificado;
 - push SOURCE main realizado;
 - remoto SOURCE verificado.
@@ -120,7 +124,9 @@ La arqueología HEAD / INDEX / WORKTREE utilizada para recuperar composiciones h
 
 Sólo corresponde cuando existe evidencia de una brecha histórica de composición. No debe convertirse en procedimiento ordinario ni utilizarse para ampliar el manifest sin autorización.
 
-## Inventario SOURCE/Enterprise — continuidad 23/10/2026
+## Antecedente archivado SOURCE/Enterprise — 23/10/2026
+
+La observación siguiente describe exclusivamente el 23/10. La reconciliación está cerrada según el antecedente PO del [estándar R1](11-source-development-and-release.md); no es un bloqueo actual ni una instrucción para reconstruir contratos.
 
 Ver [inventario completo](../31-governance/BRANCH_INVENTORY.md). SOURCE main presenta cambios pendientes y divergencia 1/1 frente a origin/main local. No integrar ni promover automáticamente. Las refs remotas son las almacenadas localmente, sin fetch.
 

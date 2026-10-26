@@ -6,6 +6,10 @@ Manual operativo oficial de Documental Platform.
 
 Centralizar los procedimientos para desplegar, configurar, operar, monitorear, recuperar y actualizar la plataforma.
 
+## Entrada al ciclo de desarrollo
+
+Comenzar por el [estándar canónico SOURCE y release R1](../23-standards/11-source-development-and-release.md), preparado para aceptación MSII/PO. Allí se definen inicio, gates, evidencia NORMAL/RELEASE/RECOVERY y transferencia de continuidad. Este índice es el punto de entrada; no se necesita otro bootstrap duplicado.
+
 ## Índice operativo
 
 1. `01-primer-despliegue.md` — preparación inicial de infraestructura.

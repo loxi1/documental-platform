@@ -14,3 +14,4 @@ Esta carpeta contiene los estándares oficiales de desarrollo de Documental Plat
 8. `08-documentacion.md`
 9. `09-naming.md`
 10. `10-code-review.md`
+11. [Desarrollo SOURCE y release — R1](11-source-development-and-release.md) — propuesta para aceptación MSII/PO; flujo normal, gates, evidencia y continuidad.
