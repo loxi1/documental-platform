@@ -1,5 +1,67 @@
 # Manifest vigente reportado — R2
 
+## Candidato administrativo — usuarios BBTI/BBTEC R1
+
+Acción: `BBTI_AUTH_USERS_FINAL_IMPLEMENTATION_AND_RELEASE_PREPARATION_R1`.
+Estado: **PREPARADO PARA REVISIÓN; NO PROMOVIDO NI EJECUTADO EN PRODUCCIÓN**.
+Este candidato es independiente de la release R2 reportada más abajo; no modifica sus
+imágenes, digests o aceptación. No se crea un segundo manifiesto de release.
+
+- Rama SOURCE: `feat/auth-users-standard-g2-r1`; base `88305c864df33368c47e770e45a05c29355735c7`.
+- Commit definitivo SOURCE: PENDING; commit Enterprise y checkout EC2: PENDING.
+- Artefacto: [procedimiento administrativo](../../packages/database/admin/auth-users-r1/README.md).
+- Integridad: [SHA256SUMS administrativo](../../packages/database/admin/auth-users-r1/SHA256SUMS),
+  distinto del manifiesto institucional de migraciones; no se escriben versiones en el ledger.
+- SHA-256 de `provision.mjs`: `3d272d9a8b26a88c98b6160e0cecc37ddbec0fea5de29e54670a479341a35bf3`.
+- SHA-256 de `SHA256SUMS`: `d33adeb49c1ab3f92c73bae71e2e85a1fbaf38617a3d3283ed94fd46f6330eb4`.
+
+Composición exacta propuesta SOURCE/Enterprise (sin evidencias externas ni secretos):
+
+```text
+docs/06-database/05-seeds.md
+docs/31-governance/RELEASE_MANIFEST.md
+packages/database/admin/auth-users-r1/provision.mjs
+packages/database/admin/auth-users-r1/provision.test.mjs
+packages/database/admin/auth-users-r1/isolated.test.mjs
+packages/database/admin/auth-users-r1/README.md
+packages/database/admin/auth-users-r1/rotation-proposal.md
+packages/database/admin/auth-users-r1/private-delivery.mjs
+packages/database/admin/auth-users-r1/production-entrypoint.mjs
+packages/database/admin/auth-users-r1/production.test.mjs
+packages/database/admin/auth-users-r1/SHA256SUMS
+```
+
+Ruta de aprobación y promoción: rama focal → aceptación/commit SOURCE → SOURCE main
+validado/publicado → materialización focal Enterprise main validada/publicada → checkout
+Enterprise EC2 fijado al commit aprobado → preflight READ ONLY → DB_WRITE específico
+4 usuarios/8 workspaces → postcheck productivo y acuses privados individuales.
+No desarrollar en Enterprise ni copiar worktrees completos. Preservar su historia y
+los trabajos ajenos; si existe conflicto material, detener la promoción. Comparar el
+manifiesto administrativo y bytes con SOURCE; no asumir igualdad de hashes Git entre
+repositorios. La evidencia LAB/O3 previa se reutiliza como antecedente fechado.
+
+GHCR = N/A; imágenes modificadas = ninguna; recreación de servicios = N/A.
+La actualización futura del checkout no autoriza ejecutar el aprovisionamiento.
+`production-entrypoint.mjs` requiere main limpio/commit/ruta aprobados, digest aprobado,
+configuración productiva local, base/rol/servidor verificados, custodia fuera de Git y
+huellas públicas verificadas. Producción no se habilita por la mera existencia del script.
+Aprobación externa de responsables/canal/rotación, claves reales y directorios privados:
+PENDING; no hay credenciales productivas generadas por esta preparación.
+
+Controles previos: identidad RDS y estado histórico 5 usuarios/11 workspaces, claves
+naturales y conflictos, custodia disponible, acuses, autorización y digest exacto.
+Controles posteriores: 4 usuarios/8 relaciones, permisos/favoritos exactos, históricos
+intactos, auditoría y entrega confirmada. Ante incertidumbre, conservar operationId y
+verificar READ ONLY antes de recuperar; no repetir creación ni resetear contraseñas.
+Rollback DB: transacción antes de COMMIT; después, no eliminar usuarios automáticamente.
+Entrega pendiente: recuperar los mismos sobres/operación sin regeneración. Toda
+compensación o rotación posterior requiere autorización propia.
+
+Evidencia focal: `~/evidencias/documental-platform/auth-users-final-components-r1/`.
+Las claves sintéticas de pruebas no son claves verificadas de destinatarios productivos.
+La promoción, escritura productiva, commits, push y despliegue no se ejecutaron en esta orden.
+
+
 ## Nota de uso — estándar R1, 26/10/2026
 
 Consultar el [estándar canónico R1](../23-standards/11-source-development-and-release.md), aprobado por PO, ratificado por MI e integrado en SOURCE. Este sigue siendo el registro canónico para RELEASE; NORMAL no exige un manifiesto histórico. Los estados SOURCE pendientes descritos el 23/10 son antecedentes superados por el cierre de reconciliación acreditado por PO. No se actualiza ni revalida aquí la identidad productiva reportada. Para una nueva promoción registrar commit SOURCE, commit Enterprise, identidades GHCR/EC2, pruebas de aceptación, rollback y autorización PO en este mismo manifiesto, sin duplicarlo.
