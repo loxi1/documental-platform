@@ -2,7 +2,7 @@
 
 ## Nota de uso — estándar R1, 26/10/2026
 
-Consultar el [estándar canónico R1](../23-standards/11-source-development-and-release.md), preparado para aceptación MSII/PO. Este sigue siendo el registro canónico para RELEASE; NORMAL no exige un manifiesto histórico. Los estados SOURCE pendientes descritos el 23/10 son antecedentes superados por el cierre de reconciliación acreditado por PO. No se actualiza ni revalida aquí la identidad productiva reportada. Para una nueva promoción registrar commit SOURCE, commit Enterprise, identidades GHCR/EC2, pruebas de aceptación, rollback y autorización PO en este mismo manifiesto, sin duplicarlo.
+Consultar el [estándar canónico R1](../23-standards/11-source-development-and-release.md), aprobado por PO, ratificado por MI e integrado en SOURCE. Este sigue siendo el registro canónico para RELEASE; NORMAL no exige un manifiesto histórico. Los estados SOURCE pendientes descritos el 23/10 son antecedentes superados por el cierre de reconciliación acreditado por PO. No se actualiza ni revalida aquí la identidad productiva reportada. Para una nueva promoción registrar commit SOURCE, commit Enterprise, identidades GHCR/EC2, pruebas de aceptación, rollback y autorización PO en este mismo manifiesto, sin duplicarlo.
 
 
 Fecha de continuidad: 23/10/2026. **CURRENT_PRODUCTION=R2**, **DEPLOY_TECHNICAL_PASS=REPORTED_BY_PO_MSII**, **MVP_FUNCTIONAL_ACCEPTANCE=PENDING**. Sustituye como referencia actual al registro Actions #28 conservado más abajo; no se revalidó producción en esta orden.

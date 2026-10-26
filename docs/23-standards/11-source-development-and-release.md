@@ -1,7 +1,7 @@
 ---
 title: Desarrollo SOURCE y release proporcional al riesgo
 owner: Product Architect
-status: Review
+status: Approved
 version: R1
 last_review: 2026-10-26
 source_of_truth: true
@@ -13,7 +13,14 @@ related:
 
 # Estándar de desarrollo SOURCE y release — R1
 
-Acción: `BBTI_SOURCE_DEVELOPMENT_AND_RELEASE_STANDARD_R1`. Mandato PO: estandarización solicitada. Documento preparado para aceptación MSII/PO; no implica aprobación del MI, registro del Bibliotecario Técnico ni autorización productiva.
+Acción: `BBTI_SOURCE_DEVELOPMENT_AND_RELEASE_STANDARD_R1`. Estándar aceptado por el PO, ratificado institucionalmente por MI e integrado mediante fast-forward y publicado en SOURCE `main` en el commit `189f22ff8e51791584bcf421c83c4db7ac950132`. Aceptación y ratificación acreditadas por la orden PO `BBTI_STANDARD_MINIMAL_DOCUMENTATION_PATCH_G2_R1`. El registro del Bibliotecario Técnico no está confirmado; no implica autorización productiva.
+
+```ini
+PO_ACCEPTANCE=APPROVED
+MI_RATIFICATION=CONFIRMED
+SOURCE_INTEGRATION=COMPLETED
+LIBRARIAN_REGISTRATION=NOT_YET_CONFIRMED
+```
 
 ## Alcance y autoridad
 
@@ -91,6 +98,12 @@ No construir imágenes productivas desde SOURCE, desplegar desde desarrollo ni i
 
 Los expedientes excepcionales de octubre de 2026 son antecedentes, no requisitos permanentes. No reabrir G0 ni alterar C04/C06 o sus respaldos.
 
+### Conservación de evidencia e inventario Git
+
+Conservar evidencia persistente cuando sea material para acreditar decisiones PO, integridad de datos o contratos, aceptación funcional, identidad de release, resultados críticos o continuidad entre sucesores. `/tmp` es almacenamiento temporal y no constituye repositorio permanente de pruebas críticas: antes de depender de ellas para el cierre o la transferencia, conservarlas en una ubicación durable identificada en el registro correspondiente. No se exige un archivo permanente por cada test ordinario.
+
+Actualizar los inventarios Git existentes solo cuando lo requiera el cambio real; no exigir un inventario completo de ramas y worktrees por desarrollo focal ni crear un segundo inventario. Las instantáneas históricas conservan su fecha y alcance.
+
 ## Continuidad entre sucesores
 
 **Todo sucesor debe partir del estado rector vigente, no reconstruir toda la historia del proyecto.** Entregar este bloque con datos observados y N/A cuando no corresponda:
@@ -117,6 +130,6 @@ Antecedente PO de esta orden: SOURCE `c56250a0095ad3af8250952291087561a8ac30e0`,
 
 Para MI y Bibliotecario Técnico:
 
-> Se prepara para aceptación MSII/PO el estándar R1 `BBTI_SOURCE_DEVELOPMENT_AND_RELEASE_STANDARD_R1`, canónico en `docs/23-standards/11-source-development-and-release.md`. Establece NORMAL como ruta predeterminada, cuatro gates máximos, evidencia proporcional, continuidad desde el estado rector vigente y RECOVERY excepcional. Complementa Git y release; reemplaza la exigencia universal de manifiesto exacto/histórico para cambios focales, sin reducir los controles de promoción Enterprise/GHCR/EC2 ni las competencias vigentes. Los índices de estándares, operaciones y gobernanza se enlazan en esta propuesta. Tras aceptación, registrar la versión y sus referencias en los índices institucionales y de continuidad, conservando los expedientes históricos como antecedentes y evitando su reactivación automática. No se afirma aprobación MI ni actualización del registro del Bibliotecario. MSE no tiene competencia general identificada en las fuentes de roles consultadas; cualquier asignación necesaria requiere definición de la autoridad competente.
+> El PO aceptó y MI ratificó el estándar R1 `BBTI_SOURCE_DEVELOPMENT_AND_RELEASE_STANDARD_R1`, canónico en `docs/23-standards/11-source-development-and-release.md`. Establece NORMAL como ruta predeterminada, cuatro gates máximos, evidencia proporcional, continuidad desde el estado rector vigente y RECOVERY excepcional. Complementa Git y release; reemplaza la exigencia universal de manifiesto exacto/histórico para cambios focales, sin reducir los controles de promoción Enterprise/GHCR/EC2 ni las competencias vigentes. El estándar fue integrado y publicado en SOURCE `main` mediante el commit `189f22ff8e51791584bcf421c83c4db7ac950132`. Los índices de estándares, operaciones y gobernanza lo enlazan. Se solicita registrar la versión y sus referencias en los índices institucionales y de continuidad, conservando los expedientes históricos como antecedentes y evitando su reactivación automática. La ratificación MI está confirmada por la orden PO; no se afirma actualización del registro del Bibliotecario. MSE no tiene competencia general identificada en las fuentes de roles consultadas; cualquier asignación necesaria requiere definición de la autoridad competente.
 
-La aceptación e integración de esta propuesta quedan pendientes; esta orden solo prepara un commit documental aislado, sin push ni merge. Finanzas nueva no iniciada; Enterprise, GHCR, EC2 y DB fuera de ejecución.
+La aceptación PO, ratificación MI e integración/publicación del estándar R1 están completadas. El parche documental de actualización de estado y referencias se prepara en rama aislada para aceptación G3, sin integración ni push. Finanzas nueva no iniciada; Enterprise, GHCR, EC2 y DB fuera de ejecución.

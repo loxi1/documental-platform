@@ -2,7 +2,7 @@
 
 ## Nota de uso — estándar R1, 26/10/2026
 
-Consultar el [estándar canónico R1](../23-standards/11-source-development-and-release.md), preparado para aceptación MSII/PO. El inventario inferior es una instantánea histórica del 23/10, no un bloqueo vigente. PO acredita reconciliación cerrada; el inicio de esta orden verificó main limpio en `c56250a0095ad3af8250952291087561a8ac30e0`, igual a origin/main local y remoto consultado. Se conserva íntegro el inventario como antecedente, sin repetirlo ni reabrir sus expedientes.
+Consultar el [estándar canónico R1](../23-standards/11-source-development-and-release.md), aprobado por PO, ratificado por MI e integrado en SOURCE. El inventario inferior es una instantánea histórica del 23/10, no un bloqueo vigente. PO acredita reconciliación cerrada; el inicio de esta orden verificó main limpio en `c56250a0095ad3af8250952291087561a8ac30e0`, igual a origin/main local y remoto consultado. Se conserva íntegro el inventario como antecedente, sin repetirlo ni reabrir sus expedientes.
 
 
 Observación directa local: 2026-10-23T22:38:18.421118-05:00. Acción BBTI_R2_DOCUMENTATION_AND_BRANCH_INVENTORY_UPDATE_R1. Sin fetch: las ramas remotas son refs locales; frescura respecto del servidor no acreditada. Inventario anterior a las ediciones documentales de esta orden.

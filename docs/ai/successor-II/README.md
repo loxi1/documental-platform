@@ -103,6 +103,8 @@ Si el frontend necesita un dato o endpoint nuevo, se documenta como requerimient
 
 ---
 
+Para iniciar un requerimiento, seguir la [entrada operativa común](../../29-operations-manual/README.md), que remite al estándar R1.
+
 ## Archivos relacionados
 
 - `context.md`: estado real del proyecto y decisiones ya validadas.

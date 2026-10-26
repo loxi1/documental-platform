@@ -4,6 +4,8 @@ Bienvenido al Engineering Handbook de Documental Platform.
 
 Esta documentación es la fuente oficial para comprender la arquitectura, reglas de negocio, estándares, APIs, operación y evolución de la plataforma.
 
+Entrada operativa para sucesores: [Operations Manual](29-operations-manual/README.md).
+
 ## Lectura recomendada
 
 1. Proyecto

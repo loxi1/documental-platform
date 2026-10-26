@@ -6,7 +6,9 @@ Este documento define el procedimiento estándar permanente de release de Docume
 
 ## Aplicación y gates
 
-El [estándar canónico R1](../23-standards/11-source-development-and-release.md), preparado para aceptación MSII/PO, regula el desarrollo NORMAL, las categorías de evidencia y los cuatro gates máximos. La secuencia técnica de abajo describe una RELEASE decidida; sus pasos no son subgates ni exigencias de manifiesto histórico para cambios focales. En NORMAL se aplica evidencia focal y validaciones según impacto, con N/A justificado. G3 registra aceptación y autorización de integración/push SOURCE; G4 requiere autorización expresa PO para promoción productiva. Se conservan las competencias oficiales y las fronteras especializadas.
+El [estándar canónico R1](../23-standards/11-source-development-and-release.md), aprobado por PO, ratificado por MI e integrado en SOURCE, regula el desarrollo NORMAL, las categorías de evidencia y los cuatro gates máximos. La secuencia técnica de abajo describe una RELEASE decidida; sus pasos no son subgates ni exigencias de manifiesto histórico para cambios focales. En NORMAL se aplica evidencia focal y validaciones según impacto, con N/A justificado. G3 registra aceptación y autorización de integración/push SOURCE; G4 requiere autorización expresa PO para promoción productiva. Se conservan las competencias oficiales y las fronteras especializadas.
+
+Referencias operativas: [manifiesto canónico](RELEASE_MANIFEST.md), [deploy EC2](../18-runbooks/deploy-produccion.md) y [rollback de aplicación](../18-runbooks/rollback.md).
 
 ## Ruta obligatoria de una RELEASE
 

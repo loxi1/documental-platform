@@ -2,7 +2,7 @@
 
 ## Aplicación proporcional — R1
 
-El [estándar canónico de desarrollo y release](11-source-development-and-release.md), preparado para aceptación MSII/PO, define NORMAL, RELEASE y RECOVERY. En NORMAL basta evidencia focal; las exigencias de manifest exacto de este documento corresponden a composición RELEASE o recuperación que lo requiera, no a reconstrucción histórica rutinaria. Typecheck/build y regresión se ejecutan según impacto, con N/A motivado cuando corresponda. G3 debe registrar autorización de integración y push SOURCE; producción exige autorización expresa PO en G4.
+El [estándar canónico de desarrollo y release](11-source-development-and-release.md), aprobado por PO, ratificado por MI e integrado en SOURCE, define NORMAL, RELEASE y RECOVERY. En NORMAL basta evidencia focal; las exigencias de manifest exacto de este documento corresponden a composición RELEASE o recuperación que lo requiera, no a reconstrucción histórica rutinaria. Typecheck/build y regresión se ejecutan según impacto, con N/A motivado cuando corresponda. G3 debe registrar autorización de integración y push SOURCE; producción exige autorización expresa PO en G4.
 
 ## Autoridades
 
