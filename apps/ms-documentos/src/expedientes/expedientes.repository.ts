@@ -1235,6 +1235,9 @@ export class ExpedientesRepository {
       mes >= 1 &&
       mes <= 12;
 
+    // Finanzas requiere período; Contabilidad mantiene su contrato existente.
+    if (finanzas && !tienePeriodo) return [];
+
     const inicioPeriodo = tienePeriodo
       ? `${anio}-${String(mes).padStart(2, '0')}-01`
       : null;
@@ -1750,7 +1753,17 @@ export class ExpedientesRepository {
       WHERE e.empresa_codigo = ${filters.empresa}
         AND (
           ${soloPendientesFinanzas}::boolean = false
-          OR COALESCE(finanzas_pendiente.requiere_revision_finanzas, false)
+          OR CASE WHEN ${finanzas != null}::boolean THEN EXISTS (
+            SELECT 1 FROM documentos.ocr_resultados obs
+            JOIN documentos.documentos_archivos obs_arch ON obs_arch.id = obs.archivo_id
+            WHERE obs.metadata #>> '{validacionPendientePago,estado}' = 'CONSUMIDO'
+              AND obs.metadata #>> '{validacionPendientePago,accion}' = 'OBSERVAR'
+              AND obs.metadata #>> '{validacionPendientePago,identidad,grupoFacturaId}' = v2.grupo_factura_id::text
+              AND obs.metadata #>> '{validacionPendientePago,identidad,facturaDocumentoId}' = fp.factura_id::text
+              AND obs_arch.empresa_codigo = ${filters.empresa}
+              AND obs_arch.cliente_destino_id IS NOT DISTINCT FROM ${finanzas?.clienteDestinoId ?? null}::bigint
+              AND obs_arch.metadata->>'grupoFacturaId' = v2.grupo_factura_id::text
+          ) ELSE COALESCE(finanzas_pendiente.requiere_revision_finanzas, false) END
         )
         AND (
           ${like}::text IS NULL
@@ -1995,7 +2008,17 @@ export class ExpedientesRepository {
           WHERE ors.grupo_factura_id = g.id
         ) reg_op ON true
         WHERE p.tipo_principal = 'ORDEN_PAGO' AND p.estado = 'activo'
-          AND ${soloPendientesFinanzas}::boolean = false
+          AND (${soloPendientesFinanzas}::boolean = false OR EXISTS (
+            SELECT 1 FROM documentos.ocr_resultados obs
+            JOIN documentos.documentos_archivos obs_arch ON obs_arch.id = obs.archivo_id
+            WHERE obs.metadata #>> '{validacionPendientePago,estado}' = 'CONSUMIDO'
+              AND obs.metadata #>> '{validacionPendientePago,accion}' = 'OBSERVAR'
+              AND obs.metadata #>> '{validacionPendientePago,identidad,grupoFacturaId}' = g.id::text
+              AND obs.metadata #>> '{validacionPendientePago,identidad,documentoBaseId}' = d.id::text
+              AND obs_arch.empresa_codigo = ${filters.empresa}
+              AND obs_arch.cliente_destino_id IS NOT DISTINCT FROM ${finanzas.clienteDestinoId}::bigint
+              AND obs_arch.metadata->>'grupoFacturaId' = g.id::text
+          ))
           AND c.estado = 'activo' AND g.estado <> 'anulado' AND d.estado = 'confirmado'
           AND c.empresa_codigo = ${filters.empresa}
           AND c.cliente_destino_id IS NOT DISTINCT FROM ${finanzas.clienteDestinoId}::bigint

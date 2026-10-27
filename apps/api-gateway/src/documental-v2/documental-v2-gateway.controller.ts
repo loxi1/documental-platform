@@ -1140,7 +1140,7 @@ export class DocumentalV2GatewayController {
     this.assertFinanzasOp(contexto);
     try {
       const response = await axios.get(`${this.getBaseUrl()}/documental-v2/finanzas/bandeja`, {
-        params: { q: query.q, limit: query.limit, offset: query.offset, soloPendientesFinanzas: query.soloPendientesFinanzas },
+        params: { anio: query.anio, mes: query.mes, q: query.q, limit: query.limit, offset: query.offset, soloPendientesFinanzas: query.soloPendientesFinanzas },
         headers: this.buildDocumentosForwardHeaders(authorization, requestId, contexto),
       });
       return this.unwrap(response);

@@ -108,6 +108,7 @@ describe('DocumentosGatewayController - auditoría OCR', () => {
         'x-empresa-codigo': 'BBTI',
         'x-cliente-destino-id': '2',
         'x-correlation-id': requestId,
+        'x-finanzas-correspondencia-autorizar-excepcion': 'false',
       },
     });
   });

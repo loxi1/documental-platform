@@ -3,13 +3,18 @@
 import { PagoGrupoResumenCell } from "@/components/finanzas/PagoGrupoResumenCell";
 import { DocumentoRegularizadorOpCell } from "@/components/finanzas/DocumentoRegularizadorOpCell";
 
+import flatpickr from "flatpickr";
+import monthSelectPlugin from "flatpickr/dist/plugins/monthSelect";
+import { Spanish } from "flatpickr/dist/l10n/es";
+import "flatpickr/dist/flatpickr.min.css";
+import "flatpickr/dist/plugins/monthSelect/style.css";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Eye, Search } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { CalendarDays, Eye, Search } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import {
   Empty,
   EmptyDescription,
@@ -478,6 +483,19 @@ function ActionsCell({ item }: { item: RevisionContableItem }) {
 export function FinanzasBandeja() {
   const contexto = getContexto();
   const empresa = normalizeEmpresa(contexto?.empresa);
+  const [selectedPeriod, setSelectedPeriod] = useState<{ anio: number; mes: number } | null>(() => { const now = new Date(); return { anio: now.getFullYear(), mes: now.getMonth() + 1 }; });
+  const [consultedPeriod, setConsultedPeriod] = useState<{ anio: number; mes: number } | null>(null);
+  const periodoInput = useRef<HTMLInputElement | null>(null);
+  useEffect(() => {
+    if (!periodoInput.current) return;
+    const picker = flatpickr(periodoInput.current, {
+      locale: Spanish, dateFormat: "m-Y", static: true,
+      defaultDate: selectedPeriod ? new Date(selectedPeriod.anio, selectedPeriod.mes - 1, 1) : undefined,
+      plugins: [monthSelectPlugin({ shorthand: false, dateFormat: "m-Y", altFormat: "m-Y" })],
+      onChange: ([date]) => setSelectedPeriod(date ? { anio: date.getFullYear(), mes: date.getMonth() + 1 } : null),
+    });
+    return () => picker.destroy();
+  }, []);
   const [search, setSearch] = useState("");
   const [soloPendientesFinanzas, setSoloPendientesFinanzas] = useState(false);
   const [pageSize, setPageSize] = useState("50");
@@ -497,12 +515,14 @@ export function FinanzasBandeja() {
 
   const normalizedSearch = search.trim();
   const hasSearch = normalizedSearch.length >= 3;
-  const hasOperationalQuery = hasSearch || soloPendientesFinanzas;
+  const hasOperationalQuery = consultedPeriod !== null;
 
   const params = useMemo(
     () => {
       const numericPageSize = Number(pageSize);
       return {
+        anio: consultedPeriod?.anio,
+        mes: consultedPeriod?.mes,
         q: hasSearch ? normalizedSearch : undefined,
         limit: hasOperationalQuery ? numericPageSize + 1 : undefined,
         offset: hasOperationalQuery ? (page - 1) * numericPageSize : undefined,
@@ -511,6 +531,7 @@ export function FinanzasBandeja() {
     },
     [
       hasOperationalQuery,
+      consultedPeriod,
       hasSearch,
       normalizedSearch,
       page,
@@ -518,7 +539,7 @@ export function FinanzasBandeja() {
       soloPendientesFinanzas,
     ],
   );
-  const queryEnabled = Boolean(empresa.trim() && hasOperationalQuery);
+  const queryEnabled = Boolean(empresa.trim() && hasOperationalQuery && (normalizedSearch.length === 0 || hasSearch));
 
   const { data, isLoading, isFetching, error, refetch } =
     useQuery({ queryKey: ['finanzas-bandeja', contexto?.workspaceId, empresa, params],
@@ -534,7 +555,7 @@ export function FinanzasBandeja() {
 
   useEffect(() => {
     setPage(1);
-  }, [search, pageSize, soloPendientesFinanzas]);
+  }, [search, pageSize, soloPendientesFinanzas, consultedPeriod]);
 
   const numericPageSize = Number(pageSize);
   const hasNextPage = filteredRows.length > numericPageSize;
@@ -685,58 +706,13 @@ export function FinanzasBandeja() {
 
   return (
     <main className="space-y-4" data-msii-layout="MSII_GRID_FIRST_FINANZAS_01_V2">
-      <div>
-        <h1 className="text-2xl font-bold">Finanzas</h1>
-        <p className="text-sm text-muted-foreground">
-          Facturas y órdenes de pago en una sola bandeja de Finanzas.
-        </p>
-      </div>
-
-      {error ? (
-        <Card>
-          <CardContent className="py-4 text-sm text-red-600">
-            No se pudo cargar la bandeja de Finanzas desde su fuente de datos.
-          </CardContent>
-        </Card>
-      ) : null}
-
-      <Card className="overflow-hidden">
-        <CardHeader className="border-b py-3">
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-            <div>
-              <CardTitle className="text-base">Bandeja de Finanzas</CardTitle>
-            </div>
-
-            <div className="flex w-full flex-col gap-2 lg:w-auto lg:min-w-[820px]">
-              <div className="flex w-full flex-col gap-2 lg:flex-row lg:items-center">
-                <Input
-                  className="lg:min-w-[420px] lg:flex-1"
-                  placeholder="Buscar OP, factura, OC/OS, contexto, proveedor o RUC..."
-                  value={search}
-                  onChange={(event) => setSearch(event.target.value)}
-                />
-
-                <label className="flex shrink-0 items-center gap-2 whitespace-nowrap text-sm">
-                  <input
-                    type="checkbox"
-                    checked={soloPendientesFinanzas}
-                    title="Mostrar solo facturas con una decisión financiera pendiente"
-                    onChange={(event) => setSoloPendientesFinanzas(event.target.checked)}
-                  />
-                  Pendientes de observación
-                </label>
-
-                <Button
-                  className="shrink-0"
-                  type="button"
-                  variant="outline"
-                  onClick={() => refetch()}
-                  disabled={!queryEnabled || isFetching}
-                >
-                  <Search className="h-4 w-4" />
-                  {isFetching ? "Actualizando" : "Actualizar"}
-                </Button>
-
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold">Finanzas</h1>
+          <p className="text-sm text-muted-foreground">
+            Facturas y órdenes de pago en una sola bandeja de Finanzas.
+          </p>
+        </div>
                 {contexto?.permisos?.menus.includes('finanzas') &&
                 contexto.permisos.actions.includes('documentos.subir') && (
                   <CrearOrdenPagoModal
@@ -751,15 +727,53 @@ export function FinanzasBandeja() {
                     }}
                   />
                 )}
-              </div>
+      </div>
 
-              {search.trim().length > 0 && search.trim().length < 3 ? (
-                <p className="text-xs text-muted-foreground">
-                  Ingrese al menos 3 caracteres para buscar.
-                </p>
-              ) : null}
-            </div>
+      {error ? (
+        <Card>
+          <CardContent className="py-4 text-sm text-red-600">
+            No se pudo cargar la bandeja de Finanzas desde su fuente de datos.
+          </CardContent>
+        </Card>
+      ) : null}
+
+      <Card className="overflow-hidden">
+        <CardHeader className="border-b py-3">
+          <div className="flex flex-col gap-2 lg:flex-row lg:items-end">
+            <label className="grid shrink-0 gap-1 text-xs text-muted-foreground">
+              <span>Período de emisión</span>
+              <div className="op-flatpickr-field relative w-full lg:w-[170px]">
+                <CalendarDays className="pointer-events-none absolute left-3 top-1/2 z-10 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <input ref={periodoInput} type="text" readOnly aria-label="Período de emisión"
+                  placeholder="Seleccione un período"
+                  className="h-9 w-full cursor-pointer rounded-md border border-input bg-background pl-9 pr-3 text-sm shadow-sm" />
+              </div>
+            </label>
+            <Input className="h-9 min-w-0 flex-1"
+              placeholder="Buscar OP, factura, OC/OS, contexto, proveedor o RUC..."
+              aria-label="Buscar documentos de Finanzas"
+              value={search} onChange={(event) => setSearch(event.target.value)} />
+            <label className="flex h-9 shrink-0 items-center gap-2 whitespace-nowrap text-sm">
+              <input type="checkbox" checked={soloPendientesFinanzas}
+                title="Mostrar obligaciones con sustentos de pago observados"
+                onChange={(event) => setSoloPendientesFinanzas(event.target.checked)} />
+              Observados
+            </label>
+            <Button className="h-9 shrink-0" type="button"
+              disabled={!selectedPeriod || !empresa.trim() || isFetching || (normalizedSearch.length > 0 && !hasSearch)}
+              onClick={() => {
+                if (!selectedPeriod) return;
+                setPage(1);
+                if (consultedPeriod?.anio === selectedPeriod.anio && consultedPeriod?.mes === selectedPeriod.mes) {
+                  if (page === 1) void refetch();
+                } else { setConsultedPeriod(selectedPeriod); }
+              }}>
+              <Search className="mr-1 h-4 w-4" />{isFetching ? "Consultando" : "Consultar"}
+            </Button>
           </div>
+          {normalizedSearch.length > 0 && !hasSearch ? (
+            <p className="text-xs text-muted-foreground">Ingrese al menos 3 caracteres para buscar.</p>
+          ) : null}
         </CardHeader>
 
         <CardContent className="p-0">

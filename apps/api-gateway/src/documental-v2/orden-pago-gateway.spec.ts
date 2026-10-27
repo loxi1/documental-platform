@@ -265,8 +265,8 @@ describe('Gateway OP identidad autenticada', () => {
   it('expone proxy POST de confirmación de pago de Orden de Pago', () => {
     const source = require('node:fs').readFileSync(
       require('node:path').join(
-        process.cwd(),
-        'src/documental-v2/documental-v2-gateway.controller.ts',
+        __dirname,
+        'documental-v2-gateway.controller.ts',
       ),
       'utf8',
     );

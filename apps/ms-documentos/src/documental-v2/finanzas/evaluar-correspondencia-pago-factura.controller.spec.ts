@@ -3,8 +3,8 @@ import { resolve } from 'node:path';
 
 describe('Contrato del endpoint de evaluación de correspondencia', () => {
   const controllerPath = resolve(
-    process.cwd(),
-    'src/documental-v2/documental-v2.controller.ts',
+    __dirname,
+    '../documental-v2.controller.ts',
   );
   const source = readFileSync(controllerPath, 'utf8');
 

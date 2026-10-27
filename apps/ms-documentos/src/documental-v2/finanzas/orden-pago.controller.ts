@@ -1,5 +1,5 @@
 import { BuscarContextosOpService } from './buscar-contextos-op.service';
-import { Body, Controller, Get, Headers, Param, Patch, Post, Query } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Headers, Param, Patch, Post, Query } from '@nestjs/common';
 import { OrdenPagoService } from './orden-pago.service';
 import { validarActorOp } from './orden-pago.dto';
 import type { OrdenPagoActor } from './orden-pago.dto';
@@ -76,8 +76,13 @@ export class OrdenPagoController {
   @Get('bandeja')
   async bandeja(@Headers() headers: Record<string, string>, @Query() query: Record<string, string>) {
     const actor = this.actor(headers);
+    if (!query.anio && !query.mes) return { items: [] };
+    const anio = Number(query.anio), mes = Number(query.mes);
+    if (!/^\d{4}$/.test(query.anio ?? '') || !/^\d{1,2}$/.test(query.mes ?? '') || anio < 1 || mes < 1 || mes > 12) {
+      throw new BadRequestException('Período de emisión inválido: indique año y mes completos');
+    }
     const items = await this.expedientes.getRevisionContable({ empresa: actor.empresaCodigo,
-      q: query.q, limit: Number(query.limit), offset: Number(query.offset),
+      anio, mes, q: query.q, limit: Number(query.limit), offset: Number(query.offset),
       soloPendientesFinanzas: query.soloPendientesFinanzas === 'true' }, actor);
     return { items };
   }

@@ -43,6 +43,7 @@ describe('Detalle OP READ ONLY', () => {
       numero: 'OP-151',
       conceptoCodigo: null,
       conceptoNombre: null,
+      conceptoClasificacion: null,
       tiposDocumentalesRegularizadoresPermitidos: [],
     });
     expect(audit.registrarCreacion).not.toHaveBeenCalled();

@@ -16,6 +16,68 @@ jest.mock('axios', () => {
     ...request,
   };
 
+
+});
+
+import { ConfigService } from '@nestjs/config';
+import { ForbiddenException, UnauthorizedException } from '@nestjs/common';
+import axios from 'axios';
+import { of } from 'rxjs';
+
+import { DocumentalV2GatewayController } from './documental-v2-gateway.controller';
+
+describe('DocumentalV2GatewayController', () => {
+  const workspace = {
+    contenedorOperativo: {
+      vista: {
+        empresaCodigo: 'BBTI',
+        clienteDestinoId: 2,
+      },
+    },
+    resumen: {
+      documentosOperativosPrincipales: 1,
+      gruposFactura: 1,
+      adjuntosNoClasificados: 0,
+      advertencias: 0,
+    },
+  };
+
+  const buildController = (payload: Record<string, unknown> = {}) => {
+    const config = {
+      get: jest.fn((key: string) =>
+        key === 'MS_DOCUMENTOS_URL' ? 'http://ms-documentos:3002/api/v1' : undefined,
+      ),
+    } as unknown as ConfigService;
+
+    const nats = {
+      send: jest.fn(() =>
+        of({
+          valid: true,
+          payload: {
+            empresa: 'BBTI',
+            clienteDestinoId: 2,
+            ...payload,
+          },
+        }),
+      ),
+    };
+
+    return {
+      controller: new DocumentalV2GatewayController(config, nats as any),
+      nats,
+    };
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (axios.get as jest.Mock).mockResolvedValue({
+      data: {
+        success: true,
+        data: workspace,
+      },
+    });
+  });
+
   it('expone trazabilidad canónica V2 por proxy controlado', async () => {
     const { controller, nats } = buildController({
       sub: 1,
@@ -104,66 +166,6 @@ jest.mock('axios', () => {
     ).rejects.toMatchObject({ status: 404 });
   });
 
-});
-
-import { ConfigService } from '@nestjs/config';
-import { ForbiddenException, UnauthorizedException } from '@nestjs/common';
-import axios from 'axios';
-import { of } from 'rxjs';
-
-import { DocumentalV2GatewayController } from './documental-v2-gateway.controller';
-
-describe('DocumentalV2GatewayController', () => {
-  const workspace = {
-    contenedorOperativo: {
-      vista: {
-        empresaCodigo: 'BBTI',
-        clienteDestinoId: 2,
-      },
-    },
-    resumen: {
-      documentosOperativosPrincipales: 1,
-      gruposFactura: 1,
-      adjuntosNoClasificados: 0,
-      advertencias: 0,
-    },
-  };
-
-  const buildController = (payload: Record<string, unknown> = {}) => {
-    const config = {
-      get: jest.fn((key: string) =>
-        key === 'MS_DOCUMENTOS_URL' ? 'http://ms-documentos:3002/api/v1' : undefined,
-      ),
-    } as unknown as ConfigService;
-
-    const nats = {
-      send: jest.fn(() =>
-        of({
-          valid: true,
-          payload: {
-            empresa: 'BBTI',
-            clienteDestinoId: 2,
-            ...payload,
-          },
-        }),
-      ),
-    };
-
-    return {
-      controller: new DocumentalV2GatewayController(config, nats as any),
-      nats,
-    };
-  };
-
-  beforeEach(() => {
-    jest.clearAllMocks();
-    (axios.get as jest.Mock).mockResolvedValue({
-      data: {
-        success: true,
-        data: workspace,
-      },
-    });
-  });
 
   it('expone el workspace documental V2 desde expediente V1 por proxy controlado', async () => {
     const { controller, nats } = buildController();
@@ -1711,4 +1713,14 @@ describe('DocumentalV2GatewayController', () => {
     await expect(controller.observarPagoConfirmadoOp('Bearer valido','req-obs','31','35',{motivo:'X'})).rejects.toThrow();
     expect(axios.post).not.toHaveBeenCalled();
   });
+  it('bandeja Finanzas propaga período, búsqueda y paginación con identidad autenticada', async () => {
+    const { controller } = buildController({ sub: 7, workspaceId: 3, permisos: { menus: ['finanzas'] } });
+    const query = { anio: '2026', mes: '10', q: 'RIMAC', limit: '26', offset: '25', soloPendientesFinanzas: 'true' };
+    await controller.bandejaFinanzas('Bearer token', 'req-periodo', query);
+    expect(axios.get).toHaveBeenCalledWith('http://ms-documentos:3002/api/v1/documental-v2/finanzas/bandeja', {
+      params: query,
+      headers: expect.objectContaining({ authorization: 'Bearer token', 'x-workspace-id': '3', 'x-empresa-codigo': 'BBTI', 'x-cliente-destino-id': '2' }),
+    });
+  });
+
 });

@@ -255,6 +255,7 @@ describe('ExpedientesRepository revisión contable por factura V2', () => {
     await new ExpedientesRepository().getRevisionContable(
       {
         empresa: 'BBTI',
+        anio: 2026, mes: 10,
         q: 'agua',
       },
       {
@@ -842,6 +843,7 @@ describe('ExpedientesRepository revisión contable por factura V2', () => {
     await new ExpedientesRepository().getRevisionContable(
       {
         empresa: 'BBTI',
+        anio: 2026, mes: 10,
         q: 'RIMAC',
       },
       {
@@ -868,6 +870,7 @@ describe('ExpedientesRepository revisión contable por factura V2', () => {
     await new ExpedientesRepository().getRevisionContable(
       {
         empresa: 'BBTI',
+        anio: 2026, mes: 10,
         q: 'RIMAC',
       },
       {
@@ -898,6 +901,7 @@ describe('ExpedientesRepository revisión contable por factura V2', () => {
     await new ExpedientesRepository().getRevisionContable(
       {
         empresa: 'BBTI',
+        anio: 2026, mes: 10,
         q: 'Acme 1600',
       },
       {
@@ -947,6 +951,7 @@ describe('ExpedientesRepository revisión contable por factura V2', () => {
     await new ExpedientesRepository().getRevisionContable(
       {
         empresa: 'BBTI',
+        anio: 2026, mes: 10,
         q: 'CAYETANO',
       },
       {
@@ -1000,6 +1005,7 @@ describe('ExpedientesRepository revisión contable por factura V2', () => {
     await new ExpedientesRepository().getRevisionContable(
       {
         empresa: 'BBTI',
+        anio: 2026, mes: 10,
         q: '008138',
       },
       {
@@ -1027,4 +1033,42 @@ describe('ExpedientesRepository revisión contable por factura V2', () => {
     );
   });
 
+});
+
+
+describe('Finanzas período obligatorio y observados', () => {
+  beforeEach(() => { jest.clearAllMocks(); sqlMock.mockResolvedValue([]); });
+  const scope = { workspaceId: 13, clienteDestinoId: 2 };
+  it('sin período no consulta aunque exista búsqueda o checkbox', async () => {
+    expect(await new ExpedientesRepository().getRevisionContable({ empresa: 'BBTI', q: 'ABC', soloPendientesFinanzas: true }, scope)).toEqual([]);
+    expect(sqlMock).not.toHaveBeenCalled();
+  });
+  it.each([[2026, 2, '2026-02-01', '2026-03-01'], [2026, 12, '2026-12-01', '2027-01-01'], [2028, 2, '2028-02-01', '2028-03-01']])('período %i/%i antes de paginar ambas fuentes', async (anio, mes, desde, hasta) => {
+    await new ExpedientesRepository().getRevisionContable({ empresa: 'BBTI', anio, mes, q: 'ABC', limit: 26, offset: 25 }, scope);
+    const [strings, ...values] = sqlMock.mock.calls.at(-1);
+    const query = strings.join('?');
+    expect(values).toEqual(expect.arrayContaining([desde, hasta, 'BBTI', 2, '%ABC%', 26, 25]));
+    expect(query).toContain('d.fecha_emision >='); expect(query).toContain('d.fecha_emision <');
+    expect(query).toContain('UNION ALL'); expect(query).toContain('LIMIT ? OFFSET ?');
+  });
+  it('Contabilidad mantiene el filtro anterior de decisiones pendientes', async () => {
+    await new ExpedientesRepository().getRevisionContable({ empresa: 'BBTI', anio: 2026, mes: 2, soloPendientesFinanzas: true });
+    const [strings, ...values] = sqlMock.mock.calls[0];
+    expect(strings.join('?')).toContain('ELSE COALESCE(finanzas_pendiente.requiere_revision_finanzas, false) END');
+    expect(values).toContain(false);
+    expect(sqlMock).toHaveBeenCalledTimes(1);
+  });
+  it('observados correlacionados OC/OS y OP, sin exigir vínculo activo ni confundir regularización', async () => {
+    await new ExpedientesRepository().getRevisionContable({ empresa: 'BBTEC', anio: 2026, mes: 10, soloPendientesFinanzas: true }, { workspaceId: 14, clienteDestinoId: 1 });
+    const [strings, ...values] = sqlMock.mock.calls.at(-1); const query = strings.join('?');
+    expect(query).toContain("'{validacionPendientePago,accion}' = 'OBSERVAR'");
+    expect(query).toContain("'{validacionPendientePago,estado}' = 'CONSUMIDO'");
+    expect(query).toContain("'{validacionPendientePago,identidad,grupoFacturaId}' = g.id::text");
+    expect(query).toContain("'{validacionPendientePago,identidad,documentoBaseId}' = d.id::text");
+    expect(query).toContain('obs_arch.cliente_destino_id IS NOT DISTINCT FROM');
+    expect(values).toContain('BBTEC'); expect(values).toContain(1);
+    const base = sqlMock.mock.calls[0][0].join('?');
+    expect(base).toContain("'{validacionPendientePago,identidad,facturaDocumentoId}' = fp.factura_id::text");
+    expect(base).not.toContain('OR COALESCE(finanzas_pendiente.requiere_revision_finanzas, false)');
+  });
 });
