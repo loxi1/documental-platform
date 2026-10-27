@@ -1,5 +1,24 @@
 # Inventario SOURCE y Enterprise — R2
 
+## Estado vigente observado — 26/10/2026
+
+Acción: `BBTI_POST_DEPLOY_CONTINUITY_AND_NEXT_BRANCH_R1`. Observación: `2026-10-26T22:52:56.914616+00:00`. Esta sección prevalece sobre las instantáneas inferiores; no requiere reconciliación histórica.
+
+| Repositorio | Rama | HEAD | Árbol | Remoto main / estado previo |
+|---|---|---|---|---|
+| SOURCE | main | `a393932aea98c5e1b0736694b980997ebd4b0f98` | `34fd8c0ad68bf8a404224d95c7d4065e3e45d959` | Igualdad remota consultada; limpio antes de esta edición |
+| Enterprise | main | `d60b6af89a99e6a4bdb2a48e7d6891d7ee4b59ac` | `2ae8d7af78d889a9c247f7c6285f26ce2af78425` | Igualdad remota consultada; limpio |
+
+EC2 coincide con Enterprise, main limpio. Identidad de runtime y límites en el [manifiesto canónico](RELEASE_MANIFEST.md); continuidad en [Operations Manual](../29-operations-manual/README.md#continuidad-vigente--26102026).
+
+Rama histórica `feat/auth-users-standard-g2-r1` conservada. Nueva rama `feat/test-failures-finanzas-filter`, base `a393932aea98c5e1b0736694b980997ebd4b0f98`, worktree `/home/loxi1/projects/apps/documental-platform-test-failures-finanzas-filter`: preparación local autorizada, sin cambios funcionales ni push. Se creó desde main limpio antes de estas ediciones documentales; no contiene este cierre aún sin commit. Integrar el cierre documental mediante autorización específica antes del desarrollo; después comprobar compatibilidad y actualizar esa rama sin descartar cambios.
+
+Inventario completo observado de refs locales y worktrees: `/home/loxi1/evidencias/documental-platform/post-deploy-continuity-r1/git-observation.json`. Incluye registros históricos y prunable; no se inspeccionaron ni limpiaron sus árboles. No borrar ramas, worktrees ni respaldos C04/C06.
+
+Pendiente actual: únicamente los cinco documentos de este cierre, sin stage/commit/push. La evidencia externa no es contenido pendiente de integración Git. No hubo cambios documentales previos al cierre en los dos main inspeccionados.
+
+---
+
 ## Nota de uso — estándar R1, 26/10/2026
 
 Consultar el [estándar canónico R1](../23-standards/11-source-development-and-release.md), aprobado por PO, ratificado por MI e integrado en SOURCE. El inventario inferior es una instantánea histórica del 23/10, no un bloqueo vigente. PO acredita reconciliación cerrada; el inicio de esta orden verificó main limpio en `c56250a0095ad3af8250952291087561a8ac30e0`, igual a origin/main local y remoto consultado. Se conserva íntegro el inventario como antecedente, sin repetirlo ni reabrir sus expedientes.

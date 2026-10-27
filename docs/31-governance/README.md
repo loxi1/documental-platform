@@ -8,8 +8,9 @@ No describe funcionalidades. Describe reglas de gobierno documental y técnico.
 
 - [Estándar canónico R1](../23-standards/11-source-development-and-release.md), aprobado por PO, ratificado por MI e integrado en SOURCE: cuatro gates, evidencia proporcional y transferencia institucional.
 - [Proceso técnico de promoción](07-release-process.md): controles de Enterprise/GHCR/EC2.
+- [Continuidad vigente para sucesores](../29-operations-manual/README.md#continuidad-vigente--26102026): cierre reportado de usuarios, pendientes documentales y próximo G1.
 
-## Antecedentes R2 y SOURCE (23/10/2026)
+## Estado vigente y antecedentes preservados
 
 - [Manifest vigente reportado y registro histórico](RELEASE_MANIFEST.md).
 - [Inventario local de ramas, divergencia y respaldo](BRANCH_INVENTORY.md).

@@ -1,6 +1,98 @@
 # Manifest vigente reportado — R2
 
-## Candidato administrativo — usuarios BBTI/BBTEC R1
+## Candidato aceptado G3 — Finanzas período, observados y tests, 27/10/2026
+
+Acción: `BBTI_FINANZAS_TESTS_RELEASE_CLOSURE_R1`. **G3=ACCEPTED_BY_PO; PO_VISUAL_ACCEPTANCE=PASS. Candidato preparado; no integrado, publicado ni desplegado por esta orden.** Este registro es el único manifiesto candidato; los parches, hashes y resultados externos son evidencias, no otro manifiesto rector. Prevalece sobre las fases preparatorias anteriores conservadas abajo.
+
+### Identidad y composición pendiente
+
+- SOURCE base publicado: `a393932aea98c5e1b0736694b980997ebd4b0f98`, árbol `34fd8c0ad68bf8a404224d95c7d4065e3e45d959`.
+- Rama: `feat/test-failures-finanzas-filter`; worktree `/home/loxi1/projects/apps/documental-platform-test-failures-finanzas-filter`; HEAD base, cambios aún sin commit.
+- Commit documental SOURCE, commit funcional y SOURCE main objetivo: **PENDING_AUTHORIZED_INTEGRATION**. No inventar SHA de un commit futuro ni confundir el HEAD base con el candidato dirty. Después de la integración registrar SHA/árbol efectivos en evidencia y en Enterprise, sin exigir igualdad de hashes entre repositorios ni ciclos de commits para autorreferenciar este archivo.
+- Enterprise base local: `d60b6af89a99e6a4bdb2a48e7d6891d7ee4b59ac`, árbol `2ae8d7af78d889a9c247f7c6285f26ce2af78425`, limpio en esta preparación; frescura remota no reconsultada. Enterprise objetivo/árbol: **PENDING_PROMOTION**.
+- GHCR: **PENDING_PUBLICATION**, sin tags ni digests nuevos acreditados. EC2 objetivo/runtime: **PENDING_PROMOTION**; R2 anterior permanece como referencia productiva, no como imagen del candidato nuevo.
+- Composición funcional/test: 13 rutas. Cierre documental separado: `docs/06-database/05-seeds.md`, `docs/29-operations-manual/README.md`, `docs/31-governance/BRANCH_INVENTORY.md`, `docs/31-governance/README.md`, este manifiesto. Total previsto SOURCE: 18 rutas en dos commits focales; ningún otro código, lockfile, secreto o artefacto de build.
+
+| Ruta del candidato funcional | Clasificación |
+|---|---|
+| `apps/api-gateway/src/documental-v2/documental-v2-gateway.controller.spec.ts` | Test |
+| `apps/api-gateway/src/documental-v2/documental-v2-gateway.controller.ts` | Funcional |
+| `apps/api-gateway/src/documental-v2/orden-pago-gateway.spec.ts` | Test |
+| `apps/api-gateway/src/documentos/documentos.controller.spec.ts` | Test |
+| `apps/api-gateway/src/documentos/documentos.financial-exception.spec.ts` | Test |
+| `apps/ms-documentos/src/documental-v2/finanzas/evaluar-correspondencia-pago-factura.controller.spec.ts` | Test |
+| `apps/ms-documentos/src/documental-v2/finanzas/orden-pago.controller.ts` | Funcional |
+| `apps/ms-documentos/src/documental-v2/finanzas/orden-pago.detalle.spec.ts` | Test |
+| `apps/ms-documentos/src/documental-v2/finanzas/orden-pago.periodo.spec.ts` | Test |
+| `apps/ms-documentos/src/expedientes/expedientes.repository.revision-contable.spec.ts` | Test |
+| `apps/ms-documentos/src/expedientes/expedientes.repository.ts` | Funcional |
+| `apps/web-admin/src/components/finanzas/FinanzasBandeja.periodo.test.cjs` | Test |
+| `apps/web-admin/src/components/finanzas/FinanzasBandeja.tsx` | Funcional |
+
+No copiar el worktree completo a Enterprise. Materializar exclusivamente las rutas aprobadas desde el SOURCE integrado. Conciliar este manifiesto aditivamente con Enterprise conservando Actions #28, R2 y sus registros propios; no sustituirlo por el archivo SOURCE completo. Las evidencias externas y enlaces `node_modules` no son contenido Git.
+
+### Tests históricos y resultado vigente
+
+1. `apps/ms-documentos/src/documental-v2/finanzas/orden-pago.detalle.spec.ts`, suite **Detalle OP READ ONLY**, caso **detalle válido sin archivo devuelve IDs, metadata y numeración visual**: expectativa corregida con `conceptoClasificacion: null`; PASS en la suite actual.
+2. `apps/api-gateway/src/documentos/documentos.controller.spec.ts`, suite **DocumentosGatewayController - auditoría OCR**, caso **propaga identidad y correlación al confirmar OCR con expediente**: expectativa corregida con `x-finanzas-correspondencia-autorizar-excepcion: "false"`; PASS actual. No se retiraron campos ni headers del producto.
+
+El antecedente R2 122 PASS / 2 FAIL procede del informe `ENTERPRISE_R2_INTEGRATION_MANIFEST_20261023/`, base reconstruida `cd823203…` con patch; no contiene una identidad definitiva de commit de aquella ejecución. PO ratifica su resolución por estas expectativas. No identificar esas dos diferencias con las incidencias Guía versionada/OCR archivo 8 ni afirmar que esas incidencias se implementaron en esta release.
+
+Resultado Jest vigente: **19 suites, 282 PASS / 0 FAIL** (216 backend Finanzas, 66 Gateway). Correcciones adicionales de specs: rutas independientes de cwd, dos casos antes inalcanzables dentro del mock Axios, tipado de headers y contrato de período/búsqueda/paginación del Gateway. Pruebas de interacción frontend vigentes tras ajuste visual: **3 PASS**, separadas de los 282 Jest. El resultado inicial G2 74 PASS es antecedente de otro alcance, no se suma a los 282.
+
+Build frontend: PASS; compilación productiva Gateway/ms-documentos con `tsconfig.build.json --noEmit`: PASS; typecheck frontend: PASS. Typecheck global incluyendo todos los specs: errores preexistentes fuera del alcance corregido; no afirmar PASS global. Builds de código funcional acreditados antes de correcciones exclusivamente de tests; no requieren nuevas imágenes por esas correcciones.
+
+### Aceptación y LAB
+
+PO confirma visualmente en 3007: período obligatorio (factura OC/OS; emisión OP), observados ambos orígenes, regresión Contabilidad y disposición final aceptados. El período inicia en el mes actual, sin carga automática antes de Consultar; búsqueda automática desde tres caracteres tras la consulta inicial. Un solo botón Consultar; Agregar OP junto al subtítulo; Observados y filtros en una fila de escritorio. La aceptación visual es **PO_REPORTED_PASS**, no observación automática de Browser.
+
+LAB aislado: frontend 3007, Gateway 3107, ms-documentos 3207; identidad de archivos verificada, health HTTP 200, PostgreSQL `gestion_documental_lab` con `default_transaction_read_only=on` y `transaction_read_only=on`; LAB 3005 y dependencias conservados. Consultas reales READ ONLY de período/búsqueda/paginación, OC/OS y OP y ruta contable: PASS; observados OP acreditados con datos existentes. Caso observado OC/OS: no encontrado en los meses consultados por el ejecutor; cobertura por pruebas y aceptación visual PO, sin fabricar registros. Browser automático no disponible. `.next` del worktree eliminado; los contenedores tienen su build propio. Esas identidades LAB no son artefactos GHCR productivos.
+
+### Promoción, rollback y límites
+
+Secuencia obligatoria: **SOURCE main → Enterprise main → GHCR → EC2**. Preparación de comandos y verificaciones en `/home/loxi1/evidencias/documental-platform/finanzas-tests-release-closure-r1/release-plan.md`; no añade gates a G1–G4. G3 aceptado; autorizaciones de commits/publicación SOURCE, promoción Enterprise, GHCR y ejecución productiva deben quedar expresamente registradas antes de cruzar cada frontera. Esta orden prepara, no ejecuta dichas operaciones.
+
+Imágenes necesarias: `api-gateway`, `ms-documentos`, `web-admin`; `ms-auth` runtime, NATS, Traefik, OCR y RDS deben conservarse. El workflow Enterprise `build-images.yml` es manual y publica cuatro imágenes incluyendo ms-auth: requiere decisión PO sobre publicar las cuatro sin cambiar runtime auth, o autorizar publicación selectiva acreditada de las tres. No modificar workflow ni ejecutar publicación por inferencia.
+
+Antes de mutar EC2 fijar commit Enterprise, run CI y tres digests inmutables, freeze, Compose base/override y rollback. Mantener `ms-auth` en su digest anterior; recrear exclusivamente los tres servicios de esta release. Comprobar witness técnico y smoke funcional posterior. Rollback: tres referencias R2 previas y override autorizado conservados más abajo; confirmar su identidad/provenance y disponibilidad antes de deploy. No usar latest, no construir en EC2, no down global ni reiniciar OCR. Sin migraciones, DB_WRITE, usuarios o credenciales en esta release. Ledger no revalidado por este cierre; no reconstruir manifiestos históricos.
+
+Evidencia durable base: `/home/loxi1/evidencias/documental-platform/`. Expedientes `finanzas-period-observados-g2-r1/`, `finanzas-jest-correction-r1/`, `finanzas-g3-local3007-r1/` (incluido `ui-adjustment/`), `post-deploy-continuity-r1/` y `finanzas-tests-release-closure-r1/`. Este último conserva snapshots, parches separados, inventario SHA-256 y plan operativo. No contiene env privados, contraseñas, hashes de autenticación ni materiales de recuperación.
+
+---
+
+## Cierre vigente — R2 y administración PO_MANAGED, 26/10/2026
+
+Acción: `BBTI_POST_DEPLOY_CONTINUITY_AND_NEXT_BRANCH_R1`. Verificación focal `2026-10-26T22:52:56.914616+00:00`. Las secciones anteriores de preparación conservadas más abajo son antecedentes; el candidato administrativo está promovido. La promoción administrativa no construyó ni sustituyó imágenes R2.
+
+- SOURCE main `a393932aea98c5e1b0736694b980997ebd4b0f98`, árbol `34fd8c0ad68bf8a404224d95c7d4065e3e45d959`; remoto consultado igual.
+- Enterprise main `d60b6af89a99e6a4bdb2a48e7d6891d7ee4b59ac`, árbol `2ae8d7af78d889a9c247f7c6285f26ce2af78425`; remoto consultado igual.
+- Checkout EC2 `d60b6af89a99e6a4bdb2a48e7d6891d7ee4b59ac`, árbol `2ae8d7af78d889a9c247f7c6285f26ce2af78425`, main limpio. Este checkout administrativo no identifica por sí solo el código construido dentro de las imágenes R2.
+- Release de servicios: **R2**, referencia institucional `r2-e1f099fa-r1`; identidad observada por referencias inmutables de Config.Image. No se reconsultaron manifests OCI ni attestations GHCR; no confundir referencia configurada, Image ID y digest de manifest remoto.
+
+| Servicio | Referencia configurada observada | Estado |
+|---|---|---|
+| /dp_api_gateway | `ghcr.io/bbti-sac/documental-platform-bbti-prod/api-gateway@sha256:4ba59c185f52d308cffd163179819b26bbfa4b8b27968be1864c65eccb11ec0a` | running |
+| /dp_ms_auth | `ghcr.io/bbti-sac/documental-platform-bbti-prod/ms-auth@sha256:e299d52aa019c9d76e37618641ba2bce61b740b2df9c4523e8935e2df4a726b5` | running |
+| /dp_ms_documentos | `ghcr.io/bbti-sac/documental-platform-bbti-prod/ms-documentos@sha256:949f9510bdc00c03842bb1218ffa817f941076d5eebc3bfa700a5a355ee7541f` | running |
+| /dp_web_admin | `ghcr.io/bbti-sac/documental-platform-bbti-prod/web-admin@sha256:bab1a81e88262ac89d0c15bef87f20e1e80c6e5f1d370693e3f562fcf6ff49ad` | running |
+
+Compose efectivo de las cuatro aplicaciones, según labels Docker: proyecto `docker`; base `/home/ubuntu/apps/documental-platform-bbti-prod/deployment/docker/docker-compose.production.yml`; override `/home/ubuntu/releases/documental-platform-bbti/r2-e1f099fa-r1/release.images.yml`; EnvironmentFile `/home/ubuntu/apps/documental-platform-bbti-prod/deployment/env/.env.production` (contenido secreto no leído). NATS/Traefik usan la misma base con `deployment/docker/docker-compose.ec2.yml`; no extrapolarles el override de aplicaciones. No se ejecutó `compose config` ni se volcó el entorno.
+
+- Override release presente, SHA-256 `6895811e0dacdd2e0a22f4b34898e827a804e6a62fe9f03ba4c00d803651e07a`.
+- Rollback preparado presente: `/home/ubuntu/releases/documental-platform-bbti/r2-e1f099fa-r1/rollback.images.yml`, SHA-256 `5232b404f7cfa046286caadd5b51be3eb20a8404366a58432f0061f0fcdd6776`; no ejecutado ni ensayado aquí.
+- Smoke observado: web HTTP 200; API health HTTP 200; seis contenedores running; OCR active/running, NRestarts=0. No equivale a aceptación funcional integral.
+- Migraciones nuevas: N/A, cambio administrativo sin esquema. Ledger LAB/producción actual: NOT_VERIFIED en este cierre; no se consultó RDS ni ejecutó runner. 0023/0024 y antecedentes conservados; no reservar/reutilizar 0025.
+- Pruebas PO_MANAGED heredadas: 9 PASS / 21 comprobaciones PASS, snapshot aprobado, sin nueva ejecución. LAB previo conservado. Tests R2 heredados: 122 PASS / 2 FAIL en su ejecución histórica. Son diferencias de expectativa independientes de las incidencias Guía/OCR y del nuevo filtro. Su resolución actual está acreditada por los casos Jest corregidos y la aceptación PO; no se reescribe el resultado histórico como PASS. Build: N/A para este cierre documental y ajuste administrativo sin servicios modificados; build histórico R2 no repetido.
+- Digest administrativo vigente `5b65b19d9e36d7f3e1744b1f5415cd23fa544e36bd13e3e79209b99d949ebdea`; no es manifiesto de migraciones.
+- Autoridad: órdenes PO de promoción SOURCE/Enterprise/EC2 y PO_MANAGED acreditadas en la sesión; cierre de aprovisionamiento y resolución de claves **PASS_REPORTED** por orden MI/PO adjunta, no reejecutados ni revalidados en RDS. Acuses firmados NOT_YET_VERIFIED. No reejecutar aprovisionamiento ni cambios de contraseña desde estas instrucciones.
+
+Evidencia institucional: `/home/loxi1/evidencias/documental-platform/`, expedientes `auth-users-po-managed-release-r1/`, `auth-users-po-managed-r1/`, `auth-users-option-a-final-preflight-r1/` y `post-deploy-continuity-r1/`. El resultado local `auth-users-password-change-r1/result.json` acredita un intento anterior BLOCKED/NOT_EXECUTED, no el cierre posterior reportado; falta evidencia material posterior de ese cambio. Esta diferencia se registra sin reabrir RDS ni invalidar por inferencia el reporte del PO.
+
+Continuidad funcional y siguientes decisiones: [Operations Manual](../29-operations-manual/README.md#continuidad-vigente--26102026). Historia Actions #28 y R2 íntegra a continuación.
+
+---
+
+## Antecedente histórico — preparación del candidato administrativo usuarios BBTI/BBTEC R1
 
 Acción: `BBTI_AUTH_USERS_FINAL_IMPLEMENTATION_AND_RELEASE_PREPARATION_R1`.
 Estado: **PREPARADO PARA REVISIÓN; NO PROMOVIDO NI EJECUTADO EN PRODUCCIÓN**.
