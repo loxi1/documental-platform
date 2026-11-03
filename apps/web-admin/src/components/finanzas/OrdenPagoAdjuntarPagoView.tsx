@@ -1,5 +1,7 @@
 "use client";
 
+import { puedeAutorizarExcepcionFinanzas } from "@/lib/auth-storage";
+
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
@@ -1215,7 +1217,7 @@ export function OrdenPagoAdjuntarPagoView({
                                 size="sm"
                                 disabled={
                                   procesando ||
-                                  (recuperacionUpload?.ocr?.validacionPendientePago?.estado === "PENDIENTE_DECISION" && motivoDecision.trim().length === 0)
+                                  (recuperacionUpload?.ocr?.validacionPendientePago?.estado === "PENDIENTE_DECISION" && (!puedeAutorizarExcepcionFinanzas() || motivoDecision.trim().length === 0))
                                 }
                                 onClick={() =>
                                   recuperacionUpload?.ocr?.validacionPendientePago?.estado === "PENDIENTE_DECISION"
@@ -1230,7 +1232,7 @@ export function OrdenPagoAdjuntarPagoView({
                             </div>
 
                             <p className="text-[11px] text-muted-foreground">
-                              La autorización de excepción está sujeta al permiso específico
+                              La autorización de excepción requiere acceso a Finanzas en este workspace;
                               validado por el backend.
                             </p>
                           </div>

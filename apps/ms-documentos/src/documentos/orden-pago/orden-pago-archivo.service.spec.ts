@@ -18,7 +18,7 @@ const body = { contenedorOperativoId: 7, fechaEmision: '2026-08-15', monto: '125
 const actor = { id: 6, workspaceId: 12, empresaCodigo: 'BBTI', clienteDestinoId: 2, requestId: key, correlationId: key };
 const tmpActor = { ...actor, actorId: 6, idempotencyKey: key };
 const source = 'documentos/tmp/12/50';
-const dest = 'documentos/carga-segura/2026/09/BBTI/50__pago.pdf';
+const dest = 'documentos/2026/09/BBTI/50__pago.pdf';
 
 // Adaptador SQL transaccional en memoria. Usa los servicios y repositorios reales;
 // falla ante cualquier consulta no prevista (incluidos inserts OCR/outbox/documentos extra).

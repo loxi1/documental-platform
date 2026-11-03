@@ -495,6 +495,7 @@ export class OrdenPagoService {
       },
       {
         usuarioId: actor.id,
+        tienePermisoAutorizarExcepcion: actor.tienePermisoAutorizarExcepcion === true,
         requestId: actor.requestId ?? null,
         correlationId: actor.correlationId ?? actor.requestId ?? null,
       },

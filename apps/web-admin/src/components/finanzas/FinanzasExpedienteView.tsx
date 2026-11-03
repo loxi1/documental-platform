@@ -405,6 +405,7 @@ export function FinanzasExpedienteView({ id }: { id: string | number }) {
         principalSlot={
           <FinanzasDocumentoPrincipalOperativoCard
             id={id}
+              grupoFacturaId={grupoFacturaId || null}
             onVer={(principalDocumentoId) => {
               const documentoPrincipal = getAllDocuments(expediente).find(
                 (documento) =>

@@ -1,5 +1,7 @@
 "use client";
 
+import { puedeAutorizarExcepcionFinanzas } from "@/lib/auth-storage";
+
 import Link from "next/link";
 import { useState, type ReactNode } from "react";
 import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -2392,6 +2394,7 @@ function GrupoPagoCard({
                         type="button"
                         size="sm"
                         disabled={
+                          !puedeAutorizarExcepcionFinanzas() ||
                           decisionInlineEnviando ||
                           motivoDecisionInline.trim().length === 0
                         }
@@ -2408,7 +2411,7 @@ function GrupoPagoCard({
                     </div>
 
                     <p className="text-[11px] text-muted-foreground">
-                      La autorización de excepción está sujeta al permiso específico
+                      La autorización de excepción requiere acceso a Finanzas en este workspace;
                       validado por el backend.
                     </p>
                   </>

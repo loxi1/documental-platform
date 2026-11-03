@@ -18,6 +18,7 @@ export type OrdenPagoInput = {
   beneficiarioNombreLibre: string | null;
 };
 export type OrdenPagoActor = {
+  tienePermisoAutorizarExcepcion?: boolean;
   id: number; workspaceId: number; empresaCodigo: string; clienteDestinoId: number | null;
   requestId?: string | null; correlationId?: string | null; email?: string | null;
   sessionContextId?: string | null; sistemaCodigo?: string | null; perfilCodigo?: string | null;
