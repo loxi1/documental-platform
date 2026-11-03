@@ -39,7 +39,7 @@ describe('DocumentosUploadService - múltiples principales por relación', () =>
   });
 
   function service() {
-    return new DocumentosUploadService({} as any, {} as any, {} as any);
+    return new DocumentosUploadService({} as any, {} as any, {} as any, { resolverParaVersion: jest.fn().mockResolvedValue({ fecha: new Date("2026-07-21T00:00:00Z") }) } as any);
   }
 
   function mockSqlPorConsulta(fixtures: {
@@ -172,7 +172,7 @@ describe('DocumentosUploadService - múltiples principales por relación', () =>
             query.includes('FROM documentos.documentos d') &&
             query.includes('cliente_abreviatura')
           ) {
-            return Promise.resolve([{ id: 92, cliente_abreviatura: 'BBTI' }]);
+            return Promise.resolve([{ id: 92, cliente_abreviatura: 'BBTI', tipo_documental: 'GUIA_REMISION' }]);
           }
 
           if (query.includes('INSERT INTO documentos.documentos_archivos')) {
@@ -195,9 +195,11 @@ describe('DocumentosUploadService - múltiples principales por relación', () =>
           empresaCodigo: 'BBTI',
           areaOrigen: 'ALMACEN',
         },
+        { workspaceId: 1, empresaCodigo: 'BBTI', clienteDestinoId: 2, actorId: 1 },
       );
 
       expect(subirAR2Spy).toHaveBeenCalledTimes(1);
+      expect(subirAR2Spy.mock.calls[0][0].storageKey).toMatch(/^documentos\/2026\/07\/BBTI\//);
 
       const sqlEjecutado = sqlMock.mock.calls.map(sqlTexto).join('\n');
 
@@ -260,6 +262,7 @@ describe('DocumentosUploadService - múltiples principales por relación', () =>
             empresaCodigo: 'BBTI',
             areaOrigen: 'ALMACEN',
           },
+          { workspaceId: 1, empresaCodigo: 'BBTI', clienteDestinoId: 2, actorId: 1 },
         ),
       ).rejects.toThrow('DOCUMENTO_FUERA_DE_EMPRESA');
 

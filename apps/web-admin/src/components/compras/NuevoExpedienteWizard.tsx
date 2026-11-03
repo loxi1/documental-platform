@@ -1,4 +1,5 @@
 "use client";
+import { cargarTemporalCompras, recuperarTemporalCompras, validarTemporalCompras, type ComprasTempResult } from "@/services/carga-segura";
 
 import { ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
@@ -728,55 +729,13 @@ export function NuevoExpedienteWizard() {
       }
 
       setProcessingStep("uploading");
-      const uploadResponse = await subirDocumentoCargaSegura(uploadPayload, file, {
-        idempotencyKey: crearCargaSeguraIdempotencyKey("nuevo", expedienteSeleccionado.id),
+      const resultado = await cargarTemporalCompras(file, {
+        expedienteId: Number(expedienteSeleccionado.id),
+        tipoDocumental: selectedOption.tipo as 'OC' | 'OS',
       });
-      const archivoId = getArchivoId(uploadResponse as Record<string, unknown>);
-
-      if (!archivoId) {
-        throw new Error("El upload no devolvió archivoId.");
-      }
-
-      setProcessingStep("processing_ocr");
-
-      const resultado = await procesarArchivoOcr(archivoId, {
-        tipoEsperado: selectedOption.tipo,
-        areaOrigen: "COMPRAS",
-        clienteAbreviatura,
-        expedienteId: expedienteSeleccionado.id,
-        tipoRelacionSugerida: selectedOption.tipoRelacionPrincipal,
-        canalIngreso: "COMPRAS_NUEVO_UPLOAD_PRINCIPAL",
-        reprocesar: true,
-      });
-
-      const resultadoActual = resultado as Record<string, unknown>;
-      const archivoIdResultado = getArchivoIdExplicito(resultadoActual);
-      const ocrResultadoIdActual = getOcrResultadoIdExplicito(resultadoActual);
-      const archivoIdActual = String(archivoId);
-
-      if (!ocrResultadoIdActual) {
-        throw new Error(
-          "El procesamiento OCR no devolvió ocrResultadoId explícito para la carga actual.",
-        );
-      }
-
-      if (!archivoIdResultado || archivoIdResultado !== archivoIdActual) {
-        throw new Error(
-          "La identidad OCR no corresponde al archivo recién cargado; se bloqueó la operación antes de confirmar.",
-        );
-      }
-
-      setArchivoIdModal(archivoIdActual);
-      setOcrResultadoIdModal(ocrResultadoIdActual);
-      setProcessingStep("preparing_preview");
-      setResultadoModal(
-        buildResultadoConContexto(resultado, selectedOption, expedienteSeleccionado, {
-          archivoId,
-          filename: file.name,
-          uploadResponse: uploadResponse as Record<string, unknown>,
-        }),
-      );
-
+      setArchivoIdModal(null);
+      setOcrResultadoIdModal(null);
+      setResultadoModal(resultado);
       setProcessingStep("ready");
       window.setTimeout(() => {
         setProcessingStep("idle");
@@ -840,6 +799,14 @@ export function NuevoExpedienteWizard() {
   }
 
   async function guardarCambiosOcr(form: OcrValidationFormState) {
+    const temp = resultadoModal as ComprasTempResult | null;
+    if (temp?.tempId) {
+      await validarTemporalCompras(temp, { expedienteId: Number(expedienteSeleccionado?.id),
+        tipoRelacion: selectedOption.tipoRelacionPrincipal, esPrincipal: true, orden: 1,
+        metadata: buildMetadataDesdeFormulario(form, { codigoExpediente: expedienteSeleccionado?.codigoExpediente,
+          clienteAbreviatura: expedienteSeleccionado?.empresaCodigo }) }, true);
+      return;
+    }
     const ocrResultadoId = resolverOcrResultadoIdModalActual();
 
     await editarOcrResultado(ocrResultadoId, {
@@ -856,7 +823,8 @@ export function NuevoExpedienteWizard() {
   }
 
   async function confirmarOcrPrincipal(form: OcrValidationFormState) {
-    const ocrResultadoId = resolverOcrResultadoIdModalActual();
+    const temp = resultadoModal as ComprasTempResult | null;
+    const ocrResultadoId = temp?.tempId ? null : resolverOcrResultadoIdModalActual();
 
     if (!expedienteSeleccionado?.id) {
       throw new Error("Selecciona un expediente antes de confirmar el documento principal.");
@@ -879,7 +847,7 @@ export function NuevoExpedienteWizard() {
       tipoRelacion: selectedOption.tipoRelacionPrincipal,
     });
 
-    const confirmacion = await confirmarOcrConExpediente(ocrResultadoId, {
+    const confirmacion = temp?.tempId ? await validarTemporalCompras(temp, { expedienteId: Number(expedienteSeleccionado.id), tipoRelacion: selectedOption.tipoRelacionPrincipal, esPrincipal: true, orden: 1, metadata }) : await confirmarOcrConExpediente(ocrResultadoId!, {
       expedienteId: expedienteSeleccionado.id,
       tipoRelacion: selectedOption.tipoRelacionPrincipal,
       esPrincipal: true,
@@ -1310,6 +1278,14 @@ export function NuevoExpedienteWizard() {
         }}
       />
 
+      <Button type="button" variant="outline" disabled={!expedienteSeleccionado?.id}
+        onClick={async () => {
+          try {
+            const temp = await recuperarTemporalCompras({ expedienteId: Number(expedienteSeleccionado?.id), tipoDocumental: selectedOption.tipo as 'OC' | 'OS' });
+            if (!temp) { setAccionError('No hay una carga temporal pendiente.'); return; }
+            setArchivoIdModal(null); setOcrResultadoIdModal(null); setResultadoModal(temp); setValidacionAbierta(true);
+          } catch (error) { setAccionError(getErrorMessage(error)); }
+        }}>Recuperar carga pendiente</Button>
       <OcrValidationModal
         open={validacionAbierta}
         resultado={resultadoModal}
@@ -1324,7 +1300,9 @@ export function NuevoExpedienteWizard() {
         onClose={() => setValidacionAbierta(false)}
         onSave={guardarCambiosOcr}
         onConfirm={confirmarOcrPrincipal}
-        onReject={rechazarOcrPrincipal}
+        onReject={(resultadoModal as any)?.tempId ? () => { setValidacionAbierta(false); setAccionError("Carga temporal conservada para revisión posterior."); } : rechazarOcrPrincipal}
+        modo="ocr"
+        statusMessage={(resultadoModal as any)?.tempId ? "Archivo temporal conservado. Revisa los datos y la fecha antes de confirmar." : undefined}
         formularioContexto="COMPRAS"
       />
     </>
