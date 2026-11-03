@@ -132,14 +132,14 @@ export class CargaSeguraHttpExceptionFilter implements ExceptionFilter {
     const value = typeof body === 'object' && body !== null
       ? body as Record<string, unknown> : {};
     const domainCode = typeof value.code === 'string' ? value.code : value.message;
-    if (status === 409 && (domainCode === 'FACTURA_TEMP_DOCUMENT_DUPLICATE' || domainCode === 'FACTURA_TEMP_ALREADY_RESERVED')) {
+    if (status === 409 && ((domainCode === 'FACTURA_TEMP_DOCUMENT_DUPLICATE' || domainCode === 'RECIBO_HONORARIO_TEMP_DOCUMENT_DUPLICATE') || (domainCode === 'FACTURA_TEMP_ALREADY_RESERVED' || domainCode === 'RECIBO_HONORARIO_TEMP_ALREADY_RESERVED'))) {
       const details = value.details as Record<string, unknown> | undefined;
       const id = details?.duplicateCandidateId;
       return {
         status,
         code: domainCode,
         message: domainCode,
-        details: domainCode === 'FACTURA_TEMP_DOCUMENT_DUPLICATE' && typeof id === 'number' && Number.isSafeInteger(id) && id > 0
+        details: (domainCode === 'FACTURA_TEMP_DOCUMENT_DUPLICATE' || domainCode === 'RECIBO_HONORARIO_TEMP_DOCUMENT_DUPLICATE') && typeof id === 'number' && Number.isSafeInteger(id) && id > 0
           ? { duplicateCandidateId: id, duplicateOrigin: details?.duplicateOrigin ?? null } : null,
       };
     }

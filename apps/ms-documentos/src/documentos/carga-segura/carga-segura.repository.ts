@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { sql } from '@documental/database';
 
-import { CARGA_SEGURA_FINGERPRINT_VERSION } from './carga-segura.constants';
+import { CARGA_SEGURA_R2_FINGERPRINT_VERSION, CARGA_SEGURA_FINGERPRINT_VERSION } from './carga-segura.constants';
 import type {
   CargaSeguraOperacionRow,
   ReservaCargaSeguraResult,
@@ -30,7 +30,7 @@ export class CargaSeguraRepository {
       if (byIdempotency) {
         return {
           kind:
-            byIdempotency.payloadFingerprint === input.payloadFingerprint
+            this.fingerprintMatches(byIdempotency, input)
               ? 'REPLAYED'
               : 'IDEMPOTENCY_CONFLICT',
           operacion: byIdempotency,
@@ -54,6 +54,15 @@ export class CargaSeguraRepository {
     throw new Error(
       'No fue posible clasificar la reserva concurrente de carga segura',
     );
+  }
+
+  private fingerprintMatches(row: CargaSeguraOperacionRow, input: ReservarCargaSeguraInput): boolean {
+    if (row.fingerprintVersion === CARGA_SEGURA_FINGERPRINT_VERSION) {
+      return row.payloadFingerprint === (input.legacyPayloadFingerprint ?? input.payloadFingerprint);
+    }
+    return row.fingerprintVersion === CARGA_SEGURA_R2_FINGERPRINT_VERSION &&
+      input.fingerprintVersion === CARGA_SEGURA_R2_FINGERPRINT_VERSION &&
+      row.payloadFingerprint === input.payloadFingerprint;
   }
 
   async buscarPorId(id: number): Promise<CargaSeguraOperacionRow | null> {
@@ -101,7 +110,7 @@ export class CargaSeguraRepository {
         ${input.actorId}::integer,
         ${input.idempotencyKey}::text,
         ${input.payloadFingerprint}::text,
-        ${CARGA_SEGURA_FINGERPRINT_VERSION}::text,
+        ${input.fingerprintVersion ?? CARGA_SEGURA_FINGERPRINT_VERSION}::text,
         ${input.requestId ?? null}::text,
         ${input.correlationId ?? null}::text,
         ${input.canalIngreso}::text,

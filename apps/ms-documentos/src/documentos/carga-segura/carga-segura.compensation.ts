@@ -61,6 +61,13 @@ export class CargaSeguraCompensation {
   private async evaluateUnsafeReason(
     input: CargaSeguraCompensationInput,
   ): Promise<string | null> {
+    // P3: nunca borrar físicamente desde una compensación que no puede
+    // demostrar fencing vigente y exclusividad de la conexión reservada.
+    // La ruta legacy permanece intacta hasta su migración explícita.
+    if (input.operacion.metadata?.r2RecoveryV1 != null) {
+      return 'P3_COMPENSATION_REQUIRES_FENCED_RECONCILIATION';
+    }
+
     if (!input.objetoCreadoPorOperacion) {
       return 'OBJECT_NOT_CREATED_BY_OPERATION';
     }

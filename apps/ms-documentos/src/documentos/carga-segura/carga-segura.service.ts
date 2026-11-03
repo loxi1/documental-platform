@@ -1,14 +1,15 @@
 import { createHash } from 'node:crypto';
 
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
 import { CARGA_SEGURA_STORAGE } from './carga-segura.constants';
 import { CargaSeguraCompensation } from './carga-segura.compensation';
 import { CargaSeguraError } from './carga-segura.errors';
-import { calculateCargaSeguraFingerprint } from './carga-segura.fingerprint';
+import { calculateCargaSeguraR2Fingerprint, calculateCargaSeguraFingerprint } from './carga-segura.fingerprint';
 import { CargaSeguraPersistence } from './carga-segura.persistence';
 import { CargaSeguraRepository } from './carga-segura.repository';
+import { PeriodoDocumentalR2Repository } from '../periodo-documental-r2.repository';
 import {
   buildCargaSeguraStorageKey,
   type CargaSeguraStorage,
@@ -22,6 +23,7 @@ import type {
 
 @Injectable()
 export class CargaSeguraService {
+  private readonly logger = new Logger(CargaSeguraService.name);
   constructor(
     private readonly config: ConfigService,
     private readonly repository: CargaSeguraRepository,
@@ -29,15 +31,17 @@ export class CargaSeguraService {
     private readonly storage: CargaSeguraStorage,
     private readonly persistence: CargaSeguraPersistence,
     private readonly compensation: CargaSeguraCompensation,
+    private readonly periodoR2: PeriodoDocumentalR2Repository,
   ) {}
 
   async ejecutar(command: CargaSeguraCommand): Promise<CargaSeguraResult> {
     this.assertEnabled();
 
     const normalized = this.normalizeCommand(command);
+    const bucket = this.resolveBucket();
     const hashSha256 = this.calculateHash(normalized.archivo);
 
-    const fingerprint = calculateCargaSeguraFingerprint({
+    const payload = {
       workspaceId: normalized.workspaceId,
       empresaCodigo: normalized.empresaCodigo,
       clienteDestinoId: normalized.clienteDestinoId,
@@ -51,7 +55,29 @@ export class CargaSeguraService {
       contentType: normalized.contentType,
       tamanoBytes: normalized.tamanoBytes,
       hashSha256,
-    });
+    };
+    // P3: el cliente nunca puede suministrar evidencia de fase ni identidad interna,
+    // incluso a través de canales legacy. Rechazar ANTES de reservar o enviar PUT.
+    if (['r2IdentityV2', 'r2RecoveryV1'].some(key =>
+      Object.prototype.hasOwnProperty.call(normalized.metadata ?? {}, key))) {
+      throw this.invalidRequest('Metadata interna reservada');
+    }
+    const legacy = calculateCargaSeguraFingerprint(payload);
+    const esR2 = this.isR2Almacen(normalized);
+    if (esR2) {
+      this.positiveInteger(normalized.grupoFacturaId as number, 'grupoFacturaId');
+      this.positiveInteger(normalized.documentoBaseId as number, 'documentoBaseId');
+      this.positiveInteger(normalized.clienteDestinoId as number, 'clienteDestinoId');
+      this.positiveInteger(normalized.expedienteId as number, 'expedienteId');
+      const guia = normalized.canalIngreso === 'ALMACEN_LEGACY_UPLOAD_GUIA';
+      if (normalized.esPrincipal || normalized.tipoDocumental !== (guia ? 'GUIA_REMISION' : 'NOTA_INGRESO') ||
+        normalized.tipoRelacion !== (guia ? 'adjunto_guia' : 'adjunto_nota_ingreso')) {
+        throw this.invalidRequest('Contrato de Almacén incompatible');
+      }
+    }
+    const fingerprint = esR2 ? calculateCargaSeguraR2Fingerprint({ ...payload,
+      grupoFacturaId: normalized.grupoFacturaId as number,
+      documentoBaseId: normalized.documentoBaseId as number }) : legacy;
 
     const reserva = await this.repository.reservar({
       workspaceId: normalized.workspaceId,
@@ -61,6 +87,8 @@ export class CargaSeguraService {
       actorId: normalized.actorId,
       idempotencyKey: normalized.idempotencyKey,
       payloadFingerprint: fingerprint.fingerprint,
+      fingerprintVersion: fingerprint.version,
+      ...(esR2 ? { legacyPayloadFingerprint: legacy.fingerprint } : {}),
       requestId: normalized.requestId,
       correlationId: normalized.correlationId ?? normalized.requestId,
       canalIngreso: normalized.canalIngreso,
@@ -68,32 +96,130 @@ export class CargaSeguraService {
       contentType: normalized.contentType,
       tamanoBytes: normalized.tamanoBytes,
       hashSha256,
-      metadata: normalized.metadata,
+      metadata: esR2 ? { ...normalized.metadata, r2IdentityV2: {
+        version: 2, workspaceId: normalized.workspaceId, empresaCodigo: normalized.empresaCodigo,
+        clienteDestinoId: normalized.clienteDestinoId, expedienteId: normalized.expedienteId,
+        actorId: normalized.actorId, grupoFacturaId: normalized.grupoFacturaId,
+        documentoBaseId: normalized.documentoBaseId,
+      } } : normalized.metadata,
     });
 
     if (reserva.kind !== 'RESERVED') {
+      if (esR2 && reserva.kind !== 'IDEMPOTENCY_CONFLICT') {
+        const row = reserva.operacion;
+        const scoped = row.workspaceId === normalized.workspaceId && row.empresaCodigo === normalized.empresaCodigo &&
+          row.clienteDestinoId === normalized.clienteDestinoId && row.expedienteId === normalized.expedienteId &&
+          row.actorId === normalized.actorId && row.canalIngreso === normalized.canalIngreso;
+        const proven = scoped && row.estado === 'completada' && this.validId(row.documentoId) &&
+          await this.periodoR2.verificarIdentidadGrupo(normalized as any, {
+            grupoFacturaId: normalized.grupoFacturaId as number,
+            documentoBaseId: normalized.documentoBaseId as number, documentoId: row.documentoId!,
+          });
+        if (!proven) return { kind: 'RECONCILIATION_REQUIRED', operacionId: row.id,
+          errorCode: 'ARCHIVO_REQUIERE_RECONCILIACION' };
+      }
       return this.resolveExistingOperation(reserva);
     }
 
-    return this.processReserved(reserva.operacion, normalized, hashSha256);
+    return this.processReserved(reserva.operacion, normalized, hashSha256, bucket);
   }
 
   private async processReserved(
     operacion: CargaSeguraOperacionRow,
     command: CargaSeguraCommand,
     hashSha256: string,
+    bucket: string,
   ): Promise<CargaSeguraResult> {
-    const bucket = this.resolveBucket();
-
-    const storageKey = buildCargaSeguraStorageKey({
-      operacionId: operacion.id,
-      empresaCodigo: command.empresaCodigo,
-      nombreArchivo: command.nombreArchivo,
-    });
 
     let stored: Awaited<ReturnType<CargaSeguraStorage['putObject']>>;
+    let etapa: 'RESOLUCION_R2' | 'STORAGE' = 'RESOLUCION_R2';
+    let attemptedKey: string | null = null;
 
     try {
+      const esCanalGuia =
+        command.canalIngreso === 'ALMACEN_LEGACY_UPLOAD_GUIA';
+
+      const esCanalNI =
+        command.canalIngreso === 'ALMACEN_LEGACY_UPLOAD_NOTA_INGRESO';
+
+      let fechaDocumental: Date | undefined;
+
+      if (esCanalGuia || esCanalNI) {
+        if (!await this.periodoR2.verificarIdentidadGrupo(command as any, {
+          grupoFacturaId: command.grupoFacturaId as number,
+          documentoBaseId: command.documentoBaseId as number,
+        })) throw this.invalidRequest('Identidad del grupo y documento base incompatible');
+        const contratoValido = esCanalGuia
+          ? command.tipoDocumental === 'GUIA_REMISION' &&
+            command.tipoRelacion === 'adjunto_guia'
+          : command.tipoDocumental === 'NOTA_INGRESO' &&
+            command.tipoRelacion === 'adjunto_nota_ingreso';
+
+        if (!contratoValido) {
+          throw new CargaSeguraError(
+            'CARGA_SEGURA_SOLICITUD_INVALIDA',
+            'El canal de Almacén no coincide con el tipo documental y su relación',
+          );
+        }
+
+        if (
+          !Number.isSafeInteger(command.expedienteId) ||
+          !Number.isSafeInteger(command.grupoFacturaId) ||
+          Number(command.expedienteId) <= 0 ||
+          Number(command.grupoFacturaId) <= 0
+        ) {
+          throw new CargaSeguraError(
+            'CARGA_SEGURA_SOLICITUD_INVALIDA',
+            'La carga de Almacén requiere expediente y grupo Factura válidos',
+          );
+        }
+
+        const periodo = await this.periodoR2.resolver(
+          {
+            workspaceId: command.workspaceId,
+            empresaCodigo: command.empresaCodigo,
+            clienteDestinoId: command.clienteDestinoId,
+            expedienteId: command.expedienteId as number,
+          },
+          {
+            operacion: esCanalGuia ? 'NUEVA_GUIA' : 'NUEVA_NI',
+            grupoFacturaId: command.grupoFacturaId as number,
+          },
+        );
+
+        fechaDocumental = periodo.fecha;
+      }
+
+      const esSustento = ['TRANSFERENCIA', 'PAGO_TRANSFERENCIA', 'DETRACCION', 'PAGO_DETRACCION']
+        .includes(command.tipoDocumental) ||
+        ['adjunto_transferencia', 'adjunto_detraccion'].includes(command.tipoRelacion ?? '');
+      if (esSustento) {
+        const contratoValido = !command.esPrincipal && (
+          (['TRANSFERENCIA', 'PAGO_TRANSFERENCIA'].includes(command.tipoDocumental) &&
+            command.tipoRelacion === 'adjunto_transferencia') ||
+          (['DETRACCION', 'PAGO_DETRACCION'].includes(command.tipoDocumental) &&
+            command.tipoRelacion === 'adjunto_detraccion'));
+        if (!contratoValido) {
+          throw new CargaSeguraError('CARGA_SEGURA_SOLICITUD_INVALIDA',
+            'El sustento de pago no coincide con su relación documental');
+        }
+        const periodo = await this.periodoR2.resolverSustento({
+          workspaceId: command.workspaceId, empresaCodigo: command.empresaCodigo,
+          clienteDestinoId: command.clienteDestinoId, expedienteId: command.expedienteId as number,
+        }, { grupoFacturaId: command.grupoFacturaId as number,
+          documentoBaseId: command.documentoBaseId as number });
+        fechaDocumental = periodo.fecha;
+      }
+
+      const storageKey = buildCargaSeguraStorageKey({
+        operacionId: operacion.id,
+        empresaCodigo: command.empresaCodigo,
+        nombreArchivo: command.nombreArchivo,
+        ...(fechaDocumental ? { fecha: fechaDocumental } : {}),
+      });
+
+      etapa = 'STORAGE';
+      attemptedKey = storageKey;
       stored = await this.storage.putObject({
         provider: 'r2',
         bucket,
@@ -103,11 +229,28 @@ export class CargaSeguraService {
         hashSha256,
       });
     } catch (error) {
-      await this.repository.marcarFallida({
-        operacionId: operacion.id,
-        errorCodigo: 'CARGA_SEGURA_STORAGE_FAILED',
-        errorDetalle: this.errorMessage(error),
-      });
+      const errorCodigo =
+        error instanceof CargaSeguraError
+          ? error.code
+          : etapa === 'RESOLUCION_R2'
+            ? 'CARGA_SEGURA_R2_RESOLUCION_FALLIDA'
+            : 'CARGA_SEGURA_STORAGE_FAILED';
+
+      try {
+        // An attempted PUT can have succeeded remotely even when its response failed.
+        const applied = attemptedKey !== null
+          ? await this.repository.marcarRequiereReconciliacion({
+              operacionId: operacion.id, storageProvider: 'r2', storageBucket: bucket,
+              storageKey: attemptedKey, errorCodigo: 'ARCHIVO_REQUIERE_RECONCILIACION',
+              errorDetalle: 'STORAGE_OUTCOME_UNCERTAIN',
+            })
+          : await this.repository.marcarFallida({
+              operacionId: operacion.id, errorCodigo, errorDetalle: this.errorMessage(error),
+            });
+        if (!applied) this.logger.warn({ event: 'CARGA_SEGURA_FAILURE_NOT_RECORDED', operacionId: operacion.id });
+      } catch {
+        this.logger.warn({ event: 'CARGA_SEGURA_FAILURE_RECORD_ERROR', operacionId: operacion.id });
+      }
 
       throw error;
     }
@@ -240,6 +383,10 @@ export class CargaSeguraService {
         { operacionId },
       );
     }
+  }
+
+  private isR2Almacen(command: CargaSeguraCommand): boolean {
+    return ['ALMACEN_LEGACY_UPLOAD_GUIA', 'ALMACEN_LEGACY_UPLOAD_NOTA_INGRESO'].includes(command.canalIngreso);
   }
 
   private resolveExistingOperation(

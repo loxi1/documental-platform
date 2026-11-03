@@ -1,3 +1,5 @@
+import { sql } from '@documental/database';
+import { PeriodoDocumentalR2Repository } from '../periodo-documental-r2.repository';
 jest.mock('@documental/database', () => ({
   sql: jest.fn(),
 }));
@@ -119,10 +121,14 @@ function createService(): CargaSeguraService {
     storage,
     persistence,
     compensation,
+    {
+      resolver: jest.fn(),
+    } as any,
   );
 }
 
 describe('CargaSeguraService', () => {
+  afterEach(() => jest.useRealTimers());
   beforeEach(() => {
     jest.clearAllMocks();
 
@@ -142,14 +148,31 @@ describe('CargaSeguraService', () => {
     expect(repository.reservar).not.toHaveBeenCalled();
   });
 
+  it.each(['COMPRAS_UPLOAD_PRINCIPAL', 'ALMACEN_LEGACY_UPLOAD_GUIA'])(
+    'P3 rechaza metadata r2RecoveryV1 falsificada en %s antes de reservar/PUT',
+    async canalIngreso => {
+      const input = command({
+        canalIngreso,
+        metadata: { r2RecoveryV1: { phase: 'PRE_PUT', fencingToken: 'fake' } },
+      });
+      await expect(createService().ejecutar(input)).rejects.toMatchObject({
+        code: 'CARGA_SEGURA_SOLICITUD_INVALIDA',
+      });
+      expect(repository.reservar).not.toHaveBeenCalled();
+      expect(storage.putObject).not.toHaveBeenCalled();
+    },
+  );
+
   it('crea una carga segura completa', async () => {
+    jest.useFakeTimers({ now: new Date('2026-10-27T12:00:00Z') });
+    const expectedKey = 'documentos/2026/10/BBTI/50__orden.pdf';
     const reserved = operation();
 
     const storedOperation = operation({
       estado: 'almacenada',
       storageProvider: 'r2',
       storageBucket: 'documentos',
-      storageKey: 'documentos/carga-segura/2026/07/50__orden.pdf',
+      storageKey: expectedKey,
       almacenadaEn: new Date(),
     });
 
@@ -162,7 +185,7 @@ describe('CargaSeguraService', () => {
       kind: 'CREATED',
       provider: 'r2',
       bucket: 'documentos',
-      key: 'documentos/carga-segura/2026/07/50__orden.pdf',
+      key: expectedKey,
       preexisting: false,
     });
 
@@ -186,7 +209,9 @@ describe('CargaSeguraService', () => {
     });
 
     expect(storage.putObject).toHaveBeenCalledTimes(1);
+    expect(storage.putObject).toHaveBeenCalledWith(expect.objectContaining({ key: expectedKey }));
     expect(repository.marcarAlmacenada).toHaveBeenCalledTimes(1);
+    expect(repository.marcarAlmacenada).toHaveBeenCalledWith(expect.objectContaining({ storageKey: expectedKey }));
     expect(persistence.persistir).toHaveBeenCalledTimes(1);
   });
 
@@ -195,6 +220,7 @@ describe('CargaSeguraService', () => {
       kind: 'REPLAYED',
       operacion: operation({
         estado: 'completada',
+        storageKey: 'documentos/carga-segura/2026/07/BBTI/50__orden.pdf',
         documentoId: 100,
         archivoId: 200,
       }),
@@ -492,6 +518,184 @@ describe('CargaSeguraService', () => {
     });
 
     expect(compensation.compensate).toHaveBeenCalledTimes(1);
+  });
+
+
+  it('R2: rechaza contrato de Almacén antes del PUT', async () => {
+    repository.reservar.mockResolvedValue({
+      kind: 'RESERVED',
+      operacion: operation(),
+    } as any);
+
+    repository.marcarFallida.mockResolvedValue(undefined as any);
+
+    const service = createService();
+
+    await expect(
+      service.ejecutar(
+        command({
+          canalIngreso: 'ALMACEN_LEGACY_UPLOAD_GUIA',
+          tipoDocumental: 'GUIA_REMISION',
+          tipoRelacion: 'adjunto_nota_ingreso',
+          grupoFacturaId: 138,
+          documentoBaseId: 486,
+          esPrincipal: false,
+        }),
+      ),
+    ).rejects.toMatchObject({
+      code: 'CARGA_SEGURA_SOLICITUD_INVALIDA',
+    });
+
+    expect(repository.reservar).not.toHaveBeenCalled();
+    expect(repository.marcarFallida).not.toHaveBeenCalled();
+    expect(storage.putObject).not.toHaveBeenCalled();
+    expect(persistence.persistir).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['GUIA_REMISION', 'adjunto_guia', 'ALMACEN_LEGACY_UPLOAD_GUIA', 'NUEVA_GUIA'],
+    ['NOTA_INGRESO', 'adjunto_nota_ingreso', 'ALMACEN_LEGACY_UPLOAD_NOTA_INGRESO', 'NUEVA_NI'],
+  ] as const)(
+    'R2: %s utiliza fecha de Factura organizadora',
+    async (tipoDocumental, tipoRelacion, canalIngreso, operacionR2) => {
+      repository.reservar.mockResolvedValue({
+        kind: 'RESERVED',
+        operacion: operation(),
+      } as any);
+
+      storage.putObject.mockResolvedValue({
+        kind: 'CREATED',
+        provider: 'r2',
+        bucket: 'documentos',
+        key: 'documentos/2026/07/BBTI/50__orden.pdf',
+        preexisting: false,
+      } as any);
+
+      repository.marcarAlmacenada.mockResolvedValue(
+        operation({ estado: 'almacenada' }),
+      );
+
+      persistence.persistir.mockResolvedValue({
+        operacionId: 50,
+        documentoId: 100,
+        archivoId: 200,
+      } as any);
+
+      const periodoR2 = {
+        verificarIdentidadGrupo: jest.fn().mockResolvedValue(true),
+        resolver: jest.fn().mockResolvedValue({
+          anio: '2026',
+          mes: '07',
+          fecha: new Date('2026-07-21T00:00:00.000Z'),
+          facturaDocumentoId: 487,
+        }),
+      };
+
+      const service = new CargaSeguraService(
+        config,
+        repository,
+        storage,
+        persistence,
+        compensation,
+        periodoR2 as any,
+      );
+
+      await service.ejecutar(
+        command({
+          canalIngreso,
+          tipoDocumental,
+          tipoRelacion,
+          grupoFacturaId: 138,
+          documentoBaseId: 486,
+          expedienteId: 118,
+          esPrincipal: false,
+        }),
+      );
+
+      expect(periodoR2.resolver).toHaveBeenCalledWith(
+        expect.objectContaining({
+          expedienteId: 118,
+          empresaCodigo: 'BBTI',
+        }),
+        {
+          operacion: operacionR2,
+          grupoFacturaId: 138,
+        },
+      );
+
+      expect(storage.putObject).toHaveBeenCalledWith(
+        expect.objectContaining({
+          key: 'documentos/2026/07/BBTI/50__orden.pdf',
+        }),
+      );
+    },
+  );
+  describe('Finanzas: servicio con resolvedor y repositorio R2 reales, SQL/storage capturados', () => {
+    const sqlMock = sql as unknown as jest.Mock;
+    const row = { grupoFacturaId: 138, documentoBaseId: 486, organizadorDocumentoId: 487,
+      tipoOrganizador: 'FACTURA', fechaEmision: '2026-07-21', empresaCodigo: 'BBTI',
+      clienteDestinoId: 2, expedienteId: 17, integridadValida: true };
+    const pago = (patch: Partial<CargaSeguraCommand> = {}) => command({ canalIngreso: 'WEB_ADMIN_GUIADO',
+      tipoDocumental: 'TRANSFERENCIA', tipoRelacion: 'adjunto_transferencia',
+      esPrincipal: false, grupoFacturaId: 138, documentoBaseId: 486, ...patch });
+    function setup(rows: any[] = [row]) {
+      sqlMock.mockReset().mockResolvedValue(rows);
+      repository.reservar.mockResolvedValue({ kind: 'RESERVED', operacion: operation() } as any);
+      repository.marcarAlmacenada.mockResolvedValue(operation({ estado: 'almacenada' }));
+      storage.putObject.mockImplementation(async (input: any) => ({ kind: 'CREATED', provider: 'r2',
+        bucket: input.bucket, key: input.key, preexisting: false }) as any);
+      persistence.persistir.mockResolvedValue({ operacionId: 50, documentoId: 100, archivoId: 200 } as any);
+      return new CargaSeguraService(config, repository, storage, persistence, compensation, new PeriodoDocumentalR2Repository());
+    }
+    it.each(['TRANSFERENCIA','PAGO_TRANSFERENCIA','DETRACCION','PAGO_DETRACCION'])('OC/OS %s: usa fecha Factura antes PUT y conserva metadata', async tipoDocumental => {
+      jest.useFakeTimers({ now: new Date('2026-10-31T12:00:00Z') });
+      const service = setup();
+      const input = pago({ tipoDocumental, tipoRelacion: tipoDocumental.includes('DETRACCION') ? 'adjunto_detraccion' : 'adjunto_transferencia', metadata: { fechaEmision: '2026-10-31' } });
+      const before = JSON.stringify(input.metadata);
+      await service.ejecutar(input);
+      expect(storage.putObject).toHaveBeenCalledWith(expect.objectContaining({ key: 'documentos/2026/07/BBTI/50__orden.pdf' }));
+      expect(sqlMock.mock.invocationCallOrder[0]).toBeLessThan(storage.putObject.mock.invocationCallOrder[0]);
+      expect(JSON.stringify(input.metadata)).toBe(before);
+    });
+    it.each(['TRANSFERENCIA','PAGO_DETRACCION'])('OP %s: usa fecha OP sin Factura', async tipoDocumental => {
+      const service = setup([{ ...row, tipoOrganizador: 'ORDEN_PAGO', organizadorDocumentoId: 486, fechaEmision: '2026-01-31' }]);
+      await service.ejecutar(pago({ tipoDocumental, tipoRelacion: tipoDocumental.includes('DETRACCION') ? 'adjunto_detraccion' : 'adjunto_transferencia' }));
+      expect(storage.putObject).toHaveBeenCalledWith(expect.objectContaining({ key: 'documentos/2026/01/BBTI/50__orden.pdf' }));
+    });
+    it('rechaza todas las relaciones inválidas/ambiguas sin PUT ni persistencia', async () => {
+      for (const rows of [[], [{ ...row, integridadValida: false }], [row, { ...row, organizadorDocumentoId: 999 }],
+        [{ ...row, documentoBaseId: 999 }], [{ ...row, grupoFacturaId: 999 }],
+        [{ ...row, empresaCodigo: 'OTRA' }], [{ ...row, clienteDestinoId: 99 }],
+        [{ ...row, expedienteId: 99 }], [{ ...row, fechaEmision: '2026-02-30' }], [{ ...row, fechaEmision: null }]]) {
+        jest.clearAllMocks();const service = setup(rows);
+        await expect(service.ejecutar(pago())).rejects.toThrow();
+        expect(storage.putObject).not.toHaveBeenCalled();expect(persistence.persistir).not.toHaveBeenCalled();
+      }
+    });
+    it.each([{ documentoBaseId: null }, { grupoFacturaId: null }, { clienteDestinoId: null },
+      { expedienteId: null }, { workspaceId: 0 }, { tipoRelacion: 'adjunto_detraccion' }, { esPrincipal: true }])('rechaza contexto/contrato %j antes PUT', async patch => {
+      const service = setup();await expect(service.ejecutar(pago(patch))).rejects.toThrow();
+      expect(storage.putObject).not.toHaveBeenCalled();expect(persistence.persistir).not.toHaveBeenCalled();
+    });
+    it('la misma operación completada no genera un segundo PUT ni otra resolución', async () => {
+      const service = setup();
+      await service.ejecutar(pago());
+      repository.reservar.mockResolvedValue({ kind: 'REPLAYED', operacion: operation({
+        estado: 'completada', documentoId: 100, archivoId: 200 }) } as any);
+      const replay = await service.ejecutar(pago());
+      expect(replay).toMatchObject({ kind: 'REPLAYED', documentoId: 100, archivoId: 200 });
+      expect(storage.putObject).toHaveBeenCalledTimes(1);
+      expect(sqlMock).toHaveBeenCalledTimes(1);
+    });
+    it('replay completado o fallido: no hay SQL de periodo ni PUT adicional', async () => {
+      for (const estado of ['completada','fallida'] as const) {
+        jest.clearAllMocks();const service = setup();
+        repository.reservar.mockResolvedValue({ kind: 'REPLAYED', operacion: operation({ estado, documentoId: 100, archivoId: 200 }) } as any);
+        const result = await service.ejecutar(pago());
+        expect(result.kind).toBe(estado === 'completada' ? 'REPLAYED' : 'RECONCILIATION_REQUIRED');
+        expect(sqlMock).not.toHaveBeenCalled();expect(storage.putObject).not.toHaveBeenCalled();
+      }
+    });
   });
 
 });

@@ -162,3 +162,5 @@ describe('calculateCargaSeguraFingerprint', () => {
     expect(result.canonicalJson).not.toContain('correlationId');
   });
 });
+
+it('golden v1 histórico invariable', () => { expect(calculateCargaSeguraFingerprint(createPayload()).fingerprint).toBe('78733bd3b3dc5e8195ccfb93614844ff70c1ef48e387fa89fd282b5dd088cf34'); });

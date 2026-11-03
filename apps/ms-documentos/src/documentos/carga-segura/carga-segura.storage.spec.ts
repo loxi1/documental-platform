@@ -1,3 +1,5 @@
+import { Readable } from 'node:stream';
+import { createHash } from 'node:crypto';
 const sendMock = jest.fn();
 
 jest.mock('@aws-sdk/client-s3', () => ({
@@ -16,8 +18,8 @@ jest.mock('@aws-sdk/client-s3', () => ({
     type: 'delete',
     input,
   })),
-  CopyObjectCommand: jest.fn().mockImplementation((input) => ({
-    type: 'copy',
+  GetObjectCommand: jest.fn().mockImplementation((input) => ({
+    type: 'get',
     input,
   })),
 }));
@@ -37,8 +39,13 @@ describe('buildCargaSeguraStorageKey', () => {
     });
 
     expect(key).toBe(
-      'documentos/carga-segura/2026/07/BBTI/25__Orden_de_compra_01.pdf',
+      'documentos/2026/07/BBTI/25__Orden_de_compra_01.pdf',
     );
+  });
+  it('conserva UTC para el mes de carga y la identidad de operación', () => {
+    expect(buildCargaSeguraStorageKey({ operacionId: 25, empresaCodigo: 'bbti',
+      nombreArchivo: 'factura.pdf', fecha: new Date('2026-08-31T23:30:00-05:00'),
+    })).toBe('documentos/2026/09/BBTI/25__factura.pdf');
   });
 });
 
@@ -161,11 +168,23 @@ describe('R2CargaSeguraStorage', () => {
 
     expect(sendMock).toHaveBeenCalledTimes(1);
   });
-  it('copia server-side conservando SHA-256 y escapando CopySource', async () => {
-    sendMock.mockResolvedValueOnce({});
-    await new R2CargaSeguraStorage(config).copyObject({ provider: 'r2', bucket: 'lab', sourceKey: 'tmp/pago 1.pdf', destinationKey: 'documentos/final.pdf' });
-    expect(sendMock).toHaveBeenCalledWith({ type: 'copy', input: {
-      Bucket: 'lab', Key: 'documentos/final.pdf', CopySource: 'lab/tmp/pago%201.pdf', MetadataDirective: 'COPY' } });
+  it('promueve con PUT exclusivo del destino y verifica sus bytes', async () => {
+    const body = Buffer.from('synthetic pdf');
+    const hash = createHash('sha256').update(body).digest('hex');
+    sendMock.mockImplementation(async (command: any) => {
+      if (command.type === 'get') return { Body: Readable.from([body]), ContentLength: body.length,
+        Metadata: { sha256: hash, 'operation-id': 'tmp:50:operation' } };
+      if (command.type === 'put') {
+        const chunks: Buffer[] = []; for await (const chunk of command.input.Body) chunks.push(Buffer.from(chunk));
+        expect(Buffer.concat(chunks)).toEqual(body); return {};
+      }
+      throw new Error('Unexpected storage operation');
+    });
+    await new R2CargaSeguraStorage(config).copyObject({ provider: 'r2', bucket: 'lab',
+      sourceKey: 'tmp/pago.pdf', destinationKey: 'documentos/final.pdf', operationIdentity: 'tmp:50:operation',
+      hashSha256: hash, tamanoBytes: body.length, contentType: 'application/pdf' });
+    expect(sendMock).toHaveBeenCalledWith(expect.objectContaining({ type: 'put', input: expect.objectContaining({
+      Bucket: 'lab', Key: 'documentos/final.pdf', IfNoneMatch: '*', Metadata: { sha256: hash, 'operation-id': 'tmp:50:operation' } }) }));
   });
   it('stat devuelve tamaño y hash de metadata del provider', async () => {
     sendMock.mockResolvedValueOnce({ ContentLength: 42, Metadata: { sha256: 'A'.repeat(64) } });
