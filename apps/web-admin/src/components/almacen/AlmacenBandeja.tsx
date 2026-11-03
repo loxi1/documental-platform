@@ -1,8 +1,13 @@
 "use client";
 
+import flatpickr from "flatpickr";
+import monthSelectPlugin from "flatpickr/dist/plugins/monthSelect";
+import { Spanish } from "flatpickr/dist/l10n/es";
+import "flatpickr/dist/flatpickr.min.css";
+import "flatpickr/dist/plugins/monthSelect/style.css";
 import Link from "next/link";
-import { Eye, FilePlus2, Search } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { CalendarDays, Eye, FilePlus2, Search } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -418,25 +423,41 @@ function ActionsCell({ item }: { item: RevisionContableItem }) {
 export function AlmacenBandeja() {
   const contexto = getContexto();
   const empresa = normalizeEmpresa(contexto?.empresa);
+  const [selectedPeriod, setSelectedPeriod] = useState<{ anio: number; mes: number } | null>(() => { const now = new Date(); return { anio: now.getFullYear(), mes: now.getMonth() + 1 }; });
+  const [consultedPeriod, setConsultedPeriod] = useState<{ anio: number; mes: number } | null>(null);
+  const periodoInput = useRef<HTMLInputElement | null>(null);
+  useEffect(() => {
+    if (!periodoInput.current) return;
+    const picker = flatpickr(periodoInput.current, {
+      locale: Spanish, dateFormat: "m-Y", static: true,
+      defaultDate: selectedPeriod ? new Date(selectedPeriod.anio, selectedPeriod.mes - 1, 1) : undefined,
+      plugins: [monthSelectPlugin({ shorthand: false, dateFormat: "m-Y", altFormat: "m-Y" })],
+      onChange: ([date]) => setSelectedPeriod(date ? { anio: date.getFullYear(), mes: date.getMonth() + 1 } : null),
+    });
+    return () => picker.destroy();
+  }, []);
   const [search, setSearch] = useState("");
   const [pageSize, setPageSize] = useState("50");
   const [page, setPage] = useState(1);
 
   const normalizedSearch = search.trim();
   const hasSearch = normalizedSearch.length >= 3;
+  const hasOperationalQuery = consultedPeriod !== null;
 
   const params = useMemo(
     () => {
       const numericPageSize = Number(pageSize);
       return {
+        anio: consultedPeriod?.anio,
+        mes: consultedPeriod?.mes,
         q: hasSearch ? normalizedSearch : undefined,
-        limit: hasSearch ? numericPageSize + 1 : undefined,
-        offset: hasSearch ? (page - 1) * numericPageSize : undefined,
+        limit: hasOperationalQuery ? numericPageSize + 1 : undefined,
+        offset: hasOperationalQuery ? (page - 1) * numericPageSize : undefined,
       };
     },
-    [hasSearch, normalizedSearch, page, pageSize],
+    [consultedPeriod, hasOperationalQuery, hasSearch, normalizedSearch, page, pageSize],
   );
-  const queryEnabled = Boolean(empresa.trim() && hasSearch);
+  const queryEnabled = Boolean(empresa.trim() && hasOperationalQuery && (!normalizedSearch || hasSearch));
 
   const { data, isLoading, isFetching, error, refetch } =
     useRevisionContable(params, queryEnabled);
@@ -486,36 +507,36 @@ export function AlmacenBandeja() {
 
       <Card className="overflow-hidden">
         <CardHeader className="border-b px-4 py-3" data-msii-grid-first="MSII_GRID_FIRST_ALMACEN_02">
-          <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
-            <CardTitle className="shrink-0 text-base">Bandeja de Almacén</CardTitle>
-
-            <div className="flex w-full flex-col gap-1 lg:max-w-[760px]">
-              <div className="flex items-center gap-2">
-                <Input
-                  className="min-w-0 flex-1"
-                  placeholder="Buscar factura, OC/OS, centro de costo, proveedor, RUC, guía o NI..."
-                  value={search}
-                  onChange={(event) => setSearch(event.target.value)}
-                />
-
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => refetch()}
-                  disabled={!queryEnabled || isFetching}
-                >
-                  <Search className="h-4 w-4" />
-                  {isFetching ? "Actualizando" : "Actualizar"}
-                </Button>
+          <CardTitle className="text-base">Bandeja de Almacén</CardTitle>
+          <div className="flex flex-col gap-2 lg:flex-row lg:items-end">
+            <label className="grid shrink-0 gap-1 text-xs text-muted-foreground">
+              <span>Período de emisión</span>
+              <div className="op-flatpickr-field relative w-full lg:w-[170px]">
+                <CalendarDays className="pointer-events-none absolute left-3 top-1/2 z-10 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <input ref={periodoInput} type="text" readOnly aria-label="Período de emisión"
+                  placeholder="Seleccione un período"
+                  className="h-9 w-full cursor-pointer rounded-md border border-input bg-background pl-9 pr-3 text-sm shadow-sm" />
               </div>
-
-              {search.trim().length > 0 && search.trim().length < 3 ? (
-                <p className="text-xs text-muted-foreground">
-                  Ingrese al menos 3 caracteres para buscar.
-                </p>
-              ) : null}
-            </div>
+            </label>
+            <Input className="h-9 min-w-0 flex-1"
+              placeholder="Buscar factura, OC/OS, centro de costo, proveedor, RUC, guía o NI..."
+              aria-label="Buscar documentos de Almacén"
+              value={search} onChange={(event) => setSearch(event.target.value)} />
+            <Button className="h-9 shrink-0" type="button"
+              disabled={!selectedPeriod || !empresa.trim() || isFetching || (normalizedSearch.length > 0 && !hasSearch)}
+              onClick={() => {
+                if (!selectedPeriod) return;
+                setPage(1);
+                if (consultedPeriod?.anio === selectedPeriod.anio && consultedPeriod?.mes === selectedPeriod.mes) {
+                  if (page === 1) void refetch();
+                } else { setConsultedPeriod(selectedPeriod); }
+              }}>
+              <Search className="mr-1 h-4 w-4" />{isFetching ? "Consultando" : "Consultar"}
+            </Button>
           </div>
+          {normalizedSearch.length > 0 && !hasSearch ? (
+            <p className="text-xs text-muted-foreground">Ingrese al menos 3 caracteres para buscar.</p>
+          ) : null}
         </CardHeader>
 
         <CardContent className="p-0">
@@ -529,7 +550,7 @@ export function AlmacenBandeja() {
                 <EmptyDescription>
                   {hasSearch
                     ? "No se encontraron facturas para la búsqueda realizada."
-                    : "Ingrese factura, OC/OS, centro de costo, proveedor, RUC, guía o NI para consultar."}
+                    : "Seleccione el período de emisión y pulse Consultar. Puede filtrar por factura, OC/OS, centro de costo, proveedor, RUC, guía o NI."}
                 </EmptyDescription>
               </EmptyHeader>
             </Empty>
