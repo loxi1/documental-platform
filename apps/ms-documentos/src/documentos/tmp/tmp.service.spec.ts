@@ -9,7 +9,7 @@ import { NotFoundException } from '@nestjs/common';
 describe('TEMP staging/promoción', () => {
   const actor = { actorId: 6, workspaceId: 12, empresaCodigo: 'BBTI', clienteDestinoId: 2, idempotencyKey: 'key', requestId: 'req', correlationId: 'corr' };
   let row: any, repo: any, storage: any, service: TmpService;
-  const destination = 'documentos/carga-segura/2026/09/BBTI/50__pago.pdf';
+  const destination = 'documentos/2026/09/BBTI/50__pago.pdf';
   beforeEach(() => {
     row = { id: 50, actor_id: 6, workspace_id: 12, empresa_codigo: 'BBTI', cliente_destino_id: 2,
       estado: 'almacenada', metadata: {}, hash_sha256: 'a'.repeat(64), tamano_bytes: 9,
@@ -20,7 +20,7 @@ describe('TEMP staging/promoción', () => {
       own: jest.fn(async (_: any, id: any, a: any) => { if (a.actorId !== 6 || a.workspaceId !== 12) throw new NotFoundException(); return { ...row }; }),
       bind: jest.fn(async (_: any, r: any, d: any, key: any) => { row.metadata = { destinoReservado: d, promocionIdentity: key }; }),
       staged: jest.fn(async () => { row.estado = 'almacenada'; }),
-      promoted: jest.fn(async () => { row.promovida_en = new Date(); row.destino_storage_key = destination; row.estado = 'requiere_reconciliacion'; }),
+      promoted: jest.fn(async (_: any, __: any, ___: any, key: string) => { row.promovida_en = new Date(); row.destino_storage_key = key; row.estado = 'requiere_reconciliacion'; }),
       cleaned: jest.fn(async () => { row.estado = 'completada'; }),
     };
     storage = { putObject: jest.fn(), copyObject: jest.fn(), deleteObject: jest.fn(),
@@ -54,6 +54,45 @@ describe('TEMP staging/promoción', () => {
     await service.promote(50, actor, destination); await service.promote(50, actor, destination);
     expect(storage.copyObject).toHaveBeenCalledTimes(1); expect(repo.promoted).toHaveBeenCalledTimes(1);
   });
+  it('recupera el destino histórico reservado literalmente y conserva su identidad', async () => {
+    const historical = 'documentos/carga-segura/2026/08/BBTI/50__pago.pdf';
+    row.metadata = { destinoReservado: historical, promocionIdentity: actor.idempotencyKey };
+    const result = await service.promote(50, actor, historical);
+    expect(result.estado).toBe('PROMOTED');
+    expect(storage.copyObject).toHaveBeenCalledWith(expect.objectContaining({ destinationKey: historical }));
+    expect(row.destino_storage_key).toBe(historical);
+    await service.promote(50, actor, historical);
+    expect(storage.copyObject).toHaveBeenCalledTimes(1);
+    expect(repo.promoted).toHaveBeenCalledTimes(1);
+  });
+  it('recupera una promoción histórica ya copiada tras fallo de limpieza', async () => {
+    const historical = 'documentos/carga-segura/2026/08/BBTI/50__pago.pdf';
+    row.metadata = { destinoReservado: historical, promocionIdentity: actor.idempotencyKey };
+    storage.deleteObject.mockRejectedValueOnce(new Error('storage'));
+    expect((await service.promote(50, actor, historical)).estado).toBe('CLEANUP_PENDING');
+    expect((await service.promote(50, actor, historical)).estado).toBe('PROMOTED');
+    expect(storage.copyObject).toHaveBeenCalledTimes(1);
+    expect(repo.promoted).toHaveBeenCalledTimes(1);
+  });
+  it('rechaza un nuevo destino histórico sin reserva', async () => {
+    await expect(service.promote(50, actor, 'documentos/carga-segura/2026/09/BBTI/50__pago.pdf')).rejects.toThrow('namespace');
+    expect(repo.bind).not.toHaveBeenCalled();
+    expect(storage.copyObject).not.toHaveBeenCalled();
+  });
+  it.each(['identity', 'destination', 'new-layout'])('rechaza alterar una reserva histórica: %s', async change => {
+    const historical = 'documentos/carga-segura/2026/08/BBTI/50__pago.pdf';
+    row.metadata = { destinoReservado: historical, promocionIdentity: actor.idempotencyKey };
+    const key = change === 'destination' ? historical.replace('pago', 'otro') : change === 'new-layout' ? destination : historical;
+    await expect(service.promote(50, change === 'identity' ? { ...actor, idempotencyKey: 'otra' } : actor, key)).rejects.toThrow('TMP_DESTINATION_CONFLICT');
+    expect(storage.copyObject).not.toHaveBeenCalled();
+    expect(repo.bind).not.toHaveBeenCalled();
+  });
+  it('rechaza una reserva histórica sin identidad persistida', async () => {
+    const historical = 'documentos/carga-segura/2026/08/BBTI/50__pago.pdf';
+    row.metadata = { destinoReservado: historical };
+    await expect(service.promote(50, actor, historical)).rejects.toThrow('TMP_DESTINATION_CONFLICT');
+    expect(storage.copyObject).not.toHaveBeenCalled();
+  });
   it('destino o identidad incompatible produce conflicto', async () => {
     await service.promote(50, actor, destination);
     await expect(service.promote(50, actor, destination.replace('pago', 'otro'))).rejects.toThrow('TMP_DESTINATION_CONFLICT');
@@ -70,17 +109,43 @@ describe('TEMP staging/promoción', () => {
     await expect(service.promote(50, actor, destination)).rejects.toThrow('TMP_STORAGE_VERIFICATION_FAILED');
     expect(repo.promoted).not.toHaveBeenCalled(); expect(storage.deleteObject).not.toHaveBeenCalled();
   });
-  it('recupera copy exitoso tras fallo DB sin repetir copy', async () => {
+  it.each(['hashSha256', 'tamanoBytes'])('rechaza destino existente con %s distinto sin sobrescribirlo', async field => {
+    storage.statObject.mockImplementation(async () => ({ exists: true, tamanoBytes: field === 'tamanoBytes' ? 10 : 9,
+      hashSha256: field === 'hashSha256' ? 'b'.repeat(64) : 'a'.repeat(64) }));
+    await expect(service.promote(50, actor, destination)).rejects.toThrow('TMP_STORAGE_VERIFICATION_FAILED');
+    expect(storage.copyObject).not.toHaveBeenCalled();
+    expect(repo.promoted).not.toHaveBeenCalled();
+    expect(storage.deleteObject).not.toHaveBeenCalled();
+  });
+  it('verifica identidad y bytes del destino mediante transferencia exclusiva', async () => {
+    storage.statObject.mockResolvedValue({ exists: true, tamanoBytes: 9, hashSha256: 'a'.repeat(64) });
+    await service.promote(50, actor, destination);
+    expect(storage.copyObject).toHaveBeenCalledWith(expect.objectContaining({ operationIdentity: 'tmp:50:key', hashSha256: row.hash_sha256, tamanoBytes: 9 }));
+    expect(repo.promoted).toHaveBeenCalledTimes(1);
+  });
+  it('rechaza traversal incluso en una reserva histórica coincidente', async () => {
+    const historical = 'documentos/carga-segura/2026/08/BBTI/50__..pdf';
+    row.metadata = { destinoReservado: historical, promocionIdentity: actor.idempotencyKey };
+    await expect(service.promote(50, actor, historical)).rejects.toThrow('namespace');
+    expect(storage.copyObject).not.toHaveBeenCalled();
+    expect(repo.bind).not.toHaveBeenCalled();
+  });
+  it('recupera transferencia tras fallo DB con la misma identidad', async () => {
     repo.promoted.mockRejectedValueOnce(new Error('DB'));
     await expect(service.promote(50, actor, destination)).rejects.toThrow('DB');
     expect((await service.promote(50, actor, destination)).estado).toBe('PROMOTED');
-    expect(storage.copyObject).toHaveBeenCalledTimes(1);
+    expect(storage.copyObject).toHaveBeenCalledTimes(2);
   });
   it('recupera put con consulta', async () => {
     row.estado = 'iniciada'; expect((await service.consult(50, actor)).estado).toBe('STAGED');
     expect(storage.putObject).not.toHaveBeenCalled();
   });
-  it.each(['otro/bucket', 'documentos/carga-segura/2026/09/OTRA/50__pago.pdf', destination.replace('50__','51__')])('rechaza namespace arbitrario %s', async d => {
+  it.each(['otro/bucket', 'documentos/2026/09/OTRA/50__pago.pdf', destination.replace('50__','51__'),
+    'documentos/2026/13/BBTI/50__pago.pdf', 'documentos/2026/00/BBTI/50__pago.pdf',
+    'documentos/2026/09/BBTI/../50__pago.pdf', 'documentos/2026/09/BBTI/50__..pdf',
+    'documentos/2026/09/BBTI/50__%2e%2e.pdf', 'documentos/2026/09/BBTI/50__pago\\otro.pdf',
+    '/documentos/2026/09/BBTI/50__pago.pdf', 'documentos/2026/09/BBTI/50__' + 'a'.repeat(221),
+  ])('rechaza namespace arbitrario %s', async d => {
     await expect(service.promote(50, actor, d)).rejects.toThrow('namespace'); expect(storage.copyObject).not.toHaveBeenCalled();
   });
   it('controller rechaza actor y bucket del body', () => {
@@ -224,6 +289,49 @@ describe('TEMP OCR candidato sin persistencia documental', () => {
 
     expect(storage.statObject).not.toHaveBeenCalled();
     expect(preview.getTempPreviewUrl).not.toHaveBeenCalled();
+  });
+
+  // G2_REGULARIZACION_OP_OVER_24H
+  it.each(['FACTURA', 'RECIBO_HONORARIO'])(
+    'preview TEMP vencido de regularización OP %s sigue disponible',
+    async tipo => {
+      const { service, storage, preview } = fixture();
+
+      row.expira_en = new Date(Date.now() - 48 * 60 * 60 * 1000);
+      row.metadata = {
+        regularizacionOp: {
+          consumer: 'REGULARIZACION_OP',
+          ordenPagoId: 31,
+          tipoRegularizador: tipo,
+        },
+      };
+
+      const result = await service.previewUrl(50, actor);
+
+      expect(result.tempId).toBe(50);
+      expect(storage.statObject).toHaveBeenCalledTimes(1);
+      expect(preview.getTempPreviewUrl).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it('preview TEMP vencido con vínculo OP pero ya promovido no obtiene excepción', async () => {
+    const { service, storage, preview } = fixture();
+
+    row.expira_en = new Date(Date.now() - 48 * 60 * 60 * 1000);
+    row.metadata = {
+      regularizacionOp: {
+        consumer: 'REGULARIZACION_OP',
+        ordenPagoId: 31,
+        tipoRegularizador: 'FACTURA',
+      },
+    };
+
+    const promoted = { ...row, promovida_en: new Date() };
+    const { service: isolatedService, repo } = fixture();
+    repo.own.mockResolvedValue(promoted);
+
+    await expect(isolatedService.previewUrl(50, actor))
+      .rejects.toThrow('TEMP_EXPIRADO');
   });
 
   it('preview TEMP expirado no firma ni consulta storage', async () => {
@@ -596,6 +704,47 @@ describe('TEMP OCR candidato sin persistencia documental', () => {
         clienteAbreviatura: 'BBTI',
       }),
     );
+  });
+
+  it.each(['FACTURA', 'RECIBO_HONORARIO'])(
+    'OCR TEMP vencido de regularización OP %s sigue disponible',
+    async tipo => {
+      const { service, nats, storage } = fixture();
+
+      row.expira_en = new Date(Date.now() - 48 * 60 * 60 * 1000);
+      row.metadata = {
+        regularizacionOp: {
+          consumer: 'REGULARIZACION_OP',
+          ordenPagoId: 31,
+          tipoRegularizador: tipo,
+        },
+      };
+
+      const result = await service.procesarOcr(50, actor, tipo);
+
+      expect(result.ocrEstado).toBe('DONE');
+      expect(storage.statObject).toHaveBeenCalled();
+      expect(nats.send).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it('OCR TEMP vencido con tipo distinto del vínculo OP sigue rechazado', async () => {
+    const { service, storage, nats } = fixture();
+
+    row.expira_en = new Date(Date.now() - 48 * 60 * 60 * 1000);
+    row.metadata = {
+      regularizacionOp: {
+        consumer: 'REGULARIZACION_OP',
+        ordenPagoId: 31,
+        tipoRegularizador: 'RECIBO_HONORARIO',
+      },
+    };
+
+    await expect(service.procesarOcr(50, actor, 'FACTURA'))
+      .rejects.toThrow('TEMP_EXPIRADO');
+
+    expect(storage.statObject).not.toHaveBeenCalled();
+    expect(nats.send).not.toHaveBeenCalled();
   });
 
   it('rechaza TEMP expirado antes de storage y OCR', async () => {

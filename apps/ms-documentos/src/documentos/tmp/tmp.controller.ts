@@ -114,7 +114,11 @@ export class TmpController {
 
   @Post(':tempId/promover')
   promote(@Headers() headers: Record<string, string>, @Param('tempId') id: string, @Body() body: Record<string, unknown>) {
-    if (!body || Object.keys(body).some(k => k !== 'destinoStorageKey')) throw new BadRequestException('Campo TEMP no permitido');
+    if (!body || Object.keys(body).length !== 1) throw new BadRequestException('Campo TEMP no permitido');
+    if ('confirmacionDocumental' in body || 'borradorDocumental' in body)
+      return this.service.documental(Number(id), this.actor(headers),
+        body.confirmacionDocumental ?? body.borradorDocumental, 'borradorDocumental' in body);
+    if (!('destinoStorageKey' in body)) throw new BadRequestException('Campo TEMP no permitido');
     return this.service.promote(Number(id), this.actor(headers), body.destinoStorageKey);
   }
 

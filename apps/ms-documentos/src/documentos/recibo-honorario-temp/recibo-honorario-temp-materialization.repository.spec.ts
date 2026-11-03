@@ -106,6 +106,8 @@ describe('R28-P4-P6 RECIBO_HONORARIO TEMP repository fiscal', () => {
           return [archivo];
         }
 
+        if (q.includes('FROM documentos.grupos_factura g')) return [];
+
         if (
           q.includes('FROM documentos.documentos d') &&
           q.includes('ocr_existente')
@@ -392,9 +394,12 @@ describe('R28-P4-P6 RECIBO_HONORARIO TEMP repository fiscal', () => {
             ocrCandidate,
           },
         ),
-    ).rejects.toThrow(
-      'RECIBO_HONORARIO_TEMP_DOCUMENT_DUPLICATE',
-    );
+    ).rejects.toMatchObject({
+      response: {
+        code: 'RECIBO_HONORARIO_TEMP_DOCUMENT_DUPLICATE',
+        details: { duplicateCandidateId: 999 },
+      },
+    });
 
     expect(x.documento.estado)
       .toBe('pendiente_ocr');
