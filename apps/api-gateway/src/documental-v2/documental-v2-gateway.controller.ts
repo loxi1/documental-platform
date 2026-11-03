@@ -1,3 +1,4 @@
+import { hasFinanzasWorkspaceAccess } from '../common/finanzas-workspace-access';
 import {
   Controller,
   ForbiddenException,
@@ -434,9 +435,7 @@ export class DocumentalV2GatewayController {
     @Body() body: any,
   ) {
     const contexto = await this.validateAuthorization(authorization);
-    const puedeAutorizarExcepcion = this.getWorkspaceActions(contexto).includes(
-      'documental_v2.finanzas.correspondencia.autorizar_excepcion',
-    );
+    const puedeAutorizarExcepcion = hasFinanzasWorkspaceAccess(contexto);
 
     try {
       const response = await axios.post(
@@ -816,8 +815,7 @@ export class DocumentalV2GatewayController {
   }
 
   private assertFinanzasOp(contexto: any, crear = false) {
-    const menus = contexto?.permisos?.menus ?? contexto?.permissions?.menus ?? [];
-    if (!Array.isArray(menus) || !menus.includes('finanzas') ||
+    if (!hasFinanzasWorkspaceAccess(contexto) ||
         (crear && !this.getWorkspaceActions(contexto).includes('documentos.subir'))) {
       throw new ForbiddenException('Sin permiso de Finanzas para esta operación');
     }
@@ -1022,11 +1020,9 @@ export class DocumentalV2GatewayController {
         `${this.getBaseUrl()}/documental-v2/finanzas/ordenes-pago/${encodeURIComponent(ordenPagoId)}/confirmar-pago`,
         body,
         {
-          headers: this.buildDocumentosForwardHeaders(
-            authorization,
-            requestId,
-            contexto,
-          ),
+          headers: { ...this.buildDocumentosForwardHeaders(authorization, requestId, contexto),
+            'x-finanzas-correspondencia-autorizar-excepcion': String(hasFinanzasWorkspaceAccess(contexto)),
+          },
         },
       );
 

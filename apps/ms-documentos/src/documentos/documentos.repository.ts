@@ -27,6 +27,58 @@ type SaveOcrResultadoParams = {
 
 @Injectable()
 export class DocumentosRepository {
+  async validarTemporalAntesDeReserva(tx: SqlExecutor, row: any, input: any) {
+    const [e] = await tx`SELECT codigo_expediente FROM documentos.expedientes
+      WHERE id=${input.expedienteId} AND empresa_codigo=${row.empresa_codigo}
+      AND cliente_destino_id=${row.cliente_destino_id}`;
+    if (!e) throw new ConflictException('TMP_EXPEDIENTE_SCOPE_CONFLICT');
+    const metadata = this.limpiarCamposLegacyOcr({ ...input.metadata,
+      tipoDocumental: input.tipoDocumental, codigoExpediente: e.codigo_expediente,
+      clienteAbreviatura: row.empresa_codigo });
+    this.normalizarIdentidadEmisorConfirmacion(input.tipoDocumental, metadata);
+    this.validarMetadataConfirmacion(input.tipoDocumental, metadata);
+  }
+
+  // Called only from TmpIntegration.persist, using its existing transaction.
+  async materializarTemporalConExecutor(tx: SqlExecutor, row: any, destination: string, input: any, actor: any) {
+    const candidate = row.metadata?.ocrCandidate;
+    const real = candidate?.status === 'DONE' && candidate?.resultado?.ok === true;
+    const metadata = { ...input.metadata, tipoDocumental: input.tipoDocumental,
+      clienteAbreviatura: row.empresa_codigo,
+      origenValidacion: real ? 'OCR_TEMP_VALIDADO' : 'MANUAL_SIN_OCR',
+      validadoPor: actor.actorId, tempId: Number(row.id) };
+    const fecha = String(metadata.fechaEmision);
+    const [documento] = await tx`INSERT INTO documentos.documentos
+      (cliente_abreviatura,anio,mes,periodo_anio,periodo_mes,tipo_documental,estado,metadata)
+      VALUES (${row.empresa_codigo},${Number(fecha.slice(0,4))},${Number(fecha.slice(5,7))},
+        ${Number(fecha.slice(0,4))},${Number(fecha.slice(5,7))},${input.tipoDocumental},'pendiente_validacion',
+        ${JSON.stringify(metadata)}::jsonb) RETURNING *`;
+    const [archivo] = await tx`INSERT INTO documentos.documentos_archivos
+      (documento_id,carga_operacion_id,nombre_archivo,ruta_archivo,hash_sha256,tipo_version,version,
+       es_version_actual,estado,area_origen,origen_archivo,metadata,storage_provider,storage_bucket,storage_key,
+       workspace_id,empresa_codigo,cliente_destino_id,expediente_id,creado_por)
+      VALUES (${documento.id},${row.id},${row.nombre_archivo_original},${destination},${row.hash_sha256},
+        'original',1,true,'subido','COMPRAS','TEMP_DOCUMENTAL',${JSON.stringify({ ...metadata,
+          documentoBaseId: input.documentoBaseId ?? null, tipoRelacion: input.tipoRelacion,
+          contentType: row.content_type, tamanoBytes: Number(row.tamano_bytes) })}::jsonb,
+        ${row.storage_provider},${row.storage_bucket},${destination},${row.workspace_id},${row.empresa_codigo},
+        ${row.cliente_destino_id},${input.expedienteId},${actor.actorId}) RETURNING *`;
+    let ocr: any = { documento_id: documento.id, archivo_id: archivo.id,
+      tipo_propuesto: input.tipoDocumental, estado: 'editado',
+      metadata: { metadata, origenValidacion: 'manual_sin_ocr' } };
+    let ocrId: number | null = null;
+    if (real) {
+      const [saved] = await tx`INSERT INTO documentos.ocr_resultados
+        (documento_id,archivo_id,tipo_propuesto,estado,confidence,metadata)
+        VALUES (${documento.id},${archivo.id},${input.tipoDocumental},'editado',
+          ${candidate.resultado.confidence ?? null},${JSON.stringify({
+            temporalOriginal: candidate.resultado, metadata, origenValidacion: 'ocr_temp_validado' })}::jsonb) RETURNING *`;
+      ocr = saved; ocrId = Number(saved.id);
+    }
+    const confirmed = await this.confirmarDocumentoContextoConExecutor(tx, ocrId,
+      { ...input, metadata }, actor.actorId, ocr, archivo, documento, false);
+    return { confirmed, archivoId: Number(archivo.id), documentoId: Number(confirmed.documento.id), ocrId };
+  }
   async findAll(filters: DocumentosFilters) {
     const limit = filters.limit ?? 20;
     const offset = filters.offset ?? 0;

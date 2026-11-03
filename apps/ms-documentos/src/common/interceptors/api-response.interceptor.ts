@@ -3,6 +3,7 @@ import {
   ExecutionContext,
   Injectable,
   NestInterceptor,
+  StreamableFile,
 } from '@nestjs/common';
 import type { Request } from 'express';
 import { map, Observable } from 'rxjs';
@@ -14,12 +15,20 @@ export class ApiResponseInterceptor<T> implements NestInterceptor<T> {
     const req = context.switchToHttp().getRequest<Request>();
 
     return next.handle().pipe(
-      map((data) => ({
-        success: true,
-        requestId: req.headers[REQUEST_ID_HEADER]?.toString() ?? '',
-        timestamp: new Date().toISOString(),
-        data,
-      })),
+      map((data) => {
+        // Las respuestas binarias deben conservar su naturaleza de stream.
+        if (data instanceof StreamableFile) {
+          return data;
+        }
+
+        // Mantener el contrato JSON existente.
+        return {
+          success: true,
+          requestId: req.headers[REQUEST_ID_HEADER]?.toString() ?? '',
+          timestamp: new Date().toISOString(),
+          data,
+        };
+      }),
     );
   }
 }

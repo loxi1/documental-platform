@@ -1,3 +1,4 @@
+import { resolverIdentidadVersionDocumental } from './carga-segura/http/carga-segura-http.validation';
 import type { AlmacenContexto } from './almacen-recuperacion.repository';
 import { BadRequestException, Body, Controller, Get, Headers, Param, ParseIntPipe, Query, Post, Patch, Put, UploadedFiles, UseInterceptors } from '@nestjs/common';
 import { ApiOperation, ApiQuery, ApiTags, ApiParam, ApiConsumes } from '@nestjs/swagger';
@@ -326,6 +327,7 @@ export class DocumentosController {
     @UploadedFiles()
     files: Record<string, any[]>,
     @Body() body: Record<string, unknown>,
+    @Headers() headers: Record<string, string | string[] | undefined>,
   ) {
     const file = files?.file?.[0] ?? files?.archivo?.[0];
 
@@ -333,7 +335,13 @@ export class DocumentosController {
       throw new BadRequestException('ARCHIVO_REQUERIDO');
     }
 
-    return this.upload.subirVersionDocumentoExistente(documentoId, file, body);
+    const actor = resolverIdentidadVersionDocumental({
+      workspaceId: headers['x-workspace-id'], empresaCodigo: headers['x-empresa-codigo'],
+      clienteDestinoId: headers['x-cliente-destino-id'], actorId: headers['x-actor-id'],
+      userId: headers['x-user-id'], requestId: headers['x-request-id'],
+      correlationId: headers['x-correlation-id'],
+    });
+    return this.upload.subirVersionDocumentoExistente(documentoId, file, body, actor);
   }
 
 @Post(':documentoId/archivos/:archivoId/agregar-version')

@@ -539,15 +539,13 @@ describe('DocumentalV2GatewayController', () => {
     expect(result).toEqual(respuesta);
   });
 
-  it('propaga permiso explícito para autorizar excepción financiera', async () => {
+  it('propaga acceso Finanzas sin permiso adicional para autorizar excepción', async () => {
     const { controller } = buildController({
       sub: 1,
       email: 'admin@documental.local',
       workspaceId: 1,
       permisos: {
-        actions: [
-          'documental_v2.finanzas.correspondencia.autorizar_excepcion',
-        ],
+        menus: ['finanzas'], actions: [],
       },
     });
 
