@@ -13,7 +13,6 @@ required=(
   DATABASE_PASSWORD
   JWT_SECRET
   JWT_REFRESH_SECRET
-  R2_ENDPOINT
   R2_BUCKET
   R2_ACCESS_KEY_ID
   R2_SECRET_ACCESS_KEY
@@ -31,6 +30,25 @@ for key in "${required[@]}"; do
 done
 
 [ "$missing" -eq 0 ] || exit 1
+
+# El backend prioriza R2_ENDPOINT; OCR utiliza R2_ENDPOINT_URL.
+expected_endpoint="https://2d1fe7144a1af728a30f4953ce53e650.r2.cloudflarestorage.com"
+for key in R2_ENDPOINT R2_ENDPOINT_URL; do
+  value="$(grep -E "^${key}=" "$ENV_FILE" | tail -n1 | cut -d= -f2- || true)"
+  if [ "$key" = R2_ENDPOINT_URL ] && [ -z "$value" ]; then
+    echo "ERROR: R2_ENDPOINT_URL es obligatorio para OCR."
+    exit 1
+  fi
+  if [ -n "$value" ] && [ "$value" != "$expected_endpoint" ]; then
+    echo "ERROR: $key debe apuntar a la cuenta R2 de producción, sin bucket en la URL."
+    exit 1
+  fi
+done
+bucket="$(grep -E '^R2_BUCKET=' "$ENV_FILE" | tail -n1 | cut -d= -f2- || true)"
+if [ "$bucket" != proyectos-prod ]; then
+  echo "ERROR: R2_BUCKET debe ser proyectos-prod en producción."
+  exit 1
+fi
 
 app_url="$(grep -E "^NEXT_PUBLIC_APP_URL=" "$ENV_FILE" | tail -n1 | cut -d= -f2- || true)"
 api_url="$(grep -E "^NEXT_PUBLIC_API_URL=" "$ENV_FILE" | tail -n1 | cut -d= -f2- || true)"

@@ -13,6 +13,8 @@ fi
 
 git pull --ff-only
 
+bash deployment/scripts/check-production-env.sh
+
 docker compose \
   --env-file deployment/env/.env.production \
   -f deployment/docker/docker-compose.production.yml \

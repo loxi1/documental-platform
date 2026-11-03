@@ -1,6 +1,8 @@
-FROM node:22-alpine AS base
+# Node 22.23.4; immutable locally verified base identity.
+FROM node@sha256:fe4f6d74e20370acb04ad889077d14d0f64a9c8ea6a42bc60cddf1e844699914 AS base
 WORKDIR /app
-RUN corepack enable
+ENV COREPACK_DEFAULT_TO_LATEST=0
+RUN corepack enable && corepack prepare pnpm@11.4.0 --activate
 
 FROM base AS deps
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
@@ -16,10 +18,12 @@ RUN test -n "${APP_PATH}"
 RUN test -n "${APP_PACKAGE}"
 RUN pnpm --filter "@documental/shared" run build  && pnpm --filter "@documental/config" run build  && pnpm --filter "@documental/database" run build  && pnpm --filter "${APP_PACKAGE}" run build
 
-FROM node:22-alpine AS runner
+# Node 22.23.4; immutable locally verified base identity.
+FROM node@sha256:fe4f6d74e20370acb04ad889077d14d0f64a9c8ea6a42bc60cddf1e844699914 AS runner
 WORKDIR /app
 ENV NODE_ENV=production
-RUN corepack enable
+ENV COREPACK_DEFAULT_TO_LATEST=0
+RUN corepack enable && corepack prepare pnpm@11.4.0 --activate
 
 COPY --from=deps /app ./
 
