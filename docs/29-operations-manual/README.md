@@ -10,7 +10,46 @@ Centralizar los procedimientos para desplegar, configurar, operar, monitorear, r
 
 Comenzar por el [estándar canónico SOURCE y release R1](../23-standards/11-source-development-and-release.md), aprobado por PO, ratificado por MI e integrado en SOURCE. Allí se definen inicio, gates, evidencia NORMAL/RELEASE/RECOVERY y transferencia de continuidad. Este índice es el punto de entrada; no se necesita otro bootstrap duplicado.
 
-## Continuidad vigente — 26/10/2026
+## Continuidad vigente — 05/11/2026
+
+Acción `POST_MVP_SUCCESSOR_CONTINUITY_UPDATE_R1`. Este estado sustituye las instrucciones de pendientes de integración/G1 de la instantánea del 26/10, que se conserva abajo como antecedente; no deben reejecutarse automáticamente.
+
+Para nuevos chats de MI, MSII y MSI, leer en este orden:
+
+1. Este [Operations Manual](README.md).
+2. [Estándar SOURCE y release R1](../23-standards/11-source-development-and-release.md).
+3. [Estándar Git](../23-standards/07-git.md).
+
+Después, consultar exclusivamente los contratos y documentos necesarios para el trabajo asignado.
+
+```ini
+MVP_STATUS=ACCEPTED_WITH_OBSERVATIONS
+MVP_DEPLOYMENT=PASS
+PO_ACCEPTANCE=APPROVED
+DOCUMENTARY_CLOSURE=PASS
+RELEASE_RECONCILIATION=NOT_REQUIRED
+NEXT_WORKSTREAM=NAS_PREPARATION
+```
+
+El PO declaró aceptación funcional productiva el **05/11/2026**: Compras PASS (carga R2 TEMP y promoción definitiva), Almacén PASS (carga y validación de Guía), Finanzas/Regularización PASS (TEMP y promoción definitiva) y Contabilidad PASS (visualización de registros de los demás módulos). Son resultados declarados por el PO, diferenciados de las pruebas automatizadas y verificaciones técnicas del despliegue.
+
+Observaciones abiertas: recuperación OCR tardía sin E2E productivo completo; expiración TEMP sin verificación productiva; referencia histórica R2 con HTTP 403; 16 errores globales de tipado conocidos. Se preservan como límites/antecedentes, no como defectos nuevos del despliegue; esta continuidad no los corrige ni reabre el release.
+
+**Siguiente entregable: preparación NAS**, responsable MSI, supervisión MSII y autoridad Product Owner. Debe mantenerse aislada del MVP productivo; no se presume que NAS sustituya Cloudflare R2 y esta orden no autoriza cambios de infraestructura.
+
+### Identidades y evidencia canónica
+
+- SOURCE funcional: `88edc03136a446308d8b18fa778bdccf6c002be3`.
+- Enterprise funcional / origen de imágenes: `a57c328cbf62de39aa91ed541ae32b449927a5b6`.
+- Aceptación documental SOURCE: `aef47ca8c307449d2d985128196c297102e80a4d`.
+- Aceptación documental Enterprise: `dcf14470e80519d3a6f1114180a4652a27de4017`.
+- Inventario funcional: 101 archivos, sin cambios. EC2 mantiene el runtime del despliegue aceptado; esta actualización de continuidad no se sincroniza a EC2.
+
+Consultar el [manifest rector](../31-governance/RELEASE_MANIFEST.md), `/home/loxi1/bbti-evidence/controlled-production-release-r1/REPORT.md` y `acceptance-documentary-closure.json` en ese mismo directorio. No reconstruir el historial, repetir aceptación ni reconciliar los 101 archivos. Mantener separados SOURCE, Enterprise, GHCR y EC2; los commits documentales no cambian imágenes ni implican un despliegue.
+
+Preservar SOURCE dirty, configuración y datos productivos. Esta actualización no autoriza builds, migraciones, cambios RDS/R2, recreaciones ni otro release.
+
+## Antecedente archivado — 26/10/2026
 
 Registro de continuidad en el punto de entrada existente; no crea otro manual ni manifiesto. Acción `BBTI_POST_DEPLOY_CONTINUITY_AND_NEXT_BRANCH_R1`. Para identidades exactas de release consultar únicamente el [manifiesto canónico](../31-governance/RELEASE_MANIFEST.md); para ramas y worktrees, el [inventario Git](../31-governance/BRANCH_INVENTORY.md).
 

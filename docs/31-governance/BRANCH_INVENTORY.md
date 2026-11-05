@@ -1,6 +1,24 @@
-# Inventario SOURCE y Enterprise — R2
+# Inventario SOURCE y Enterprise
 
-## Estado vigente observado — 26/10/2026
+## Estado vigente de continuidad — 05/11/2026
+
+Acción `POST_MVP_SUCCESSOR_CONTINUITY_UPDATE_R1`. Esta sección prevalece sobre las instantáneas históricas inferiores y sus pendientes ya superados. No se repite el inventario general ni se reabre la reconciliación del release.
+
+- SOURCE funcional: `88edc03136a446308d8b18fa778bdccf6c002be3`.
+- Enterprise funcional / origen de imágenes: `a57c328cbf62de39aa91ed541ae32b449927a5b6`.
+- Aceptación documental SOURCE: `aef47ca8c307449d2d985128196c297102e80a4d`.
+- Aceptación documental Enterprise: `dcf14470e80519d3a6f1114180a4652a27de4017`.
+- Inventario funcional: 101 archivos, sin cambios. EC2 mantiene el runtime del despliegue aceptado; esta actualización de continuidad no se sincroniza a EC2.
+
+SOURCE main se mantiene en el worktree limpio y aislado `/tmp/bbti-controlled-release-r1/source-main`; Enterprise main en `/home/loxi1/projects/apps/documental-platform-bbti-prod`. Los SHA anteriores identifican el cierre de aceptación, no pretenden ser el HEAD posterior a esta edición. El commit documental que introduce esta sección se identifica por su acción en Git; su publicación SOURCE → Enterprise se registra en la evidencia externa `successor-continuity-update.json` del directorio canónico de release. No crea candidato ni otra promoción funcional.
+
+El checkout SOURCE de trabajo `/home/loxi1/projects/apps/documental-platform` permanece en `fix/bbti-finanzas-op-periodo-documental-r1`, HEAD `034a1abc7af9b4fe1a107dbe72ad3893e1f47992`, con sus 48 entradas dirty protegidas. No limpiar, restaurar ni incorporar automáticamente ese contenido a otro release. Las otras ramas/worktrees de las instantáneas inferiores son antecedentes, no candidatos o asignaciones actuales.
+
+MVP_STATUS=ACCEPTED_WITH_OBSERVATIONS; PO_ACCEPTANCE=APPROVED; DOCUMENTARY_CLOSURE=PASS; RELEASE_RECONCILIATION=NOT_REQUIRED. Próximo frente NAS_PREPARATION: MSI, supervisión MSII y autoridad PO, aislado del MVP y sin sustitución presunta de R2. Véanse el [Operations Manual](../29-operations-manual/README.md#continuidad-vigente--05112026) y el [manifest rector](RELEASE_MANIFEST.md) para aceptación y observaciones abiertas. Esta edición no modifica el manifest ni se sincroniza a EC2.
+
+---
+
+## Instantánea histórica — 26/10/2026
 
 Acción: `BBTI_POST_DEPLOY_CONTINUITY_AND_NEXT_BRANCH_R1`. Observación: `2026-10-26T22:52:56.914616+00:00`. Esta sección prevalece sobre las instantáneas inferiores; no requiere reconciliación histórica.
 

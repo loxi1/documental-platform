@@ -7,6 +7,37 @@
 
 ---
 
+## Continuidad vigente — 05/11/2026
+
+Acción `POST_MVP_SUCCESSOR_CONTINUITY_UPDATE_R1`. Las responsabilidades de frontend y UX de este documento permanecen vigentes; el orden de trabajo histórico inferior no constituye autorización para reabrir el MVP aceptado.
+
+Todo nuevo chat de MI, MSII o MSI comienza por:
+
+1. [Operations Manual](../../29-operations-manual/README.md).
+2. [Estándar SOURCE y release R1](../../23-standards/11-source-development-and-release.md).
+3. [Estándar Git](../../23-standards/07-git.md).
+
+Después, consultar sólo los contratos necesarios para su misión. La continuidad actual y sus identidades están en el Operations Manual y el [manifest rector](../../31-governance/RELEASE_MANIFEST.md); los documentos de contexto/prompt relacionados conservan su función, sin prevalecer sobre este estado.
+
+```ini
+MVP_STATUS=ACCEPTED_WITH_OBSERVATIONS
+MVP_DEPLOYMENT=PASS
+PO_ACCEPTANCE=APPROVED
+DOCUMENTARY_CLOSURE=PASS
+RELEASE_RECONCILIATION=NOT_REQUIRED
+NEXT_WORKSTREAM=NAS_PREPARATION
+```
+
+El PO declaró aceptación funcional productiva el **05/11/2026**: Compras PASS (carga R2 TEMP y promoción definitiva), Almacén PASS (carga y validación de Guía), Finanzas/Regularización PASS (TEMP y promoción definitiva) y Contabilidad PASS (visualización de registros de los demás módulos). Son resultados declarados por el PO, diferenciados de las pruebas automatizadas y verificaciones técnicas del despliegue.
+
+Observaciones abiertas: recuperación OCR tardía sin E2E productivo completo; expiración TEMP sin verificación productiva; referencia histórica R2 con HTTP 403; 16 errores globales de tipado conocidos. Se preservan como límites/antecedentes, no como defectos nuevos del despliegue; esta continuidad no los corrige ni reabre el release.
+
+**Siguiente entregable: preparación NAS**, responsable MSI, supervisión MSII y autoridad Product Owner. Debe mantenerse aislada del MVP productivo; no se presume que NAS sustituya Cloudflare R2 y esta orden no autoriza cambios de infraestructura.
+
+No repetir aceptación, reconciliación de 101 archivos, builds ni despliegue. Preservar SOURCE dirty y el MVP productivo.
+
+---
+
 ## Misión
 
 Convertir Documental Platform en una plataforma coherente, profesional y lista para uso desde la experiencia de usuario, sin modificar contratos backend innecesariamente.
