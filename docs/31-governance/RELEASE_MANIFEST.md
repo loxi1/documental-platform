@@ -242,3 +242,177 @@ Expediente base: `/home/loxi1/projects/evidence/documental-platform-bbti/actions
 - R11: resumen oficial del run suministrado en la instrucción PO. No se reconsultaron Actions/GHCR.
 
 Digest del archivo descargado, índice OCI del registro, config de imagen, digest local Docker y manifest GHCR son identidades diferentes. La tabla usa exclusivamente manifests GHCR. El tag del commit acredita referencia publicada en R9C; `latest` no es identidad del release.
+
+
+---
+
+## Release MVP preparado — 05/11/2026 — aprobación de despliegue PENDIENTE
+
+Acción `MVP_ENTERPRISE_PRODUCTION_RELEASE_CONTROLLED_R1`; continuidad `MVP_RELEASE_RESUME_FROM_SOURCE_MAIN_R1`. Registro definitivo de preparación, no evidencia de despliegue. Prevalece sobre estados preparatorios anteriores del mismo alcance; no borra su historia.
+
+**RELEASE_RECORD_FINGERPRINT=d640bae51d6609703afb1ce91cdc814d52e976d919308afe54109e185e21cd92** (SHA256 del JSON canónico externo `release-record.json`, no un commit Git ni digest OCI).
+
+### Identidades y frontera documental
+
+- FUNCTIONAL_SOURCE_COMMIT=`88edc03136a446308d8b18fa778bdccf6c002be3` — SOURCE main publicado y verificado.
+- FUNCTIONAL_ENTERPRISE_COMMIT=`a57c328cbf62de39aa91ed541ae32b449927a5b6` — Enterprise main publicado y verificado.
+- CANDIDATE_CONTENT_FINGERPRINT=`39a446582ba5c4f529b97fab965f2fd7676bc7b6bea0e3f2111dd3716f2390fe`; 101 rutas exactas (51 funcionales/50 tests), incluidas las nueve correcciones E2E y sus dependencias.
+- BUILD_RUN=`42085042466` ([GitHub Actions](https://github.com/BBTI-SAC/documental-platform-bbti-prod/actions/runs/42085042466)), `SUCCESS`. Los cuatro manifests OCI y sus configs se verificaron por SHA256; la procedencia de BuildKit contiene VCS revision igual al commit funcional Enterprise.
+- MANIFEST_SOURCE_COMMIT y MANIFEST_ENTERPRISE_COMMIT son, en cada repositorio, los commits documentales que introducen este RELEASE_RECORD_FINGERPRINT en `docs/31-governance/RELEASE_MANIFEST.md`. Se resuelven exactamente por `git log -1 --format=%H -S d640bae51d6609703afb1ce91cdc814d52e976d919308afe54109e185e21cd92 -- docs/31-governance/RELEASE_MANIFEST.md`, y se fijan en la evidencia de promoción antes del gate PO. No se inserta una SHA autorreferencial imposible dentro de su propio commit. Ambos commits documentales conservan los 101 hashes; NO requieren nuevas imágenes.
+- El workflow es manual (`workflow_dispatch`): las imágenes quedan fijadas al commit FUNCIONAL Enterprise anterior; publicar este registro documental no dispara otro build. El checkout productivo futuro se fijará al commit DOCUMENTAL Enterprise, con los mismos contenidos funcionales.
+- G3 Finanzas 27/10 ya incorporado en Enterprise `15bcc460ce325ff7493a4b6860a39ce17dbfa364`; no se repromovió como otro candidato. Historia R2 y Actions #28 conservadas. Actions #32/run40519336692 es SUCCESS_REPORTED histórico; no prueba despliegue ni identifica las imágenes de este registro.
+
+### Publicación frente a despliegue
+
+| Servicio | Tag publicado | Digest OCI publicado | Selección productiva |
+|---|---|---|---|
+| `api-gateway` | `ghcr.io/bbti-sac/documental-platform-bbti-prod/api-gateway:a57c328cbf62de39aa91ed541ae32b449927a5b6` | `sha256:d0e0875318b91512b308add1fbf80d9542239eca1ffc3a32125bd3a29b0f4a12` | Desplegar `ghcr.io/bbti-sac/documental-platform-bbti-prod/api-gateway@sha256:d0e0875318b91512b308add1fbf80d9542239eca1ffc3a32125bd3a29b0f4a12` sólo tras aprobación PO |
+| `ms-auth` | `ghcr.io/bbti-sac/documental-platform-bbti-prod/ms-auth:a57c328cbf62de39aa91ed541ae32b449927a5b6` | `sha256:398ae9c0c8c7153d4ed5270aea7a9b4d4da4b317cd4bc80b198bbd83b37cc201` | Conservar Auth actual: `ghcr.io/bbti-sac/documental-platform-bbti-prod/ms-auth@sha256:e299d52aa019c9d76e37618641ba2bce61b740b2df9c4523e8935e2df4a726b5`; la imagen nueva NO se desplegará |
+| `ms-documentos` | `ghcr.io/bbti-sac/documental-platform-bbti-prod/ms-documentos:a57c328cbf62de39aa91ed541ae32b449927a5b6` | `sha256:817a2490d1a4a2891da3f0381dde024e118886e4fbb4a8a348fd8bbc6a94a7ab` | Desplegar `ghcr.io/bbti-sac/documental-platform-bbti-prod/ms-documentos@sha256:817a2490d1a4a2891da3f0381dde024e118886e4fbb4a8a348fd8bbc6a94a7ab` sólo tras aprobación PO |
+| `web-admin` | `ghcr.io/bbti-sac/documental-platform-bbti-prod/web-admin:a57c328cbf62de39aa91ed541ae32b449927a5b6` | `sha256:78db00064093665c89ce60ac6944cc135a5acb652a74d2d8c85e4cd9e8d35691` | Desplegar `ghcr.io/bbti-sac/documental-platform-bbti-prod/web-admin@sha256:78db00064093665c89ce60ac6944cc135a5acb652a74d2d8c85e4cd9e8d35691` sólo tras aprobación PO |
+
+Auth se comprobó expresamente: árbol de código sin cambios entre Enterprise base y commit funcional, paquetes shared/config/database sin cambios y typecheck/build aprobados. Se reconstruyó/publicó por el workflow vigente de cuatro imágenes; se conserva su digest productivo para evitar una recreación innecesaria. El login funcional productivo no se ejecutó en el preflight.
+
+### Inventario funcional inmutable anterior al despliegue
+
+| Ruta | SHA256 |
+|---|---|
+| `apps/api-gateway/src/common/finanzas-workspace-access.ts` | `578cdbe563c22404b3c77aef6c018e0c24d87863cded39057788eecc3ad68539` |
+| `apps/api-gateway/src/documental-v2/documental-v2-gateway.controller.spec.ts` | `6a7391c615a4c28687a3300a053d9eaa523cb5afa146ffa97f7f8d19f8d54e6e` |
+| `apps/api-gateway/src/documental-v2/documental-v2-gateway.controller.ts` | `309780211f5a59ca0d443477dd0e03476dc5fccc66a4192716df579cc632aaf3` |
+| `apps/api-gateway/src/documentos/documentos.controller.ts` | `3ad0b756800406cb81484e24c7d3331e593e255567d10fde6d479b68e58b6f02` |
+| `apps/api-gateway/src/documentos/documentos.financial-exception.spec.ts` | `41c70e6cf08a396908217981f39d24d23af872a1e4dd366653e6dd6f9760036d` |
+| `apps/api-gateway/src/documentos/documentos.tmp-documental.controller.spec.ts` | `d85eca1384919afd41f43550285bf1e57922868be1c4a57896ed56c577c0b045` |
+| `apps/ms-documentos/src/common/interceptors/api-response.interceptor.ts` | `224e44d64ae7c96f4c357c6551d39f8e6ec6a3c8cee2ee2429fc1fe87faaef72` |
+| `apps/ms-documentos/src/common/interceptors/request-logger.interceptor.spec.ts` | `47538712c16b1a44bdec2364dde201c3b2a1f4a9bf6bb1eea8f948adf27ec54f` |
+| `apps/ms-documentos/src/common/interceptors/request-logger.interceptor.ts` | `cfcda4726441c1edb5f75245907b6967cfc016daf4981d4764ea11bf6bd2ece6` |
+| `apps/ms-documentos/src/documental-v2/finanzas/grupo-financiero.spec.ts` | `03f9849209586ec64304150ceeafbad8f61df902302d39d7af1439f4bcb9b1e8` |
+| `apps/ms-documentos/src/documental-v2/finanzas/orden-pago.controller.spec.ts` | `978bb23089bcf80d581d7615383e018a420916971c3775b9acf748ed6adba6d9` |
+| `apps/ms-documentos/src/documental-v2/finanzas/orden-pago.controller.ts` | `575d0c0b0fdad14913424390e67b43cf505ae8e6b82b02a0c07cff7030a4a2e0` |
+| `apps/ms-documentos/src/documental-v2/finanzas/orden-pago.dto.ts` | `1a83fcd00ad555e0dad8cff8bc4c7742bfa744e10079338dcb303b7318f60d0b` |
+| `apps/ms-documentos/src/documental-v2/finanzas/orden-pago.excepcion-finanzas.spec.ts` | `dd060c87b05d5a0e26f6e5c7d8a61b63519eafee70d68013895883903f6188bf` |
+| `apps/ms-documentos/src/documental-v2/finanzas/orden-pago.observar-pendiente.spec.ts` | `4a559ec91b909cd2607d21cd695d17bba4a2815d9575fd6c72e82f977ca542d4` |
+| `apps/ms-documentos/src/documental-v2/finanzas/orden-pago.service.spec.ts` | `e490d07698cc14eeb22618714f5fea4988a1b8586c4aaafa87da05c3572fc461` |
+| `apps/ms-documentos/src/documental-v2/finanzas/orden-pago.service.ts` | `0b8d3d4e68572fff65b3876941d067680a95ef7e709473be2baa8cecdde0ca4e` |
+| `apps/ms-documentos/src/documental-v2/grupo-factura-documento.repository.ts` | `4fcf59750ef3cfc574ec26773ea4cd0b017c5ce20ff688e8fe4ea97a9cdbafa3` |
+| `apps/ms-documentos/src/documental-v2/use-cases/asociar-documento-principal-v2.recreacion.spec.ts` | `cbca6ad970278a2307b527abbc39d4f66cb6437c1e78a1b0b5c95960ad5177af` |
+| `apps/ms-documentos/src/documental-v2/use-cases/orquestar-confirmacion-documental-v2.usecase.ts` | `0dc0290e33616847b9dbf36ca46685d0e4424dcacc0545f3ddde6bae17675f59` |
+| `apps/ms-documentos/src/documentos/carga-segura/carga-segura.compensation.spec.ts` | `ee5e1c49e21c251db5bd213d12c4bbf0bc1679acfbad5bc9e86639d165246910` |
+| `apps/ms-documentos/src/documentos/carga-segura/carga-segura.compensation.ts` | `6fbac106f8912df618839636a11c60fd147283ee1025ae7defcc1fea84c898cc` |
+| `apps/ms-documentos/src/documentos/carga-segura/carga-segura.constants.ts` | `fe47e34f99a3cdcfee4caea73ed11083b1ccd5dd02e236c44c714579eb15db96` |
+| `apps/ms-documentos/src/documentos/carga-segura/carga-segura.fingerprint.spec.ts` | `5e686b90353241bd1b3030621fd18267353e01f45775f469868d3f744252af4f` |
+| `apps/ms-documentos/src/documentos/carga-segura/carga-segura.fingerprint.ts` | `23491110d05f5ff5df567cea2b2b685af48440fece6ac0bcb9b1099e665a9bcf` |
+| `apps/ms-documentos/src/documentos/carga-segura/carga-segura.p3-commit-boundary.spec.ts` | `ae99a3abc35145dae32fb2de76ef5f2a12fba7c0ebb0ad2e7f720ef09635e078` |
+| `apps/ms-documentos/src/documentos/carga-segura/carga-segura.p3-service-boundary.spec.ts` | `466d0e1d0b092c3d0b6fa5de5b71d328e6ef444d562a25a0faa36f22630674e2` |
+| `apps/ms-documentos/src/documentos/carga-segura/carga-segura.p3-terminal-atomicity.spec.ts` | `f421bb4694ed9442353acaf941f466bf2875f3ed8e0a0b22b3cfecd25960e840` |
+| `apps/ms-documentos/src/documentos/carga-segura/carga-segura.persistence.spec.ts` | `672b67699168a92662c1cfb7c33c2238df4cc7e0de3604ba149db8a2ead3782a` |
+| `apps/ms-documentos/src/documentos/carga-segura/carga-segura.persistence.ts` | `cfcb7c7f24fb7cf19db723cdba989b1a2c2c44dacfb4f7344da701f615947229` |
+| `apps/ms-documentos/src/documentos/carga-segura/carga-segura.repository.spec.ts` | `18136737c05711b1069b5098b3a81fb8320aef16b18b0ebda25c2751ea4f7811` |
+| `apps/ms-documentos/src/documentos/carga-segura/carga-segura.repository.ts` | `69578173f9ccdeafd5a34c841ea046f5e12c1d72ea015c201d296526ddcd2a77` |
+| `apps/ms-documentos/src/documentos/carga-segura/carga-segura.safe-put.spec.ts` | `23b13710eaa48d98e15fa73c1c67fff2b2854063d7637b59bd3e23d5164228b6` |
+| `apps/ms-documentos/src/documentos/carga-segura/carga-segura.service.spec.ts` | `3ceb84b4c75a97942d39baee9d91e5367f8666e791d0da372b6a211b9c803fca` |
+| `apps/ms-documentos/src/documentos/carga-segura/carga-segura.service.ts` | `0a22ba3060bb966c1d6915582f18fe1b6643b4ee54dbb8ccb4ea165a14abd4ce` |
+| `apps/ms-documentos/src/documentos/carga-segura/carga-segura.storage.spec.ts` | `29da0baea5856c03e1f78cafacdba395ce3d8ec90055215df2ddaf0d7761c9ee` |
+| `apps/ms-documentos/src/documentos/carga-segura/carga-segura.storage.ts` | `f5fa0e337e87a90982843c62ab99055afbe69780c7cf842ba4cfeda0f06adf0e` |
+| `apps/ms-documentos/src/documentos/carga-segura/carga-segura.types.ts` | `77cd674d127770767912fc73d1e46a6a26d32dc27df453e1ee7211210db15f64` |
+| `apps/ms-documentos/src/documentos/carga-segura/http/carga-segura-http.filter.ts` | `76753a7bf8e9f8dad044679dadde9da456f3e98750e8b8d8f011cb89f6d2d32a` |
+| `apps/ms-documentos/src/documentos/carga-segura/http/carga-segura-http.validation.ts` | `0a7b3733ab3f57384cc4fd45162f3a453cc89028d6a7ac522734fb730a6e228f` |
+| `apps/ms-documentos/src/documentos/documentos-upload.service.spec.ts` | `f8d15f7bde01477c89f0555fd8489efcca473f81f972520680ddc9438079c848` |
+| `apps/ms-documentos/src/documentos/documentos-upload.service.ts` | `4c021127430920b14229f098fd1867ab5d833790070ed33f54a02b51bfe5d2a8` |
+| `apps/ms-documentos/src/documentos/documentos.controller.ts` | `80bd382bc8eabfa60f10038f32e1e27b7a2982d0c6aa482aabb3b20469961de0` |
+| `apps/ms-documentos/src/documentos/documentos.module.ts` | `2da347489503c14c0a9750db86c16b431add1f21daac8017ef3e95b9a699c795` |
+| `apps/ms-documentos/src/documentos/documentos.op-observacion.spec.ts` | `890676eb9e6ee0ed8bcab766fb00ed2504f842d2f9c1e4111d240cb1ab93d0cb` |
+| `apps/ms-documentos/src/documentos/documentos.recovery-confirmacion.spec.ts` | `bb84471026c8c3d718d7eee811c93f5c9342171f88d70946b68b2e011f1eeb58` |
+| `apps/ms-documentos/src/documentos/documentos.repository.tmp-materialization.spec.ts` | `70403c3ba91eaad4934bf1628a41ad775a1ee0418be3b47a12c107d7880cd5ad` |
+| `apps/ms-documentos/src/documentos/documentos.repository.ts` | `037c04e921d925664439b94d37f784ed9b28a4136b871d72b60b44739b8306f7` |
+| `apps/ms-documentos/src/documentos/documentos.service.ocr-coalescing.spec.ts` | `6817a4026bb6e31b19e9b161b89ed5f2c3614fb514208f2e03f57bb4af4ec6ee` |
+| `apps/ms-documentos/src/documentos/documentos.version-context.controller.spec.ts` | `4997afd6a0caafd688713dd16a6311ea5e8728ce53369662a5328806214532a6` |
+| `apps/ms-documentos/src/documentos/factura-temp/factura-temp-materialization.repository.ts` | `9da7a2fd504a9b13d5169fc38e15e5719cbc0cc70fad310855d6f33b5f32b43c` |
+| `apps/ms-documentos/src/documentos/factura-temp/factura-temp-materialization.service.spec.ts` | `9aff36a344b83804304d0963a1902ed3dd365ae9cdbc00bb59512f9fde58785e` |
+| `apps/ms-documentos/src/documentos/factura-temp/factura-temp-materialization.service.ts` | `7bb274700179c5367921fb630a8667fa7481501e74bad5001be1f63ebd9e58e4` |
+| `apps/ms-documentos/src/documentos/orden-pago/orden-pago-archivo.reemplazo.spec.ts` | `a44ddc5a791ea19b20c45a2286e1751b24006226fbf890980ab8ff41586becda` |
+| `apps/ms-documentos/src/documentos/orden-pago/orden-pago-archivo.service.spec.ts` | `134d20afb4c6013b7b9068f27508033eeb82556865536b61926285feba85987a` |
+| `apps/ms-documentos/src/documentos/orden-pago/orden-pago-archivo.service.ts` | `a1bf2d794c9aac43c2467c7a458a102ddd39894815ceef85cbe72b0b0843115c` |
+| `apps/ms-documentos/src/documentos/orden-pago/orden-pago-fecha-emision.spec.ts` | `86427a255d634c27e53121b97af3ece96742cd0eac7c7ed93fcabd9232ae1129` |
+| `apps/ms-documentos/src/documentos/orden-pago/orden-pago-fecha-emision.ts` | `ccc927515ee7aca80eb08b7ed0170575c470301821c83edeb8f33dd9a4d64097` |
+| `apps/ms-documentos/src/documentos/periodo-documental-r2.fecha.spec.ts` | `f927db7f2f223f40fea869086ffa6717ff89d2ead0f289bb3942c74df2793778` |
+| `apps/ms-documentos/src/documentos/periodo-documental-r2.fecha.ts` | `3433d3d6eb7cab66badb5003c3e4408a5842109eb248b690baa141e452b952c9` |
+| `apps/ms-documentos/src/documentos/periodo-documental-r2.repository.spec.ts` | `e5367e6b1c395c94aff0c07292c92b31239c860a454391a239057ea165bb0f54` |
+| `apps/ms-documentos/src/documentos/periodo-documental-r2.repository.ts` | `6b333176fd62588fc611ea1fabfcbbdf36369157340b724f6cf3be5ef5637366` |
+| `apps/ms-documentos/src/documentos/periodo-documental-r2.resolver.spec.ts` | `3878294257f8431e0fd1dbdc52801201de979513de2dd4b5cc76c394ae152990` |
+| `apps/ms-documentos/src/documentos/periodo-documental-r2.resolver.ts` | `3f566743bd16a589fbb60c5bdd2a3dedc71345609f732b0c0662024a09936fbb` |
+| `apps/ms-documentos/src/documentos/r2-source-closure.spec.ts` | `e04a89ef52dfc2a6cdc97a31f84e868ad5aec09ae7577fafc3d8971812b7e088` |
+| `apps/ms-documentos/src/documentos/recibo-honorario-temp/recibo-honorario-temp-materialization.repository.spec.ts` | `992fad138ff21f2850fdf6d1199d7b57182d73c1619fb569a4eea4084f41aea5` |
+| `apps/ms-documentos/src/documentos/recibo-honorario-temp/recibo-honorario-temp-materialization.repository.ts` | `d646ececf6ad1a9cf43a6f86cfcb1a54dde5f8a69d7eacc53b22dff3cd904c92` |
+| `apps/ms-documentos/src/documentos/recibo-honorario-temp/recibo-honorario-temp-materialization.service.spec.ts` | `1e9d3068abe685bccb5aa19f68eb117c21df66d55b40da24ac04dbcbe35cf060` |
+| `apps/ms-documentos/src/documentos/recibo-honorario-temp/recibo-honorario-temp-materialization.service.ts` | `840c274491ec35a81dc91a58835d27cabdb3e40ae0be046fee9b7ba4b66d7e14` |
+| `apps/ms-documentos/src/documentos/tmp/duplicate-document-origin.ts` | `3b413a89b08c05acec01a74401496b8a4e7baf311a61bf769d9f97a328dbfd5d` |
+| `apps/ms-documentos/src/documentos/tmp/tmp.controller.ts` | `76432ced40077d81d599d52e4bf664641f1630582471eb64b05b147d56e804fb` |
+| `apps/ms-documentos/src/documentos/tmp/tmp.documental.spec.ts` | `02e8cf26591ccdd7708af296f230b5cc304d241f4ba9508b81e4c8103a28c82e` |
+| `apps/ms-documentos/src/documentos/tmp/tmp.overwrite-recovery-closure.spec.ts` | `77b1bd97d72dcab62f55833fcb0313698b50672489ad05d114fe7e59e16d8a73` |
+| `apps/ms-documentos/src/documentos/tmp/tmp.regularizacion-expiry-g2.spec.ts` | `f154a8b51c6e3cce2a819d2ea65e53361a9b476e9077e3255b26d1059f4899c4` |
+| `apps/ms-documentos/src/documentos/tmp/tmp.repository.spec.ts` | `8787aa28fe05459cc842d5d1035d41c002ef29a58f4f0ca66d4e6f3dd1c5fdd4` |
+| `apps/ms-documentos/src/documentos/tmp/tmp.repository.ts` | `9159aeffa2fa7d13423351be833ff757a370aed8a6ea8041f6d2f8be510c365c` |
+| `apps/ms-documentos/src/documentos/tmp/tmp.service.spec.ts` | `caae10d34cde12332ae339725f15f57e6170d316d8188615c2b7a086ee23f348` |
+| `apps/ms-documentos/src/documentos/tmp/tmp.service.ts` | `8053e089f4afc614c1b1f2d3ff4307693b3736644c04c05e2d070d14738d07eb` |
+| `apps/ms-documentos/src/expedientes/expedientes.controller.ts` | `dc3e2137287a70ad3e30f32df1f6f75e0328b48d3f1ae73e1aeb92747b0752b3` |
+| `apps/ms-documentos/src/expedientes/expedientes.repository.revision-contable.spec.ts` | `ad7f4025cd93f08a585565dea3b0e1800ddd59ec99b3a043bb19082a5422bc37` |
+| `apps/ms-documentos/src/expedientes/expedientes.repository.ts` | `87597bfef511f4ccc60c044bf026492c1315bc9a2aff9018d6cb2ae890ed4b97` |
+| `apps/ms-documentos/src/expedientes/expedientes.service.ts` | `e9b958b9d9797319b8fcb95421fed2c0b2848aa2121462b9322293f15e5f0012` |
+| `apps/web-admin/src/components/almacen/AlmacenBandeja.periodo.test.cjs` | `df9964efe52b7df0ce0d39a904f681ac8bd803610c9d1a01a14bc8b1bed11667` |
+| `apps/web-admin/src/components/almacen/AlmacenBandeja.tsx` | `7b9b726941c1d7537582e4a1f4167adac16b6c2cf9b0b8bf51a16c9fa96bd645` |
+| `apps/web-admin/src/components/almacen/AlmacenExpedienteEditor.focal-corrections.test.cjs` | `cec9a94833d15fd2e007783439d48b455e35adfabef671fbe56fb9c2a3672a96` |
+| `apps/web-admin/src/components/compras/CompraExpedienteEditor.tsx` | `13b901f3a9880a90096bab1b0f07025a1c7df24169490bfdf3d261a030bac724` |
+| `apps/web-admin/src/components/compras/Compras.temp.test.cjs` | `e4eb5376279755b25c5466322d9e5cc8eb786e1b7e6d83eedc42961fbcf89caf` |
+| `apps/web-admin/src/components/compras/NuevoExpedienteWizard.tsx` | `98b64edcb0f638b2e3fd7fd44fbbbf1021cdfd3da031c03fe8e5dc4f3bdc21fd` |
+| `apps/web-admin/src/components/finanzas/FinanzasDocumentoPrincipalOperativoCard.grupo.test.cjs` | `8bb72b74fdf0da8dd1fe346506c25bf515c9a834fe1d5ece2f7a5415cbc7477d` |
+| `apps/web-admin/src/components/finanzas/FinanzasDocumentoPrincipalOperativoCard.tsx` | `b2ebc552524b473d4003ae5b6f5f267a0faa690002cfff1f259e41e3b80990b4` |
+| `apps/web-admin/src/components/finanzas/FinanzasExpedienteEditor.tsx` | `9dacb2772139c79149774a2643a70a7ca4c2c0dcfc6fb32165ef64b70ae841a4` |
+| `apps/web-admin/src/components/finanzas/FinanzasExpedienteView.tsx` | `71d30a4fc1abffbca445a4baefe654b65b9bc05f93c6e59046ca9a7bc53db9ae` |
+| `apps/web-admin/src/components/finanzas/FinanzasGrupoFacturaPagoPanel.tsx` | `a089d63a72f5f4a89e6b60d73dae06efc1f052fe86d92e0d1214a87990ac2bbd` |
+| `apps/web-admin/src/components/finanzas/OrdenPagoAdjuntarPagoView.payment-support.test.cjs` | `7d1a6b0ebb63525cb379254a90821c34e8d1faa4b9e1d3bbcab8d12ad528c3f4` |
+| `apps/web-admin/src/components/finanzas/OrdenPagoAdjuntarPagoView.tsx` | `576fa265851fb5e4143a450aabbb0e876eadd083b85bd58707125b9612199927` |
+| `apps/web-admin/src/components/finanzas/RegularizarOrdenPagoModal.temp-recovery.test.cjs` | `f3cf81ec698f075f0cdaaa2aad139b857c456ed75d12ef93efd5c4a603e5856f` |
+| `apps/web-admin/src/components/finanzas/RegularizarOrdenPagoModal.tsx` | `a693bc3e15d359f78350bf6122fb1b2194a83746b3f0868c42d0c6cbc4bcc5d3` |
+| `apps/web-admin/src/lib/auth-storage.finanzas-excepcion.test.cjs` | `76bff1482a4c3cc424f26d7716059c2a0f9c92a78ac0c743dd35c89ba320f097` |
+| `apps/web-admin/src/lib/auth-storage.ts` | `333497a8b083cd6ccc2119c24da48a4fb95191e3c42e8ee38cb9fbc8f079cca6` |
+| `apps/web-admin/src/services/carga-segura.temp.test.cjs` | `86c9ce92493bc33b3fa9ba6e3c2537c50238a0f95f1baa35e9f5a458d51e3eae` |
+| `apps/web-admin/src/services/carga-segura.ts` | `63e036dab99441bf558459ac12cb7948d333906a5270f34b7368294fb016cde6` |
+
+Fuera del candidato: secretos y configuración productiva/LAB; tres ajustes Auth/NATS exclusivos del LAB; dos .bak; auxiliares, Dockerfiles/toolchain y utilidades de diagnóstico. Los 48 dirty del checkout original SOURCE se preservan íntegros; la integración se hizo en worktree main limpio y aislado. No se copiaron commits backup completos. Los paquetes compartidos/lockfile existentes se conservan.
+
+### Aceptación y pruebas
+
+PO_FUNCTIONAL_ACCEPTANCE=RECORDED: el PO validó en navegador Compras OC/OS; Almacén Guía/NI/adjuntos/versiones; ambos orígenes de sustentos; Finanzas/observación de duplicado; regularización Factura/RH; Contabilidad; preview; persistencia y recuperación OCR, sobre MinIO LAB. No es aceptación productiva ni de R2 DEV.
+
+Backend LAB real PASS_FOR_EXECUTED_SCOPE: nueve archivos íntegros por bytes/hash; preview firmado MinIO; OP45 pagado250/saldo150 antes/después de observar duplicado; confirmación duplicada409; una auditoría859 y ningún vínculo financiero del documento observado146. Los 101 contenidos pasaron 275 tests focales/13 suites en SOURCE aislado y 275 tests/13 suites en Enterprise, con mocks donde corresponde; no se suman como 550 casos únicos ni sustituyen la prueba real. Typechecks productivos Gateway/Auth/Documentos/Web PASS; builds locales Enterprise de cuatro apps y dependencias PASS.
+
+GLOBAL_TYPECHECK=KNOWN_FAILURES: exactamente los mismos 16 errores de tests (13 de aridad,1 unknown,1 cast SQL mock,1 proyección), sin errores nuevos. Tres errores afectan archivos candidatos cuyos54 casos Jest pasan. No se ocultaron los fallos ni se declara PASS global.
+
+OCR/TEMP: OCR real LAB y asociación/reutilización por archivoId acreditados; fallos inducidos, callbacks tardíos y todos los estados parciales/concurrentes TEMP/fencing no acreditados E2E. Se conservan reintentos, identidad, CAS/fencing y estados terminales; recuperación real PUT_STARTED sin nuevo PUT en operaciones148/149; PRE_PUT no ampliado. Sólo eliminación nativa de TEMP sintético propio después de materialización; fixtures finales retenidos.
+
+### Preflight productivo READ_ONLY y límites R2
+
+- EC2 `ip-172-31-8-212` / `34.235.203.61`; checkout `main` limpio en `d60b6af89a99e6a4bdb2a48e7d6891d7ee4b59ac`. Seis contenedores activos; OCR systemd active/running, NRestarts0. Sin reinicios ni cambios EC2.
+- RDS endpoint verificado, base `gestion_documental`, TLS activo; transacciones explícitas READ ONLY sobre metadatos. Relaciones/columnas requeridas presentes,49 permisos de tabla comprobados y secuencias necesarias autorizadas. Árbol packages/database idéntico al candidato; sin archivos de migración nuevos ni migraciones ejecutadas. No se leyó ni modificó información financiera.
+- Health Documentos200, PostgreSQL/NATS up. R2 Cloudflare HEAD bucket200 mediante el adaptador configurado; sin uploads, borrados, movimientos, GET de documentos de negocio ni escrituras R2.
+- Carga segura habilitada en producción. AUTH_NATS_NAMESPACE y OCR_REQUEST_SUBJECT sin override LAB; sujeto estándar OCR `ocr.procesar-archivo` preservado. No copiar `dev.source.auth`, `lab.ocr` ni MinIO a producción.
+- Disco libre135482331136 bytes; memoria disponible6604 MiB; x86_64 compatible con manifests linux/amd64 verificados.
+- R2_COMPATIBILITY=PARTIAL: la lectura de conectividad no acredita PUT condicional, checksum, materialización o E2E real en R2. R2_DEV=NOT_ACCREDITED; aceptación LAB=MINIO. No se declara validación funcional productiva ni de OCR productivo por el estado activo del worker.
+
+### Plan exacto, rollback y autorización
+
+PO_PRODUCTION_DEPLOYMENT_APPROVAL=PENDING. RELEASE_STATUS=PREPARED. EC2_DEPLOYMENT=NOT_EXECUTED; PRODUCTION_SMOKE_TESTS=NOT_EXECUTED. No cambiar producción antes de la aprobación independiente del PO.
+
+Tras aprobación: revalidar identidades; sincronizar checkout con el commit documental Enterprise acreditado; conservar EnvironmentFile, puertos, redes y configuración; crear exclusivamente `/home/ubuntu/releases/documental-platform-bbti/mvp-42085042466-a57c328c` y overrides revisados; descargar las tres imágenes por digest y recrear secuencialmente ms-documentos, api-gateway y web-admin con Compose proyecto docker, base `deployment/docker/docker-compose.production.yml`, override de release y `--no-deps --pull never`. Mantener ms-auth en su digest anterior, NATS/Traefik/OCR/RDS/R2 intactos. No construir en EC2, no down global, no migraciones rutinarias ni limpieza. Smokes previstos de salud/readiness, API/UI y lecturas funcionales mínimas; cualquier escritura productiva adicional requiere alcance explícito.
+
+Rollback de ESTA release: restaurar checkout anterior `d60b6af89a99e6a4bdb2a48e7d6891d7ee4b59ac` y las referencias productivas actuales siguientes, conservando configuración y datos. El archivo histórico rollback.images.yml (hash5232...) apunta a un release aún anterior y NO es el rollback seleccionado para esta promoción. Las cuatro imágenes actuales están cacheadas e inspeccionadas en EC2; el override actual release.images.yml coincide con estas referencias y SHA256 `6895811e0dacdd2e0a22f4b34898e827a804e6a62fe9f03ba4c00d803651e07a`.
+
+- `api-gateway`: `ghcr.io/bbti-sac/documental-platform-bbti-prod/api-gateway@sha256:4ba59c185f52d308cffd163179819b26bbfa4b8b27968be1864c65eccb11ec0a`
+- `ms-auth`: `ghcr.io/bbti-sac/documental-platform-bbti-prod/ms-auth@sha256:e299d52aa019c9d76e37618641ba2bce61b740b2df9c4523e8935e2df4a726b5`
+- `ms-documentos`: `ghcr.io/bbti-sac/documental-platform-bbti-prod/ms-documentos@sha256:949f9510bdc00c03842bb1218ffa817f941076d5eebc3bfa700a5a355ee7541f`
+- `web-admin`: `ghcr.io/bbti-sac/documental-platform-bbti-prod/web-admin@sha256:bab1a81e88262ac89d0c15bef87f20e1e80c6e5f1d370693e3f562fcf6ff49ad`
+
+Ante falta de salud/errores materiales: detener nuevas operaciones, preservar evidencia e identidades y aplicar exclusivamente el rollback aprobado de servicios; nunca revertir automáticamente datos financieros o borrar objetos R2. El rollback local preparado replica el runtime actual, no referencias históricas supuestas. No se ejecutó rollback aquí.
+
+Evidencia: `/home/loxi1/bbti-evidence/controlled-production-release-r1/` contiene state.json, release-record.json, ghcr-images.json, manifiestos/configs verificados por digest, build-run.latest.json, logs de checks/builds/tests, production-preflight.json, production-schema-compatibility.json, production-rds-and-sequences.json, overrides preparados localmente y binding de commits documentales. Es evidencia externa, no otro manifest rector.
