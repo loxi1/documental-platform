@@ -416,3 +416,41 @@ Rollback de ESTA release: restaurar checkout anterior `d60b6af89a99e6a4bdb2a48e7
 Ante falta de salud/errores materiales: detener nuevas operaciones, preservar evidencia e identidades y aplicar exclusivamente el rollback aprobado de servicios; nunca revertir automáticamente datos financieros o borrar objetos R2. El rollback local preparado replica el runtime actual, no referencias históricas supuestas. No se ejecutó rollback aquí.
 
 Evidencia: `/home/loxi1/bbti-evidence/controlled-production-release-r1/` contiene state.json, release-record.json, ghcr-images.json, manifiestos/configs verificados por digest, build-run.latest.json, logs de checks/builds/tests, production-preflight.json, production-schema-compatibility.json, production-rds-and-sequences.json, overrides preparados localmente y binding de commits documentales. Es evidencia externa, no otro manifest rector.
+
+
+---
+
+## Evidencia de ejecución productiva — 05/11/2026
+
+**EXECUTION_RECORD_FINGERPRINT=60feefbf4227f3fd7910a06605636085e034ef6c25aabe982455f47f80f81e65**. Corresponde al registro previo `d640bae51d6609703afb1ce91cdc814d52e976d919308afe54109e185e21cd92` y a su inventario inmutable de 101 rutas/huella `39a446582ba5c4f529b97fab965f2fd7676bc7b6bea0e3f2111dd3716f2390fe`. Esta sección sólo añade ejecución; no modifica inventario, código, digests aprobados ni pruebas históricas.
+
+- PO_PRODUCTION_DEPLOYMENT_APPROVAL=APPROVED, por orden directa del PO. RELEASE_STATUS=DEPLOYED. EC2_DEPLOYMENT=PASS. RELEASE_ACCEPTED=NO.
+- FUNCTIONAL_SOURCE_COMMIT=`88edc03136a446308d8b18fa778bdccf6c002be3`; FUNCTIONAL_ENTERPRISE_COMMIT=`a57c328cbf62de39aa91ed541ae32b449927a5b6`. Manifest previo SOURCE=`b1bd90a8e9c376c068d96c3055f27f494eee0442` / Enterprise=`da709acb84e23b0ff8062007f9e57c1646a05d26`.
+- Checkout EC2 en la recreación: `da709acb84e23b0ff8062007f9e57c1646a05d26`, main limpio. La sincronización documental posterior sólo puede avanzar al commit que introduce esta sección, sin cambios funcionales ni recreaciones; su identidad se fija en el binding de evidencia y se resuelve mediante Git -S de este EXECUTION_RECORD_FINGERPRINT. No se generan builds documentales ni SHA autorreferenciales.
+- Host `ip-172-31-8-212` / `34.235.203.61`. Recreación secuencial UTC `2026-11-05T19:14:54.416142+00:00` → `2026-11-05T19:15:29.573362+00:00`: ms-documentos, api-gateway, web-admin. Cada servicio pasó salud antes del siguiente.
+
+| Servicio actualizado | Referencia efectiva verificada |
+|---|---|
+| `ms-documentos` | `ghcr.io/bbti-sac/documental-platform-bbti-prod/ms-documentos@sha256:817a2490d1a4a2891da3f0381dde024e118886e4fbb4a8a348fd8bbc6a94a7ab` |
+| `api-gateway` | `ghcr.io/bbti-sac/documental-platform-bbti-prod/api-gateway@sha256:d0e0875318b91512b308add1fbf80d9542239eca1ffc3a32125bd3a29b0f4a12` |
+| `web-admin` | `ghcr.io/bbti-sac/documental-platform-bbti-prod/web-admin@sha256:78db00064093665c89ce60ac6944cc135a5acb652a74d2d8c85e4cd9e8d35691` |
+
+Auth conservó `ghcr.io/bbti-sac/documental-platform-bbti-prod/ms-auth@sha256:e299d52aa019c9d76e37618641ba2bce61b740b2df9c4523e8935e2df4a726b5` y el mismo contenedor. NATS y Traefik conservaron IDs; OCR systemd conservó MainPID 425185, active/running y NRestarts 0. El archivo de configuración productivo conserva tamaño, modo y timestamp exacto; no se leyeron ni imprimieron sus secretos. Se usó --env-file existente para preservar interpolación/labels y --no-build --no-deps --pull never para impedir builds o recreaciones por arrastre.
+
+### Verificaciones reales y límites
+
+- Documentos health 200, PostgreSQL/NATS up; Gateway health 200; Web login 200. HTTPS público login/Compras/Almacén/Finanzas y API health/readiness200. La ruta financiera protegida sin sesión devuelve401. Auth health 200, PostgreSQL/NATS up. No se efectuó login ni se fabricaron tokens.
+- Lectura de mantenimiento del OC existente: archivo467/documento472; preview nativo 200; GET R2 del bucket configurado 200; 53.514 bytes PDF, SHA256 coincide con PostgreSQL. Workspace documental y consulta contable nativos 200. Son lecturas técnicas autorizadas mediante SSH, NO acreditación de los seis flujos autenticados de navegador.
+- Incidencia preservada: archivo474/documento481 referencia un bucket distinto del configurado y devuelve403 AccessDenied. El mismo resultado se reprodujo con SDK 3.1073.0 y fuente de preview idéntica en las librerías del Auth anterior conservado. No se hizo rollback completo como prueba A/B. La referencia histórica no se modificó; la lectura del bucket configurado es un caso de control separado, no sustituye este fallo.
+- R2_PRODUCTION_VALIDATION=PARTIAL: lectura e integridad del caso configurado PASS; no se probaron uploads, PUT condicional, checksum de escritura o materialización productiva. OCR_PRODUCTION_VALIDATION=PARTIAL: worker activo/preservado; no se emitieron trabajos. Persisten límites OCR/TEMP y 16 errores globales de tipado previamente documentados.
+- PRODUCTION_SMOKE_TESTS=PARTIAL. No se acreditaron lecturas funcionales autenticadas de Finanzas/regularización ni aceptación integral de navegador; falta sesión/validación PO correspondiente. No declarar RELEASE_ACCEPTED por salud/HTTP200 o por aceptación LAB previa.
+
+### Incidencias de control y contingencia
+
+Antes de recrear servicios, dos comprobaciones detuvieron preparación: timestamp de nanosegundos redondeado 95 ns en transporte JSON (archivo conservaba ctime/mtime de septiembre) e ID Docker expuesto como índice OCI en lugar de config digest. Se corrigieron únicamente los verificadores externos, manteniendo comparación exacta y la cadena OCI aprobada. No se cambiaron funcionalidades, config o imágenes para forzar PASS.
+
+ROLLBACK_EXECUTED=NO. El caso 403 histórico no presentó evidencia de regresión del despliegue; los tres servicios y el caso R2 configurado pasan. El rollback preparado conserva los cuatro digests anteriores verificados; no se usó el rollback histórico de una versión aún más antigua. No hubo migraciones, escrituras financieras sintéticas, borrado/movimiento/escritura de objetos R2 ni trabajos OCR inducidos.
+
+Aceptación productiva: PENDING_PO_AND_AUTHENTICATED_FUNCTIONAL_VERIFICATION. Mantener abiertos el acceso a la referencia histórica474 y las verificaciones no ejecutadas; no modificar datos para cerrar artificialmente el release.
+
+Evidencia externa: `/home/loxi1/bbti-evidence/controlled-production-release-r1/`, execution-record.json, production-postdeploy.json, production-configured-storage-read.json, production-r2-preview-investigation.json, deployment-prepare.log y deployment-rollout.log. Esta actualización sigue SOURCE main → Enterprise main y no altera los 101 contenidos ni dispara otra publicación GHCR.
