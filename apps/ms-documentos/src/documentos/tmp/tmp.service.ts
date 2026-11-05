@@ -1,7 +1,10 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { BadRequestException, ConflictException, Inject, Injectable, ServiceUnavailableException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Inject, Injectable, Optional, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { CARGA_SEGURA_STORAGE } from '../carga-segura/carga-segura.constants';
+import { buildCargaSeguraStorageKey } from '../carga-segura/carga-segura.storage';
+import { DocumentosRepository } from '../documentos.repository';
+import { OrquestarConfirmacionDocumentalV2UseCase } from '../../documental-v2/use-cases/orquestar-confirmacion-documental-v2.usecase';
 import type { CargaSeguraStorage } from '../carga-segura/carga-segura.storage';
 import type { CargaSeguraHttpResolvedIdentity as Identity } from '../carga-segura/http/carga-segura-http.validation';
 import { validateCargaSeguraFileSignature } from '../carga-segura/http/carga-segura-file-signature';
@@ -22,6 +25,8 @@ export class TmpService {
     @Inject(NATS_CLIENT)
     private readonly nats: ClientProxy,
     private readonly preview: DocumentosPreviewService,
+    @Optional() private readonly documentos?: DocumentosRepository,
+    @Optional() private readonly documentalV2?: OrquestarConfirmacionDocumentalV2UseCase,
 ) {}
 
   async reserve(actor: Identity, file: { originalname: string; mimetype: string; buffer: Buffer }) {
@@ -263,16 +268,27 @@ export class TmpService {
   private recoverMaterializationAttempt(row: TmpRow, actor: Identity, ordenPagoId: number, tipo: string) {
     const claim = row.metadata?.integration;
     const operation = row.metadata?.regularizacionOp;
-    // Only the owner of this exact live FACTURA candidate may resume its claim.
-    if (tipo !== 'FACTURA' || row.estado !== 'almacenada' || row.promovida_en || row.archivo_id ||
+    // Only the owner of this exact live candidate may resume its matching consumer claim.
+    const consumer = tipo === 'FACTURA' ? 'OP_FACTURA_REGULARIZER_MATERIALIZATION'
+      : tipo === 'RECIBO_HONORARIO' ? 'OP_RECIBO_HONORARIO_REGULARIZER_MATERIALIZATION' : null;
+    if (!consumer || row.estado !== 'almacenada' || row.promovida_en || row.archivo_id ||
         !Number.isSafeInteger(Number(row.documento_id)) || Number(row.documento_id) <= 0 ||
         Number(row.actor_id) !== actor.actorId || Number(row.workspace_id) !== actor.workspaceId ||
         row.empresa_codigo !== actor.empresaCodigo || Number(row.cliente_destino_id) !== actor.clienteDestinoId ||
         operation?.consumer !== 'REGULARIZACION_OP' || operation.ordenPagoId !== ordenPagoId ||
-        operation.tipoRegularizador !== tipo || claim?.consumer !== 'OP_FACTURA_REGULARIZER_MATERIALIZATION' ||
+        operation.tipoRegularizador !== tipo || claim?.consumer !== consumer ||
         claim.completed !== false || typeof claim.identity !== 'string' || !claim.identity.trim() ||
         claim.identity !== claim.identity.trim().toLowerCase() || row.metadata?.promocionIdentity !== claim.identity) return null;
     return { tempId: Number(row.id), idempotencyKey: claim.identity };
+  }
+
+  // Solo TEMP pendiente de regularización OP: identidad persistida, no bandera del cliente.
+  private isPendingOpRegularization(row: TmpRow): boolean {
+    const context = row.metadata?.regularizacionOp;
+    return !row.promovida_en && row.estado === 'almacenada' &&
+      context?.consumer === 'REGULARIZACION_OP' &&
+      ['FACTURA', 'RECIBO_HONORARIO'].includes(context?.tipoRegularizador) &&
+      Number.isSafeInteger(Number(context?.ordenPagoId)) && Number(context.ordenPagoId) > 0;
   }
 
   async recoverRegularizacionOp(
@@ -345,9 +361,10 @@ export class TmpService {
           : new Date(row.expira_en);
 
         if (
-          !row.expira_en ||
-          Number.isNaN(expiraEn.getTime()) ||
-          expiraEn.getTime() <= Date.now()
+          (!row.expira_en || Number.isNaN(expiraEn.getTime()) || expiraEn.getTime() <= Date.now()) &&
+          !(this.isPendingOpRegularization(row) &&
+            Number(row.metadata.regularizacionOp.ordenPagoId) === ordenPagoId &&
+            row.metadata.regularizacionOp.tipoRegularizador === tipo)
         ) {
           return {
             tempId: Number(row.id),
@@ -400,12 +417,98 @@ export class TmpService {
       return this.result(row);
     });
   }
+  private documentalInput(raw: any, complete: boolean) {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw) ||
+      Object.keys(raw).some(k => !['tipoDocumental','expedienteId','documentoBaseId','grupoFacturaId',
+        'tipoRelacion','esPrincipal','orden','metadata','observacion'].includes(k)))
+      throw new BadRequestException('TMP_DOCUMENTAL_INPUT_INVALID');
+    const x = JSON.parse(JSON.stringify(raw));
+    if (!['OC','OS','FACTURA'].includes(x.tipoDocumental) || !Number.isSafeInteger(x.expedienteId) || x.expedienteId <= 0)
+      throw new BadRequestException('TMP_DOCUMENTAL_CONTEXT_INVALID');
+    const principal = x.tipoDocumental !== 'FACTURA';
+    if (x.esPrincipal !== principal || x.tipoRelacion !== (principal ? `principal_${x.tipoDocumental.toLowerCase()}` : 'adjunto_factura') ||
+      (!principal && (!Number.isSafeInteger(x.documentoBaseId) || x.documentoBaseId <= 0)))
+      throw new BadRequestException('TMP_DOCUMENTAL_RELATION_INVALID');
+    if (!x.metadata || typeof x.metadata !== 'object' || Array.isArray(x.metadata))
+      throw new BadRequestException('TMP_DOCUMENTAL_METADATA_REQUIRED');
+    if ((x.metadata.tipoDocumental != null && x.metadata.tipoDocumental !== x.tipoDocumental) ||
+      (x.metadata.tipoRelacion != null && x.metadata.tipoRelacion !== x.tipoRelacion) ||
+      (x.grupoFacturaId != null && (!Number.isSafeInteger(x.grupoFacturaId) || x.grupoFacturaId <= 0)) ||
+      (x.orden != null && (!Number.isSafeInteger(x.orden) || x.orden < 0)))
+      throw new BadRequestException('TMP_DOCUMENTAL_CONTEXT_INVALID');
+    if (complete) {
+      const f = x.metadata.fechaEmision;
+      const d = typeof f === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(f) ? new Date(`${f}T00:00:00.000Z`) : new Date(NaN);
+      if (Number.isNaN(d.getTime()) || d.toISOString().slice(0,10) !== f || Number(f.slice(0,4)) < 1900)
+        throw new BadRequestException('TMP_DOCUMENTAL_DATE_INVALID');
+    }
+    return x;
+  }
+  private assertDocumentalLive(row: TmpRow) {
+    if (row.estado !== 'almacenada' || !row.expira_en || !Number.isFinite(new Date(row.expira_en).getTime()) || new Date(row.expira_en).getTime() <= Date.now())
+      throw new ConflictException('TMP_DOCUMENTAL_EXPIRED_OR_NOT_STAGED');
+  }
+  async documental(id: number, actor: Identity, raw: unknown, draft = false) {
+    this.id(id);
+    const input = this.documentalInput(raw, !draft);
+    if (!draft && (!this.documentos || !this.documentalV2))
+      throw new ServiceUnavailableException('TMP_DOCUMENTAL_DEPENDENCIES_REQUIRED');
+    for (const [key, expected] of Object.entries({ empresaCodigo: actor.empresaCodigo,
+      clienteAbreviatura: actor.empresaCodigo, workspaceId: actor.workspaceId, clienteDestinoId: actor.clienteDestinoId })) {
+      if (input.metadata[key] != null && String(input.metadata[key]) !== String(expected))
+        throw new ConflictException('TMP_DOCUMENTAL_TENANT_CONFLICT');
+    }
+    const canonical = (v: any): any => Array.isArray(v) ? v.map(canonical) : v && typeof v === 'object'
+      ? Object.fromEntries(Object.keys(v).sort().map(k => [k, canonical(v[k])])) : v;
+    const fingerprint = createHash('sha256').update(JSON.stringify(canonical(input))).digest('hex');
+    const consumer = 'COMPRAS_TEMP_DOCUMENTAL';
+    const key = await this.repository.locked(String(id), async c => {
+      const row = await this.repository.own(c, id, actor);
+      const claim = row.metadata?.integration;
+      if (claim) {
+        if (draft || claim.consumer !== consumer || claim.identity !== actor.idempotencyKey ||
+          row.metadata?.documentalFingerprint !== fingerprint) throw new ConflictException('TMP_DOCUMENTAL_IDEMPOTENCY_CONFLICT');
+        return row.metadata.destinoReservado;
+      }
+      this.assertDocumentalLive(row);
+      if (row.metadata?.destinoReservado || row.promovida_en) throw new ConflictException('TMP_DOCUMENTAL_ALREADY_RESERVED');
+      await this.repository.assertDocumentalScope(c, row, input);
+      if (draft) {
+        await this.repository.saveDocumentalMetadata(c, id, { ...row.metadata, borradorDocumental: input });
+        return null;
+      }
+      await this.documentos!.validarTemporalAntesDeReserva(c, row, input);
+      const destination = buildCargaSeguraStorageKey({ operacionId: id, empresaCodigo: row.empresa_codigo,
+        nombreArchivo: row.nombre_archivo_original, fecha: new Date(`${input.metadata.fechaEmision}T00:00:00.000Z`) });
+      await this.repository.saveDocumentalMetadata(c, id, { ...row.metadata, borradorDocumental: input,
+        documentalFingerprint: fingerprint, destinoReservado: destination, promocionIdentity: actor.idempotencyKey,
+        integration: { consumer, identity: actor.idempotencyKey, completed: false } });
+      return destination;
+    });
+    if (draft) return this.consult(id, actor);
+    if (!this.documentos || !this.documentalV2) throw new ServiceUnavailableException('TMP_DOCUMENTAL_DEPENDENCIES_REQUIRED');
+    await this.promote(id, actor, key, { consumer, identity: actor.idempotencyKey,
+      persist: async (tx, row, destination) => {
+        await this.repository.assertDocumentalScope(tx, row, input);
+        const created = await this.documentos!.materializarTemporalConExecutor(tx, row, destination, input, actor);
+        const confirmed = await this.documentalV2!.integrarTemporalConExecutor(tx, created.confirmed, input,
+          { usuarioId: actor.actorId, requestId: actor.requestId, correlationId: actor.correlationId });
+        await tx`UPDATE documentos.carga_operaciones SET documento_id=${created.documentoId}, archivo_id=${created.archivoId},
+          metadata=jsonb_set(metadata,'{documentalResult}',${JSON.stringify({ ...confirmed, archivoId: created.archivoId,
+            documentoId: created.documentoId, tempId: id })}::jsonb) WHERE id=${id}`;
+      } });
+    return this.repository.locked(String(id), async c => {
+      const row = await this.repository.own(c, id, actor);
+      if (!row.metadata?.integration?.completed || !row.metadata?.documentalResult) throw new ConflictException('TMP_DOCUMENTAL_INCOMPLETE');
+      return row.metadata.documentalResult;
+    });
+  }
   async promote(id: number, actor: Identity, destination: unknown, integration?: TmpIntegration) {
     this.id(id);
     return this.repository.locked(String(id), async c => {
       let row = await this.repository.own(c, id, actor);
       assertTmpIntegration(row, integration);
-      this.destination(row, destination);
+      this.destination(row, destination, actor.idempotencyKey);
       const key = destination as string;
       if (row.metadata.destinoReservado && (row.metadata.destinoReservado !== key || row.metadata.promocionIdentity !== actor.idempotencyKey)) {
         throw new ConflictException('TMP_DESTINATION_CONFLICT');
@@ -415,8 +518,15 @@ export class TmpService {
       if (!row.promovida_en) {
         await this.repository.bind(c, row, key, actor.idempotencyKey);
         await this.verify(row, row.storage_key);
-        const existing = await this.storage.statObject({ ...this.source(row), key });
-        if (!existing.exists) await this.storage.copyObject({ provider: 'r2', bucket: row.storage_bucket, sourceKey: row.storage_key, destinationKey: key });
+        const transfer = { provider: 'r2' as const, bucket: row.storage_bucket, sourceKey: row.storage_key, destinationKey: key,
+          operationIdentity: `tmp:${row.id}:${actor.idempotencyKey}`, hashSha256: row.hash_sha256,
+          tamanoBytes: Number(row.tamano_bytes), contentType: row.content_type || 'application/octet-stream' };
+        const existing = await this.storage.statObject({ provider: 'r2', bucket: row.storage_bucket, key });
+        if (existing.exists) {
+          await this.storage.verifyExistingObject(transfer);
+        } else {
+          await this.storage.copyObject(transfer);
+        }
         await this.verify(row, key);
         await this.repository.promoted(c, row, actor, key, integration);
         row = await this.repository.own(c, id, actor);
@@ -431,14 +541,26 @@ export class TmpService {
     });
   }
   private id(id: number) { if (!Number.isSafeInteger(id) || id <= 0) throw new BadRequestException('tempId inválido'); }
-  private destination(row: TmpRow, key: unknown) {
-    // Reutiliza el namespace definitivo existente y la identidad global de carga_operaciones.
+  private destination(row: TmpRow, key: unknown, identity: string) {
+    // Las reservas anteriores conservan su destino literal e identidad de promoción.
     const parts = typeof key === 'string' ? key.split('/') : [];
-    if (parts.length !== 6 || parts[0] !== 'documentos' || parts[1] !== 'carga-segura' ||
-      !/^\d{4}$/.test(parts[2]) || !/^(0[1-9]|1[0-2])$/.test(parts[3]) || parts[4] !== row.empresa_codigo ||
-      !parts[5].startsWith(`${row.id}__`) || !/^[a-zA-Z0-9_-]+$/.test(parts[4]) ||
-      !/^[a-zA-Z0-9._-]+$/.test(parts[5]) || parts[5].includes('..') || parts[5].length > 220) {
+    const historical = parts[1] === 'carga-segura';
+    const offset = historical ? 1 : 0;
+    if (parts.length !== 5 + offset || parts[0] !== 'documentos' ||
+      !/^\d{4}$/.test(parts[1 + offset]) || !/^(0[1-9]|1[0-2])$/.test(parts[2 + offset]) ||
+      parts[3 + offset] !== row.empresa_codigo || !/^[a-zA-Z0-9_-]+$/.test(parts[3 + offset]) ||
+      !parts[4 + offset].startsWith(`${row.id}__`) || !/^[a-zA-Z0-9._-]+$/.test(parts[4 + offset]) ||
+      parts[4 + offset].includes('..') || parts[4 + offset].length > 220) {
       throw new BadRequestException('Destino fuera del namespace autorizado');
+    }
+    if (historical) {
+      if (!row.metadata?.destinoReservado) {
+        throw new BadRequestException('Destino histórico fuera del namespace autorizado para nuevas promociones');
+      }
+      if (typeof identity !== 'string' || !identity.trim() ||
+        row.metadata.destinoReservado !== key || row.metadata.promocionIdentity !== identity) {
+        throw new ConflictException('TMP_DESTINATION_CONFLICT');
+      }
     }
   }
   private source(row: TmpRow) { return { provider: 'r2' as const, bucket: row.storage_bucket as string, key: row.storage_key as string }; }
@@ -453,7 +575,9 @@ export class TmpService {
       actorId: Number(row.actor_id), workspaceId: Number(row.workspace_id), empresaCodigo: row.empresa_codigo,
       clienteDestinoId: Number(row.cliente_destino_id), nombreOriginal: row.nombre_archivo_original, mime: row.content_type,
       tamanoBytes: Number(row.tamano_bytes), hashSha256: row.hash_sha256, storageKey: row.storage_key,
-      creadoEn: row.iniciada_en, destinoStorageKey: row.destino_storage_key ?? null };
+      borradorDocumental: row.metadata?.borradorDocumental ?? null,
+      ocrCandidate: row.metadata?.ocrCandidate ?? null, documentalResult: row.metadata?.documentalResult ?? null,
+      expiraEn: row.expira_en, creadoEn: row.iniciada_en, destinoStorageKey: row.destino_storage_key ?? null };
   }
 
   async previewUrl(id: number, actor: Identity) {
@@ -471,9 +595,8 @@ export class TmpService {
         : new Date(row.expira_en);
 
       if (
-        !row.expira_en ||
-        Number.isNaN(expiraEn.getTime()) ||
-        expiraEn.getTime() <= Date.now()
+        (!row.expira_en || Number.isNaN(expiraEn.getTime()) || expiraEn.getTime() <= Date.now()) &&
+        !this.isPendingOpRegularization(row)
       ) {
         throw new ConflictException('TEMP_EXPIRADO');
       }
@@ -506,7 +629,7 @@ export class TmpService {
     this.id(tempId);
     const tipo = String(tipoEsperado ?? '').trim().toUpperCase();
 
-    if (!['FACTURA', 'RECIBO_HONORARIO'].includes(tipo)) {
+    if (!['OC', 'OS', 'FACTURA', 'RECIBO_HONORARIO'].includes(tipo)) {
       throw new BadRequestException('TEMP_OCR_TIPO_NO_PERMITIDO');
     }
 
@@ -531,7 +654,8 @@ export class TmpService {
         ? row.expira_en
         : new Date(row.expira_en);
 
-      if (!row.expira_en || Number.isNaN(expiraEn.getTime()) || expiraEn.getTime() <= Date.now()) {
+      if ((!row.expira_en || Number.isNaN(expiraEn.getTime()) || expiraEn.getTime() <= Date.now()) &&
+          !(this.isPendingOpRegularization(row) && row.metadata.regularizacionOp.tipoRegularizador === tipo)) {
         throw new ConflictException('TEMP_EXPIRADO');
       }
 
@@ -645,6 +769,10 @@ export class TmpService {
       const current = await this.repository.own(c, tempId, actor);
       const candidate = current.metadata?.ocrCandidate;
 
+      // Admission and OCR acceptance use the same tmp:tempId advisory lock.
+      // Once human confirmation reserves its input, late OCR must not mutate it.
+      if (current.metadata?.integration?.consumer === 'COMPRAS_TEMP_DOCUMENTAL') return false;
+
       if (current.storage_key !== decision.storageKey || candidate?.storageKey !== decision.storageKey || candidate?.attemptId !== decision.attemptId) {
         const cleanup = current.metadata?.replacement?.cleanup;
         if (cleanup?.key === decision.storageKey && cleanup.oldOcrPending) {
@@ -660,7 +788,8 @@ export class TmpService {
         throw new ConflictException('TEMP_OCR_CLAIM_INVALIDO');
       }
 
-      await this.repository.ocrDone(c, tempId, tipo, resultado, { storageKey: decision.storageKey, attemptId: decision.attemptId });
+      const persisted = await this.repository.ocrDone(c, tempId, tipo, resultado, { storageKey: decision.storageKey, attemptId: decision.attemptId });
+      if (persisted === false) return false;
       return true;
     });
     if (!accepted) throw new ConflictException('TEMP_OCR_STALE_RESULT_DISCARDED');

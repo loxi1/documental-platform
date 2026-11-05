@@ -109,6 +109,8 @@ export interface ReservarCargaSeguraInput {
   actorId: number;
   idempotencyKey: string;
   payloadFingerprint: string;
+  fingerprintVersion?: string;
+  legacyPayloadFingerprint?: string;
   requestId: string | null;
   correlationId: string | null;
   canalIngreso: string;
@@ -252,6 +254,10 @@ export interface CargaSeguraStorageCopyInput {
   bucket: string;
   sourceKey: string;
   destinationKey: string;
+  operationIdentity: string;
+  hashSha256: string;
+  tamanoBytes: number;
+  contentType: string;
 }
 
 export interface CargaSeguraStorageCopyResult {

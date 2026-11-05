@@ -487,6 +487,8 @@ export class ExpedientesService {
     filters: {
       empresa: string;
       clienteDestinoId: number | null;
+      workspaceId: number;
+      fechaEmision: string;
     },
   ) {
     return this.repo.getRevisionContableOrdenPago(

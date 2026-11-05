@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 
-import { CARGA_SEGURA_FINGERPRINT_VERSION } from './carga-segura.constants';
+import { CARGA_SEGURA_R2_FINGERPRINT_VERSION, CARGA_SEGURA_FINGERPRINT_VERSION } from './carga-segura.constants';
 import type { CargaSeguraFingerprintPayload } from './carga-segura.types';
 
 type CanonicalJsonValue =
@@ -169,4 +169,17 @@ function normalizeSha256(value: string): string {
   }
 
   return normalized;
+}
+
+/** Separate algorithm: the historical v1 canonical payload is unchanged. */
+export function calculateCargaSeguraR2Fingerprint(
+  payload: CargaSeguraFingerprintPayload & { grupoFacturaId: number; documentoBaseId: number },
+) {
+  const canonicalJson = canonicalizeJson({
+    ...normalizeFingerprintPayload(payload),
+    grupoFacturaId: normalizePositiveInteger(payload.grupoFacturaId, 'grupoFacturaId'),
+    documentoBaseId: normalizePositiveInteger(payload.documentoBaseId, 'documentoBaseId'),
+  });
+  return { version: CARGA_SEGURA_R2_FINGERPRINT_VERSION, canonicalJson,
+    fingerprint: createHash('sha256').update(canonicalJson, 'utf8').digest('hex') };
 }

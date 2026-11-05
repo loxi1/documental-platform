@@ -1,14 +1,16 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
+import { TmpRepository, type TmpConnection } from '../tmp/tmp.repository';
 
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
 import { CARGA_SEGURA_STORAGE } from './carga-segura.constants';
 import { CargaSeguraCompensation } from './carga-segura.compensation';
 import { CargaSeguraError } from './carga-segura.errors';
-import { calculateCargaSeguraFingerprint } from './carga-segura.fingerprint';
+import { calculateCargaSeguraR2Fingerprint, calculateCargaSeguraFingerprint } from './carga-segura.fingerprint';
 import { CargaSeguraPersistence } from './carga-segura.persistence';
 import { CargaSeguraRepository } from './carga-segura.repository';
+import { PeriodoDocumentalR2Repository } from '../periodo-documental-r2.repository';
 import {
   buildCargaSeguraStorageKey,
   type CargaSeguraStorage,
@@ -22,6 +24,7 @@ import type {
 
 @Injectable()
 export class CargaSeguraService {
+  private readonly logger = new Logger(CargaSeguraService.name);
   constructor(
     private readonly config: ConfigService,
     private readonly repository: CargaSeguraRepository,
@@ -29,15 +32,18 @@ export class CargaSeguraService {
     private readonly storage: CargaSeguraStorage,
     private readonly persistence: CargaSeguraPersistence,
     private readonly compensation: CargaSeguraCompensation,
+    private readonly periodoR2: PeriodoDocumentalR2Repository,
+    private readonly tmpRepository: TmpRepository,
   ) {}
 
   async ejecutar(command: CargaSeguraCommand): Promise<CargaSeguraResult> {
     this.assertEnabled();
 
     const normalized = this.normalizeCommand(command);
+    const bucket = this.resolveBucket();
     const hashSha256 = this.calculateHash(normalized.archivo);
 
-    const fingerprint = calculateCargaSeguraFingerprint({
+    const payload = {
       workspaceId: normalized.workspaceId,
       empresaCodigo: normalized.empresaCodigo,
       clienteDestinoId: normalized.clienteDestinoId,
@@ -51,7 +57,29 @@ export class CargaSeguraService {
       contentType: normalized.contentType,
       tamanoBytes: normalized.tamanoBytes,
       hashSha256,
-    });
+    };
+    // P3: el cliente nunca puede suministrar evidencia de fase ni identidad interna,
+    // incluso a través de canales legacy. Rechazar ANTES de reservar o enviar PUT.
+    if (['r2IdentityV2', 'r2RecoveryV1'].some(key =>
+      Object.prototype.hasOwnProperty.call(normalized.metadata ?? {}, key))) {
+      throw this.invalidRequest('Metadata interna reservada');
+    }
+    const legacy = calculateCargaSeguraFingerprint(payload);
+    const esR2 = this.isR2Almacen(normalized);
+    if (esR2) {
+      this.positiveInteger(normalized.grupoFacturaId as number, 'grupoFacturaId');
+      this.positiveInteger(normalized.documentoBaseId as number, 'documentoBaseId');
+      this.positiveInteger(normalized.clienteDestinoId as number, 'clienteDestinoId');
+      this.positiveInteger(normalized.expedienteId as number, 'expedienteId');
+      const guia = normalized.canalIngreso === 'ALMACEN_LEGACY_UPLOAD_GUIA';
+      if (normalized.esPrincipal || normalized.tipoDocumental !== (guia ? 'GUIA_REMISION' : 'NOTA_INGRESO') ||
+        normalized.tipoRelacion !== (guia ? 'adjunto_guia' : 'adjunto_nota_ingreso')) {
+        throw this.invalidRequest('Contrato de Almacén incompatible');
+      }
+    }
+    const fingerprint = esR2 ? calculateCargaSeguraR2Fingerprint({ ...payload,
+      grupoFacturaId: normalized.grupoFacturaId as number,
+      documentoBaseId: normalized.documentoBaseId as number }) : legacy;
 
     const reserva = await this.repository.reservar({
       workspaceId: normalized.workspaceId,
@@ -61,6 +89,8 @@ export class CargaSeguraService {
       actorId: normalized.actorId,
       idempotencyKey: normalized.idempotencyKey,
       payloadFingerprint: fingerprint.fingerprint,
+      fingerprintVersion: fingerprint.version,
+      ...(esR2 ? { legacyPayloadFingerprint: legacy.fingerprint } : {}),
       requestId: normalized.requestId,
       correlationId: normalized.correlationId ?? normalized.requestId,
       canalIngreso: normalized.canalIngreso,
@@ -68,32 +98,180 @@ export class CargaSeguraService {
       contentType: normalized.contentType,
       tamanoBytes: normalized.tamanoBytes,
       hashSha256,
-      metadata: normalized.metadata,
+      metadata: esR2 ? { ...normalized.metadata, r2RecoveryV1: {
+        version: 1, phase: 'PRE_PUT', attempt: 1, fencingToken: randomUUID(),
+      }, r2IdentityV2: {
+        version: 2, workspaceId: normalized.workspaceId, empresaCodigo: normalized.empresaCodigo,
+        clienteDestinoId: normalized.clienteDestinoId, expedienteId: normalized.expedienteId,
+        actorId: normalized.actorId, grupoFacturaId: normalized.grupoFacturaId,
+        documentoBaseId: normalized.documentoBaseId,
+      } } : normalized.metadata,
     });
 
     if (reserva.kind !== 'RESERVED') {
+      if (esR2 && reserva.kind !== 'IDEMPOTENCY_CONFLICT') {
+        const row = reserva.operacion;
+        const scoped = row.workspaceId === normalized.workspaceId && row.empresaCodigo === normalized.empresaCodigo &&
+          row.clienteDestinoId === normalized.clienteDestinoId && row.expedienteId === normalized.expedienteId &&
+          row.actorId === normalized.actorId && row.canalIngreso === normalized.canalIngreso;
+        // Reintento tras un PUT confirmado por metadata, pero sin COMMIT documental.
+        // No reenvía PUT ni recupera PRE_PUT: conserva mutex, identidad y CAS terminal.
+        const recovery = row.metadata?.r2RecoveryV1 as Record<string, unknown> | undefined;
+        const identity = row.metadata?.r2IdentityV2 as Record<string, unknown> | undefined;
+        if (scoped && row.estado === 'iniciada' && !row.requiereReconciliacion &&
+            row.documentoId == null && row.archivoId == null && recovery?.version === 1 &&
+            recovery.phase === 'PUT_STARTED' && identity?.version === 2 &&
+            identity.grupoFacturaId === normalized.grupoFacturaId &&
+            identity.documentoBaseId === normalized.documentoBaseId &&
+            row.hashSha256 === hashSha256 && row.storageBucket === bucket &&
+            typeof row.storageKey === 'string' && recovery.storageKey === row.storageKey &&
+            recovery.storageBucket === bucket && typeof recovery.fencingToken === 'string' &&
+            typeof recovery.attempt === 'number' && Number.isSafeInteger(recovery.attempt) && recovery.attempt > 0) {
+          try {
+            return await this.tmpRepository.lockedBounded(
+              `${normalized.workspaceId}:${normalized.empresaCodigo}:${row.id}`, async connection => {
+                const object = await this.storage.statObject({ provider: 'r2', bucket, key: row.storageKey! });
+                if (!object.exists || object.hashSha256 !== hashSha256 || object.tamanoBytes !== normalized.tamanoBytes ||
+                    !await this.periodoR2.verificarIdentidadGrupo(normalized as any, {
+                      grupoFacturaId: normalized.grupoFacturaId!, documentoBaseId: normalized.documentoBaseId!,
+                    })) return { kind: 'RECONCILIATION_REQUIRED', operacionId: row.id,
+                      errorCode: 'ARCHIVO_REQUIERE_RECONCILIACION' };
+                const { r2IdentityV2, r2RecoveryV1, ...metadata } = row.metadata!;
+                const persisted = await this.persistence.persistirProtegidaR2(connection,
+                  { operacion: row, command: { ...normalized, metadata } }, {
+                    fencingToken: recovery.fencingToken as string, attempt: recovery.attempt as number,
+                    storageBucket: bucket, storageKey: row.storageKey!,
+                  });
+                return { kind: 'CREATED', ...persisted, hashSha256 };
+              });
+          } catch {
+            return { kind: 'RECONCILIATION_REQUIRED', operacionId: row.id,
+              errorCode: 'ARCHIVO_REQUIERE_RECONCILIACION' };
+          }
+        }
+        const proven = scoped && row.estado === 'completada' && this.validId(row.documentoId) &&
+          await this.periodoR2.verificarIdentidadGrupo(normalized as any, {
+            grupoFacturaId: normalized.grupoFacturaId as number,
+            documentoBaseId: normalized.documentoBaseId as number, documentoId: row.documentoId!,
+          });
+        if (!proven) return { kind: 'RECONCILIATION_REQUIRED', operacionId: row.id,
+          errorCode: 'ARCHIVO_REQUIERE_RECONCILIACION' };
+      }
       return this.resolveExistingOperation(reserva);
     }
 
-    return this.processReserved(reserva.operacion, normalized, hashSha256);
+    return this.processReserved(reserva.operacion, normalized, hashSha256, bucket);
   }
 
   private async processReserved(
     operacion: CargaSeguraOperacionRow,
     command: CargaSeguraCommand,
     hashSha256: string,
+    bucket: string,
   ): Promise<CargaSeguraResult> {
-    const bucket = this.resolveBucket();
-
-    const storageKey = buildCargaSeguraStorageKey({
-      operacionId: operacion.id,
-      empresaCodigo: command.empresaCodigo,
-      nombreArchivo: command.nombreArchivo,
-    });
 
     let stored: Awaited<ReturnType<CargaSeguraStorage['putObject']>>;
+    let etapa: 'RESOLUCION_R2' | 'STORAGE' = 'RESOLUCION_R2';
+    let attemptedKey: string | null = null;
+    let enteredProtectedR2 = false;
 
     try {
+      const esCanalGuia =
+        command.canalIngreso === 'ALMACEN_LEGACY_UPLOAD_GUIA';
+
+      const esCanalNI =
+        command.canalIngreso === 'ALMACEN_LEGACY_UPLOAD_NOTA_INGRESO';
+
+      let fechaDocumental: Date | undefined;
+
+      if (esCanalGuia || esCanalNI) {
+        if (!await this.periodoR2.verificarIdentidadGrupo(command as any, {
+          grupoFacturaId: command.grupoFacturaId as number,
+          documentoBaseId: command.documentoBaseId as number,
+        })) throw this.invalidRequest('Identidad del grupo y documento base incompatible');
+        const contratoValido = esCanalGuia
+          ? command.tipoDocumental === 'GUIA_REMISION' &&
+            command.tipoRelacion === 'adjunto_guia'
+          : command.tipoDocumental === 'NOTA_INGRESO' &&
+            command.tipoRelacion === 'adjunto_nota_ingreso';
+
+        if (!contratoValido) {
+          throw new CargaSeguraError(
+            'CARGA_SEGURA_SOLICITUD_INVALIDA',
+            'El canal de Almacén no coincide con el tipo documental y su relación',
+          );
+        }
+
+        if (
+          !Number.isSafeInteger(command.expedienteId) ||
+          !Number.isSafeInteger(command.grupoFacturaId) ||
+          Number(command.expedienteId) <= 0 ||
+          Number(command.grupoFacturaId) <= 0
+        ) {
+          throw new CargaSeguraError(
+            'CARGA_SEGURA_SOLICITUD_INVALIDA',
+            'La carga de Almacén requiere expediente y grupo Factura válidos',
+          );
+        }
+
+        const periodo = await this.periodoR2.resolver(
+          {
+            workspaceId: command.workspaceId,
+            empresaCodigo: command.empresaCodigo,
+            clienteDestinoId: command.clienteDestinoId,
+            expedienteId: command.expedienteId as number,
+          },
+          {
+            operacion: esCanalGuia ? 'NUEVA_GUIA' : 'NUEVA_NI',
+            grupoFacturaId: command.grupoFacturaId as number,
+          },
+        );
+
+        fechaDocumental = periodo.fecha;
+      }
+
+      const esSustento = ['TRANSFERENCIA', 'PAGO_TRANSFERENCIA', 'DETRACCION', 'PAGO_DETRACCION']
+        .includes(command.tipoDocumental) ||
+        ['adjunto_transferencia', 'adjunto_detraccion'].includes(command.tipoRelacion ?? '');
+      if (esSustento) {
+        const contratoValido = !command.esPrincipal && (
+          (['TRANSFERENCIA', 'PAGO_TRANSFERENCIA'].includes(command.tipoDocumental) &&
+            command.tipoRelacion === 'adjunto_transferencia') ||
+          (['DETRACCION', 'PAGO_DETRACCION'].includes(command.tipoDocumental) &&
+            command.tipoRelacion === 'adjunto_detraccion'));
+        if (!contratoValido) {
+          throw new CargaSeguraError('CARGA_SEGURA_SOLICITUD_INVALIDA',
+            'El sustento de pago no coincide con su relación documental');
+        }
+        const periodo = await this.periodoR2.resolverSustento({
+          workspaceId: command.workspaceId, empresaCodigo: command.empresaCodigo,
+          clienteDestinoId: command.clienteDestinoId, expedienteId: command.expedienteId as number,
+        }, { grupoFacturaId: command.grupoFacturaId as number,
+          documentoBaseId: command.documentoBaseId as number });
+        fechaDocumental = periodo.fecha;
+      }
+
+      const storageKey = buildCargaSeguraStorageKey({
+        operacionId: operacion.id,
+        empresaCodigo: command.empresaCodigo,
+        nombreArchivo: command.nombreArchivo,
+        ...(fechaDocumental ? { fecha: fechaDocumental } : {}),
+      });
+
+      if (this.isR2Almacen(command)) {
+        // Only a server-owned P3 reservation may reach the protected PUT path.
+        // Missing protocol metadata must fail closed, never fall back to legacy PUT.
+        const protocol = operacion.metadata?.r2RecoveryV1 as Record<string, unknown> | undefined;
+        if (protocol?.version !== 1) {
+          return { kind: 'RECONCILIATION_REQUIRED', operacionId: operacion.id,
+            errorCode: 'ARCHIVO_REQUIERE_RECONCILIACION' };
+        }
+        enteredProtectedR2 = true;
+        return await this.processReservedR2(operacion, command, hashSha256, bucket, storageKey);
+      }
+
+      etapa = 'STORAGE';
+      attemptedKey = storageKey;
       stored = await this.storage.putObject({
         provider: 'r2',
         bucket,
@@ -103,11 +281,38 @@ export class CargaSeguraService {
         hashSha256,
       });
     } catch (error) {
-      await this.repository.marcarFallida({
-        operacionId: operacion.id,
-        errorCodigo: 'CARGA_SEGURA_STORAGE_FAILED',
-        errorDetalle: this.errorMessage(error),
-      });
+      // P3: never invoke legacy failure transitions on a fenced R2 operation.
+      if (this.isR2Almacen(command)) {
+        if (!enteredProtectedR2) {
+          await this.tryMarkR2PrePutFailure(operacion, command);
+          throw error;
+        }
+        this.logger.warn({ event: 'P3_PROTECTED_PROTOCOL_UNCERTAIN', operacionId: operacion.id });
+        return { kind: 'RECONCILIATION_REQUIRED', operacionId: operacion.id,
+          errorCode: 'ARCHIVO_REQUIERE_RECONCILIACION' };
+      }
+      const errorCodigo =
+        error instanceof CargaSeguraError
+          ? error.code
+          : etapa === 'RESOLUCION_R2'
+            ? 'CARGA_SEGURA_R2_RESOLUCION_FALLIDA'
+            : 'CARGA_SEGURA_STORAGE_FAILED';
+
+      try {
+        // An attempted PUT can have succeeded remotely even when its response failed.
+        const applied = attemptedKey !== null
+          ? await this.repository.marcarRequiereReconciliacion({
+              operacionId: operacion.id, storageProvider: 'r2', storageBucket: bucket,
+              storageKey: attemptedKey, errorCodigo: 'ARCHIVO_REQUIERE_RECONCILIACION',
+              errorDetalle: 'STORAGE_OUTCOME_UNCERTAIN',
+            })
+          : await this.repository.marcarFallida({
+              operacionId: operacion.id, errorCodigo, errorDetalle: this.errorMessage(error),
+            });
+        if (!applied) this.logger.warn({ event: 'CARGA_SEGURA_FAILURE_NOT_RECORDED', operacionId: operacion.id });
+      } catch {
+        this.logger.warn({ event: 'CARGA_SEGURA_FAILURE_RECORD_ERROR', operacionId: operacion.id });
+      }
 
       throw error;
     }
@@ -216,6 +421,118 @@ export class CargaSeguraService {
     }
   }
 
+  /** P3: one advisory-locked session; no SQL transaction spans remote PUT. */
+  private async processReservedR2(
+    operacion: CargaSeguraOperacionRow, command: CargaSeguraCommand,
+    hashSha256: string, bucket: string, storageKey: string,
+  ): Promise<CargaSeguraResult> {
+    const recovery = operacion.metadata?.r2RecoveryV1 as Record<string, unknown> | undefined;
+    const fence = {
+      fencingToken: String(recovery?.fencingToken ?? ''),
+      attempt: Number(recovery?.attempt), storageBucket: bucket, storageKey,
+    };
+    const required = (n: unknown): n is number => typeof n === 'number' && Number.isSafeInteger(n) && n > 0;
+    if (recovery?.version !== 1 || recovery.phase !== 'PRE_PUT' ||
+      !fence.fencingToken || !required(fence.attempt) ||
+      !required(command.clienteDestinoId) || !required(command.expedienteId) ||
+      !required(command.grupoFacturaId) || !required(command.documentoBaseId)) {
+      return { kind: 'RECONCILIATION_REQUIRED', operacionId: operacion.id,
+        errorCode: 'ARCHIVO_REQUIERE_RECONCILIACION' };
+    }
+    const pending = (): CargaSeguraResult => ({ kind: 'RECONCILIATION_REQUIRED',
+      operacionId: operacion.id, errorCode: 'ARCHIVO_REQUIERE_RECONCILIACION' });
+    try {
+      return await this.tmpRepository.lockedBounded(
+        `${command.workspaceId}:${command.empresaCodigo}:${operacion.id}`,
+        async (connection: TmpConnection): Promise<CargaSeguraResult> => {
+          const claimed = await this.tmpRepository.transaction(connection, tx =>
+            this.repository.marcarPutStartedProtegidoR2(tx, {
+              operacionId: operacion.id, workspaceId: command.workspaceId,
+              empresaCodigo: command.empresaCodigo,
+              clienteDestinoId: command.clienteDestinoId as number,
+              expedienteId: command.expedienteId as number, actorId: command.actorId,
+              grupoFacturaId: command.grupoFacturaId as number,
+              documentoBaseId: command.documentoBaseId as number,
+              canalIngreso: command.canalIngreso as 'ALMACEN_LEGACY_UPLOAD_GUIA' | 'ALMACEN_LEGACY_UPLOAD_NOTA_INGRESO',
+              ...fence,
+            }));
+          // Only a confirmed COMMIT can reach this line; any rejection returns no PUT.
+          if (!claimed) return pending();
+          let stored: Awaited<ReturnType<CargaSeguraStorage['putObject']>>;
+          try {
+            stored = await this.storage.putObject({ provider: 'r2', bucket,
+              key: storageKey, body: command.archivo,
+              contentType: command.contentType, hashSha256 });
+          } catch {
+            await this.tryMarkR2Reconciliation(connection, operacion, command, fence);
+            return pending();
+          }
+          if (stored.kind !== 'CREATED' || stored.provider !== 'r2' ||
+            stored.bucket !== bucket || stored.key !== storageKey) {
+            await this.tryMarkR2Reconciliation(connection, operacion, command, fence);
+            return pending();
+          }
+          try {
+            const persisted = await this.persistence.persistirProtegidaR2(connection,
+              { operacion, command }, fence);
+            return { kind: 'CREATED', operacionId: persisted.operacionId,
+              documentoId: persisted.documentoId, archivoId: persisted.archivoId, hashSha256 };
+          } catch {
+            // Even after a successful PUT, terminal COMMIT may be uncertain.
+            await this.tryMarkR2Reconciliation(connection, operacion, command, fence);
+            return pending();
+          }
+        },
+      );
+    } catch {
+      // Mutex/connection/CAS/COMMIT uncertainty: fail closed; no legacy compensation.
+      return pending();
+    }
+  }
+
+  private async tryMarkR2Reconciliation(
+    connection: TmpConnection, operacion: CargaSeguraOperacionRow,
+    command: CargaSeguraCommand,
+    fence: { fencingToken: string; attempt: number; storageBucket: string; storageKey: string },
+  ): Promise<void> {
+    try {
+      await this.tmpRepository.transaction(connection, tx =>
+        this.repository.marcarReconciliacionProtegidaR2(tx, {
+          operacionId: operacion.id, workspaceId: command.workspaceId,
+          empresaCodigo: command.empresaCodigo, ...fence,
+          errorCodigo: 'ARCHIVO_REQUIERE_RECONCILIACION',
+        }));
+    } catch {
+      // No unfenced fallback; a disconnected session cannot safely write terminal state.
+    }
+  }
+
+  private async tryMarkR2PrePutFailure(
+    operacion: CargaSeguraOperacionRow,
+    command: CargaSeguraCommand,
+  ): Promise<void> {
+    const recovery = operacion.metadata?.r2RecoveryV1 as Record<string, unknown> | undefined;
+    if (recovery?.version !== 1 || recovery.phase !== 'PRE_PUT' ||
+        typeof recovery.fencingToken !== 'string' || !recovery.fencingToken ||
+        typeof recovery.attempt !== 'number' ||
+        !Number.isSafeInteger(recovery.attempt) || recovery.attempt <= 0) return;
+    const { fencingToken, attempt } = recovery;
+    try {
+      const applied = await this.tmpRepository.lockedBounded(
+        `${command.workspaceId}:${command.empresaCodigo}:${operacion.id}`,
+        connection => this.tmpRepository.transaction(connection, tx =>
+          this.repository.marcarFalloPrePutProtegidoR2(tx, {
+            operacionId: operacion.id, workspaceId: command.workspaceId,
+            empresaCodigo: command.empresaCodigo,
+            fencingToken, attempt,
+          })),
+      );
+      if (!applied) this.logger.warn({ event: 'P3_PRE_PUT_FAILURE_NOT_RECORDED', operacionId: operacion.id });
+    } catch {
+      this.logger.warn({ event: 'P3_PRE_PUT_FAILURE_RECORD_ERROR', operacionId: operacion.id });
+    }
+  }
+
   private async markPostStorageReconciliation(
     operacionId: number,
     storageObject: Pick<
@@ -240,6 +557,10 @@ export class CargaSeguraService {
         { operacionId },
       );
     }
+  }
+
+  private isR2Almacen(command: CargaSeguraCommand): boolean {
+    return ['ALMACEN_LEGACY_UPLOAD_GUIA', 'ALMACEN_LEGACY_UPLOAD_NOTA_INGRESO'].includes(command.canalIngreso);
   }
 
   private resolveExistingOperation(

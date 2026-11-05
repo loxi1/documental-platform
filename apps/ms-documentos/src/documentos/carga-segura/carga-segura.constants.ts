@@ -38,3 +38,5 @@ export const CARGA_SEGURA_ERROR_CODES = [
 export type CargaSeguraErrorCode = (typeof CARGA_SEGURA_ERROR_CODES)[number];
 
 export const CARGA_SEGURA_STORAGE = Symbol('CARGA_SEGURA_STORAGE');
+
+export const CARGA_SEGURA_R2_FINGERPRINT_VERSION = 'canonical-json-r2-v2' as const;

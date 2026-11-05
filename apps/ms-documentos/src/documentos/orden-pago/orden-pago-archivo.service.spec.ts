@@ -18,7 +18,7 @@ const body = { contenedorOperativoId: 7, fechaEmision: '2026-08-15', monto: '125
 const actor = { id: 6, workspaceId: 12, empresaCodigo: 'BBTI', clienteDestinoId: 2, requestId: key, correlationId: key };
 const tmpActor = { ...actor, actorId: 6, idempotencyKey: key };
 const source = 'documentos/tmp/12/50';
-const dest = 'documentos/carga-segura/2026/09/BBTI/50__pago.pdf';
+const dest = 'documentos/2026/08/BBTI/50__pago.pdf';
 
 // Adaptador SQL transaccional en memoria. Usa los servicios y repositorios reales;
 // falla ante cualquier consulta no prevista (incluidos inserts OCR/outbox/documentos extra).
@@ -77,6 +77,9 @@ describe('OP-01B T1/T2 y recuperación', () => {
       if (q.includes("SET estado='completada'")) { state.row.estado = 'completada'; return []; }
       throw new Error(`Unexpected SQL: ${q}`);
     });
+    // Compatibilidad con postgres.js para parámetros JSONB.
+    tx.json = jest.fn((value: unknown) => value);
+
     tx.unsafe = jest.fn(async (q: string) => {
       events.push(q);
       if (q === 'BEGIN') { expect(inTransaction).toBe(false); snapshot = structuredClone(state); inTransaction = true; }
@@ -123,10 +126,21 @@ describe('OP-01B T1/T2 y recuperación', () => {
     files = new Map([[source, { exists: true, tamanoBytes: 9, hashSha256: 'a'.repeat(64) }]]);
     storage = {
       statObject: jest.fn(async ({ key: k }) => files.get(k) || { exists: false }),
-      copyObject: jest.fn(async () => {
+      verifyExistingObject: jest.fn(async (input: any) => {
+        const object = files.get(input.destinationKey);
+        if (!object?.exists ||
+            object.tamanoBytes !== input.tamanoBytes ||
+            object.hashSha256 !== input.hashSha256 ||
+            object.operationIdentity !== input.operationIdentity) {
+          throw new Error('DESTINATION_IDENTITY_CONFLICT');
+        }
+      }),
+      copyObject: jest.fn(async (input: any) => {
         expect(inTransaction).toBe(false); events.push('COPY');
         if (fail === 'copy') throw new Error('copy');
-        files.set(dest, { ...files.get(source), ...(fail === 'hash' ? { hashSha256: 'b'.repeat(64) } : {}),
+        files.set(dest, { ...files.get(source),
+          operationIdentity: input.operationIdentity,
+          ...(fail === 'hash' ? { hashSha256: 'b'.repeat(64) } : {}),
           ...(fail === 'size' ? { tamanoBytes: 8 } : {}) });
       }),
       deleteObject: jest.fn(async () => {
@@ -169,6 +183,8 @@ describe('OP-01B T1/T2 y recuperación', () => {
       new OrdenPagoArchivoRepository(audit),
       repo,
       tmp,
+      {} as any,
+      audit,
     );
   });
   const withFile = () => ({ ...body, tempId: 50 });

@@ -2123,22 +2123,32 @@ export class ExpedientesRepository {
     filters: {
       empresa: string;
       clienteDestinoId: number | null;
+      workspaceId: number;
+      fechaEmision: string;
     },
   ) {
     const q = String(numero ?? '').trim();
 
-    if (!q) return null;
+    // La fecha de emisión procede del detalle OP autorizado, no del período
+    // funcional opcional ni de la fecha actual. Mantiene la consulta delimitada.
+    const fecha = /^(\d{4})-(\d{2})-\d{2}(?:$|T)/.exec(String(filters.fechaEmision ?? ''));
+    const anio = Number(fecha?.[1]);
+    const mes = Number(fecha?.[2]);
+    if (!q || !fecha || anio < 1 || mes < 1 || mes > 12 ||
+        !Number.isSafeInteger(filters.workspaceId) || filters.workspaceId <= 0) return null;
 
     const rows = await this.getRevisionContable(
       {
         empresa: filters.empresa,
+        anio,
+        mes,
         q,
         limit: 200,
         offset: 0,
         soloPendientesFinanzas: false,
       },
       {
-        workspaceId: 0,
+        workspaceId: filters.workspaceId,
         clienteDestinoId: filters.clienteDestinoId,
       },
     );

@@ -67,6 +67,7 @@ describe('OrdenPagoController - confirmarPago contrato HTTP', () => {
         sessionContextId: 'session-r7-b3',
         sistemaCodigo: 'DOCUMENTAL',
         perfilCodigo: 'FINANZAS',
+        tienePermisoAutorizarExcepcion: false,
       },
     );
 

@@ -1578,6 +1578,7 @@ describe('OP-01A creación atómica', () => {
           usuarioId: actor.id,
           requestId: actor.requestId,
           correlationId: actor.correlationId,
+          tienePermisoAutorizarExcepcion: false,
         },
       );
 

@@ -28,6 +28,7 @@ describe('R23 reemplazo archivo inicial OP', () => {
     documentoId: 210,
     grupoFacturaId: 114,
     contenedorOperativoId: 7,
+    fechaEmision: '2026-09-15',
     archivoInicial: {
       archivoId: 441,
       nombreArchivo: 'anterior.pdf',
@@ -192,7 +193,7 @@ describe('R23 reemplazo archivo inicial OP', () => {
         contenedorOperativoId: 7,
       }),
       identity,
-      expect.any(String),
+      'documentos/2026/09/BBTI/50__nuevo.pdf',
     );
 
     expect(x.documentos.agregarArchivoComoVersion).toHaveBeenCalledWith(

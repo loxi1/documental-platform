@@ -26,6 +26,7 @@ import { DocumentosPreviewService } from './documentos-preview.service';
 import { DocumentosRepository } from './documentos.repository';
 import { DocumentosService } from './documentos.service';
 import { DocumentosUploadService } from './documentos-upload.service';
+import { PeriodoDocumentalR2Repository } from './periodo-documental-r2.repository';
 
 @Module({
   imports: [DocumentoEventosModule, DocumentalV2Module],
@@ -41,6 +42,7 @@ import { DocumentosUploadService } from './documentos-upload.service';
     DocumentosRepository,
     DocumentosPreviewService,
     DocumentosUploadService,
+    PeriodoDocumentalR2Repository,
     CargaSeguraRepository,
     CargaSeguraPersistence,
     R2CargaSeguraStorage,

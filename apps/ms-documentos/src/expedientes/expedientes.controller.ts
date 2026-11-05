@@ -255,6 +255,8 @@ export class ExpedientesController {
       {
         empresa: actor.empresaCodigo,
         clienteDestinoId: actor.clienteDestinoId ?? null,
+        workspaceId: actor.workspaceId,
+        fechaEmision: detalle.fechaEmision,
       },
     );
 

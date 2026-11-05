@@ -70,7 +70,9 @@ export class OrdenPagoController {
     @Param('ordenPagoId') id: string,
     @Body() body: unknown,
   ) {
-    return this.op.confirmarPago(Number(id), body, this.actor(headers));
+    return this.op.confirmarPago(Number(id), body, { ...this.actor(headers),
+      tienePermisoAutorizarExcepcion: headers['x-finanzas-correspondencia-autorizar-excepcion'] === 'true',
+    });
   }
 
   @Get('bandeja')

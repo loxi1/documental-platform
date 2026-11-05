@@ -1,3 +1,4 @@
+import { BadRequestException } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 
 import {
@@ -372,4 +373,26 @@ function validationError(
     message,
     details,
   );
+}
+
+/** Internal Gateway identity for version uploads; no public idempotency key is required. */
+export type VersionDocumentalActor = Omit<CargaSeguraHttpResolvedIdentity, 'idempotencyKey'>;
+export function resolverIdentidadVersionDocumental(
+  input: Omit<Parameters<typeof resolveCargaSeguraHttpIdentity>[0], 'idempotencyKey'>,
+): VersionDocumentalActor {
+  try {
+  const requestId = resolveOptionalIdentifier(input.requestId) ?? randomUUID();
+  return {
+    workspaceId: parseRequiredPositiveIntegerHeader(input.workspaceId, 'x-workspace-id'),
+    empresaCodigo: parseRequiredTextHeader(input.empresaCodigo, 'x-empresa-codigo'),
+    clienteDestinoId: parseRequiredPositiveIntegerHeader(input.clienteDestinoId, 'x-cliente-destino-id'),
+    actorId: resolveActorId(input.actorId, input.userId),
+    requestId, correlationId: resolveOptionalIdentifier(input.correlationId) ?? requestId,
+  };
+  } catch (error) {
+    if (error instanceof CargaSeguraHttpValidationError) {
+      throw new BadRequestException('VERSION_IDENTIDAD_INVALIDA');
+    }
+    throw error;
+  }
 }

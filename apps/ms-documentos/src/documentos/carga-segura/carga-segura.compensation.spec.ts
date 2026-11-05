@@ -64,6 +64,29 @@ function createInput(
 }
 
 describe('CargaSeguraCompensation', () => {
+  it('P3 no elimina storage sin una compensación cercada por fencing', async () => {
+    const repository = {
+      contarReferenciasVigentesStorage: jest.fn(),
+      marcarFallida: jest.fn(),
+      marcarRequiereReconciliacion: jest.fn().mockResolvedValue(true),
+    } as any;
+    const storage = { deleteObject: jest.fn() } as any;
+    const input = createInput({
+      operacion: operation({
+        metadata: { r2RecoveryV1: { version: 1, phase: 'PUT_STARTED' } } as any,
+      }),
+    });
+
+    const result = await new CargaSeguraCompensation(repository, storage).compensate(input);
+
+    expect(result).toMatchObject({
+      kind: 'RECONCILIATION_REQUIRED',
+      reason: 'P3_COMPENSATION_REQUIRES_FENCED_RECONCILIATION',
+    });
+    expect(storage.deleteObject).not.toHaveBeenCalled();
+    expect(repository.marcarFallida).not.toHaveBeenCalled();
+    expect(repository.contarReferenciasVigentesStorage).not.toHaveBeenCalled();
+  });
   it('elimina el objeto y marca la operación fallida', async () => {
     const repository = {
       contarReferenciasVigentesStorage: jest.fn().mockResolvedValue(0),

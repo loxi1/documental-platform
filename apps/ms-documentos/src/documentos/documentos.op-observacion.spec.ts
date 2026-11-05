@@ -58,4 +58,33 @@ describe('OP observation identity and consumed-decision fence', () => {
     await expect(repo.confirmarOcrResultadoConExpedienteConExecutor(txFor(ocr,true) as any,72,input as any,1)).rejects.toMatchObject({response:{code:'PAGO_OBSERVACION_CONTEXTO_INVALIDO'}});
   });
 
+  it.each([undefined, { accion: 'OBSERVAR', motivo: 'Sustento duplicado' }])(
+    'G2 reproduce la barrera compartida ante duplicado, decisión %j, sin escrituras',
+    async decisionCorrespondencia => {
+      const previousPayment = { documentoId: 101, estado: 'confirmado', monto: 250 };
+      const before = JSON.stringify(previousPayment);
+      const queries: string[] = [];
+      const tx = jest.fn(async (strings: TemplateStringsArray) => {
+        const q = strings.join('?').replace(/\s+/g, ' ').trim();
+        queries.push(q);
+        if (q.startsWith('SELECT archivo_id, documento_id')) return [{ archivo_id: 102, documento_id: 102 }];
+        if (q.startsWith('SELECT * FROM documentos.documentos_archivos')) return [file];
+        if (q.startsWith('SELECT * FROM documentos.documentos WHERE')) return [{ id: 102, estado: 'pendiente_ocr' }];
+        if (q.startsWith('SELECT * FROM documentos.ocr_resultados')) return [{ ...ocr, estado: 'editado', tipo_propuesto: 'TRANSFERENCIA', metadata: {} }];
+        if (q.includes('FROM documentos.expedientes e')) return [{ id: 26, codigo_expediente: 'EXP', empresa_codigo: 'BBTI', cliente_abreviatura: 'BBTI', cliente_destino_id: 1 }];
+        if (q.includes('LEFT JOIN LATERAL')) return [{ documento_id: previousPayment.documentoId, expediente_id: 26, estado: previousPayment.estado }];
+        if (q.includes('FROM documentos.expediente_documentos')) return [];
+        if (q.includes('FROM documentos.grupos_factura gf')) return [{ documento_id: 98 }];
+        throw new Error(`SQL no previsto: ${q}`);
+      });
+      await expect(repo.confirmarOcrResultadoConExpedienteConExecutor(tx as any, 72, {
+        ...input, decisionCorrespondencia,
+        metadata: { fechaPago: '2026-07-29', banco: 'BBVA', numeroOperacion: 'SYNTHETIC-DUPLICATE', montoTotal: '250', moneda: 'USD' },
+      } as any, 1)).rejects.toMatchObject({ code: 'DOCUMENTO_DUPLICADO_EN_EXPEDIENTE' });
+      expect(queries.some(q => q.includes('LEFT JOIN LATERAL'))).toBe(true);
+      expect(queries.some(q => /^(UPDATE|INSERT|DELETE)/.test(q))).toBe(false);
+      expect(JSON.stringify(previousPayment)).toBe(before);
+    },
+  );
+
 });

@@ -7,6 +7,37 @@ import { ExpedientesRepository } from './expedientes.repository';
 
 const sqlMock = sql as unknown as jest.Mock;
 
+describe('Detalle contable OP con período de emisión autorizado', () => {
+  it('recupera la OP propia con empresa, workspace y mes de emisión, sin período funcional', async () => {
+    const repo = new ExpedientesRepository();
+    const row = { origen: 'ORDEN_PAGO', ordenPagoId: 44, documentos_relacionados: [{ documentoId: 141 }], estadoRegularizacion: 'REGULARIZADO' };
+    const query = jest.spyOn(repo, 'getRevisionContable').mockResolvedValue([row] as any);
+    expect(await repo.getRevisionContableOrdenPago(44, '0000000044', {
+      empresa: 'BBTI', clienteDestinoId: 1, workspaceId: 2, fechaEmision: '2026-11-05',
+    })).toEqual(row);
+    expect(query).toHaveBeenCalledWith({ empresa: 'BBTI', anio: 2026, mes: 11, q: '0000000044', limit: 200, offset: 0, soloPendientesFinanzas: false }, { workspaceId: 2, clienteDestinoId: 1 });
+  });
+
+  it('no inventa un período ni consulta con workspace ausente', async () => {
+    const repo = new ExpedientesRepository();
+    const query = jest.spyOn(repo, 'getRevisionContable');
+    for (const invalid of [{ fechaEmision: '' }, { fechaEmision: '2026-13-01' }, { workspaceId: 0 }]) {
+      expect(await repo.getRevisionContableOrdenPago(44, '0000000044', {
+        empresa: 'BBTI', clienteDestinoId: 1, workspaceId: 2, fechaEmision: '2026-11-05', ...invalid,
+      })).toBeNull();
+    }
+    expect(query).not.toHaveBeenCalled();
+  });
+
+  it('no devuelve otra OP aunque coincida la búsqueda', async () => {
+    const repo = new ExpedientesRepository();
+    jest.spyOn(repo, 'getRevisionContable').mockResolvedValue([{ origen: 'ORDEN_PAGO', ordenPagoId: 45 }] as any);
+    expect(await repo.getRevisionContableOrdenPago(44, '0000000044', {
+      empresa: 'BBTI', clienteDestinoId: 1, workspaceId: 2, fechaEmision: '2026-11-05',
+    })).toBeNull();
+  });
+});
+
 describe('ExpedientesRepository revisión contable por factura V2', () => {
   beforeEach(() => {
     jest.clearAllMocks();

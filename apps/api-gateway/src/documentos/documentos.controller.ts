@@ -1,3 +1,4 @@
+import { hasFinanzasWorkspaceAccess } from '../common/finanzas-workspace-access';
 import {
   Body,
   Controller,
@@ -385,9 +386,7 @@ export class DocumentosGatewayController {
       ...(requestId ? { 'x-correlation-id': requestId } : {}),
       // Derived only from the server-validated workspace, never request headers/body.
       'x-finanzas-correspondencia-autorizar-excepcion': String(
-        this.getActionsFromContext(contexto).includes(
-          'documental_v2.finanzas.correspondencia.autorizar_excepcion',
-        ),
+        hasFinanzasWorkspaceAccess(contexto),
       ),
     };
   }
@@ -850,6 +849,15 @@ export class DocumentosGatewayController {
     @Headers(REQUEST_ID_HEADER) requestId: string | undefined, @Headers('idempotency-key') key: string,
     @Param('tempId') id: string, @Body() body: Record<string, unknown>) {
     const headers = await this.tmpHeaders(authorization, requestId, key);
+    const input = body?.confirmacionDocumental ?? body?.borradorDocumental;
+    if (input != null) {
+      const context = await this.validateAuthorization(authorization);
+      this.assertAnyActionPermitida(context, ['documentos.confirmar_ocr','ocr.confirmar'], 'confirmar documento TEMP');
+      this.assertAnyActionPermitida(context, ['documentos.vincular_expediente'], 'vincular documento TEMP');
+      await this.assertExpedientePermitido((input as any).expedienteId, context, requestId);
+      if ((input as any).documentoBaseId != null)
+        await this.assertDocumentoPermitido(String((input as any).documentoBaseId), context, requestId);
+    }
     return this.tmpRequest('POST', `/documentos/tmp/${this.tmpId(id)}/promover`, headers, body);
   }
 
@@ -1044,15 +1052,15 @@ export class DocumentosGatewayController {
         const upstream = error.response.data?.error ?? error.response.data;
         // The global ms-documentos filter wraps the domain exception in details
         // and uses CONFLICT as the outer code. Normalize before authorization.
-        const domainCodes = ['FACTURA_TEMP_DOCUMENT_DUPLICATE', 'FACTURA_TEMP_ALREADY_RESERVED'];
+        const domainCodes = ['FACTURA_TEMP_DOCUMENT_DUPLICATE', 'RECIBO_HONORARIO_TEMP_DOCUMENT_DUPLICATE', 'FACTURA_TEMP_ALREADY_RESERVED', 'RECIBO_HONORARIO_TEMP_ALREADY_RESERVED'];
         const domainCode = [upstream?.code, upstream?.message].find(value => domainCodes.includes(value));
         const nested = upstream?.details;
         const domain = nested && typeof nested === 'object' &&
           (nested.code === domainCode || nested.message === domainCode) ? nested : upstream;
-        if (error.response.status === 409 && domainCode === 'FACTURA_TEMP_ALREADY_RESERVED') {
+        if (error.response.status === 409 && (domainCode === 'FACTURA_TEMP_ALREADY_RESERVED' || domainCode === 'RECIBO_HONORARIO_TEMP_ALREADY_RESERVED')) {
           throw new HttpException({ code: domainCode, message: domainCode, details: null }, 409);
         }
-        if (error.response.status === 409 && domainCode === 'FACTURA_TEMP_DOCUMENT_DUPLICATE') {
+        if (error.response.status === 409 && (domainCode === 'FACTURA_TEMP_DOCUMENT_DUPLICATE' || domainCode === 'RECIBO_HONORARIO_TEMP_DOCUMENT_DUPLICATE')) {
           const candidate = domain.details?.duplicateCandidateId;
           let details: { documentoId: number; authorized: true; origin?: { type: string; number: string; ordenPagoId?: number; expedienteId?: number; grupoFacturaId?: number } } | null = null;
           if (typeof candidate === 'number' && Number.isSafeInteger(candidate) && candidate > 0) {

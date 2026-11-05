@@ -2025,6 +2025,7 @@ export function FinanzasExpedienteEditor({ id }: { id: string | number }) {
           principalSlot={
             <FinanzasDocumentoPrincipalOperativoCard
               id={id}
+              grupoFacturaId={grupoFacturaId || null}
               onVer={(principalDocumentoId) => {
                 const documentoPrincipal = documentos.find((documento) => {
                   const documentoId = positiveInteger(

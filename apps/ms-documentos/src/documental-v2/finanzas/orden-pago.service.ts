@@ -286,6 +286,7 @@ export class OrdenPagoService {
       contenedorOperativoId: Number(row.contenedorOperativoId),
       expedienteId: row.expedienteId == null ? null : Number(row.expedienteId),
       empresaCodigo: row.empresaCodigo == null ? null : String(row.empresaCodigo),
+      fechaEmision: row.fechaEmision == null ? '' : String(row.fechaEmision),
       numero:
         row.numeroDocumental != null && String(row.numeroDocumental).trim()
           ? String(row.numeroDocumental)
@@ -475,6 +476,11 @@ export class OrdenPagoService {
       };
     }
 
+    if (decisionCorrespondencia?.accion === 'OBSERVAR') {
+      return this.observarPagoPendiente(ordenPagoId, ocrResultadoId,
+        decisionCorrespondencia.motivo, actor);
+    }
+
     const detalle = await this.obtenerDetalle(ordenPagoId, actor);
     const expedienteId = Number(detalle.expedienteId);
 
@@ -495,10 +501,115 @@ export class OrdenPagoService {
       },
       {
         usuarioId: actor.id,
+        tienePermisoAutorizarExcepcion: actor.tienePermisoAutorizarExcepcion === true,
         requestId: actor.requestId ?? null,
         correlationId: actor.correlationId ?? actor.requestId ?? null,
       },
     );
+  }
+
+  /** OP solamente: observar no confirma ni canonicaliza el documento bancario. */
+  private async observarPagoPendiente(
+    ordenPagoId: number, ocrResultadoId: number,
+    motivo: string | null | undefined, actor: OrdenPagoActor,
+  ) {
+    if (!Number.isSafeInteger(ordenPagoId) || ordenPagoId <= 0 ||
+        typeof motivo !== 'string' || !motivo.trim() || motivo.trim().length > 2000) {
+      throw new BadRequestException('Observación requiere OP válida y motivo de hasta 2000 caracteres');
+    }
+    return sql.begin(async tx => {
+      // Mismo orden que confirmación/OCR: archivo -> documento -> OCR.
+      const [discovery] = await tx`SELECT archivo_id, documento_id FROM documentos.ocr_resultados WHERE id=${ocrResultadoId}`;
+      if (!discovery) throw new NotFoundException('Sustento pendiente no disponible');
+      const [archivo] = await tx`SELECT * FROM documentos.documentos_archivos WHERE id=${discovery.archivo_id} FOR UPDATE`;
+      if (!archivo || Number(archivo.documento_id) !== Number(discovery.documento_id)) {
+        throw new ConflictException('PAGO_OBSERVACION_CONTEXTO_INVALIDO');
+      }
+      const [documento] = await tx`SELECT * FROM documentos.documentos WHERE id=${archivo.documento_id} FOR UPDATE`;
+      const [ocr] = await tx`SELECT * FROM documentos.ocr_resultados WHERE id=${ocrResultadoId} FOR UPDATE`;
+      const contextos = await tx`
+        SELECT p.documento_id AS "documentoBaseId", g.id AS "grupoFacturaId", c.expediente_v1_id AS "expedienteId"
+        FROM documentos.documentos_operativos_principales p
+        JOIN documentos.documentos principal ON principal.id=p.documento_id AND principal.tipo_documental='ORDEN_PAGO' AND principal.estado='confirmado'
+        JOIN documentos.contenedores_operativos c ON c.id=p.contenedor_operativo_id AND c.estado='activo'
+        JOIN documentos.grupos_factura g ON g.documento_operativo_principal_id=p.id AND g.origen_obligacion='ORDEN_PAGO' AND g.estado<>'anulado'
+        WHERE p.id=${ordenPagoId} AND p.tipo_principal='ORDEN_PAGO' AND p.estado='activo' AND p.es_principal_activo=true
+          AND c.empresa_codigo=${actor.empresaCodigo} AND principal.cliente_abreviatura=c.empresa_codigo
+          AND c.cliente_destino_id IS NOT DISTINCT FROM ${actor.clienteDestinoId}::bigint
+        FOR SHARE OF p, principal, c, g
+      `;
+      const contexto = contextos[0];
+      const m = archivo.metadata ?? {};
+      const draft = ocr?.metadata?.validacionPendientePago;
+      const identidad = {
+        ocrResultadoId, documentoId: Number(archivo.documento_id), archivoId: Number(archivo.id),
+        expedienteId: Number(contexto?.expedienteId), documentoBaseId: Number(contexto?.documentoBaseId),
+        grupoFacturaId: Number(contexto?.grupoFacturaId),
+      };
+      if (contextos.length !== 1 || !documento || !ocr ||
+          Object.values(identidad).some(v => !Number.isSafeInteger(v) || v <= 0) ||
+          Number(ocr.documento_id) !== identidad.documentoId || Number(ocr.archivo_id) !== identidad.archivoId ||
+          Number(archivo.workspace_id) !== actor.workspaceId || archivo.empresa_codigo !== actor.empresaCodigo ||
+          (archivo.cliente_destino_id == null ? null : Number(archivo.cliente_destino_id)) !== actor.clienteDestinoId ||
+          Number(archivo.expediente_id) !== identidad.expedienteId ||
+          Number(m.documentoBaseId) !== identidad.documentoBaseId || Number(m.grupoFacturaId) !== identidad.grupoFacturaId ||
+          m.tipoRelacion !== 'adjunto_transferencia' || m.tipoDocumental !== 'TRANSFERENCIA' ||
+          documento.tipo_documental !== 'TRANSFERENCIA' || documento.cliente_abreviatura !== actor.empresaCodigo ||
+          ['anulado', 'duplicado_absorbido'].includes(String(archivo.estado)) ||
+          (draft?.identidad && Object.entries(identidad).some(([k, v]) => Number(draft.identidad[k]) !== v))) {
+        throw new ConflictException('PAGO_OBSERVACION_CONTEXTO_INVALIDO');
+      }
+      const result = (reason: string, idempotente: boolean) => ({
+        ...identidad, estado: 'OBSERVADO', motivo: reason, idempotente,
+      });
+      if (draft?.estado === 'CONSUMIDO') {
+        if (draft.accion === 'OBSERVAR' && documento.estado === 'observado' && draft.identidad &&
+            typeof draft.motivo === 'string' && draft.motivo.trim()) {
+          const [evento] = await tx`SELECT id FROM core.auditoria_eventos
+            WHERE entidad='documento_archivo' AND entidad_id=${String(identidad.archivoId)}
+              AND accion='CORRESPONDENCIA_PAGO_FACTURA_DECIDIDA'
+              AND despues->>'accion'='OBSERVAR' AND despues->>'estadoResultante'='OBSERVADA'
+              AND despues->>'ordenPagoId'=${String(ordenPagoId)} AND despues->>'ocrResultadoId'=${String(ocrResultadoId)}
+              AND despues->>'archivoId'=${String(identidad.archivoId)} LIMIT 1`;
+          if (evento) return result(draft.motivo, true);
+        }
+        throw new ConflictException('PAGO_DECISION_YA_CONSUMIDA');
+      }
+      if (!['pendiente_ocr', 'pendiente_validacion'].includes(String(documento.estado)) ||
+          !['pendiente_validacion', 'editado'].includes(String(ocr.estado)) ||
+          (draft != null && draft.estado !== 'PENDIENTE_DECISION')) {
+        throw new ConflictException('El sustento no es un documento pendiente');
+      }
+      // El documento bloqueado también protege las referencias FK ante nuevas asociaciones.
+      const vinculos = await tx`SELECT id, estado FROM documentos.grupo_factura_documentos WHERE documento_id=${identidad.documentoId} ORDER BY id FOR UPDATE`;
+      const principales = await tx`SELECT estado FROM documentos.documentos_operativos_principales WHERE documento_id=${identidad.documentoId} ORDER BY id FOR UPDATE`;
+      const obligaciones = await tx`SELECT estado FROM documentos.grupos_factura WHERE factura_documento_id=${identidad.documentoId} ORDER BY id FOR UPDATE`;
+      const expedientes = await tx`SELECT expediente_id, tipo_relacion, es_principal FROM documentos.expediente_documentos WHERE documento_id=${identidad.documentoId} ORDER BY expediente_id FOR UPDATE`;
+      const grupos = await tx`SELECT id FROM documentos.grupo_documentos WHERE documento_id=${identidad.documentoId} ORDER BY id FOR UPDATE`;
+      const relaciones = await tx`SELECT id FROM documentos.documento_relaciones WHERE documento_origen_id=${identidad.documentoId} OR documento_destino_id=${identidad.documentoId} ORDER BY id FOR UPDATE`;
+      const asientos = await tx`SELECT id FROM documentos.asientos_documentos WHERE documento_id=${identidad.documentoId} ORDER BY id FOR UPDATE`;
+      if (vinculos.some(v => v.estado === 'activo') || principales.some(p => p.estado === 'activo') ||
+          obligaciones.some(g => g.estado !== 'anulado')) throw new ConflictException('PAGO_YA_CONFIRMADO');
+      if (expedientes.some(e => Number(e.expediente_id) !== identidad.expedienteId || e.es_principal !== false || e.tipo_relacion !== 'adjunto_transferencia') ||
+          grupos.length || relaciones.length || asientos.length) throw new ConflictException('OP_PAGO_DOCUMENTO_COMPARTIDO');
+      const consumed = await tx`UPDATE documentos.ocr_resultados SET metadata=jsonb_set(COALESCE(metadata,'{}'::jsonb), '{validacionPendientePago}',
+        COALESCE(metadata->'validacionPendientePago','{}'::jsonb) || jsonb_build_object(
+          'version',1,'estado','CONSUMIDO','accion','OBSERVAR','motivo',${motivo.trim()}::text,
+          'consumidoEn',now(),'identidad',${JSON.stringify(identidad)}::jsonb),true)
+        WHERE id=${ocrResultadoId} AND estado IN ('pendiente_validacion','editado')
+          AND (metadata->'validacionPendientePago' IS NULL OR metadata #>> '{validacionPendientePago,estado}'='PENDIENTE_DECISION') RETURNING id`;
+      const changed = await tx`UPDATE documentos.documentos SET estado='observado'
+        WHERE id=${identidad.documentoId} AND estado IN ('pendiente_ocr','pendiente_validacion') RETURNING id`;
+      if (consumed.length !== 1 || changed.length !== 1) throw new ConflictException('PAGO_OBSERVACION_NO_CONSUMIDA');
+      await this.auditoria.registrarDecisionCorrespondencia({
+        accion: 'CORRESPONDENCIA_PAGO_FACTURA_DECIDIDA', entidad: 'documento_archivo', entidadId: identidad.archivoId,
+        descripcion: 'Observación de sustento OP pendiente, sin confirmación ni asociación financiera.',
+        empresaCodigo: actor.empresaCodigo, usuario: actor,
+        antes: { estadoDocumento: documento.estado, estadoOcr: ocr.estado, claveDocumental: documento.clave_documental ?? null },
+        despues: { ...identidad, ordenPagoId, accion: 'OBSERVAR', estadoResultante: 'OBSERVADA', motivo: motivo.trim(), asociacionCreada: false },
+      }, tx);
+      return result(motivo.trim(), false);
+    });
   }
 
   async opciones(actor: OrdenPagoActor) {

@@ -1,4 +1,5 @@
 "use client";
+import { cargarTemporalCompras, recuperarTemporalCompras, validarTemporalCompras, type ComprasTempResult } from "@/services/carga-segura";
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -1550,6 +1551,11 @@ export function CompraExpedienteEditor({
       }
 
       setProcessingStep("uploading");
+      if (['OC','OS','FACTURA'].includes(String(accion.tipoEsperado))) {
+        return cargarTemporalCompras(file, { expedienteId: Number(id),
+          tipoDocumental: accion.tipoEsperado as 'OC' | 'OS' | 'FACTURA',
+          ...(accion.grupo === 'adjunto' ? { documentoBaseId: Number(getDocumentoId(principalSeleccionado)) } : {}) });
+      }
       const uploadResponse = await subirDocumentoCargaSegura(uploadPayload, file, {
         idempotencyKey: crearCargaSeguraIdempotencyKey("editar", id),
       });
@@ -2244,6 +2250,16 @@ export function CompraExpedienteEditor({
 
   async function persistirEdicionOcr(form: OcrValidationFormState, observacion: string) {
     const resultadoActual = resultadoModal as Record<string, unknown> | null;
+    const temp = resultadoModal as ComprasTempResult | null;
+    if (temp?.tempId) {
+      const tipoRelacion = getTipoRelacionResultado(resultadoActual, accionActual);
+      const metadata = buildMetadataDesdeFormulario(form, { codigoExpediente: codigo, rucComprador,
+        clienteAbreviatura: empresa, expedienteId: id, tipoRelacion });
+      await validarTemporalCompras(temp, { expedienteId: Number(id),
+        ...(accionActual?.grupo === 'adjunto' ? { documentoBaseId: Number(getDocumentoId(principalSeleccionado)) } : {}),
+        tipoRelacion, esPrincipal: accionActual?.grupo === 'principal', metadata }, true);
+      return { ocrResultadoId: null, tipoRelacion, metadata };
+    }
     const ocrResultadoId = getOcrResultadoId(resultadoActual);
 
     if (!ocrResultadoId) {
@@ -2725,8 +2741,9 @@ export function CompraExpedienteEditor({
   async function confirmarOcrFinal(form: OcrValidationFormState) {
     const resultadoActual = resultadoModal as Record<string, unknown> | null;
     const ocrResultadoId = getOcrResultadoId(resultadoActual);
+    const temp = resultadoModal as ComprasTempResult | null;
 
-    if (!ocrResultadoId) {
+    if (!ocrResultadoId && !temp?.tempId) {
       throw new Error("No se encontró ocrResultadoId para confirmar la validación.");
     }
 
@@ -2773,7 +2790,19 @@ export function CompraExpedienteEditor({
 
     const esPrincipalFinal = accionActual?.grupo === "principal";
 
-    await confirmarOcrConExpediente(ocrResultadoId, {
+    if (temp?.tempId) await validarTemporalCompras(temp, {
+      expedienteId: id,
+      documentoBaseId:
+        esPrincipalFinal ? null : getDocumentoId(principalSeleccionado),
+      tipoRelacion: tipoRelacionFinal,
+      esPrincipal: esPrincipalFinal,
+      orden: esPrincipalFinal ? 1 : 10,
+      metadata,
+      observacion: esPrincipalFinal
+        ? "Guardar y confirmar principal desde Compras > Editar"
+        : "Guardar y confirmar adjunto desde Compras > Editar",
+    });
+    else await confirmarOcrConExpediente(ocrResultadoId!, {
       expedienteId: id,
       documentoBaseId:
         esPrincipalFinal ? null : getDocumentoId(principalSeleccionado),
@@ -3637,6 +3666,25 @@ export function CompraExpedienteEditor({
         onPreview={abrirPreviewVersion}
       />
 
+      <div className="flex flex-wrap gap-2">
+        {[...DOCUMENTO_PRINCIPAL_OPTIONS, ...DOCUMENTO_ADJUNTO_OPTIONS]
+          .filter(option => ['OC','OS','FACTURA'].includes(String(option.tipoEsperado)))
+          .map(option => {
+            const grupo = option.tipoEsperado === 'FACTURA' ? 'adjunto' as const : 'principal' as const;
+            return <Button key={option.tipoEsperado} type="button" variant="outline"
+              disabled={modoSoloLectura || (grupo === 'adjunto' && !principalSeleccionado)}
+              onClick={async () => {
+                try {
+                  const temp = await recuperarTemporalCompras({ expedienteId: Number(id),
+                    tipoDocumental: option.tipoEsperado as 'OC' | 'OS' | 'FACTURA',
+                    ...(grupo === 'adjunto' ? { documentoBaseId: Number(getDocumentoId(principalSeleccionado)) } : {}) });
+                  if (!temp) { setMensajeValidacion('No hay una carga temporal pendiente.'); return; }
+                  setAccionActual({ ...option, grupo }); setPendienteManualAbierto(null); setPendienteOcrAbierto(null);
+                  setModalSoloLectura(false); setResultadoModal(temp); setModalAbierto(true);
+                } catch (error) { setMensajeValidacion(error instanceof Error ? error.message : 'No se pudo recuperar TEMP'); }
+              }}>Recuperar {option.label} pendiente</Button>;
+          })}
+      </div>
       <OcrValidationModal
         open={modalAbierto}
         resultado={resultadoModal}
@@ -3683,7 +3731,7 @@ export function CompraExpedienteEditor({
               : confirmarOcrFinal
         }
         onReject={
-          pendienteManualAbierto
+          (resultadoModal as any)?.tempId ? () => { setModalAbierto(false); setMensajeValidacion("Carga temporal conservada para revisión posterior."); } : pendienteManualAbierto
             ? undefined
             : pendienteOcrAbierto
               ? (form) => validarOcrPersistido(form, "rechazar")

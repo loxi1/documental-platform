@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { sql } from '@documental/database';
+import { TmpRepository, type TmpConnection } from '../tmp/tmp.repository';
 
 import { CargaSeguraError } from './carga-segura.errors';
 import type {
@@ -11,10 +12,66 @@ type QueryRow = Record<string, unknown>;
 
 @Injectable()
 export class CargaSeguraPersistence {
+  constructor(private readonly tmpRepository: TmpRepository) {}
+
+  /** P3 only: documentary writes and completion share one fenced transaction. */
+  async persistirProtegidaR2(
+    connection: TmpConnection,
+    input: CargaSeguraPersistenciaInput,
+    fence: { fencingToken: string; attempt: number; storageBucket: string; storageKey: string },
+  ): Promise<CargaSeguraPersistenciaResult> {
+    if (!fence.fencingToken || !Number.isSafeInteger(fence.attempt) || fence.attempt <= 0 || !fence.storageBucket || !fence.storageKey || !['ALMACEN_LEGACY_UPLOAD_GUIA', 'ALMACEN_LEGACY_UPLOAD_NOTA_INGRESO'].includes(input.command.canalIngreso)) {
+      throw this.persistenceError('P3_FENCING_INPUT_INVALID');
+    }
+    // One transaction, one reserved connection: state CAS and all documentary effects.
+    return this.tmpRepository.transaction(connection, async tx => {
+      const updated = await tx`
+        UPDATE documentos.carga_operaciones
+        SET estado = 'almacenada', almacenada_en = COALESCE(almacenada_en, now()), actualizado_en = now()
+        WHERE id = ${input.operacion.id}::bigint
+          AND operacion_tipo = 'carga_segura'
+          AND estado = 'iniciada'
+          AND requiere_reconciliacion = false
+          AND documento_id IS NULL AND archivo_id IS NULL
+          AND workspace_id = ${input.command.workspaceId}::integer
+          AND empresa_codigo = ${input.command.empresaCodigo}::text
+          AND cliente_destino_id IS NOT DISTINCT FROM ${input.command.clienteDestinoId}::integer
+          AND expediente_id IS NOT DISTINCT FROM ${input.command.expedienteId}::bigint
+          AND actor_id = ${input.command.actorId}::integer
+          AND canal_ingreso = ${input.command.canalIngreso}::text
+          AND storage_provider = 'r2'
+          AND storage_bucket IS NOT NULL AND storage_key IS NOT NULL
+          AND metadata->'r2RecoveryV1'->>'version' = '1'
+          AND metadata->'r2RecoveryV1'->>'phase' = 'PUT_STARTED'
+          AND metadata->'r2RecoveryV1'->>'fencingToken' = ${fence.fencingToken}::text
+          AND metadata->'r2RecoveryV1'->>'attempt' = ${String(fence.attempt)}::text
+          AND storage_bucket = ${fence.storageBucket}::text
+          AND metadata->'r2RecoveryV1'->>'storageBucket' = ${fence.storageBucket}::text
+          AND storage_key = ${fence.storageKey}::text
+          AND metadata->'r2RecoveryV1'->>'storageKey' = ${fence.storageKey}::text
+        RETURNING id
+      `;
+      if (updated.length !== 1) {
+        throw this.persistenceError('P3_FENCING_STALE_OR_UNCERTAIN', {
+          operacionId: input.operacion.id,
+        });
+      }
+      // persistirEnTx preserves its pre-existing 'almacenada' precondition.
+      // Any failure rolls back the state CAS together with document/file writes.
+      return this.persistirEnTx(tx, input, fence);
+    });
+  }
   async persistir(
     input: CargaSeguraPersistenciaInput,
   ): Promise<CargaSeguraPersistenciaResult> {
-    return sql.begin(async (tx) => {
+    return sql.begin(tx => this.persistirEnTx(tx, input));
+  }
+
+  private async persistirEnTx(
+    tx: any,
+    input: CargaSeguraPersistenciaInput,
+    fence?: { fencingToken: string; attempt: number; storageBucket: string; storageKey: string },
+  ): Promise<CargaSeguraPersistenciaResult> {
       const operacionRows = await tx`
         SELECT
           id,
@@ -34,7 +91,8 @@ export class CargaSeguraPersistence {
           hash_sha256,
           storage_provider,
           storage_bucket,
-          storage_key
+          storage_key,
+          metadata
         FROM documentos.carga_operaciones
         WHERE id = ${input.operacion.id}::bigint
         FOR UPDATE
@@ -58,6 +116,29 @@ export class CargaSeguraPersistence {
             estadoEsperado: 'almacenada',
           },
         );
+      }
+
+      if (fence === undefined && Object.prototype.hasOwnProperty.call(
+        operacion.metadata ?? {}, 'r2RecoveryV1',
+      )) {
+        throw this.persistenceError('P3_PROTECTED_PERSISTENCE_REQUIRED');
+      }
+
+      if (fence !== undefined) {
+        const metadata = operacion.metadata as Record<string, unknown> | null;
+        const recovery = metadata?.r2RecoveryV1 as Record<string, unknown> | undefined;
+        if (recovery?.version !== 1 || recovery.phase !== 'PUT_STARTED' ||
+            recovery.fencingToken !== fence.fencingToken ||
+            recovery.attempt !== fence.attempt ||
+            recovery.storageBucket !== fence.storageBucket ||
+            recovery.storageKey !== fence.storageKey ||
+            operacion.storage_bucket !== fence.storageBucket ||
+            operacion.storage_key !== fence.storageKey ||
+            operacion.canal_ingreso !== input.command.canalIngreso ||
+            Number(operacion.workspace_id) !== input.command.workspaceId ||
+            String(operacion.empresa_codigo) !== input.command.empresaCodigo) {
+          throw this.persistenceError('P3_FENCING_STALE_OR_UNCERTAIN', { operacionId: input.operacion.id });
+        }
       }
 
       this.validarOperacionContraCommand(operacion, input);
@@ -362,10 +443,22 @@ export class CargaSeguraPersistence {
           actualizado_en = now(),
           requiere_reconciliacion = false,
           error_codigo = NULL,
-          error_detalle = NULL
+          error_detalle = NULL,
+          metadata = CASE WHEN ${fence?.fencingToken ?? null}::text IS NULL THEN metadata
+            ELSE jsonb_set(metadata, '{r2RecoveryV1}',
+              (metadata->'r2RecoveryV1') || jsonb_build_object('phase', 'COMPLETED'), false) END
         WHERE id =
           ${input.operacion.id}::bigint
           AND estado = 'almacenada'
+          AND (${fence?.fencingToken ?? null}::text IS NULL OR (
+            metadata->'r2RecoveryV1'->>'fencingToken' = ${fence?.fencingToken ?? null}::text
+            AND metadata->'r2RecoveryV1'->>'phase' = 'PUT_STARTED'
+            AND metadata->'r2RecoveryV1'->>'attempt' = ${fence ? String(fence.attempt) : null}::text
+            AND storage_bucket = ${fence?.storageBucket ?? null}::text
+            AND storage_key = ${fence?.storageKey ?? null}::text
+            AND metadata->'r2RecoveryV1'->>'storageBucket' = storage_bucket
+            AND metadata->'r2RecoveryV1'->>'storageKey' = storage_key
+          ))
         RETURNING id
       `;
 
@@ -387,7 +480,6 @@ export class CargaSeguraPersistence {
         expedienteId,
         outboxEventKey: eventKey,
       };
-    });
   }
 
   private validarOperacionContraCommand(

@@ -42,9 +42,7 @@ describe('R28-P4-P6 RECIBO_HONORARIO TEMP materialization service', () => {
     },
   };
 
-  function setup() {
-    const destination =
-      'documentos/carga-segura/2026/09/BBTI/50__rh.pdf';
+  function setup(destination = 'documentos/2026/09/BBTI/50__rh.pdf') {
 
     const row: any = {
       id: 50,
@@ -68,6 +66,11 @@ describe('R28-P4-P6 RECIBO_HONORARIO TEMP materialization service', () => {
       archivo_id: null,
       destino_storage_key: null,
       metadata: {
+        regularizacionOp: {
+          consumer: 'REGULARIZACION_OP',
+          ordenPagoId: 31,
+          tipoRegularizador: 'RECIBO_HONORARIO',
+        },
         ocrCandidate: {
           status: 'DONE',
           tipoEsperado: 'RECIBO_HONORARIO',
@@ -78,7 +81,12 @@ describe('R28-P4-P6 RECIBO_HONORARIO TEMP materialization service', () => {
       },
     };
 
-    const tx: any = {};
+    const tx: any = Object.assign(
+      jest.fn(async () => [
+        { fechaEmision: '2026-09-15' },
+      ]),
+      {},
+    );
 
     const repository: any = {
       reserve: jest.fn(
@@ -206,6 +214,79 @@ describe('R28-P4-P6 RECIBO_HONORARIO TEMP materialization service', () => {
       destination,
     };
   }
+
+
+  it('OP emitida en septiembre y TEMP cargado en noviembre conserva septiembre', async () => {
+    const x = setup();
+
+    x.row.iniciada_en = '2026-11-03T12:00:00.000Z';
+
+    await x.service.materializar(
+      50,
+      'rh-op-periodo-50',
+      actor,
+      metadataHumana,
+    );
+
+    expect(x.repository.reserve).toHaveBeenCalledWith(
+      x.tx,
+      x.row,
+      'rh-op-periodo-50',
+      'documentos/2026/09/BBTI/50__rh.pdf',
+      expect.any(Object),
+    );
+  });
+
+  it('G2 materializa TEMP vencido hace 48 horas preservando validación humana', async () => {
+    const x = setup();
+
+    x.row.expira_en = new Date(
+      Date.now() - 48 * 60 * 60 * 1000,
+    );
+
+    const result = await x.service.materializar(
+      50,
+      'rh-op-50',
+      actor,
+      metadataHumana,
+    );
+
+    expect(x.repository.reserve).toHaveBeenCalledTimes(1);
+    expect(x.tmp.promote).toHaveBeenCalledTimes(1);
+
+    expect(
+      x.repository.confirmReciboHonorarioWithExecutor,
+    ).toHaveBeenCalledWith(
+      x.tx,
+      expect.objectContaining({
+        documentoId: 700,
+        archivoId: 701,
+        humanValidatedData: metadataHumana,
+        ocrCandidate: ocrResultado,
+      }),
+    );
+
+    expect(result).toMatchObject({
+      tempId: 50,
+      documentoId: 700,
+      archivoId: 701,
+    });
+  });
+
+  it('recupera un destino histórico reservado sin recalcularlo con el layout nuevo', async () => {
+    const historical = 'documentos/carga-segura/2026/08/BBTI/50__rh.pdf';
+    const x = setup(historical);
+    x.row.iniciada_en = '2026-10-27T12:00:00Z';
+    x.row.documento_id = 700;
+    x.row.metadata = { ...x.row.metadata, destinoReservado: historical,
+      promocionIdentity: 'rh-op-50', integration: {
+        consumer: OP_RECIBO_HONORARIO_REGULARIZER_MATERIALIZATION, identity: 'rh-op-50', completed: false,
+      } };
+    await x.service.materializar(50, 'rh-op-50', actor, metadataHumana);
+    expect(x.tmp.promote).toHaveBeenCalledWith(50, expect.anything(), historical, expect.anything());
+    expect(x.row.destino_storage_key).toBe(historical);
+    expect(x.repository.createOrReuseDocumentAndFileWithExecutor).toHaveBeenCalledTimes(1);
+  });
 
   it('materializa RH con archivo estable, OCR DONE como asistencia y metadata humana', async () => {
     const x = setup();

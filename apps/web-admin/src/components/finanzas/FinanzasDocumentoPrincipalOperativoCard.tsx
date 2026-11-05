@@ -12,6 +12,9 @@ import {
   documentoLabel,
   getDocumentoId,
   getDocumentoPrincipal,
+  getGruposFactura,
+  getGrupoFacturaPersistidoId,
+  getGrupoDocumentoPrincipalDocumentoId,
   getDocumentoTipo,
   getFechaDocumento,
   getMontoDocumento,
@@ -19,15 +22,33 @@ import {
   getRucProveedor,
 } from "@/components/documental-v2/workspace-v2-utils";
 
+import type { WorkspaceDocumentalV2, WorkspaceV2Documento } from "@/types/documental-v2-workspace";
+
+export function resolverPrincipalFinanzas(workspace: WorkspaceDocumentalV2, grupoFacturaId?: string | number | null): WorkspaceV2Documento | null {
+  if (grupoFacturaId == null) return getDocumentoPrincipal(workspace);
+  const grupo = getGruposFactura(workspace).find(item => String(getGrupoFacturaPersistidoId(item)) === String(grupoFacturaId));
+  if (!grupo) return null;
+  const principalId = getGrupoDocumentoPrincipalDocumentoId(grupo);
+  if (principalId == null) return null;
+  const record = workspace as unknown as Record<string, unknown>;
+  const compat = (record.compatibilidad ?? {}) as Record<string, unknown>;
+  const candidates = [record.documentosOperativosPrincipales, record.documentos_operativos_principales, compat.documentosOperativosPrincipales, compat.documentos_operativos_principales]
+    .flatMap(value => Array.isArray(value) ? value : []);
+  candidates.push(record.documentoOperativoPrincipal, record.documento_operativo_principal, record.documentoPrincipal, record.documento_principal);
+  return candidates.find((item): item is WorkspaceV2Documento => Boolean(item) && String(getDocumentoId(item as WorkspaceV2Documento)) === String(principalId)) ?? null;
+}
+
 export function FinanzasDocumentoPrincipalOperativoCard({
   id,
+  grupoFacturaId = null,
   onVer,
 }: {
   id: string | number;
+  grupoFacturaId?: string | number | null;
   onVer?: (documentoId: string | number) => void;
 }) {
   const workspaceQuery = useQuery({
-    queryKey: ["finanzas-v2-principal", String(id)],
+    queryKey: ["finanzas-v2-principal", String(id), grupoFacturaId ?? null],
     queryFn: () => getWorkspaceDocumentalV2(id),
     enabled: Boolean(id),
   });
@@ -60,7 +81,7 @@ export function FinanzasDocumentoPrincipalOperativoCard({
     );
   }
 
-  const principal = getDocumentoPrincipal(workspaceQuery.data);
+  const principal = resolverPrincipalFinanzas(workspaceQuery.data, grupoFacturaId);
   const principalDocumentoId = principal
     ? String(getDocumentoId(principal) ?? "").trim()
     : "";
@@ -111,7 +132,7 @@ export function FinanzasDocumentoPrincipalOperativoCard({
         </div>
       ) : (
         <div className="mt-2 rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
-          Este expediente no tiene Principal V2 persistido. Finanzas no puede adjuntar pagos.
+          {grupoFacturaId != null ? "No se pudo resolver el principal del grupo seleccionado. No se mostrará la OC de otro grupo." : "Este expediente no tiene Principal V2 persistido. Finanzas no puede adjuntar pagos."}
         </div>
       )}
     </div>

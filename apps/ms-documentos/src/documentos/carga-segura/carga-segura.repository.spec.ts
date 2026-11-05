@@ -309,3 +309,41 @@ describe('CargaSeguraRepository', () => {
     expect(executedQueryCount).toBe(1);
   });
 });
+
+describe('P3 transiciones sobre conexión protegida', () => {
+  const input = {
+    operacionId: 50, workspaceId: 1, empresaCodigo: 'BBTI', clienteDestinoId: 2,
+    expedienteId: 17, actorId: 1, grupoFacturaId: 138, documentoBaseId: 486,
+    canalIngreso: 'ALMACEN_LEGACY_UPLOAD_GUIA' as const,
+    fencingToken: 'server-fence', attempt: 1, storageBucket: 'synthetic', storageKey: 'documentos/50.pdf',
+  };
+  it.each([{ rows: [] }, { rows: [{ id: 50 }] }])('CAS de PUT exige una fila confirmada: %j', async ({ rows }) => {
+    const connection = jest.fn().mockResolvedValue(rows) as any;
+    expect(await new CargaSeguraRepository().marcarPutStartedProtegidoR2(connection, input)).toBe(rows.length === 1);
+    const query = connection.mock.calls[0][0].join(' ');
+    for (const guard of ["'PRE_PUT'", 'fencingToken', 'attempt', 'r2IdentityV2', 'grupoFacturaId',
+      'documentoBaseId', 'storage_key IS NULL', 'NOT requiere_reconciliacion']) expect(query).toContain(guard);
+  });
+  it('rechaza un token vacío sin SQL', async () => {
+    const connection = jest.fn() as any;
+    await expect(new CargaSeguraRepository().marcarPutStartedProtegidoR2(connection, {
+      ...input, fencingToken: '',
+    })).rejects.toThrow('P3_CAS_INPUT_INVALID');
+    expect(connection).not.toHaveBeenCalled();
+  });
+  it('fallo PRE_PUT nunca habilita recuperación ni borra una evidencia de PUT', async () => {
+    const connection = jest.fn().mockResolvedValue([{ id: 50 }]) as any;
+    expect(await new CargaSeguraRepository().marcarFalloPrePutProtegidoR2(connection, input)).toBe(true);
+    const query = connection.mock.calls[0][0].join(' ');
+    for (const guard of ["'retryEligible', false", "'PRE_PUT'", 'fencingToken', 'attempt',
+      'storage_provider IS NULL', 'storage_bucket IS NULL', 'storage_key IS NULL']) expect(query).toContain(guard);
+  });
+  it('reconciliación exige fase, token, intento y destino persistido', async () => {
+    const connection = jest.fn().mockResolvedValue([]) as any;
+    expect(await new CargaSeguraRepository().marcarReconciliacionProtegidaR2(connection, {
+      ...input, errorCodigo: 'ARCHIVO_REQUIERE_RECONCILIACION',
+    })).toBe(false);
+    const query = connection.mock.calls[0][0].join(' ');
+    for (const guard of ["'PUT_STARTED'", 'fencingToken', 'attempt', 'storage_bucket', 'storage_key']) expect(query).toContain(guard);
+  });
+});

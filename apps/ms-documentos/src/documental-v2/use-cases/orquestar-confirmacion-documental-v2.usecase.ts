@@ -105,6 +105,11 @@ export class OrquestarConfirmacionDocumentalV2UseCase {
     });
   }
 
+  async integrarTemporalConExecutor(tx: SqlExecutor, confirmado: any,
+    input: ConfirmacionDocumentalIntegradaInput, audit: ConfirmacionDocumentalAudit) {
+    return this.confirmarConExecutor(tx, Number(confirmado.ocrResultado?.id ?? 0), input, audit, confirmado);
+  }
+
   private async confirmarConExecutor(
     tx: SqlExecutor,
     ocrResultadoId: number,

@@ -157,3 +157,8 @@ export function hasPermission(permission: string): boolean {
 
   return hasAction(permission);
 }
+
+// UI mirrors the existing server Finanzas menu guard; backend remains authoritative.
+export function puedeAutorizarExcepcionFinanzas(): boolean {
+  return getContexto()?.permisos?.menus?.includes("finanzas") === true;
+}

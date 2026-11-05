@@ -73,7 +73,6 @@ function fixture(options: { confirmed?: boolean; extra?: boolean; mismatch?: str
     repo,
     { buscarPorId: async () => ({ id: 2, tipoDocumental: 'OC' }) } as any,
     {} as any,
-    {} as any,
     { execute: async () => ({ contenedorOperativo: { id: 1 } }) } as any,
     { execute: async () => ({ documentoOperativoPrincipal: { id: 2 } }) } as any,
     group as any,

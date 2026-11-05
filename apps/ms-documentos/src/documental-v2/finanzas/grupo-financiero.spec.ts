@@ -186,4 +186,16 @@ describe('Repositorios READ: contratos SQL de seguridad y fuente canónica', () 
     expect(query).toContain('a.documento_id=d.id');
     expect(query).not.toMatch(/LIMIT|factura_documento_id|storage_key/);
   });
+  it('incluye observación OP pendiente sin fingir OCR confirmado; OC/OS conserva la rama anterior', async () => {
+    await new GrupoFacturaDocumentoRepository().listarDecisionesObservadas(116, 'LAB', tx as any);
+    const query = tx.mock.calls[0][0].join('?');
+    expect(query).toContain("o.estado='confirmado' OR (");
+    expect(query).toContain("o.estado IN ('pendiente_validacion','editado') AND d.estado='observado'");
+    expect(query).toContain("g.origen_obligacion='ORDEN_PAGO'");
+    expect(query).toContain("g.estado<>'anulado'");
+    expect(query).toContain("'{validacionPendientePago,identidad,grupoFacturaId}'");
+    expect(query).toContain("jsonb_build_object('ocr',o.metadata)");
+    expect(query).toContain('ELSE d.metadata');
+    expect(query).not.toMatch(/UPDATE|INSERT|DELETE/);
+  });
 });

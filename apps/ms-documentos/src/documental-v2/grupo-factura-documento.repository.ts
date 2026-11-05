@@ -36,13 +36,23 @@ export class GrupoFacturaDocumentoRepository {
   async listarDecisionesObservadas(grupoFacturaId: number, empresa: string, executor: SqlExecutor): Promise<PagoGrupoReadRow[]> {
     const rows = await executor`
       SELECT NULL::bigint AS "vinculoId", d.id AS "documentoId", a.id AS "archivoId", o.id AS "ocrResultadoId",
-        NULL::text AS "estadoVinculo", d.estado AS "estadoDocumento", d.metadata,
+        NULL::text AS "estadoVinculo", d.estado AS "estadoDocumento",
+        CASE WHEN o.estado IN ('pendiente_validacion','editado') AND d.estado='observado'
+          THEN COALESCE(d.metadata,'{}'::jsonb) || jsonb_build_object('ocr',o.metadata)
+          ELSE d.metadata END AS metadata,
         d.monto_total::text AS monto, d.moneda, d.numero, d.fecha_emision::text AS fecha,
         o.metadata->'validacionPendientePago' AS decision, a.metadata->>'grupoFacturaId' AS "grupoArchivo"
       FROM documentos.ocr_resultados o
       JOIN documentos.documentos_archivos a ON a.id=o.archivo_id
       JOIN documentos.documentos d ON d.id=o.documento_id AND a.documento_id=d.id
-      WHERE o.estado='confirmado' AND d.tipo_documental='TRANSFERENCIA'
+      WHERE (o.estado='confirmado' OR (
+          o.estado IN ('pendiente_validacion','editado') AND d.estado='observado'
+          AND EXISTS (
+            SELECT 1 FROM documentos.grupos_factura g
+            WHERE g.id=${grupoFacturaId}::bigint AND g.origen_obligacion='ORDEN_PAGO' AND g.estado<>'anulado'
+              AND g.id::text=(o.metadata #>> '{validacionPendientePago,identidad,grupoFacturaId}')
+          )
+        )) AND d.tipo_documental='TRANSFERENCIA'
         AND d.cliente_abreviatura=${empresa}
         AND o.metadata #>> '{validacionPendientePago,estado}'='CONSUMIDO'
         AND o.metadata #>> '{validacionPendientePago,accion}'='OBSERVAR'

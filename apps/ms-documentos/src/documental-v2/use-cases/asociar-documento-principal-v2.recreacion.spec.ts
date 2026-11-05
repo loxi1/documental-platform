@@ -8,6 +8,7 @@ import { AsociarDocumentoPrincipalV2UseCase } from './asociar-documento-principa
 describe('AsociarDocumentoPrincipalV2UseCase recreación', () => {
   const contenedores = { buscarPorId: jest.fn() };
   const principales = {
+    buscarProveedorIdPorRuc: jest.fn().mockResolvedValue(9),
     buscarActivoPorDocumentoId: jest.fn(),
     listarHistoricosPorDocumentoId: jest.fn(),
     crear: jest.fn(),

@@ -107,7 +107,7 @@ export class OrdenPagoArchivoService {
             operacionId: tempId,
             empresaCodigo: row.empresa_codigo,
             nombreArchivo: row.nombre_archivo_original,
-            fecha: new Date(row.iniciada_en),
+            fecha: new Date(detalle.fechaEmision),
           });
 
         await this.repository.reserveReplacement(
@@ -262,7 +262,7 @@ export class OrdenPagoArchivoService {
         row.metadata?.destinoReservado) throw new ConflictException('OP_TEMP_NOT_AVAILABLE');
       const ids = await this.op.crear(body, identity, actor, tx);
       const destination = row.metadata?.destinoReservado || buildCargaSeguraStorageKey({ operacionId: tempId,
-        empresaCodigo: row.empresa_codigo, nombreArchivo: row.nombre_archivo_original, fecha: new Date(row.iniciada_en) });
+        empresaCodigo: row.empresa_codigo, nombreArchivo: row.nombre_archivo_original, fecha: new Date(input.fechaEmision) });
       await this.repository.reserve(tx, row, ids, identity, destination);
       return { ids, destination };
     }));

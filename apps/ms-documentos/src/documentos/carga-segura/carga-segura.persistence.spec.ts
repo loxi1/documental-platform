@@ -152,6 +152,15 @@ describe('CargaSeguraPersistence', () => {
     );
   });
 
+  it('impide persistir una operación P3 por la ruta legacy antes de insertar documentos', async () => {
+    queue([storedOperationRow({ metadata: { r2RecoveryV1: { version: 1 } } })]);
+    await expect(new CargaSeguraPersistence({} as any).persistir({
+      operacion: operation(), command: command(),
+    })).rejects.toThrow('P3_PROTECTED_PERSISTENCE_REQUIRED');
+    expect(executedQueries).toBe(1);
+    expect(executedSql()).not.toContain('INSERT');
+  });
+
   it('persiste documento, archivo, contexto, outbox y operación sin vínculo canónico', async () => {
     queue(
       [storedOperationRow()],
@@ -169,7 +178,7 @@ describe('CargaSeguraPersistence', () => {
       [{ id: 50 }],
     );
 
-    const result = await new CargaSeguraPersistence().persistir({
+    const result = await new CargaSeguraPersistence({} as any).persistir({
       operacion: operation(),
       command: command(),
       fecha: new Date('2026-07-20T12:00:00.000Z'),
@@ -203,7 +212,7 @@ describe('CargaSeguraPersistence', () => {
       [{ id: 50 }],
     );
 
-    const result = await new CargaSeguraPersistence().persistir({
+    const result = await new CargaSeguraPersistence({} as any).persistir({
       operacion: operation({
         expedienteId: null,
       }),
@@ -237,7 +246,7 @@ describe('CargaSeguraPersistence', () => {
       [{ id: 50 }],
     );
 
-    const result = await new CargaSeguraPersistence().persistir({
+    const result = await new CargaSeguraPersistence({} as any).persistir({
       operacion: operation(),
       command: command(),
     });
@@ -269,7 +278,7 @@ describe('CargaSeguraPersistence', () => {
       [{ id: 50 }],
     );
 
-    const result = await new CargaSeguraPersistence().persistir({
+    const result = await new CargaSeguraPersistence({} as any).persistir({
       operacion: operation(),
       command: command({
         tipoDocumental: 'OS',
@@ -295,7 +304,7 @@ describe('CargaSeguraPersistence', () => {
     ]);
 
     await expect(
-      new CargaSeguraPersistence().persistir({
+      new CargaSeguraPersistence({} as any).persistir({
         operacion: operation({
           estado: 'iniciada',
         }),
@@ -310,7 +319,7 @@ describe('CargaSeguraPersistence', () => {
     queue([storedOperationRow()]);
 
     await expect(
-      new CargaSeguraPersistence().persistir({
+      new CargaSeguraPersistence({} as any).persistir({
         operacion: operation(),
         command: command({
           empresaCodigo: 'OTRA',

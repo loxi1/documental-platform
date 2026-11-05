@@ -43,6 +43,53 @@ export class TmpRepository {
       finally { connection.release(); }
     }
   }
+  /** P3 only: session mutex on one reserved connection; no SQL transaction spans storage PUT. */
+  async lockedBounded<T>(
+    key: string,
+    work: (connection: Connection) => Promise<T>,
+    timeoutMs = 3000,
+  ): Promise<T> {
+    if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 0 || timeoutMs > 30000) {
+      throw new RangeError('P3_LOCK_TIMEOUT_INVALID');
+    }
+    const connection = await sql.reserve();
+    const lockKey = `tmp:carga-segura-r2:${key}`;
+    let acquired = false;
+    let primaryError: unknown;
+    let failed = false;
+    try {
+      const deadline = performance.now() + timeoutMs;
+      do {
+        const [row] = await connection`SELECT pg_try_advisory_lock(hashtextextended(${lockKey}, 0)) AS acquired`;
+        if (row?.acquired === true) {
+          acquired = true;
+          break;
+        }
+        if (performance.now() >= deadline) break;
+        await new Promise(resolve => setTimeout(resolve, Math.min(50, Math.max(1, deadline - performance.now()))));
+      } while (true);
+      if (!acquired) throw new Error('P3_MUTEX_BUSY');
+      return await work(connection);
+    } catch (error) {
+      failed = true;
+      primaryError = error;
+      throw error;
+    } finally {
+      try {
+        if (acquired) {
+          const [row] = await connection`SELECT pg_advisory_unlock(hashtextextended(${lockKey}, 0)) AS released`;
+          if (row?.released !== true && !failed) throw new Error('P3_MUTEX_RELEASE_UNCONFIRMED');
+        }
+      } catch (cleanupError) {
+        if (!failed) throw cleanupError;
+        // The original failure is authoritative; the session may already be disconnected.
+        void primaryError;
+      } finally {
+        connection.release();
+      }
+    }
+  }
+
   async reserve(c: Connection, actor: Identity, file: { name: string; mime: string; size: number; hash: string }, fingerprint: string, bucket: string): Promise<TmpRow> {
     return this.transaction(c, async tx => {
       const previous = await tx`SELECT * FROM documentos.carga_operaciones WHERE operacion_tipo='tmp'
@@ -69,6 +116,33 @@ export class TmpRepository {
       AND cliente_destino_id=${actor.clienteDestinoId}`;
     if (!row) throw new NotFoundException('TEMP no disponible');
     return row;
+  }
+  async saveDocumentalMetadata(c: Connection, id: number, metadata: Record<string, any>) {
+    await c`UPDATE documentos.carga_operaciones SET metadata=${c.json(JSON.stringify(metadata))}::jsonb,
+      actualizado_en=now() WHERE id=${id} AND operacion_tipo='tmp'`;
+  }
+  async assertDocumentalScope(c: Connection, row: TmpRow, input: any) {
+    const [e] = await c`SELECT id FROM documentos.expedientes WHERE id=${input.expedienteId}
+      AND empresa_codigo=${row.empresa_codigo} AND cliente_destino_id=${row.cliente_destino_id}`;
+    if (!e) throw new ConflictException('TMP_EXPEDIENTE_SCOPE_CONFLICT');
+    if (input.tipoDocumental === 'FACTURA') {
+      const [principal] = await c`SELECT d.id FROM documentos.documentos d
+        JOIN documentos.expediente_documentos ed ON ed.documento_id=d.id
+        WHERE d.id=${input.documentoBaseId} AND ed.expediente_id=${input.expedienteId}
+          AND ed.es_principal=true AND d.tipo_documental IN ('OC','OS')
+          AND d.estado='confirmado' AND d.cliente_abreviatura=${row.empresa_codigo}`;
+      if (!principal) throw new ConflictException('TMP_PRINCIPAL_SCOPE_CONFLICT');
+    }
+    if (input.grupoFacturaId != null) {
+      const [g] = await c`SELECT g.id FROM documentos.grupos_factura g
+        JOIN documentos.documentos_operativos_principales p ON p.id=g.documento_operativo_principal_id
+        JOIN documentos.contenedores_operativos co ON co.id=p.contenedor_operativo_id
+        WHERE g.id=${input.grupoFacturaId} AND g.estado<>'anulado' AND p.estado='activo'
+          AND p.es_principal_activo=true AND p.documento_id=${input.documentoBaseId}
+          AND co.estado='activo' AND co.expediente_v1_id=${input.expedienteId}
+          AND co.empresa_codigo=${row.empresa_codigo} AND co.cliente_destino_id=${row.cliente_destino_id}`;
+      if (!g) throw new ConflictException('TMP_GRUPO_SCOPE_CONFLICT');
+    }
   }
   async staged(c: Connection, id: number) {
     await c`UPDATE documentos.carga_operaciones SET estado='almacenada', almacenada_en=now(), actualizado_en=now() WHERE id=${id} AND estado='iniciada'`;
@@ -268,7 +342,7 @@ export class TmpRepository {
   }
   async bind(c: Connection, row: TmpRow, destination: string, identity: string) {
     const metadata = { ...row.metadata, destinoReservado: destination, promocionIdentity: identity };
-    await c`UPDATE documentos.carga_operaciones SET metadata=${JSON.stringify(metadata)}::jsonb, actualizado_en=now() WHERE id=${row.id}`;
+    await c`UPDATE documentos.carga_operaciones SET metadata=${c.json(JSON.stringify(metadata))}::jsonb, actualizado_en=now() WHERE id=${row.id}`;
   }
 
   async markPhysicalOwnership(c: Connection, row: TmpRow) {
@@ -314,10 +388,13 @@ export class TmpRepository {
       completedAt: new Date().toISOString(),
       resultado,
     };
-    await c`UPDATE documentos.carga_operaciones
+    const updated = await c`UPDATE documentos.carga_operaciones
       SET metadata=jsonb_set(metadata, '{ocrCandidate}', ${JSON.stringify(candidate)}::jsonb),
           actualizado_en=now()
-      WHERE id=${id} AND operacion_tipo='tmp'`;
+      WHERE id=${id} AND operacion_tipo='tmp'
+        AND (metadata #>> '{integration,consumer}') IS DISTINCT FROM 'COMPRAS_TEMP_DOCUMENTAL'
+      RETURNING id`;
+    return updated.length === 1;
   }
   async promoted(c: Connection, row: TmpRow, actor: Identity, destination: string, integration?: TmpIntegration) {
     await this.transaction(c, async tx => {

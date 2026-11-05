@@ -5,6 +5,7 @@ import {
   Injectable,
 } from '@nestjs/common';
 import { buildCargaSeguraStorageKey } from '../carga-segura/carga-segura.storage';
+import { obtenerFechaEmisionOpPersistida } from '../orden-pago/orden-pago-fecha-emision';
 import type { CargaSeguraHttpResolvedIdentity } from '../carga-segura/http/carga-segura-http.validation';
 import { TmpRepository } from '../tmp/tmp.repository';
 import { TmpService } from '../tmp/tmp.service';
@@ -98,6 +99,25 @@ export class ReciboHonorarioTempMaterializationService {
             tmpActor,
           );
 
+          const regularizacionOp = row.metadata?.regularizacionOp;
+
+          if (
+            regularizacionOp?.consumer !== 'REGULARIZACION_OP' ||
+            regularizacionOp?.tipoRegularizador !== 'RECIBO_HONORARIO' ||
+            !Number.isSafeInteger(regularizacionOp?.ordenPagoId) ||
+            regularizacionOp.ordenPagoId <= 0
+          ) {
+            throw new ConflictException('TEMP_REGULARIZACION_OP_CONFLICT');
+          }
+
+          const fechaEmisionOp = row.metadata?.destinoReservado
+            ? null
+            : await obtenerFechaEmisionOpPersistida(
+                tx,
+                regularizacionOp.ordenPagoId,
+                repositoryActor,
+              );
+
           const destination =
             row.metadata?.destinoReservado ||
             buildCargaSeguraStorageKey({
@@ -105,7 +125,7 @@ export class ReciboHonorarioTempMaterializationService {
               empresaCodigo: row.empresa_codigo,
               nombreArchivo:
                 row.nombre_archivo_original,
-              fecha: new Date(row.iniciada_en),
+              fecha: fechaEmisionOp!,
             });
 
           const ids = await this.repository.reserve(

@@ -1,3 +1,4 @@
+import { findDuplicateDocumentOrigin } from '../tmp/duplicate-document-origin';
 import { ConflictException, Injectable } from '@nestjs/common';
 import { buildClaveDocumental } from '../identidad-documental';
 import type {
@@ -339,9 +340,14 @@ export class ReciboHonorarioTempMaterializationRepository {
     `;
 
     if (duplicados[0]) {
-      throw new ConflictException(
-        'RECIBO_HONORARIO_TEMP_DOCUMENT_DUPLICATE',
-      );
+      throw new ConflictException({
+        code: 'RECIBO_HONORARIO_TEMP_DOCUMENT_DUPLICATE',
+        message: 'RECIBO_HONORARIO_TEMP_DOCUMENT_DUPLICATE',
+        details: {
+          duplicateCandidateId: Number(duplicados[0].id),
+          duplicateOrigin: await findDuplicateDocumentOrigin(tx, Number(duplicados[0].id), actor, 'RECIBO_HONORARIO'),
+        },
+      });
     }
 
     let ocrResultadoId: number | null = null;

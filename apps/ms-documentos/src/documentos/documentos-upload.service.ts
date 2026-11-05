@@ -1,3 +1,5 @@
+import { PeriodoDocumentalR2Repository } from './periodo-documental-r2.repository';
+import { resolverIdentidadVersionDocumental, type VersionDocumentalActor } from './carga-segura/http/carga-segura-http.validation';
 import { BadRequestException, ConflictException, Injectable,
   ForbiddenException,} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -97,6 +99,7 @@ export class DocumentosUploadService {
     private readonly config: ConfigService,
     private readonly documentoEventos: DocumentoEventosService,
     private readonly workspaceV2: WorkspaceDocumentalV2UseCase,
+    private readonly periodoR2: PeriodoDocumentalR2Repository,
   ) {}
 
   async prevalidarCarga(file: UploadedFileLike | undefined, body: CargaGuiadaBody) {
@@ -228,7 +231,8 @@ export class DocumentosUploadService {
   async subirVersionDocumentoExistente(
     documentoIdRaw: string | number,
     file: UploadedFileLike,
-    input: Record<string, unknown> = {},
+    input: Record<string, unknown>,
+    actor: VersionDocumentalActor,
   ) {
     const documentoId = Number(documentoIdRaw);
     if (!Number.isInteger(documentoId) || documentoId <= 0) {
@@ -239,27 +243,31 @@ export class DocumentosUploadService {
       throw new BadRequestException('ARCHIVO_REQUERIDO');
     }
 
-    const empresaSolicitada = String(
-      input.empresaCodigo ??
-        input.clienteAbreviatura ??
-        '',
-    )
-      .trim()
-      .toUpperCase();
-
-    if (!empresaSolicitada) {
-      throw new BadRequestException('EMPRESA_REQUERIDA');
+    // Revalidate at the service boundary; body never supplies tenant authority.
+    const identity = resolverIdentidadVersionDocumental({
+      workspaceId: String(actor?.workspaceId ?? ''), empresaCodigo: actor?.empresaCodigo,
+      clienteDestinoId: String(actor?.clienteDestinoId ?? ''), actorId: String(actor?.actorId ?? ''),
+      userId: undefined, requestId: actor?.requestId, correlationId: actor?.correlationId,
+    });
+    const empresaSolicitada = identity.empresaCodigo.trim().toUpperCase();
+    for (const field of ['empresaCodigo', 'clienteAbreviatura', 'workspaceId', 'clienteDestinoId', 'actorId']) {
+      const expected = field === 'clienteAbreviatura' || field === 'empresaCodigo'
+        ? empresaSolicitada : identity[field as keyof VersionDocumentalActor];
+      if (input[field] !== undefined && String(input[field]).trim().toUpperCase() !== String(expected).toUpperCase()) {
+        throw new ForbiddenException('VERSION_CONTEXTO_INCOMPATIBLE');
+      }
     }
 
     const documentoRows = await sql<
       Array<{
         id: number;
         cliente_abreviatura: string | null;
+        tipo_documental: string;
       }>
     >`
       SELECT
         d.id,
-        d.cliente_abreviatura
+        d.cliente_abreviatura, d.tipo_documental
       FROM documentos.documentos d
       WHERE d.id = ${documentoId}::bigint
       LIMIT 1
@@ -286,7 +294,11 @@ export class DocumentosUploadService {
     const sha256 = createHash('sha256').update(file.buffer).digest('hex');
     const bucket = this.resolveBucket();
 
-    const now = new Date();
+    const tipoPersistido = documentoDestino.tipo_documental;
+    const periodo = ['FACTURA', 'GUIA_REMISION'].includes(tipoPersistido)
+      ? await this.periodoR2.resolverParaVersion(identity, documentoId, tipoPersistido)
+      : null;
+    const now = periodo?.fecha ?? new Date();
     const year = String(now.getUTCFullYear());
     const month = String(now.getUTCMonth() + 1).padStart(2, '0');
     const storageKey =

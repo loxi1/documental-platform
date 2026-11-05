@@ -1,4 +1,5 @@
 jest.mock('@documental/database',()=>({sql:jest.fn()}));
+jest.mock('@documental/shared', () => ({ NatsSubjects: {} }));
 import { DocumentosService } from './documentos.service';
 function setup(){const s=new DocumentosService({} as any,{} as any,{} as any,{} as any,{} as any,{} as any);return s;}
 it('coalesces simultaneous ordinary requests for the same file/context',async()=>{const s=setup();let finish!:(x:any)=>void;const gate=new Promise(r=>finish=r);const inner=jest.spyOn(s as any,'procesarOcrArchivoInterno').mockReturnValue(gate);const a=s.procesarOcrArchivo(5,{expedienteId:30});const b=s.procesarOcrArchivo(5,{expedienteId:30});expect(inner).toHaveBeenCalledTimes(1);finish({ok:true,ocrResultadoId:10});expect(await Promise.all([a,b])).toEqual([{ok:true,ocrResultadoId:10},{ok:true,ocrResultadoId:10}]);});
