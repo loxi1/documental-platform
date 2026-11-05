@@ -454,3 +454,43 @@ ROLLBACK_EXECUTED=NO. El caso 403 histórico no presentó evidencia de regresió
 Aceptación productiva: PENDING_PO_AND_AUTHENTICATED_FUNCTIONAL_VERIFICATION. Mantener abiertos el acceso a la referencia histórica474 y las verificaciones no ejecutadas; no modificar datos para cerrar artificialmente el release.
 
 Evidencia externa: `/home/loxi1/bbti-evidence/controlled-production-release-r1/`, execution-record.json, production-postdeploy.json, production-configured-storage-read.json, production-r2-preview-investigation.json, deployment-prepare.log y deployment-rollout.log. Esta actualización sigue SOURCE main → Enterprise main y no altera los 101 contenidos ni dispara otra publicación GHCR.
+
+---
+
+## Aceptación funcional productiva del PO — 05/11/2026
+
+ACTION=MVP_PRODUCTION_ACCEPTANCE_DOCUMENTARY_CLOSURE_R1
+
+PO_FUNCTIONAL_ACCEPTANCE=APPROVED. RELEASE_STATUS=ACCEPTED_WITH_OBSERVATIONS. Autoridad: declaración expresa del Product Owner recibida el 05/11/2026. Este registro aditivo actualiza el estado posterior a la ejecución; conserva los registros históricos de aceptación pendiente sin reescribirlos.
+
+### Evidencia funcional declarada por el Product Owner
+
+| Frente | Resultado declarado | Alcance comunicado por el PO |
+|---|---|---|
+| Compras | PASS_PO | Carga TEMP en `data-prod/documentos/tmp/` y promoción definitiva a `data-prod/documentos/2026/05/BBTI/`. |
+| Almacén | PASS_PO | Carga y validación de Guía. |
+| Finanzas / Regularización | PASS_PO | Carga TEMP y promoción a la carpeta definitiva correspondiente bajo `data-prod/documentos/2026/`. |
+| Contabilidad | PASS_PO | Visualización de los registros incorporados desde los demás módulos. |
+
+Las rutas y resultados anteriores son evidencia declarada por el PO, no pruebas automatizadas nuevas ni inferencias a partir de healthchecks. Se conservan literalmente las rutas comunicadas, sin reinterpretar su período documental. Esta intervención no ejecuta cargas, materializaciones, operaciones financieras ni validaciones E2E adicionales. Las verificaciones técnicas previas y sus límites permanecen en la sección de ejecución.
+
+### Observaciones abiertas preservadas
+
+1. Recuperación OCR tardía no acreditada mediante E2E productivo.
+2. Expiración TEMP no verificada en producción.
+3. Referencia histórica R2 con HTTP 403: archivo474/documento481; sin modificar referencias, objetos, permisos ni credenciales.
+
+La aceptación con observaciones no declara cerrados estos tres puntos ni amplía el alcance de las pruebas técnicas.
+
+### Identidades y trazabilidad conservadas
+
+- Inventario funcional: 101 rutas; huella `39a446582ba5c4f529b97fab965f2fd7676bc7b6bea0e3f2111dd3716f2390fe`; sin modificaciones.
+- SOURCE funcional: `88edc03136a446308d8b18fa778bdccf6c002be3`. Enterprise funcional / origen de imágenes: `a57c328cbf62de39aa91ed541ae32b449927a5b6`.
+- Registro de ejecución publicado: SOURCE `8477adef4393b8e0a8ef2eee3a2e25cb8c19020d`; Enterprise `a8899cc0108292e0decceb69b48e0eabb5a33dc7`.
+- ms-documentos conserva `sha256:817a2490d1a4a2891da3f0381dde024e118886e4fbb4a8a348fd8bbc6a94a7ab`.
+- api-gateway conserva `sha256:d0e0875318b91512b308add1fbf80d9542239eca1ffc3a32125bd3a29b0f4a12`.
+- web-admin conserva `sha256:78db00064093665c89ce60ac6944cc135a5acb652a74d2d8c85e4cd9e8d35691`.
+- ms-auth conserva su digest productivo anterior `sha256:e299d52aa019c9d76e37618641ba2bce61b740b2df9c4523e8935e2df4a726b5`.
+- Rollback e identidades anteriores permanecen en las secciones precedentes. No se reconstruyen imágenes ni se recrean contenedores por esta aceptación documental.
+
+Publicación exclusivamente documental SOURCE main → Enterprise main. Sincronización EC2 limitada al manifest, con revalidación de identidades de servicios, OCR y metadatos de configuración antes/después; ningún cambio de runtime autorizado por esta sección. Los SHA de este registro se resuelven por Git mediante su ACTION y quedan fijados en `acceptance-documentary-closure.json` de la evidencia externa `/home/loxi1/bbti-evidence/controlled-production-release-r1/`, evitando referencias SHA autorreferenciales.
