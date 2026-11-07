@@ -95,6 +95,27 @@ function mergeOcrFields(current: FormState, incoming: FormState, edited: Set<key
   return merged;
 }
 
+function getProviderRuc(form: FormState): string {
+  return ['OC', 'OS'].includes(String(form.tipoDocumental).toUpperCase())
+    ? form.rucProveedor.trim() || form.rucEmisor.trim()
+    : form.rucEmisor.trim() || form.rucProveedor.trim();
+}
+
+function applyProviderFieldEdit(current: FormState, name: keyof FormState, value: string): FormState {
+  if (name === 'rucProveedor' || name === 'rucEmisor') {
+    const ruc = value.replace(/\D/g, '').slice(0, 11);
+    return { ...current, rucProveedor: ruc, rucEmisor: ruc };
+  }
+  if (name === 'proveedor' || name === 'razonSocial') {
+    return { ...current, proveedor: value, razonSocial: value };
+  }
+  return { ...current, [name]: value };
+}
+
+function providerLookupIsCurrent(current: FormState, ticket: { ruc: string; tipo: string; revision: number }, revision: number): boolean {
+  return revision === ticket.revision && current.tipoDocumental === ticket.tipo && getProviderRuc(current) === ticket.ruc;
+}
+
 function texto(value: unknown, fallback = "—") {
   if (value === null || value === undefined || value === "") return fallback;
   return String(value);
@@ -822,6 +843,7 @@ export function OcrValidationModal({
   };
 
   const editedFields = useRef(new Set<keyof FormState>());
+  const providerRevision = useRef(0);
   const formSession = useRef<string | null>(null);
   const [form, setForm] = useState<FormState>(() => buildFormInicial());
   const [localMessage, setLocalMessage] = useState<string | null>(null);
@@ -831,10 +853,12 @@ export function OcrValidationModal({
   const [previewUrlFromApi, setPreviewUrlFromApi] = useState<string | null>(null);
   const [previewArchivoIdFromApi, setPreviewArchivoIdFromApi] = useState<string | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
-  const [proveedorEstado, setProveedorEstado] = useState<"SIN_CONSULTAR" | "BUSCANDO" | "RESUELTO" | "NO_ENCONTRADO" | "ERROR_CONSULTA">("SIN_CONSULTAR");
+  const [proveedorEstado, setProveedorEstado] = useState<"SIN_CONSULTAR" | "BUSCANDO" | "RESUELTO" | "NO_ENCONTRADO" | "ERROR_CONSULTA" | "SUGERENCIA">("SIN_CONSULTAR");
   const [proveedorOrigen, setProveedorOrigen] = useState<string>("");
+  const [sugerenciaProveedor, setSugerenciaProveedor] = useState<{ ruc: string; tipo: string; revision: number; razonSocial: string } | null>(null);
 
   useEffect(() => {
+    providerRevision.current += 1;
     if (!open) formSession.current = null;
     if (open) {
       const session = String(fallbackArchivoId ?? "");
@@ -848,6 +872,7 @@ export function OcrValidationModal({
       setDuplicadoDetails(null);
       setProveedorEstado("SIN_CONSULTAR");
       setProveedorOrigen("");
+      setSugerenciaProveedor(null);
     }
   }, [
     open,
@@ -971,10 +996,13 @@ export function OcrValidationModal({
       !resuelveProveedorPorRuc
     ) return;
 
-    const ruc = form.rucEmisor.trim() || form.rucProveedor.trim();
+    const ruc = getProviderRuc(form);
+    const ticket = { ruc, tipo: form.tipoDocumental, revision: providerRevision.current };
+    setSugerenciaProveedor(null);
     if (!/^\d{11}$/.test(ruc)) {
       setProveedorEstado("SIN_CONSULTAR");
       setProveedorOrigen("");
+      setSugerenciaProveedor(null);
       return;
     }
 
@@ -984,13 +1012,13 @@ export function OcrValidationModal({
       try {
         const proveedores = await buscarProveedoresCatalogo(ruc, 20);
         const exacto = proveedores.find((item) => item.ruc === ruc);
-        if (cancelled) return;
+        if (cancelled || providerRevision.current !== ticket.revision) return;
 
         if (!exacto) {
           setProveedorEstado("NO_ENCONTRADO");
           setProveedorOrigen("");
 
-          setForm((current) => ({
+          setForm((current) => !providerLookupIsCurrent(current, ticket, providerRevision.current) ? current : ({
             ...current,
             razonSocial: current.razonSocial || current.proveedor,
             proveedor: current.proveedor || current.razonSocial,
@@ -1001,7 +1029,17 @@ export function OcrValidationModal({
           return;
         }
 
-        setForm((current) => ({
+        const nombreActual = form.proveedor.trim() || form.razonSocial.trim();
+        if (nombreActual) {
+          const normalizarNombre = (value: string) => value.trim().replace(/\s+/g, " ").toUpperCase();
+          const coincide = normalizarNombre(nombreActual) === normalizarNombre(exacto.razonSocial);
+          setSugerenciaProveedor(coincide ? null : { ...ticket, razonSocial: exacto.razonSocial });
+          setProveedorEstado(coincide ? "RESUELTO" : "SUGERENCIA");
+          setProveedorOrigen(coincide ? "CATALOGO_PROVEEDORES" : "");
+          return;
+        }
+
+        setForm((current) => !providerLookupIsCurrent(current, ticket, providerRevision.current) ? current : ({
           ...current,
           rucEmisor: ruc,
           rucProveedor: ruc,
@@ -1011,7 +1049,7 @@ export function OcrValidationModal({
         setProveedorEstado("RESUELTO");
         setProveedorOrigen("CATALOGO_PROVEEDORES");
       } catch {
-        if (!cancelled) {
+        if (!cancelled && providerRevision.current === ticket.revision) {
           setProveedorEstado("ERROR_CONSULTA");
           setProveedorOrigen("");
         }
@@ -1029,8 +1067,11 @@ export function OcrValidationModal({
     resuelveProveedorPorRuc,
     form.rucEmisor,
     form.rucProveedor,
+    form.tipoDocumental,
   ]);
-const esFactura = tipoProveedor === "FACTURA";
+const accionesComprasSimplificadas = formularioContexto === "COMPRAS" &&
+    ["OC", "OS", "FACTURA"].includes(String(form.tipoDocumental).toUpperCase());
+  const esFactura = tipoProveedor === "FACTURA";
   const metadataDetectada = useMemo(
     () => buildInitialForm(resultado, expedienteContexto),
     [resultado, expedienteContexto],
@@ -1067,7 +1108,7 @@ const esFactura = tipoProveedor === "FACTURA";
   const proveedorEstadoVisible =
     readOnly &&
     proveedorEstado === "SIN_CONSULTAR" &&
-    /^\d{11}$/.test(form.rucEmisor.trim() || form.rucProveedor.trim()) &&
+    /^\d{11}$/.test(getProviderRuc(form)) &&
     Boolean((form.razonSocial || form.proveedor).trim())
       ? "RESUELTO"
       : proveedorEstado;
@@ -1077,7 +1118,27 @@ const esFactura = tipoProveedor === "FACTURA";
   function updateField(name: keyof FormState, value: string) {
     if (readOnly) return;
     editedFields.current.add(name);
-    setForm((current) => ({ ...current, [name]: value }));
+    if (['rucProveedor', 'rucEmisor', 'tipoDocumental', 'proveedor', 'razonSocial'].includes(name)) {
+      providerRevision.current += 1;
+      setProveedorEstado('SIN_CONSULTAR');
+      setProveedorOrigen('');
+      setSugerenciaProveedor(null);
+    }
+    if (name === 'rucProveedor' || name === 'rucEmisor') {
+      editedFields.current.add('rucProveedor');
+      editedFields.current.add('rucEmisor');
+    }
+    if (name === 'proveedor' || name === 'razonSocial') {
+      editedFields.current.add('proveedor');
+      editedFields.current.add('razonSocial');
+    }
+    setForm((current) => applyProviderFieldEdit(current, name, value));
+  }
+
+  function aceptarSugerenciaProveedor() {
+    if (!open || readOnly || esModoVersionDocumentoExistente || !sugerenciaProveedor ||
+        !providerLookupIsCurrent(form, sugerenciaProveedor, providerRevision.current)) return;
+    updateField("proveedor", sugerenciaProveedor.razonSocial);
   }
 
   async function runAction(action: "save" | "confirm" | "reject", callback?: (form: FormState) => void | Promise<void>) {
@@ -1354,11 +1415,7 @@ const esFactura = tipoProveedor === "FACTURA";
                               onChange={(event) => {
                                 const value = event.target.value;
 
-                                setForm((current) => ({
-                                  ...current,
-                                  razonSocial: value,
-                                  proveedor: value,
-                                }));
+                                updateField("razonSocial", value);
                               }}
                               placeholder="Ingrese la razón social"
                               disabled={readOnly || esModoVersionDocumentoExistente}
@@ -1373,7 +1430,7 @@ const esFactura = tipoProveedor === "FACTURA";
                         )}
                     </div>
                     <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
-                      Estado: {proveedorEstadoVisible === "RESUELTO" ? "Resuelto" : proveedorEstadoVisible === "BUSCANDO" ? "Buscando…" : proveedorEstadoVisible === "NO_ENCONTRADO" ? "No encontrado en catálogo" : proveedorEstadoVisible === "ERROR_CONSULTA" ? "Error de consulta" : "Pendiente"}
+                      Estado: {proveedorEstadoVisible === "RESUELTO" ? "Resuelto" : proveedorEstadoVisible === "BUSCANDO" ? "Buscando…" : proveedorEstadoVisible === "SUGERENCIA" ? "Revisar sugerencia" : proveedorEstadoVisible === "NO_ENCONTRADO" ? "No encontrado en catálogo" : proveedorEstadoVisible === "ERROR_CONSULTA" ? "Error de consulta" : "Pendiente"}
                       {proveedorOrigen ? ` · Origen: ${proveedorOrigen}` : ""}
                     </p>
                   </div>
@@ -1410,6 +1467,29 @@ const esFactura = tipoProveedor === "FACTURA";
                   ))}
                 </div>
               )}
+
+              {!esFactura && ["OC", "OS"].includes(String(tipoProveedor)) && !readOnly ? (
+                <p role="status" className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                  {proveedorEstado === "BUSCANDO" ? "Buscando proveedor por RUC…" :
+                    proveedorEstado === "SUGERENCIA" ? "La consulta devuelve otro nombre. Revisa la sugerencia." :
+                    proveedorEstado === "RESUELTO" ? "Proveedor encontrado por RUC." :
+                    proveedorEstado === "NO_ENCONTRADO" ? "No se encontró el proveedor. Completa la razón social manualmente." :
+                    proveedorEstado === "ERROR_CONSULTA" ? "No se pudo consultar el proveedor. Puedes completar la razón social manualmente." :
+                    "Completa el RUC del proveedor para consultar su razón social."}
+                </p>
+              ) : null}
+
+              {sugerenciaProveedor && !readOnly && !esModoVersionDocumentoExistente &&
+                providerLookupIsCurrent(form, sugerenciaProveedor, providerRevision.current) ? (
+                <div role="status" className="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100">
+                  <p>La consulta del RUC {sugerenciaProveedor.ruc} devuelve: <strong>{sugerenciaProveedor.razonSocial}</strong>.</p>
+                  <p className="mt-1">Se conserva el nombre del documento hasta que aceptes la sugerencia.</p>
+                  <button type="button" onClick={aceptarSugerenciaProveedor} disabled={submittingAction !== null}
+                    className="mt-2 rounded-md border border-current px-3 py-1.5 font-medium disabled:opacity-50">
+                    Usar nombre sugerido
+                  </button>
+                </div>
+              ) : null}
 
               {/* Código de contexto y clave documental se conservan
                   internamente, pero no forman parte de la validación humana. */}
@@ -1539,7 +1619,7 @@ const esFactura = tipoProveedor === "FACTURA";
               </button>
             ) : (
               <>
-                {formularioContexto !== "FINANZAS" &&
+                {!accionesComprasSimplificadas && formularioContexto !== "FINANZAS" &&
                 modo !== "pendiente_manual" && modo !== "pendiente_manual_almacen" ? (
                   <button
                     type="button"
@@ -1555,11 +1635,11 @@ const esFactura = tipoProveedor === "FACTURA";
                   onClick={onClose}
                   className="inline-flex h-9 items-center justify-center rounded-lg border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100 dark:hover:bg-slate-900"
                 >
-                  {formularioContexto === "FINANZAS" ? "Cancelar" : "Cancelar / Cerrar"}
+                  {accionesComprasSimplificadas || formularioContexto === "FINANZAS" ? "Cancelar" : "Cancelar / Cerrar"}
                 </button>
                 {!duplicadoDetails ? (
                   <>
-                    {formularioContexto !== "FINANZAS" &&
+                    {!accionesComprasSimplificadas && formularioContexto !== "FINANZAS" &&
                     modo !== "pendiente_manual" && modo !== "pendiente_manual_almacen" ? (
                       <button
                         type="button"

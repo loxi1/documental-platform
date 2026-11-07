@@ -457,6 +457,8 @@ export class ExpedientesService {
 
   getBandejaComprasOcos(filters: {
     empresa: string;
+    anio?: unknown;
+    mes?: unknown;
     estado?: string;
     q?: string;
     limit?: number;

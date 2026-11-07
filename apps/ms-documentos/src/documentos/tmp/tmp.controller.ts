@@ -130,16 +130,17 @@ export class TmpController {
   ) {
     if (
       !body ||
-      Object.keys(body).some(k => k !== 'tipoEsperado') ||
+      Object.keys(body).some(k => !['tipoEsperado', 'canalIngreso'].includes(k)) ||
       typeof body.tipoEsperado !== 'string'
     ) {
-      throw new BadRequestException('TEMP OCR requiere únicamente tipoEsperado');
+      throw new BadRequestException('TEMP OCR requiere tipoEsperado y canalIngreso opcional');
     }
 
     return this.service.procesarOcr(
       Number(id),
       this.actor(headers),
       body.tipoEsperado,
+      body.canalIngreso,
     );
   }
 

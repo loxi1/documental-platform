@@ -147,6 +147,7 @@ export async function subirDocumentoCargaSegura(
 
 export type ComprasTempContext = {
   tipoDocumental: 'OC' | 'OS' | 'FACTURA'; expedienteId: number;
+  canalIngreso?: 'COMPRAS_NUEVO_UPLOAD_PRINCIPAL' | 'COMPRAS_EDITAR_UPLOAD';
   documentoBaseId?: number; grupoFacturaId?: number;
 };
 export type ComprasTempResult = Record<string, any> & { tempId: number; tempIdentity: string; tempContextKey: string };
@@ -165,7 +166,8 @@ export async function recuperarTemporalCompras(context: ComprasTempContext): Pro
   if (!candidate && !row.documentalResult) {
     try {
       result = unwrap<any>((await api.post(`/documentos/tmp/${identity.tempId}/procesar-ocr`,
-        { tipoEsperado: context.tipoDocumental }, { headers: { 'Idempotency-Key': identity.key } })).data);
+        { tipoEsperado: context.tipoDocumental,
+          ...(['OC', 'OS'].includes(context.tipoDocumental) && context.canalIngreso ? { canalIngreso: context.canalIngreso } : {}) }, { headers: { 'Idempotency-Key': identity.key } })).data);
     } catch {
       // Consultar recupera una respuesta tardía; nunca se vuelve a subir el archivo.
       const latest = unwrap<any>((await api.get(`/documentos/tmp/${identity.tempId}`)).data);

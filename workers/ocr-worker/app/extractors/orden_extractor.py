@@ -88,13 +88,42 @@ def extract_all_rucs(text: str) -> list[str]:
     return rucs
 
 
-def extract_orden_comprador_ruc(text: str) -> str | None:
-    """Extrae RUC del comprador/receptor de la OC/OS.
+def _labelled_role_rucs(text: str, role: str) -> set[str]:
+    # Synthetic-text candidate: role labels are evidence; the first RUC is not.
+    labels = "COMPRADOR|RECEPTOR" if role == "buyer" else "PROVEEDOR|EMISOR"
+    t = normalize_for_search(text)
+    patterns = [
+        rf"(?:{labels})[^\n]{{0,90}}?R\.?U\.?C\.?\s*:?\s*((?:10|20)\d{{9}})\b",
+        rf"R\.?U\.?C\.?\s+(?:DEL?\s+)?(?:{labels})\s*:?\s*((?:10|20)\d{{9}})\b",
+    ]
+    return {ruc for pattern in patterns for ruc in re.findall(pattern, t)}
 
-    En formatos BBTI, el comprador es BBTI S.A.C. y su RUC es 20565747356.
-    En la extracción PDF este RUC puede aparecer junto a la etiqueta R.U.C.,
-    por eso no debe asumirse automáticamente como proveedor.
-    """
+
+def _orden_header_roles(text: str) -> tuple[str, str] | None:
+    t = normalize_for_search(text)
+    rucs = list(re.finditer(r"\b(?:10|20)\d{9}\b", t))
+    if len(rucs) != 2 or rucs[0].group() == rucs[1].group():
+        return None
+    header = re.search(r"ORDEN\s+(?:DE\s+)?(?:COMPRA|SERVICIO)", t)
+    if not header or not re.search(r"SE[ÑN]OR\(ES\)", t):
+        return None
+    first, second = rucs
+    middle = t[first.end():second.start()]
+    # Only the documented header -> generic R.U.C. -> contact -> supplier layout.
+    if header.end() < first.start() and re.search(r"R\.U\.C\.", middle) and re.search(r"ATENCION|TELEFONO", middle):
+        return first.group(), second.group()
+    return None
+
+
+def extract_orden_comprador_ruc(text: str) -> str | None:
+    labelled = _labelled_role_rucs(text, "buyer")
+    if labelled:
+        if len(labelled) != 1 or labelled & _labelled_role_rucs(text, "supplier"):
+            return None
+        return next(iter(labelled))
+    layout = _orden_header_roles(text)
+    if layout:
+        return layout[0]
     t = normalize_for_search(text)
     if "BBTI" in t and "20565747356" in t:
         return "20565747356"
@@ -102,27 +131,21 @@ def extract_orden_comprador_ruc(text: str) -> str | None:
 
 
 def extract_orden_proveedor_ruc(text: str) -> str | None:
-    rucs = extract_all_rucs(text)
-    comprador_ruc = extract_orden_comprador_ruc(text)
-
-    # Si existe comprador conocido, el proveedor debe ser el primer RUC distinto.
-    if comprador_ruc:
-        for ruc in rucs:
-            if ruc != comprador_ruc:
-                return ruc
-
-    t = normalize_for_search(text)
-    patterns = [
-        r"R\.U\.C\.\s*(?:\n|\s)*((?:10|20)\d{9})",
-        r"((?:10|20)\d{9})\s*(?:\n|\s)*R\.U\.C\.",
-    ]
-
-    for pattern in patterns:
-        match = re.search(pattern, t)
-        if match:
-            return match.group(1)
-
-    return rucs[0] if rucs else None
+    labelled = _labelled_role_rucs(text, "supplier")
+    buyers = _labelled_role_rucs(text, "buyer")
+    if labelled:
+        if len(labelled) != 1 or labelled & buyers:
+            return None
+        return next(iter(labelled))
+    if len(buyers) > 1:
+        return None
+    layout = _orden_header_roles(text)
+    if layout and not buyers:
+        return layout[1]
+    comprador = extract_orden_comprador_ruc(text)
+    rucs = [ruc for ruc in extract_all_rucs(text) if ruc != comprador]
+    # Fail closed for multiple unlabelled candidates; never guess another tenant.
+    return rucs[0] if len(rucs) == 1 else None
 
 
 def normalize_orden_proveedor(value: str | None) -> str | None:

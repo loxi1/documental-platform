@@ -1552,7 +1552,7 @@ export function CompraExpedienteEditor({
 
       setProcessingStep("uploading");
       if (['OC','OS','FACTURA'].includes(String(accion.tipoEsperado))) {
-        return cargarTemporalCompras(file, { expedienteId: Number(id),
+        return cargarTemporalCompras(file, { canalIngreso: "COMPRAS_EDITAR_UPLOAD", expedienteId: Number(id),
           tipoDocumental: accion.tipoEsperado as 'OC' | 'OS' | 'FACTURA',
           ...(accion.grupo === 'adjunto' ? { documentoBaseId: Number(getDocumentoId(principalSeleccionado)) } : {}) });
       }
@@ -3675,7 +3675,7 @@ export function CompraExpedienteEditor({
               disabled={modoSoloLectura || (grupo === 'adjunto' && !principalSeleccionado)}
               onClick={async () => {
                 try {
-                  const temp = await recuperarTemporalCompras({ expedienteId: Number(id),
+                  const temp = await recuperarTemporalCompras({ canalIngreso: "COMPRAS_EDITAR_UPLOAD", expedienteId: Number(id),
                     tipoDocumental: option.tipoEsperado as 'OC' | 'OS' | 'FACTURA',
                     ...(grupo === 'adjunto' ? { documentoBaseId: Number(getDocumentoId(principalSeleccionado)) } : {}) });
                   if (!temp) { setMensajeValidacion('No hay una carga temporal pendiente.'); return; }

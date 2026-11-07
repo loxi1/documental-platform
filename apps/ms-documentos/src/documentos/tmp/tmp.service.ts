@@ -625,6 +625,7 @@ export class TmpService {
     tempId: number,
     actor: Identity,
     tipoEsperado: string,
+    canalIngreso?: unknown,
   ) {
     this.id(tempId);
     const tipo = String(tipoEsperado ?? '').trim().toUpperCase();
@@ -632,6 +633,13 @@ export class TmpService {
     if (!['OC', 'OS', 'FACTURA', 'RECIBO_HONORARIO'].includes(tipo)) {
       throw new BadRequestException('TEMP_OCR_TIPO_NO_PERMITIDO');
     }
+
+    const compras = ['OC', 'OS'].includes(tipo);
+    if (canalIngreso !== undefined && (typeof canalIngreso !== 'string' || !compras || !['COMPRAS_NUEVO_UPLOAD_PRINCIPAL', 'COMPRAS_EDITAR_UPLOAD'].includes(String(canalIngreso)))) {
+      throw new BadRequestException('TEMP_OCR_CANAL_NO_PERMITIDO');
+    }
+    const contextoCarga = { areaOrigen: compras ? 'COMPRAS' : 'FINANZAS',
+      canalIngreso: compras ? (canalIngreso as string | undefined) ?? null : 'TEMP_REGULARIZACION_OP' };
 
     const decision = await this.repository.locked(String(tempId), async c => {
       const row = await this.repository.own(c, tempId, actor);
@@ -662,6 +670,7 @@ export class TmpService {
       const candidate = row.metadata?.ocrCandidate;
 
       if (candidate) {
+        if (canalIngreso !== undefined && candidate.contextoCarga?.canalIngreso !== canalIngreso) throw new ConflictException('TEMP_OCR_CONTEXTO_CONFLICT');
         if (candidate.tipoEsperado !== tipo) {
           throw new ConflictException('TEMP_OCR_TIPO_CONFLICT');
         }
@@ -695,7 +704,7 @@ export class TmpService {
       }
 
       const attemptId = randomUUID();
-      await this.repository.ocrProcessing(c, tempId, tipo, { storageKey, attemptId });
+      await this.repository.ocrProcessing(c, tempId, tipo, { storageKey, attemptId, contextoCarga });
 
       return {
         dispatch: true as const,
@@ -758,9 +767,9 @@ export class TmpService {
           tipoSolicitud: 'clasificar_extraer',
           requestId,
           clienteAbreviatura,
-          areaOrigen: 'FINANZAS',
+          areaOrigen: contextoCarga.areaOrigen,
           tipoEsperado: tipo,
-          canalIngreso: 'TEMP_REGULARIZACION_OP',
+          canalIngreso: contextoCarga.canalIngreso,
         })
         .pipe(timeout(120000)),
     );
@@ -788,7 +797,7 @@ export class TmpService {
         throw new ConflictException('TEMP_OCR_CLAIM_INVALIDO');
       }
 
-      const persisted = await this.repository.ocrDone(c, tempId, tipo, resultado, { storageKey: decision.storageKey, attemptId: decision.attemptId });
+      const persisted = await this.repository.ocrDone(c, tempId, tipo, resultado, { storageKey: decision.storageKey, attemptId: decision.attemptId, contextoCarga });
       if (persisted === false) return false;
       return true;
     });

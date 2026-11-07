@@ -187,9 +187,13 @@ export class ExpedientesController {
     @Query('limit') limit?: string,
     @Query('offset') offset?: string,
     @Query('incluirPendientesValidacion') incluirPendientesValidacion?: string,
+    @Query('anio') anio?: string,
+    @Query('mes') mes?: string,
   ) {
     return this.service.getBandejaComprasOcos({
       empresa,
+      anio,
+      mes,
       estado,
       q,
       limit: limit ? Number(limit) : undefined,

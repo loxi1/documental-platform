@@ -81,7 +81,7 @@ const OPTIONS: OpcionInicio[] = [
     tipo: "OC",
     title: "Orden de Compra",
     shortLabel: "OC principal",
-    description: "Registrar una OC y asociarla a una OP / PR con código 05*.",
+    description: "Registrar una OC",
     icon: ShoppingCart,
     tipoRelacionPrincipal: "principal_oc",
     codigoHint: "Ejemplo: 050201",
@@ -91,7 +91,7 @@ const OPTIONS: OpcionInicio[] = [
     tipo: "OS",
     title: "Orden de Servicio",
     shortLabel: "OS principal",
-    description: "Registrar una OS y asociarla a un centro de costo con código 03*.",
+    description: "Registrar una OS",
     icon: FileText,
     tipoRelacionPrincipal: "principal_os",
     codigoHint: "Ejemplo: 030120",
@@ -729,7 +729,7 @@ export function NuevoExpedienteWizard() {
       }
 
       setProcessingStep("uploading");
-      const resultado = await cargarTemporalCompras(file, {
+      const resultado = await cargarTemporalCompras(file, { canalIngreso: "COMPRAS_NUEVO_UPLOAD_PRINCIPAL",
         expedienteId: Number(expedienteSeleccionado.id),
         tipoDocumental: selectedOption.tipo as 'OC' | 'OS',
       });
@@ -929,7 +929,7 @@ export function NuevoExpedienteWizard() {
           </Button>
           <h1 className="text-2xl font-bold">Iniciar carga documental de compras</h1>
           <p className="text-sm text-muted-foreground">
-            Selecciona el documento principal, vincúlalo a un expediente real y valida OCR antes de pasar a adjuntos.
+            Selecciona el documento principal, vincúlalo un Centro de costo o PR
           </p>
         </div>
 
@@ -974,7 +974,7 @@ export function NuevoExpedienteWizard() {
             <CardContent className="space-y-4">
               <div className="space-y-1.5">
                 <label className="text-xs font-medium uppercase text-muted-foreground">
-                  Código, descripción, empresa o cliente
+                  Código y descripción
                 </label>
                 <div className="relative">
                   <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
@@ -984,7 +984,7 @@ export function NuevoExpedienteWizard() {
                       setQuery(event.target.value);
                       setExpedienteSeleccionado(null);
                     }}
-                    placeholder="Buscar 050201, PRODUCCION, BBTI..."
+                    placeholder="Buscar por PR o centro costo"
                     className="pl-9"
                     disabled={processingStep !== "idle"}
                   />
@@ -1015,13 +1015,6 @@ export function NuevoExpedienteWizard() {
                           <p className="text-sm text-muted-foreground">
                             {expediente.descripcion ?? "Sin descripción"}
                           </p>
-                          <p className="mt-1 text-xs text-muted-foreground">
-                            {expediente.empresaCodigo} · {expediente.clienteNombre ?? expediente.clienteAbreviatura ?? "Cliente no informado"}
-                          </p>
-                        </div>
-                        <div className="text-right text-xs text-muted-foreground">
-                          <p>{expediente.documentos ?? 0} documentos</p>
-                          <p>{expediente.alertas ?? 0} alertas</p>
                         </div>
                       </div>
                     </button>
@@ -1042,20 +1035,6 @@ export function NuevoExpedienteWizard() {
                   <p className="text-sm text-muted-foreground">
                     {expedienteSeleccionado.descripcion ?? "Sin descripción"}
                   </p>
-                  <div className="mt-3 grid gap-2 text-xs text-muted-foreground md:grid-cols-2">
-                    <div>
-                      <span className="font-medium text-foreground">Empresa:</span> {expedienteSeleccionado.empresaCodigo}
-                    </div>
-                    <div>
-                      <span className="font-medium text-foreground">Cliente:</span> {expedienteSeleccionado.clienteNombre ?? "—"}
-                    </div>
-                    <div>
-                      <span className="font-medium text-foreground">Documentos:</span> {expedienteSeleccionado.documentos ?? 0}
-                    </div>
-                    <div>
-                      <span className="font-medium text-foreground">Alertas:</span> {expedienteSeleccionado.alertas ?? 0}
-                    </div>
-                  </div>
                 </div>
               ) : null}
 
@@ -1201,18 +1180,12 @@ export function NuevoExpedienteWizard() {
                   #{expedienteSeleccionado.id} · {expedienteSeleccionado.codigoExpediente}
                 </p>
                 <p className="text-muted-foreground">{expedienteSeleccionado.descripcion ?? "Sin descripción"}</p>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Empresa: {expedienteSeleccionado.empresaCodigo} · Cliente: {expedienteSeleccionado.clienteNombre ?? expedienteSeleccionado.clienteAbreviatura ?? "—"}
-                </p>
               </div>
             ) : null}
 
             <div className="mt-4 rounded-xl border border-dashed p-5 text-center">
               <UploadCloud className="mx-auto h-8 w-8 text-muted-foreground" />
               <p className="mt-2 font-medium">Selecciona el archivo principal</p>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Se prevalidará antes de subir. Pueden coexistir varios principales distintos dentro del mismo contexto.
-              </p>
               <input
                 ref={fileInputRef}
                 type="file"
@@ -1281,7 +1254,7 @@ export function NuevoExpedienteWizard() {
       <Button type="button" variant="outline" disabled={!expedienteSeleccionado?.id}
         onClick={async () => {
           try {
-            const temp = await recuperarTemporalCompras({ expedienteId: Number(expedienteSeleccionado?.id), tipoDocumental: selectedOption.tipo as 'OC' | 'OS' });
+            const temp = await recuperarTemporalCompras({ canalIngreso: "COMPRAS_NUEVO_UPLOAD_PRINCIPAL", expedienteId: Number(expedienteSeleccionado?.id), tipoDocumental: selectedOption.tipo as 'OC' | 'OS' });
             if (!temp) { setAccionError('No hay una carga temporal pendiente.'); return; }
             setArchivoIdModal(null); setOcrResultadoIdModal(null); setResultadoModal(temp); setValidacionAbierta(true);
           } catch (error) { setAccionError(getErrorMessage(error)); }

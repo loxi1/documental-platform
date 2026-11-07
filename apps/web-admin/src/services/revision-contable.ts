@@ -59,16 +59,18 @@ function normalizeRevisionContable(
   };
 }
 
-export async function getRevisionContable(params: RevisionContableParams) {
+export async function getRevisionContable(params: RevisionContableParams, options: { signal?: AbortSignal } = {}) {
   try {
     const { data } = await api.get<
       ApiEnvelope<RevisionContableResponse> | RevisionContableResponse
     >("/expedientes/bandeja-contable", {
       params,
+      ...(options.signal ? { signal: options.signal } : {}),
     });
 
     return normalizeRevisionContable(unwrap<RevisionContableResponse>(data), params);
   } catch (error) {
+    if (options.signal?.aborted) throw error;
     const status = (error as AxiosError)?.response?.status;
 
     if (status && status !== 404) {
@@ -79,6 +81,7 @@ export async function getRevisionContable(params: RevisionContableParams) {
       ApiEnvelope<RevisionContableItem[]> | RevisionContableItem[]
     >("/expedientes/revision-contable", {
       params,
+      ...(options.signal ? { signal: options.signal } : {}),
     });
 
     return normalizeRevisionContable(unwrap<RevisionContableItem[]>(data), params);

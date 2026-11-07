@@ -251,6 +251,8 @@ function unwrapDeep<T = any>(payload: unknown): T {
 // Compras: bandeja OC/OS-céntrica read-only.
 export type BandejaComprasQuery = {
   empresa?: string;
+  anio?: number;
+  mes?: number;
   estado?: string;
   q?: string;
   limit?: number;
@@ -270,6 +272,9 @@ export type BandejaComprasPrincipal = {
   tipo?: string | null;
   tipoDocumental?: string | null;
   numero?: string | null;
+  fechaEmision?: string | null;
+  fechaPeriodo?: string | null;
+  fechaPeriodoFuente?: 'EMISION' | 'CREACION' | null;
   proveedor?: string | null;
   proveedorNombre?: string | null;
   ruc?: string | null;
@@ -302,8 +307,9 @@ export type BandejaComprasPage = {
 
 export async function obtenerBandejaCompras(
   params: BandejaComprasQuery = {},
+  options: { signal?: AbortSignal } = {},
 ): Promise<BandejaComprasPage> {
-  const response = await api.get("/expedientes/bandeja-compras", { params });
+  const response = await api.get("/expedientes/bandeja-compras", { params, signal: options.signal });
 
   let payload: unknown = response.data;
 

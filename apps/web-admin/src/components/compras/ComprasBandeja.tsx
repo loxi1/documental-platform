@@ -2,9 +2,15 @@
 
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
-import { CheckCircle2, Eye, Plus, Search, X } from "lucide-react";
+import flatpickr from "flatpickr";
+import monthSelectPlugin from "flatpickr/dist/plugins/monthSelect";
+import { Spanish } from "flatpickr/dist/l10n/es";
+import "flatpickr/dist/flatpickr.min.css";
+import "flatpickr/dist/plugins/monthSelect/style.css";
+import { currentComprasPeriod, comprasPeriodQueryOptions, filterComprasLocal, scopedComprasPage, type ComprasScope } from "@/lib/compras-periodo";
+import { CalendarDays, CheckCircle2, Eye, Plus, Search, X } from "lucide-react";
 import { usePathname, useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -59,40 +65,63 @@ function LoadingRows() {
 export function ComprasBandeja() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const [empresa, setEmpresa] = useState("");
+  const [scope, setScope] = useState<ComprasScope | null>(null);
+  const [period, setPeriod] = useState(() => currentComprasPeriod());
+  const periodoInput = useRef<HTMLInputElement | null>(null);
   const [search, setSearch] = useState("");
   const [q, setQ] = useState("");
   const [page, setPage] = useState(0);
   const [incluirPendientesValidacion, setIncluirPendientesValidacion] = useState(false);
 
   useEffect(() => {
-    const contexto = getContexto();
-    setEmpresa(contexto?.empresa?.trim() ?? "");
+    const refresh = () => { const context = getContexto(); setScope(context ? {
+      empresa: context.empresa.trim(), workspaceId: context.workspaceId, clienteDestinoId: context.clienteDestinoId,
+      sub: context.sub, sessionContextId: context.sessionContextId } : null); };
+    refresh(); window.addEventListener('storage', refresh);
+    return () => window.removeEventListener('storage', refresh);
+  }, []);
+  useEffect(() => {
+    if (!periodoInput.current) return;
+    const picker = flatpickr(periodoInput.current, {
+      locale: Spanish, dateFormat: "m-Y", static: true,
+      defaultDate: new Date(period.anio, period.mes - 1, 1),
+      plugins: [monthSelectPlugin({ shorthand: false, dateFormat: "m-Y", altFormat: "m-Y" })],
+      onChange: ([date]) => { if (date) { setPeriod({ anio: date.getFullYear(), mes: date.getMonth() + 1 }); setSearch(""); setQ(""); setPage(0); } },
+    });
+    return () => picker.destroy();
   }, []);
 
-  const offset = page * PAGE_SIZE;
-  const bandeja = useQuery({
-    queryKey: ["compras-bandeja-ocos", empresa, q, PAGE_SIZE, offset, incluirPendientesValidacion],
-    queryFn: () => obtenerBandejaCompras({ q, limit: PAGE_SIZE, offset, incluirPendientesValidacion }),
-    enabled: Boolean(empresa.trim() && q.trim()),
-  });
-
-  const rows = bandeja.data?.data ?? [];
-  const total = Number(bandeja.data?.total ?? 0);
-  const limit = Number(bandeja.data?.limit ?? PAGE_SIZE) || PAGE_SIZE;
-  const apiOffset = Number(bandeja.data?.offset ?? offset);
+  const bandeja = useQuery(comprasPeriodQueryOptions(scope, period,
+    (params, signal) => scopedComprasPage(scope, getContexto,
+      (request, requestSignal) => obtenerBandejaCompras(request, { signal: requestSignal }), params, signal), incluirPendientesValidacion));
+  // No partial page or previous-period placeholder is presented as a complete collection.
+  const collection = bandeja.isFetching || bandeja.isError ? [] : bandeja.data ?? [];
+  const filtered = useMemo(() => filterComprasLocal(collection, q), [collection, q]);
+  const total = filtered.length;
+  const limit = PAGE_SIZE;
+  const apiOffset = page * limit;
+  const rows = filtered.slice(apiOffset, apiOffset + limit);
   const start = total ? apiOffset + 1 : 0;
   const end = Math.min(apiOffset + rows.length, total);
   const currentPage = page + 1;
   const totalPages = Math.max(1, Math.ceil(total / limit));
+  function applyLocalSearch() { setQ(search.trim()); setPage(0); }
 
   const returnTo = useMemo(() => `${pathname}${searchParams.toString() ? `?${searchParams.toString()}` : ""}`, [pathname, searchParams]);
 
   return (
     <main className="space-y-4">
-      <div>
-        <p className="text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground">Compras</p>
-        <h1 className="mt-1 text-2xl font-bold tracking-tight">Órdenes de compra / servicio</h1>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground">Compras</p>
+          <h1 className="mt-1 text-2xl font-bold tracking-tight">Órdenes de compra / servicio</h1>
+        </div>
+        <Button asChild>
+          <Link href="/compras/nuevo">
+            <Plus className="mr-2 h-4 w-4" />
+            Agregar OC/OS
+          </Link>
+        </Button>
       </div>
 
       <Card className="overflow-hidden">
@@ -100,34 +129,25 @@ export function ComprasBandeja() {
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div>
               <CardTitle className="text-base">Bandeja de Compras</CardTitle>
-              {q.trim() ? (
-                <p className="mt-1 text-xs text-muted-foreground">
-                  {bandeja.isLoading
-                    ? "Cargando resultados..."
-                    : `Mostrando ${start} a ${end} de ${total} resultados`}
-                </p>
-              ) : (
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Busca OC/OS, centro de costo, factura, RUC o proveedor.
-                </p>
-              )}
+              <p className="mt-1 text-xs text-muted-foreground">
+                {bandeja.isFetching ? "Cargando colección del período..." : `Mostrando ${start} a ${end} de ${total} resultados`}
+              </p>
             </div>
 
-            <div className="flex w-full flex-col gap-2 sm:flex-row sm:items-start lg:w-auto">
+            <div className="flex w-full flex-col gap-2 sm:flex-row sm:items-center lg:w-auto">
+              <label className="grid shrink-0 gap-1 text-xs text-muted-foreground">
+                <div className="op-flatpickr-field relative w-full lg:w-[170px]">
+                  <CalendarDays className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 z-10 h-4 w-4 text-muted-foreground" />
+                  <input ref={periodoInput} type="text" readOnly aria-label="Período" placeholder="Seleccione un período"
+                    className="h-9 w-full cursor-pointer rounded-md border border-input bg-background pl-9 pr-3 text-sm shadow-sm" />
+                </div>
+              </label>
               <div className="min-w-0 flex-1 lg:w-[430px]">
                 <div className="flex gap-2">
                   <Input
                     value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        const value = search.trim();
-                        if (value.length >= 3) {
-                          setQ(value);
-                          setPage(0);
-                        }
-                      }
-                    }}
+                    onChange={(e) => { setSearch(e.target.value); if (!e.target.value.trim()) { setQ(""); setPage(0); } }}
+                    onKeyDown={(e) => { if (e.key === "Enter") applyLocalSearch(); }}
                     placeholder="Buscar documento, centro de costo, factura, RUC o proveedor..."
                   />
                   {search || q ? (
@@ -146,42 +166,25 @@ export function ComprasBandeja() {
                     </Button>
                   ) : null}
                 </div>
-                {search.trim().length > 0 && search.trim().length < 3 ? (
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    Ingrese al menos 3 caracteres para buscar.
-                  </p>
-                ) : null}
+
               </div>
 
               <Button
                 type="button"
-                onClick={() => {
-                  const value = search.trim();
-                  if (value.length >= 3) {
-                    setQ(value);
-                    setPage(0);
-                  }
-                }}
-                disabled={search.trim().length < 3 || bandeja.isFetching}
+                className="order-last sm:ml-auto"
+                onClick={applyLocalSearch}
+                disabled={bandeja.isFetching}
               >
                 <Search className="mr-2 h-4 w-4" />
                 Buscar
               </Button>
 
-              <label className="flex min-h-10 items-center gap-2 whitespace-nowrap text-sm">
-                <input type="checkbox" checked={incluirPendientesValidacion} onChange={(event) => {
-                  setIncluirPendientesValidacion(event.target.checked);
-                  setPage(0);
-                }} />
-                Mostrar pendientes de validación
+              <label className="flex min-h-10 items-center gap-2 text-sm">
+                <input type="checkbox" checked={incluirPendientesValidacion} onChange={(event) => { setIncluirPendientesValidacion(event.target.checked); setPage(0); }} />
+                Por validar
               </label>
 
-              <Button asChild>
-                <Link href="/compras/nuevo">
-                  <Plus className="mr-2 h-4 w-4" />
-                  Agregar OC/OS
-                </Link>
-              </Button>
+
             </div>
           </div>
         </CardHeader>
@@ -203,8 +206,8 @@ export function ComprasBandeja() {
                 </tr>
               </thead>
               <tbody>
-                {bandeja.isLoading ? <LoadingRows /> : null}
-                {!bandeja.isLoading ? rows.map((fila) => {
+                {bandeja.isFetching ? <LoadingRows /> : null}
+                {!bandeja.isFetching ? rows.map((fila) => {
                   const esPendienteValidacion = fila.estado === "pendiente_validacion";
                   const href = esPendienteValidacion ? null : principalHref(fila.expedienteId, fila.principal.documentoId, "ver", searchParams.toString(), returnTo);
                   const persisted = persistencePresentation(fila.persistencia);
@@ -252,17 +255,12 @@ export function ComprasBandeja() {
               </tbody>
             </table>
           </div>
-          {!q.trim() ? (
+          {!bandeja.isFetching && !bandeja.isError && rows.length === 0 ? (
             <p className="border-t py-10 text-center text-sm text-muted-foreground">
-              Ingrese un criterio de búsqueda para consultar OC/OS.
+              No se encontraron OC/OS en la colección del período para el filtro local.
             </p>
           ) : null}
-          {q.trim() && !bandeja.isLoading && rows.length === 0 ? (
-            <p className="border-t py-10 text-center text-sm text-muted-foreground">
-              No se encontraron OC/OS para el criterio ingresado.
-            </p>
-          ) : null}
-          {q.trim() ? (
+          {!bandeja.isFetching && !bandeja.isError ? (
             <div className="flex flex-col gap-3 border-t px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between">
               <p className="text-xs text-muted-foreground">
                 Mostrando {start} a {end} de {total} resultados

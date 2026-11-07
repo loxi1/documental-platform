@@ -1,12 +1,25 @@
 import { identidadFacturaPendiente } from '../documentos/identidad-documental';
 import type { SqlExecutor } from '../documental-v2/sql-executor';
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { sql } from '@documental/database';
 import {
   mapCommonAccountingRowToLegacy,
   mapFacturaOcosToCommonAccountingRow,
   mapOrdenPagoToCommonAccountingRow,
 } from './common-accounting-projection';
+
+/** Compras uses only the issue date of its principal, never accounting/invoice dates. */
+export function comprasIssuePeriod(anio?: unknown, mes?: unknown): { inicio: string | null; fin: string | null } {
+  if (anio === undefined && mes === undefined) return { inicio: null, fin: null };
+  const valid = (value: unknown, maxDigits: number) => typeof value === 'number'
+    ? Number.isInteger(value)
+    : typeof value === 'string' && /^[0-9]+$/.test(value) && value.length <= maxDigits;
+  if (!valid(anio, 4) || !valid(mes, 2)) throw new BadRequestException('COMPRAS_PERIODO_INVALIDO');
+  const year = Number(anio), month = Number(mes);
+  if (year < 1 || year > 9999 || month < 1 || month > 12) throw new BadRequestException('COMPRAS_PERIODO_INVALIDO');
+  return { inicio: `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-01`,
+    fin: `${String(month === 12 ? year + 1 : year).padStart(4, '0')}-${String(month === 12 ? 1 : month + 1).padStart(2, '0')}-01` };
+}
 
 type ExpedienteAuditContext = {
   usuarioId?: number | null;
@@ -930,12 +943,15 @@ export class ExpedientesRepository {
 
   async getBandejaComprasOcos(filters: {
     empresa: string;
+    anio?: unknown;
+    mes?: unknown;
     estado?: string;
     q?: string;
     limit?: number;
     offset?: number;
     incluirPendientesValidacion?: boolean;
   }) {
+    const { inicio, fin } = comprasIssuePeriod(filters.anio, filters.mes);
     if (filters.incluirPendientesValidacion === true) {
       return this.getBandejaComprasPendientesValidacion(filters);
     }
@@ -981,6 +997,9 @@ export class ExpedientesRepository {
        AND dp.tipo_documental IN ('OC', 'OS')
       WHERE dop.estado = 'activo'
         AND dop.es_principal_activo = true
+        AND (${inicio}::date IS NULL OR dp.fecha_emision >= ${inicio}::date)
+        AND (${fin}::date IS NULL OR dp.fecha_emision < ${fin}::date)
+
         AND (${estado}::text IS NULL OR e.estado = ${estado})
         AND (
           ${q}::text IS NULL
@@ -1033,6 +1052,7 @@ export class ExpedientesRepository {
           e.estado AS expediente_estado,
           dp.tipo_documental AS principal_tipo,
           dp.numero AS principal_numero,
+          dp.fecha_emision AS principal_fecha_emision,
           dp.estado AS principal_estado,
           (SELECT da.id FROM documentos.documentos_archivos da WHERE da.documento_id = dp.id ORDER BY da.es_version_actual DESC NULLS LAST, da.version DESC, da.id DESC LIMIT 1) AS principal_archivo_id,
           (SELECT o.estado FROM documentos.ocr_resultados o WHERE o.documento_id = dp.id ORDER BY o.id DESC LIMIT 1) AS principal_ocr_estado,
@@ -1051,6 +1071,9 @@ export class ExpedientesRepository {
          AND dp.tipo_documental IN ('OC', 'OS')
         WHERE dop.estado = 'activo'
           AND dop.es_principal_activo = true
+          AND (${inicio}::date IS NULL OR dp.fecha_emision >= ${inicio}::date)
+          AND (${fin}::date IS NULL OR dp.fecha_emision < ${fin}::date)
+
           AND (${estado}::text IS NULL OR e.estado = ${estado})
           AND (
             ${q}::text IS NULL
@@ -1127,7 +1150,8 @@ export class ExpedientesRepository {
         jsonb_build_object(
           'documentoId', pp.principal_documento_id,
           'tipo', pp.principal_tipo,
-          'numero', pp.principal_numero
+          'numero', pp.principal_numero,
+          'fechaEmision', pp.principal_fecha_emision
         ) AS principal,
         CASE
           WHEN pp.proveedor_nombre IS NULL AND pp.proveedor_ruc IS NULL
@@ -1154,8 +1178,9 @@ export class ExpedientesRepository {
   }
 
   private async getBandejaComprasPendientesValidacion(filters: {
-    empresa: string; q?: string; limit?: number; offset?: number;
+    empresa: string; anio?: unknown; mes?: unknown; q?: string; limit?: number; offset?: number;
   }) {
+    const { inicio, fin } = comprasIssuePeriod(filters.anio, filters.mes);
     const empresa = String(filters.empresa ?? '').trim();
     const q = String(filters.q ?? '').trim() || null;
     const like = q ? `%${q}%` : null;
@@ -1172,6 +1197,8 @@ export class ExpedientesRepository {
         WHERE o.documento_id = d.id ORDER BY o.id DESC LIMIT 1
       ) ocr ON true
       WHERE da.es_version_actual = true
+        AND (${inicio}::date IS NULL OR COALESCE(d.fecha_emision, d.creado_en::date) >= ${inicio}::date)
+        AND (${fin}::date IS NULL OR COALESCE(d.fecha_emision, d.creado_en::date) < ${fin}::date)
         AND da.empresa_codigo = ${empresa}
         AND d.tipo_documental IN ('OC', 'OS')
         AND d.estado IN ('pendiente_ocr', 'pendiente_validacion')
@@ -1193,7 +1220,10 @@ export class ExpedientesRepository {
           'documentoPersistido', true, 'archivoPersistido', true,
           'estadoDocumento', d.estado, 'estadoOcr', ocr.estado) AS persistencia,
         jsonb_build_object('documentoId', d.id, 'tipo', d.tipo_documental,
-          'numero', COALESCE(d.numero, ocr.metadata->'metadata'->>'numero')) AS principal,
+          'numero', COALESCE(d.numero, ocr.metadata->'metadata'->>'numero'),
+          'fechaEmision', d.fecha_emision,
+          'fechaPeriodo', COALESCE(d.fecha_emision, d.creado_en::date),
+          'fechaPeriodoFuente', CASE WHEN d.fecha_emision IS NOT NULL THEN 'EMISION' WHEN d.creado_en IS NOT NULL THEN 'CREACION' ELSE NULL END) AS principal,
         CASE WHEN COALESCE(d.razon_social_emisor, ocr.metadata->'metadata'->>'proveedor') IS NULL
           AND COALESCE(d.ruc_emisor, ocr.metadata->'metadata'->>'rucProveedor') IS NULL THEN NULL
           ELSE jsonb_build_object(

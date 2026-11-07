@@ -367,7 +367,7 @@ export class TmpRepository {
     return result?.safe === true;
   }
 
-  async ocrProcessing(c: Connection, id: number, tipoEsperado: string, identity?: { storageKey: string; attemptId: string }) {
+  async ocrProcessing(c: Connection, id: number, tipoEsperado: string, identity?: { storageKey: string; attemptId: string; contextoCarga?: { areaOrigen: string; canalIngreso: string | null } }) {
     const candidate = {
       status: 'PROCESSING',
       ...identity,
@@ -380,7 +380,7 @@ export class TmpRepository {
       WHERE id=${id} AND operacion_tipo='tmp'`;
   }
 
-  async ocrDone(c: Connection, id: number, tipoEsperado: string, resultado: unknown, identity?: { storageKey: string; attemptId: string }) {
+  async ocrDone(c: Connection, id: number, tipoEsperado: string, resultado: unknown, identity?: { storageKey: string; attemptId: string; contextoCarga?: { areaOrigen: string; canalIngreso: string | null } }) {
     const candidate = {
       status: 'DONE',
       ...identity,

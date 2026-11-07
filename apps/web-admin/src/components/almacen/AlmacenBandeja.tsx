@@ -20,7 +20,9 @@ import {
 } from "@/components/ui/empty";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useRevisionContable } from "@/hooks/useRevisionContable";
+import { useQuery } from "@tanstack/react-query";
+import { getRevisionContable } from "@/services/revision-contable";
+import { almacenPeriodQueryOptions } from "@/lib/almacen-periodo";
 import { getContexto } from "@/lib/auth-storage";
 import type { RevisionContableItem } from "@/types/revision-contable";
 
@@ -208,6 +210,32 @@ function fechaEmisionRaw(item: RevisionContableItem) {
     itemRecord(item).fecha_emision,
     null,
   );
+}
+
+function fechaEmisionPeriodo(value: unknown) {
+  if (value == null || value === "") return null;
+
+  const raw = String(value).trim();
+
+  const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})(?=$|T|\s)/);
+
+  if (!match) return null;
+
+  const anio = Number(match[1]);
+  const mes = Number(match[2]);
+  const dia = Number(match[3]);
+
+  const fecha = new Date(Date.UTC(anio, mes - 1, dia));
+
+  if (
+    fecha.getUTCFullYear() !== anio ||
+    fecha.getUTCMonth() + 1 !== mes ||
+    fecha.getUTCDate() !== dia
+  ) {
+    return null;
+  }
+
+  return { anio, mes };
 }
 
 function formatDateCompact(value: unknown) {
@@ -424,7 +452,7 @@ export function AlmacenBandeja() {
   const contexto = getContexto();
   const empresa = normalizeEmpresa(contexto?.empresa);
   const [selectedPeriod, setSelectedPeriod] = useState<{ anio: number; mes: number } | null>(() => { const now = new Date(); return { anio: now.getFullYear(), mes: now.getMonth() + 1 }; });
-  const [consultedPeriod, setConsultedPeriod] = useState<{ anio: number; mes: number } | null>(null);
+  const consultedPeriod = selectedPeriod;
   const periodoInput = useRef<HTMLInputElement | null>(null);
   useEffect(() => {
     if (!periodoInput.current) return;
@@ -432,7 +460,7 @@ export function AlmacenBandeja() {
       locale: Spanish, dateFormat: "m-Y", static: true,
       defaultDate: selectedPeriod ? new Date(selectedPeriod.anio, selectedPeriod.mes - 1, 1) : undefined,
       plugins: [monthSelectPlugin({ shorthand: false, dateFormat: "m-Y", altFormat: "m-Y" })],
-      onChange: ([date]) => setSelectedPeriod(date ? { anio: date.getFullYear(), mes: date.getMonth() + 1 } : null),
+      onChange: ([date]) => { setSelectedPeriod(date ? { anio: date.getFullYear(), mes: date.getMonth() + 1 } : null); setPage(1); },
     });
     return () => picker.destroy();
   }, []);
@@ -457,15 +485,28 @@ export function AlmacenBandeja() {
     },
     [consultedPeriod, hasOperationalQuery, hasSearch, normalizedSearch, page, pageSize],
   );
-  const queryEnabled = Boolean(empresa.trim() && hasOperationalQuery && (!normalizedSearch || hasSearch));
 
   const { data, isLoading, isFetching, error, refetch } =
-    useRevisionContable(params, queryEnabled);
+    useQuery(almacenPeriodQueryOptions(params, contexto,
+      (request, signal) => getRevisionContable(request, { signal }), getContexto));
 
   const rows = useMemo(
-    () => (data?.items ?? []).filter(isFacturaRow),
-    [data?.items],
-  );
+   () =>
+     isFetching || error || !selectedPeriod
+       ? []
+       : (data?.items ?? [])
+           .filter(isFacturaRow)
+           .filter((item) => {
+             const periodo = fechaEmisionPeriodo(fechaEmisionRaw(item));
+ 
+             return (
+               periodo !== null &&
+               periodo.anio === selectedPeriod.anio &&
+               periodo.mes === selectedPeriod.mes
+             );
+           }),
+   [data?.items, isFetching, error, selectedPeriod],
+ );
 
   const filteredRows = useMemo(() => {
     const query = normalizeSearch(search);
@@ -510,10 +551,10 @@ export function AlmacenBandeja() {
           <CardTitle className="text-base">Bandeja de Almacén</CardTitle>
           <div className="flex flex-col gap-2 lg:flex-row lg:items-end">
             <label className="grid shrink-0 gap-1 text-xs text-muted-foreground">
-              <span>Período de emisión</span>
+              <span>Período</span>
               <div className="op-flatpickr-field relative w-full lg:w-[170px]">
                 <CalendarDays className="pointer-events-none absolute left-3 top-1/2 z-10 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <input ref={periodoInput} type="text" readOnly aria-label="Período de emisión"
+                <input ref={periodoInput} type="text" readOnly aria-label="Período"
                   placeholder="Seleccione un período"
                   className="h-9 w-full cursor-pointer rounded-md border border-input bg-background pl-9 pr-3 text-sm shadow-sm" />
               </div>
@@ -527,9 +568,7 @@ export function AlmacenBandeja() {
               onClick={() => {
                 if (!selectedPeriod) return;
                 setPage(1);
-                if (consultedPeriod?.anio === selectedPeriod.anio && consultedPeriod?.mes === selectedPeriod.mes) {
-                  if (page === 1) void refetch();
-                } else { setConsultedPeriod(selectedPeriod); }
+                if (page === 1) void refetch();
               }}>
               <Search className="mr-1 h-4 w-4" />{isFetching ? "Consultando" : "Consultar"}
             </Button>
