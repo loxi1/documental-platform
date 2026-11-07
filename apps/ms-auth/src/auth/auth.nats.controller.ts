@@ -9,35 +9,48 @@ import { selectWorkspaceSchema } from './schemas/select-workspace.schema';
 import { validateTokenSchema } from './schemas/validate-token.schema';
 import { workspacesSchema } from './schemas/workspaces.schema';
 
+const authNamespace = process.env.AUTH_NATS_NAMESPACE ?? 'auth';
+if (authNamespace !== 'auth' && authNamespace !== 'dev.source.auth') {
+  throw new Error('AUTH_NATS_NAMESPACE inválido');
+}
+function authPattern(pattern: string): string {
+  if (!pattern.startsWith('auth.')) throw new Error('Patrón Auth inválido');
+  return `${authNamespace}${pattern.slice(4)}`;
+}
+
 @Controller()
 export class AuthNatsController {
-  constructor(private readonly service: AuthService) {}
+  constructor(private readonly service: AuthService) {
+    if ((process.env.AUTH_NATS_NAMESPACE ?? 'auth') !== authNamespace) {
+      throw new Error('Exporte AUTH_NATS_NAMESPACE antes de iniciar Auth');
+    }
+  }
 
-  @MessagePattern(NatsSubjects.AuthLogin)
+  @MessagePattern(authPattern(NatsSubjects.AuthLogin))
   login(@Payload() payload: unknown) {
     const dto = loginSchema.parse(payload);
     return this.service.login(dto);
   }
 
-  @MessagePattern('auth.workspaces.list')
+  @MessagePattern(authPattern('auth.workspaces.list'))
   listWorkspaces(@Payload() payload: unknown) {
     const dto = workspacesSchema.parse(payload);
     return this.service.listWorkspaces(dto);
   }
 
-  @MessagePattern('auth.workspaces.select')
+  @MessagePattern(authPattern('auth.workspaces.select'))
   selectWorkspace(@Payload() payload: unknown) {
     const dto = selectWorkspaceSchema.parse(payload);
     return this.service.selectWorkspace(dto);
   }
 
 
-  @MessagePattern('auth.admin.usuarios.list')
+  @MessagePattern(authPattern('auth.admin.usuarios.list'))
   listUsuariosAdmin(@Payload() payload: { accessToken?: string }) {
     return this.service.listUsuariosAdmin(payload?.accessToken ?? '');
   }
 
-  @MessagePattern('auth.admin.usuarios.get')
+  @MessagePattern(authPattern('auth.admin.usuarios.get'))
   findUsuarioAdminById(@Payload() payload: { accessToken?: string; id?: number }) {
     return this.service.findUsuarioAdminById({
       accessToken: payload?.accessToken ?? '',
@@ -45,12 +58,12 @@ export class AuthNatsController {
     });
   }
 
-  @MessagePattern('auth.admin.perfiles.list')
+  @MessagePattern(authPattern('auth.admin.perfiles.list'))
   listPerfilesAdmin(@Payload() payload: { accessToken?: string }) {
     return this.service.listPerfilesAdmin(payload?.accessToken ?? '');
   }
 
-  @MessagePattern('auth.admin.perfiles.get')
+  @MessagePattern(authPattern('auth.admin.perfiles.get'))
   findPerfilAdminById(@Payload() payload: { accessToken?: string; id?: number }) {
     return this.service.findPerfilAdminById({
       accessToken: payload?.accessToken ?? '',
@@ -58,7 +71,7 @@ export class AuthNatsController {
     });
   }
 
-  @MessagePattern('auth.admin.usuario-workspaces.list')
+  @MessagePattern(authPattern('auth.admin.usuario-workspaces.list'))
   listUsuarioWorkspacesAdmin(
     @Payload() payload: { accessToken?: string; usuarioId?: number },
   ) {
@@ -68,13 +81,13 @@ export class AuthNatsController {
     });
   }
 
-  @MessagePattern(NatsSubjects.AuthSelectContext)
+  @MessagePattern(authPattern(NatsSubjects.AuthSelectContext))
   selectContext(@Payload() payload: unknown) {
     const dto = selectContextSchema.parse(payload);
     return this.service.selectContext(dto);
   }
 
-  @MessagePattern(NatsSubjects.AuthValidateToken)
+  @MessagePattern(authPattern(NatsSubjects.AuthValidateToken))
   validateToken(@Payload() payload: unknown) {
     const dto = validateTokenSchema.parse(payload);
     return this.service.validateToken(dto);
