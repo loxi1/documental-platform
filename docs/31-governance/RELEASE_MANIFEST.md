@@ -494,3 +494,80 @@ La aceptación con observaciones no declara cerrados estos tres puntos ni amplí
 - Rollback e identidades anteriores permanecen en las secciones precedentes. No se reconstruyen imágenes ni se recrean contenedores por esta aceptación documental.
 
 Publicación exclusivamente documental SOURCE main → Enterprise main. Sincronización EC2 limitada al manifest, con revalidación de identidades de servicios, OCR y metadatos de configuración antes/después; ningún cambio de runtime autorizado por esta sección. Los SHA de este registro se resuelven por Git mediante su ACTION y quedan fijados en `acceptance-documentary-closure.json` de la evidencia externa `/home/loxi1/bbti-evidence/controlled-production-release-r1/`, evitando referencias SHA autorreferenciales.
+
+
+---
+
+## Integración SOURCE del producto validado en LAB3005 — 07/11/2026
+
+Acción: `INTEGRATE_LAB3005_PRODUCT_TO_SOURCE_R1`. PO autorizó la integración y publicación SOURCE exclusivamente. **Enterprise pendiente; imágenes nuevas pendientes; producción NO desplegada por esta acción.** La aceptación productiva MVP del 05/11/2026 permanece `ACCEPTED_WITH_OBSERVATIONS`: sus 101 archivos, commits, digests, rollback, historia R2, G3 Finanzas y Actions #28/#32 se conservan íntegros. No se infiere despliegue a partir de CI.
+
+### Identidades y alcance integrado
+
+- SOURCE main base: `65492bb0a6f2b70bf62b28b54677ba0ad273592d`.
+- Commit funcional SOURCE: `1ebdbf4f82ec3cae84b6a6caafc979353af2172a` — 26 rutas (17 implementación, 9 pruebas), inventario SHA256 abajo.
+- Commit separado de soporte DEV: `ae478918e4ae7241a2944c2c776a9e486d807648` — únicamente los proveedores NATS de Gateway/Documentos y `auth.nats.controller.ts` de Auth.
+- El commit documental que incorpora esta entrada y la publicación SOURCE se identifican externamente en `/home/loxi1/bbti-evidence/integrate-lab3005-to-source-r1/`, evitando autorreferencia circular.
+- Enterprise main conocido localmente: `44340e491f9b68952978320c30bf2227000fb6bc`. Incorporación de este producto: **PENDING_AUTHORIZED_ENTERPRISE_INTEGRATION**. No copiar el manifest SOURCE sobre Enterprise: sus historias son deliberadamente distintas y la incorporación deberá ser aditiva.
+- Nuevos digests GHCR, ejecución CI y despliegue EC2: **PENDING_NOT_EXECUTED**. Las identidades productivas y rollback anteriores siguen como referencia histórica acreditada, no como nuevas imágenes.
+
+El producto incluye OCR OC/OS comprador/proveedor, corrección manual del modal y sugerencia explícita de razón social, contexto TEMP nuevo frente a edición, Compras UX/período/búsqueda local y Almacén/período/normalización de fecha de factura. No cambia APISPERU, esquema SQL ni contratos de otros extractores. Se excluyen secretos, `.bak`, dependencias, builds, adaptadores efímeros y evidencias locales.
+
+El soporte DEV conserva `auth.*` por defecto y habilita `dev.source.auth.*` únicamente mediante configuración explícita idéntica y previa al registro de handlers en los tres procesos. Rechaza namespaces vacíos o inválidos. No incorpora endpoints, credenciales ni subjects DEV como configuración productiva. Es soporte optativo de desarrollo, separado del commit funcional.
+
+### Evidencia de validación
+
+El PO declara completado satisfactoriamente el MVP funcional en LAB3005. Esa declaración corresponde al LAB; **no constituye aceptación productiva de estos cambios**. Se reutilizan las 110 pruebas funcionales y las 33 del modal acreditadas; no se repitieron.
+
+Validación de integración: compilaciones TypeScript de Config, Shared, Database, Documentos, Gateway y Auth PASS; frontend Next.js16.2.7 build completo con Webpack, TypeScript y 22 páginas estáticas PASS; sintaxis Python e identidad del extractor PASS. Dieciocho comprobaciones puras adicionales de los tres archivos DEV PASS (mocks de transporte, decoradores NestJS reales, namespaces predeterminado/DEV/inválidos, subjects no Auth y preservación del observable). Sin conexiones NATS ni servicios reales.
+
+El build usó exclusivamente dependencias locales copiadas al checkout de integración, sin instalaciones, y las variables públicas ya versionadas del workflow Enterprise. Se preservaron las fuentes Geist/Geist Mono; Google Fonts se obtuvo con acceso autorizado. Los intentos previos y su diagnóstico se conservan: DNS del sandbox y ausencia inicial de variables públicas de build, corregidos solo en el entorno de ejecución. No se modificaron archivos funcionales para eludirlos ni se publicaron artefactos del build local.
+
+Temporal344 acredita carga directa R2 DEV, lectura, transporte OCR y persistencia ordinaria, sin materialización. Extractor Python SHA256: `972c6cee6ad8e994405b527fc5316a2c949041cfb5ade07a4373333ae7295eb3`. El PDF con texto embebido no acredita reconocimiento real de documentos escaneados.
+
+### Desarrollo y fronteras conservadas
+
+LAB3005 permanece sin cambios: Web3005 → Gateway3000 → Documentos3002, Auth3001, pnpm y OCR Python R2 DEV. El checkout dirty original permanece en `034a1abc7af9b4fe1a107dbe72ad3893e1f47992`, con 48 entradas protegidas. De ellas, 42 archivos no secretos ya eran iguales a main, tres corresponden al soporte DEV ahora separado, dos son respaldos excluidos y una configuración privada excluida. No se reintegró indiscriminadamente el dirty.
+
+R2 DEV usa cuenta `45c5e83f071c47dc00ea3b924b98828e`, bucket `data-prod`, base histórica LAB separada y subjects exclusivos. El nombre del bucket no identifica producción. No se promovieron credenciales ni configuración DEV. La futura sustitución de referencias al candidato y del adaptador LAB por SOURCE integrado exige intervención controlada posterior; no se conmutó el runtime en esta acción.
+
+APISPERU ya tiene soporte backend en main: consulta de catálogo primero y respaldo externo opcional. Su credencial productiva debe acreditarse e inyectarse privadamente solo en Documentos; nunca frontend, Git ni copia del token LAB. No se consultó ni modificó configuración productiva.
+
+### Continuación y rollback
+
+Secuencia prevista, pendiente de autorizaciones posteriores: incorporación selectiva SOURCE → Enterprise y adenda propia → builds/publicación GHCR → preflight productivo → despliegue autorizado. Componentes funcionales: **OCR Python → ms-documentos → web-admin**, backend antes de frontend por el campo opcional `canalIngreso`. Gateway/Auth productivos podrán conservar sus digests mientras no exista una necesidad adicional demostrada. Publicar cuatro imágenes con el workflow existente no implica desplegar las cuatro.
+
+Antes de producción faltan: hash/identidad y respaldo recuperable del OCR Python efectivo, configuración APISPERU productiva, commits Enterprise, digests nuevos y aprobación independiente del despliegue. Mantener las imágenes y configuración anteriores como rollback; no considerar acreditado el rollback del fichero OCR hasta completar su respaldo. No se ejecutaron migraciones ni operaciones de producción.
+
+Se preservan las observaciones históricas: OCR tardío sin E2E productivo completo, expiración TEMP sin verificación productiva, referencia R2 histórica HTTP403 y antecedente de 16 errores globales de tipado conocidos. No se reabrió ese diagnóstico general. Los temporales180 y344 no fueron modificados.
+
+### Inventario incremental de producto (26 rutas)
+
+| Ruta | Clase | SHA256 |
+| --- | --- | --- |
+| `apps/ms-documentos/src/documentos/tmp/tmp.controller.ts` | IMPLEMENTATION | `b703d41f42b699af69d42171210f45d68a8fc5a83aff7532c380ceba8404124f` |
+| `apps/ms-documentos/src/documentos/tmp/tmp.ocr-context-experiment.spec.ts` | TEST | `eca3de2f857520297e71d315d4283dbe47c54b6d209c5cfbae5ed85d9e9df0b7` |
+| `apps/ms-documentos/src/documentos/tmp/tmp.repository.ts` | IMPLEMENTATION | `cb1c35b8f07711d49a371523a49160b9bc71376e181029b5b1a72c5eeeea30e5` |
+| `apps/ms-documentos/src/documentos/tmp/tmp.service.ts` | IMPLEMENTATION | `a795186082278e8b187c7e309c349d41afd3cf153fb64f2e96a26d573e5b0be4` |
+| `apps/ms-documentos/src/expedientes/expedientes.compras-periodo.spec.ts` | TEST | `db20e3575061679a79f093cabd3b7e0f46cf7b2ba615c87423b576293b9443ff` |
+| `apps/ms-documentos/src/expedientes/expedientes.controller.ts` | IMPLEMENTATION | `d68a23947f029d3d5f30ec90304b2a9061c66302035fb221d680d763b7a79c5d` |
+| `apps/ms-documentos/src/expedientes/expedientes.repository.ts` | IMPLEMENTATION | `8160aee8c8a713a26525ba4ff09a63c8aa64dd700fb23b6d62dd5859f6195b73` |
+| `apps/ms-documentos/src/expedientes/expedientes.service.ts` | IMPLEMENTATION | `75ad2675052f82787685d58b2c40feca76987c6731201ff0c5abe6a5e2320a81` |
+| `apps/web-admin/src/components/almacen/AlmacenBandeja.periodo.test.cjs` | TEST | `0427ea83c782e534ce1c1b2c93be885af569ff3d92eb396964f8713ad12b5087` |
+| `apps/web-admin/src/components/almacen/AlmacenBandeja.tsx` | IMPLEMENTATION | `365ac00850aeb31f20a9c44812fbb54fb7b3c65f3c9da5512783d9f87ee59f1c` |
+| `apps/web-admin/src/components/compras/CompraExpedienteEditor.tsx` | IMPLEMENTATION | `848ba3a485bffcaec57d37086d9974f22083cd181545f74ed3365743059ffaa2` |
+| `apps/web-admin/src/components/compras/ComprasBandeja.tsx` | IMPLEMENTATION | `09d357e7ae0f809df57950dbcb887d8a27ff2561d53b5184eddbdfd6bba929c8` |
+| `apps/web-admin/src/components/compras/NuevoExpedienteWizard.tsx` | IMPLEMENTATION | `3d312cd719b1c839eb09ef7364a5145805638b15cc5c96f2b40c535c94c8b7c6` |
+| `apps/web-admin/src/components/ocr/OcrValidationModal.initial-upload.test.cjs` | TEST | `b38fe1a2e004b7c38190f6d0e5792f3d2c743e535b60043ba1de73791585fce9` |
+| `apps/web-admin/src/components/ocr/OcrValidationModal.provider-edit.test.cjs` | TEST | `c8016f77c8660f95bfa00c89459621b4f98be031b1f26c690347f6eb3c7de9c6` |
+| `apps/web-admin/src/components/ocr/OcrValidationModal.tsx` | IMPLEMENTATION | `7aef4461ec34ed34a04a2e3515c5792c052bc141cf8a75fa8d168c8b1783070a` |
+| `apps/web-admin/src/lib/almacen-periodo.test.cjs` | TEST | `0300c1a4402b6734bb2b12bd7675ce9a225209d1634f1c5592317d06efe5cd75` |
+| `apps/web-admin/src/lib/almacen-periodo.ts` | IMPLEMENTATION | `42f5e348f7e9ae0164911e1d823d09caf6e2e4c8287e271f3d81de7f9b189111` |
+| `apps/web-admin/src/lib/compras-periodo.test.cjs` | TEST | `953890eda2d500a9a7b28b22a03f6d7a3369231e34b65d20e265a0a7ec315ff9` |
+| `apps/web-admin/src/lib/compras-periodo.ts` | IMPLEMENTATION | `5be66cc76a09b89a201182040df51031e536077a3b116133de5f52c7104ed461` |
+| `apps/web-admin/src/services/carga-segura.temp.test.cjs` | TEST | `fe2a6db447b1a445f827f86dc46c5969f2e42773d40664359e0a5fa42f375646` |
+| `apps/web-admin/src/services/carga-segura.ts` | IMPLEMENTATION | `b50452417c24b28b78ea10d8c0999a7187ab570581a36861218a5e7a5c32e851` |
+| `apps/web-admin/src/services/expedientes.ts` | IMPLEMENTATION | `c7c28cf89a281d9154a24cd4125d5d306d5009843b9d985b551e36abb630fd74` |
+| `apps/web-admin/src/services/revision-contable.ts` | IMPLEMENTATION | `892d1a2d8c7ba47ee928c2a3fd349380a48af3f4566afc01cc53e768780c7f46` |
+| `workers/ocr-worker/app/extractors/orden_extractor.py` | IMPLEMENTATION | `972c6cee6ad8e994405b527fc5316a2c949041cfb5ade07a4373333ae7295eb3` |
+| `workers/ocr-worker/app/test_orden_roles_experiment.py` | TEST | `fc2e6ef38e0f67b94b651e715d4e65b490e218e3a5fc37bc6be3955ca6d7a389` |
