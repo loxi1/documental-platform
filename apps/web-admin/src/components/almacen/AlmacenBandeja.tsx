@@ -310,31 +310,6 @@ function documentoIdentidad(record: UnknownRecord | null) {
   return numero || serie || "✓";
 }
 
-function normalizeSearch(value: unknown) {
-  return String(value ?? "")
-    .trim()
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/\p{Diacritic}/gu, "")
-    .replace(/[^a-z0-9]/g, "");
-}
-
-function searchText(item: RevisionContableItem) {
-  return [
-    facturaSerie(item),
-    facturaNumero(item),
-    principalTipo(item),
-    principalNumero(item),
-    centroCostoCodigo(item),
-    proveedorNombre(item),
-    proveedorRuc(item),
-    documentoIdentidad(guiaRecord(item)),
-    documentoIdentidad(notaIngresoRecord(item)),
-  ]
-    .filter(Boolean)
-    .join(" ");
-}
-
 function FacturaCell({ item }: { item: RevisionContableItem }) {
   return (
     <div>
@@ -508,14 +483,9 @@ export function AlmacenBandeja() {
    [data?.items, isFetching, error, selectedPeriod],
  );
 
-  const filteredRows = useMemo(() => {
-    const query = normalizeSearch(search);
-    if (!query) return rows;
-
-    return rows.filter((item) =>
-      normalizeSearch(searchText(item)).includes(query),
-    );
-  }, [rows, search]);
+  // La búsqueda textual ya fue aplicada por el backend antes de paginar.
+  // Mantener únicamente las filas validadas por período de emisión.
+  const filteredRows = rows;
 
   useEffect(() => {
     setPage(1);
