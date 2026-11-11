@@ -234,3 +234,16 @@ La ruta estándar es:
 Los runbooks describen operaciones concretas dentro de esa cadena y deben mantenerse alineados con `docs/31-governance/07-release-process.md`.
 
 Los documentos históricos, evidencias, handoffs y paquetes de revisión no sustituyen estas autoridades operativas.
+
+
+## Actualización posterior de continuidad — 11/11/2026
+
+Acción: MSE_UNIFIED_MANIFEST_CONTINUITY_G2B_APPLY_R1.
+
+La inspección productiva READ_ONLY confirma Documentos/Web GHCR#34 ejecutándose en EC2; Gateway/Auth permanecen conservados. Véase la adenda de identidad productiva del RELEASE_MANIFEST. Las referencias anteriores BUILT_NOT_DEPLOYED son instantáneas previas, no el último estado observado. Aceptación funcional posterior al MVP: NOT_VERIFIED; aceptación MVP05/11 preservada.
+
+R4 documental publicado: SOURCE `d343a1bfb9ecc4f933ea425486de892fe74009b1` / Enterprise `85b6486ecbf7ae2c652cafd84f2217b0e43590a2`. Las menciones anteriores a R4 sin commit conservan únicamente su contexto histórico.
+
+G2-B: backend E2E y revocación global PASS; mínimo8 probado focalmente, máximo72bytesUTF8 preservado. Nueve archivos candidatos; delta final NOT_ESTABLISHED, ampliable por interceptor/UX. Integración y UX3005 PENDING; producción G2-B NOT_EXECUTED; trazabilidad versionada auth_version pendiente. Conservar pnpm/supervisor, puertos originales, R2 DEV directo y OCR local.
+
+Evidencias: `/home/loxi1/bbti-evidence/unified-manifest-continuity-g2b-r2/{ec2-ghcr-identity.json,g2b-backend-e2e.json,g2b-candidate-inventory.json}`. Ver detalles en el manifest; no repetir inventarios ni crear otro manifest.

@@ -571,3 +571,46 @@ Se preservan las observaciones históricas: OCR tardío sin E2E productivo compl
 | `apps/web-admin/src/services/revision-contable.ts` | IMPLEMENTATION | `892d1a2d8c7ba47ee928c2a3fd349380a48af3f4566afc01cc53e768780c7f46` |
 | `workers/ocr-worker/app/extractors/orden_extractor.py` | IMPLEMENTATION | `972c6cee6ad8e994405b527fc5316a2c949041cfb5ade07a4373333ae7295eb3` |
 | `workers/ocr-worker/app/test_orden_roles_experiment.py` | TEST | `fc2e6ef38e0f67b94b651e715d4e65b490e218e3a5fc37bc6be3955ca6d7a389` |
+
+
+## Continuidad unificada: identidad productiva observada y candidato G2-B — 11/11/2026
+
+Acción: MSE_UNIFIED_MANIFEST_CONTINUITY_G2B_APPLY_R1. Aplicación documental del delta R2 aprobado; no constituye nueva autorización de despliegue ni aceptación funcional.
+
+Se conserva íntegra la integración SOURCE producto `1ebdbf4f82ec3cae84b6a6caafc979353af2172a`, el soporte DEV `ae478918e4ae7241a2944c2c776a9e486d807648` y la adenda `5efcb743245f38662cb3e4960ee91ad6a7ab2232`. No se repiten ni modifican los26 hashes, las tres rutas DEV ni el inventario MVP101.
+
+### Identidad productiva posterior
+
+Inspección READ_ONLY del11/11/2026: checkout EC2 limpio `f80d05e80b522c18ab20751a7e18a9e6f626984c`. Manifest observado SHA256 `923741f5884f89f3bdb7f1dd27784f34608f14d3ffb87aa4f0bbf3808ad4ae00`, coincidente con Enterprise antes de esta adenda. Actions#34/run42401171156: SUCCESS; build Enterprise `2ed7dd0f2e73b58d6d595606af56b8477e9496e8`.
+
+| Servicio | Digest efectivo observado | StartedAt |
+| --- | --- | --- |
+| Documentos | `sha256:3d48dbcfebc60b1b69db84b2f2fabecee2b024ed991cb53511c585a2e51c37f7` | `2026-11-07T21:14:08.985017452Z` |
+| Web | `sha256:f54bfb0bc69a015452c5123f2f36c70ca196ecbfb85e83f784a8415359c93cf9` | `2026-11-07T21:15:24.3394647Z` |
+| Gateway conservado | `sha256:d0e0875318b91512b308add1fbf80d9542239eca1ffc3a32125bd3a29b0f4a12` | `2026-11-05T19:15:21.813323243Z` |
+| Auth conservado | `sha256:e299d52aa019c9d76e37618641ba2bce61b740b2df9c4523e8935e2df4a726b5` | `2026-10-24T03:18:24.223569413Z` |
+
+Documentos/Web: publicados, presentes localmente y ejecutándose en EC2. StartedAt acredita arranques asociados al07/11; no reconstruye la autorización ni toda la secuencia histórica. La observación del11/11 no es una fecha de autorización.
+
+POST_MVP_EXECUTION_IDENTITY=VERIFIED; POST_MVP_FUNCTIONAL_ACCEPTANCE=NOT_VERIFIED. La aceptación MVP05/11 permanece ACCEPTED_WITH_OBSERVATIONS. No se revalidaron OCR, APISPERU, RDS, R2 ni sus pendientes.
+
+Evidencia durable: `/home/loxi1/bbti-evidence/unified-manifest-continuity-g2b-r2/ec2-ghcr-identity.json`. Esta observación supera como último estado conocido las referencias históricas BUILT_NOT_DEPLOYED; dichas entradas se conservan sin modificación.
+
+### Cambiar clave G2-B: candidato independiente, no promovido
+
+```ini
+G2B_CANDIDATE_FILES=9
+G2B_FINAL_INTEGRATION_DELTA=NOT_ESTABLISHED
+G2B_BACKEND_E2E=PASS
+G2B_GLOBAL_REVOCATION=PASS
+G2B_UX3005=PENDING
+G2B_PRODUCTION_DEPLOYMENT=NOT_EXECUTED
+```
+
+Los nueve archivos constituyen un inventario candidato, no un delta final aceptado. El interceptor frontend y la UX pueden ampliar el alcance de integración. Mínimo8 implementado y probado focalmente; máximo72bytesUTF8 preservado. El E2E backend previo y las pruebas posteriores de política son evidencias distintas; no se declara validación UX ni activación de esa política en LAB3005.
+
+`auth_version` fue funcional en pruebas; su trazabilidad versionada permanece pendiente. Activación selectiva/reversión del supervisor, tratamiento401 frontend y confirmación visible de éxito siguen pendientes antes de aceptación UX. No se atribuyen commits, imágenes ni despliegues productivos G2-B futuros.
+
+Evidencias durables: `/home/loxi1/bbti-evidence/unified-manifest-continuity-g2b-r2/g2b-backend-e2e.json` y `/home/loxi1/bbti-evidence/unified-manifest-continuity-g2b-r2/g2b-candidate-inventory.json`.
+
+Cierre documental R4 ya publicado: SOURCE `d343a1bfb9ecc4f933ea425486de892fe74009b1` / Enterprise `85b6486ecbf7ae2c652cafd84f2217b0e43590a2`. Son identidades documentales independientes del checkout EC2 observado y no acreditan otro despliegue.

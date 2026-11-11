@@ -165,3 +165,16 @@ Para iniciar un requerimiento, seguir la [entrada operativa común](../../29-ope
 - `docs/03-producto/02-ui-foundation.md`: criterios de UI Foundation.
 - `docs/11-adr/ADR-005-ui-foundation.md`: decisión arquitectónica de UI Foundation.
 - `docs/09-equipo/04-maestro-sucesor-II.md`: rol resumido dentro del equipo.
+
+
+## Actualización posterior para sucesores — 11/11/2026
+
+Acción: MSE_UNIFIED_MANIFEST_CONTINUITY_G2B_APPLY_R1.
+
+Consultar la adenda del RELEASE_MANIFEST: Documentos/Web GHCR#34 observados ejecutándose en EC2; aceptación funcional posterior al MVP NOT_VERIFIED. Conservar aceptación05/11. No repetir integración26+3, MVP101 ni publicación de las mismas imágenes por este registro.
+
+G2-B backend E2E y revocación multicontexto PASS; mínimo8 probado focalmente y máximo72bytesUTF8 preservado. El PENDING_E2E anterior queda superado para backend, no para UX3005. Nueve archivos candidatos; delta final NOT_ESTABLISHED, ampliable por interceptor/UX; producción G2-B NOT_EXECUTED.
+
+Pendientes: activación selectiva segura, tratamiento401, éxito visible, aceptación UX y trazabilidad versionada auth_version antes de promoción. R4 documental publicado en SOURCE `d343a1bfb9ecc4f933ea425486de892fe74009b1` / Enterprise `85b6486ecbf7ae2c652cafd84f2217b0e43590a2`; las menciones históricas sin commit no representan este cierre.
+
+Evidencias durables: `/home/loxi1/bbti-evidence/unified-manifest-continuity-g2b-r2/{ec2-ghcr-identity.json,g2b-backend-e2e.json,g2b-candidate-inventory.json}`. Sin aceptación UX ni despliegue G2-B por inferencia.

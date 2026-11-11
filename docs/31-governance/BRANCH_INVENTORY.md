@@ -937,3 +937,22 @@ SOURCE mantiene 36 modificados y nueve nuevos preexistentes, índice vacío. Ent
 ## Decisiones pendientes
 
 Conservar cambios SOURCE y separar por contrato/hunk en expediente posterior. La historia divergente no se reconcilió. No se eligió merge/rebase/cherry-pick ni se ejecutó staging. El documento 07-release-process.md ya modificado permanece protegido. Producción reportada R2: [manifest](RELEASE_MANIFEST.md); [estándar Git](../23-standards/07-git.md). Las adiciones documentales de esta orden permanecen sin stage.
+
+
+## Cierre documental y observación posterior — 11/11/2026
+
+Acción: MSE_UNIFIED_MANIFEST_CONTINUITY_G2B_APPLY_R1.
+
+Sin repetir el inventario: publicación R4 SOURCE `d343a1bfb9ecc4f933ea425486de892fe74009b1` / Enterprise `85b6486ecbf7ae2c652cafd84f2217b0e43590a2`. Las instantáneas anteriores de ediciones sin commit y HEAD previos se conservan como antecedentes.
+
+Checkout EC2 observado: `f80d05e80b522c18ab20751a7e18a9e6f626984c`, limpio. No confundirlo con los commits documentales R4 posteriores. Documentos/Web GHCR#34: RUNNING_OBSERVED; aceptación posterior NOT_VERIFIED. Digests y límites: adenda unificada del RELEASE_MANIFEST.
+
+G2-B: backend E2E y revocación global PASS, nueve archivos candidatos, delta final NOT_ESTABLISHED, ampliable por interceptor/UX. Integración SOURCE/Enterprise y UX3005 pendientes; producción G2-B NOT_EXECUTED; trazabilidad versionada auth_version pendiente. No anticipar commits ni ampliar este inventario al contenido funcional de otros frentes.
+
+Evidencias durables: `/home/loxi1/bbti-evidence/unified-manifest-continuity-g2b-r2/{ec2-ghcr-identity.json,g2b-backend-e2e.json,g2b-candidate-inventory.json}`.
+
+
+## Referencias focales pendientes — 11/11/2026
+
+- **Almacén — modal OCR Guía/NI:** implementación focal únicamente local en el worktree `documental-platform-almacen-filter-r1`; 31 pruebas focales PASS. Sin commit funcional, integración Enterprise, publicación GHCR ni despliegue acreditados. Aceptación UX no acreditada. Independiente del doble filtro integrado en SOURCE mediante `89cd4c6e`.
+- **Factura TEMP334:** incidencia independiente; último estado reportado `RESERVED_INCOMPLETE`. Recuperación diseñada, no implementada ni ejecutada. Reparación productiva no autorizada. No forma parte del release ni constituye funcionalidad cerrada.
