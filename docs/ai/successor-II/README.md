@@ -1,5 +1,26 @@
 # Maestro Sucesor II — Frontend, Workspace Visual y UX
 
+## Continuidad vigente — 11/11/2026
+
+Acción `MSI_CODEX_GIT_MANIFEST_CONTINUITY_RECONCILIATION_R4`. Esta sección prevalece sobre la prioridad NAS de 05/11 conservada abajo; el alcance frontend/UX del rol no concede autoridad sobre backend, JWT o migraciones.
+
+Todo sucesor MI/MSII/MSI lee: [Operations Manual](../../29-operations-manual/README.md#continuidad-vigente--11112026), [estándar SOURCE/release R1](../../23-standards/11-source-development-and-release.md) y [Git](../../23-standards/07-git.md); después el [inventario Git](../../31-governance/BRANCH_INVENTORY.md#continuidad-git-reconciliada--11112026) y solo contratos necesarios. Los contextos/prompt antiguos no prevalecen sobre esta continuidad.
+
+- MVP aceptado05/11: ACCEPTED_WITH_OBSERVATIONS; no reabrir 101 archivos ni repetir aceptación.
+- Enterprise f80d05e8 / GHCR#34: BUILT_NOT_DEPLOYED; no sumar commits posteriores a sus digests ni asumir despliegue por SUCCESS.
+- SOURCE main89cd4c6e: corrección Almacén integrada/publicada; LAB históricamente reportado, no Enterprise ni producción. No reintroducir el segundo filtrado frontend.
+- UX Compras OC/OS y Subir Facturas: INTEGRATED_SOURCE_AND_ENTERPRISE (`1ebdbf4f82ec3cae84b6a6caafc979353af2172a` → `7323e1b0ae62584c08714d06ab5bbf6bbd036292`); no requiere reintegración. La terminología aprobada y la simplificación del modal para OC/OS/FACTURA ya existen: Cancelar/X cierran sin persistir ni descartar el temporal, frente a Guardar y confirmar; Ocultar creación manual solo contrae su formulario. Véanse el [Manual operativo](../../29-operations-manual/README.md) para acciones y modos y el [Inventario Git](../../31-governance/BRANCH_INVENTORY.md) para commits. Su inclusión en imágenes GHCR no acredita despliegue; no confundir con Mi Perfil o G2-B.
+- Mi Perfil UX: dos archivos locales pendientes en el candidato existente (page.tsx y AppHeader.tsx), IMPLEMENTED_NOT_INTEGRATED; preservar y confirmar alcance/acta PO antes de integración.
+- G2-B: exportación aislada, hashes Auth/Gateway verificados; validación técnica MSE 19/19 y401 recibida en R4, PENDING_E2E de cambio de contraseña y revocación JWT. No confundir UX con aceptación funcional completa.
+- P3/R3: PARTIAL_HOLD; PRE_PUT no cerrado funcionalmente; encargo de preparación posterior conservado, no ejecutarlo ahora.
+- APISPERU privado, respaldo remoto OCR, cambio OCR systemd y despliegue productivo: PENDING. No solicitar secretos ni intervenir producción desde esta continuidad.
+- Migración G2-B: autorización separada, SQL+SHA256+runner; no crear 0025 ni cambiar auth_version/conexiones/bases en R4.
+
+Las novedades documentales actuales están sin commit, con SOURCE dirty original preservado y sin cambios de ramas. Revisar el diff mediante MSI/PO; no promover automáticamente ni ejecutar limpieza. Estados y pruebas declarados se distinguen de las verificaciones realizadas, que fueron Git, documentos, hashes y consulta de lectura del run existente.
+
+---
+
+
 **Estado:** continuidad aprobada  
 **Responsable:** Maestro Sucesor II  
 **Alcance:** `apps/web-admin` y documentación de experiencia de usuario  

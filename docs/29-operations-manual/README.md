@@ -1,5 +1,107 @@
 # Operations Manual
 
+## Continuidad vigente — 11/11/2026
+
+Acción `MSI_CODEX_GIT_MANIFEST_CONTINUITY_RECONCILIATION_R4`. Esta sección prevalece sobre las prioridades de las instantáneas anteriores, que se preservan. No reabre MVP101 ni autoriza repetir sus validaciones. Las referencias Git vigentes y el trabajo protegido están en [BRANCH_INVENTORY](../31-governance/BRANCH_INVENTORY.md#continuidad-git-reconciliada--11112026).
+
+Para nuevos chats MI/MSII/MSI: leer este índice, [estándar SOURCE/release R1](../23-standards/11-source-development-and-release.md) y [estándar Git](../23-standards/07-git.md), después solo los contratos del encargo.
+
+### Producción aceptada, GHCR preparado y trabajo posterior
+
+| Frente | Identidad / evidencia | Estado |
+| --- | --- | --- |
+| Último MVP productivo aceptado | 05/11/2026; SOURCE `88edc03136a446308d8b18fa778bdccf6c002be3`; Enterprise `a57c328cbf62de39aa91ed541ae32b449927a5b6` | ACCEPTED_WITH_OBSERVATIONS / DEPLOYED histórico |
+| Cierre documental de aceptación | SOURCE `aef47ca8c307449d2d985128196c297102e80a4d`; Enterprise `dcf14470e80519d3a6f1114180a4652a27de4017` | ACCEPTED; evidencia local, sin nueva consulta EC2 |
+| SOURCE main actual | `89cd4c6e8b33c029bcce50b5d5fefaa4d84979e5`, local=remoto consultado | COMMITTED_AND_PUSHED |
+| Enterprise main / manifest GHCR | `f80d05e80b522c18ab20751a7e18a9e6f626984c`, local=remoto consultado | BUILT_NOT_DEPLOYED |
+| Build de las imágenes publicadas | `2ed7dd0f2e73b58d6d595606af56b8477e9496e8`; Actions#34, run42401171156,07/11/2026, SUCCESS verificado por lectura API | No prueba despliegue |
+
+Evidencia canónica de aceptación: `/home/loxi1/bbti-evidence/controlled-production-release-r1/REPORT.md` y `acceptance-documentary-closure.json`. Evidencia de publicación posterior: `/home/loxi1/bbti-evidence/prepare-ghcr-release-with-manifest-r1/state.json`, `ghcr-images.json` y `REPORT.md`. La observación productiva de ese preflight es del07/11; no presentarla como verificación runtime del11/11.
+
+El producto publicado es SOURCE `1ebdbf4f...` → Enterprise `7323e1b0...`,26 archivos acreditados. Su manifest propio Enterprise es f80d05e8 y permanece intacto. No reemplazarlo por el de SOURCE ni añadir contenido posterior a sus digests:
+
+| Imagen publicada | Digest GHCR |
+| --- | --- |
+| ms-documentos | `sha256:3d48dbcfebc60b1b69db84b2f2fabecee2b024ed991cb53511c585a2e51c37f7` |
+| web-admin | `sha256:f54bfb0bc69a015452c5123f2f36c70ca196ecbfb85e83f784a8415359c93cf9` |
+
+Gateway/Auth se reutilizan; el soporte DEV Auth/NATS de SOURCE está excluido de Enterprise. OCR Python systemd es un artefacto independiente: publicar GHCR no lo instala ni reinicia.
+
+### UX integrada de Compras OC/OS y Subir Facturas
+
+Complemento `MSI_CODEX_R4_UX_DOCUMENTATION_COMPLETION_R1`. Cambios ya integrados en SOURCE y Enterprise mediante los commits acreditados en el [Inventario Git](../31-governance/BRANCH_INVENTORY.md); no requieren reintegración funcional. Esta precisión no modifica las adiciones previas R4 ni la continuidad separada de Mi Perfil/G2-B.
+
+**Terminología OC/OS aprobada y presente en `NuevoExpedienteWizard.tsx`:**
+
+- Descripciones: «Registrar una OC» y «Registrar una OS».
+- Instrucción exacta PO: «Selecciona el documento principal, vincúlalo un Centro de costo o PR».
+- Etiqueta: «Código y descripción»; placeholder: «Buscar por PR o centro costo».
+- Se retiró «Se prevalidará antes de subir. Pueden coexistir varios principales distintos dentro del mismo contexto».
+- Las sugerencias y el resumen de selección dejaron de mostrar los detalles Empresa, Cliente, Documentos y Alertas retirados por el alcance UX aprobado.
+
+**Acciones verificadas por flujo y modo:**
+
+| Acción / condición | Comportamiento acreditado |
+| --- | --- |
+| OC/OS, validación OCR editable en Compras | `accionesComprasSimplificadas` se activa con contexto COMPRAS y tipo OC u OS: oculta Rechazar OCR y Guardar cambios. Quedan Cancelar y Guardar y confirmar, sujetos a las validaciones y restricciones existentes. |
+| Subir Facturas, validación OCR editable en Compras | La condición incluye expresamente FACTURA; el editor de Compras transmite ese contexto al mismo modal. Aplica la misma simplificación, sin atribuir botones de otros modos a este flujo. |
+| Cancelar y X del modal OCR | Invocan `onClose`: cierran la interfaz sin guardar, confirmar, rechazar ni descartar el temporal. No cancelan por sí mismos una operación backend ni borran el archivo; la carga pendiente conserva su recuperación existente. |
+| Guardar y confirmar | Invoca la acción de confirmación correspondiente; no equivale a un cierre visual. Las condiciones de validación, duplicidad, permisos y modo siguen vigentes. |
+| Cerrar | Se conserva en el modo de consulta del modal. En `OcrProcessingDialog.tsx` aparece ante error y cierra la interfaz/estado de error; este control ya existía, no es un botón nuevo de este hotfix. |
+| Modo versión existente | Mantiene su rama específica de Cancelar y Confirmar versión; no se presenta como el flujo normal Guardar y confirmar. |
+| Ocultar creación manual | Alterna `showCreateNew` en el wizard y únicamente contrae el formulario de creación manual. No se atribuye un botón Ocultar a los modales OCR de OC/OS o Factura. |
+
+El helper `onReject` conserva sus usos correspondientes fuera de la simplificación; no confundir ocultar un botón en este contexto con eliminar globalmente una acción backend. La revisión R3 fue estática; este complemento no ejecuta aplicación, pruebas ni una nueva aceptación funcional.
+
+**Código, imágenes y producción:** el alcance está integrado en SOURCE `1ebdbf4f82ec3cae84b6a6caafc979353af2172a` y Enterprise `7323e1b0ae62584c08714d06ab5bbf6bbd036292`, dentro del producto publicado por GHCR #34 / manifest `f80d05e8`. Esto no acredita su despliegue productivo. Se preservan el último MVP aceptado, los digests históricos y los pendientes productivos ya documentados. No confundir este UX integrado con Mi Perfil pendiente ni con el E2E de contraseña/revocación G2-B.
+
+### Continuidad focal pendiente
+
+| Frente | Implementación y archivos | Integración / aceptación / siguiente gate |
+| --- | --- | --- |
+| P3/R3 | `apps/ms-documentos/src/documentos/carga-segura/{carga-segura.service.ts,carga-segura.persistence.ts,carga-segura.repository.ts,carga-segura.compensation.ts}` y `documentos/tmp/tmp.repository.ts`; snapshots P3 preservados | PARTIAL_HOLD; PRE_PUT_RECOVERY=NOT_FUNCTIONALLY_CLOSED. No ejecutar investigación ni parches en R4 |
+| Almacén doble consulta | `89cd4c6e...`: `AlmacenBandeja.tsx` y `AlmacenBandeja.double-filter.test.cjs` | SOURCE INTEGRATED/PUSHED; LAB_VALIDATED históricamente reportado; Enterprise NOT_INTEGRATED; producción NOT_VERIFIED/no incluida en GHCR#34 |
+| Mi Perfil UX | candidato `/home/loxi1/bbti-isolated/compras-almacen-period-finalization-r1`; `apps/web-admin/src/app/mi-perfil/page.tsx`, `apps/web-admin/src/layout/AppHeader.tsx` | UNCOMMITTED / IMPLEMENTED_NOT_INTEGRATED; aceptación UX exacta NOT_VERIFIED sin artefacto PO independiente |
+| Cambio de contraseña G2-B | exportación `/home/loxi1/bbti-isolated/password-g2b-isolated-r1` sin .git; cambios Auth/Gateway | G2B_TECHNICAL_VALIDATION=PASS_WITH_E2E_PENDING, conforme evidencia MSE recibida en orden R4; FULL_FUNCTIONAL_ACCEPTANCE=NOT_GRANTED |
+
+**P3/R3:** la orden R4 acredita recepción `MSE_R3_P3_PRE_PUT_FOCAL_FINDINGS_R1`; conservar el encargo `MSI_CODEX_R3_P3_PRE_PUT_CLOSURE_PREPARATION_R1` como siguiente gate, no ejecutado. Antecedentes locales: `/home/loxi1/evidencias/documental-platform/p3-continuidad/BBTI_P3_CONTINUIDAD_2026-11-02.md` y `BBTI_CODEX_R2_TECHNICAL_CLOSURE_PLAN_R1.md`. Son antecedentes/propuesta y no sustituyen el hallazgo MSE posterior. No inferir cierre PRE_PUT por tener código de fencing o por las pruebas MVP. No se localizó un informe MSE autónomo con ese identificador durante la lectura focal; su recepción procede de la orden, no de nuevas pruebas.
+
+**Almacén:** conserva la búsqueda backend y elimina exclusivamente el filtrado textual frontend redundante. No reintroducirlo. El commit 89cd4c6e es hijo directo de 5efcb743; no forma parte de las imágenes construidas desde 2ed7dd0f. La aceptación LAB es histórica declarada, no reejecutada ni productiva.
+
+**Mi Perfil:** alcance observado: presentación legible de empresa/sistema/perfil, eliminación de IDs técnicos y vigencia de la UI, organización de tarjetas y encabezado. Se preserva selección de workspace mediante `useAuth`, almacenamiento de sesión y `selectWorkspace`; el botón de contraseña continúa como disponibilidad futura/deshabilitado. No convertir la aprobación UX genérica en aceptación del cambio de contraseña. No se encontró un acta local independiente con los textos PO exactos; confirmar esa evidencia antes de integrar, sin descartar el trabajo.
+
+**G2-B:** hashes actuales comprobados:
+- `apps/ms-auth/src/auth/auth.nats.controller.ts`: `d50aef757d976a09b76526559c0241aef9f665df8992a2438cfebbea9bd06a6e`.
+- `apps/api-gateway/src/auth/auth.controller.ts`: `d9ec83bbb8397d774aaa4234e127388bddd1c859ecda93ea5be8b9a8bd991857`.
+
+Diferencias focales adicionales frente a SOURCE main: Auth `auth.service.ts`, `auth.repository.ts`, `auth.repository.spec.ts`, `auth.service.spec.ts` y `schemas/change-password.schema.ts`. La rama/worktree registrada `feat/g2b-auth-version-r1` está limpia en89cd4c6e; **no equivale a la exportación modificada** y no acredita integración de esos cambios.
+
+Resultados MSE recibidos en la orden, sin repetirlos: AUTH_NATS_RPC_401=PASS; GATEWAY_HTTP_401=PASS; AUTH_FOCAL_TESTS=19/19_PASS. PASSWORD_CHANGE_E2E=NOT_EXECUTED; JWT_GLOBAL_REVOCATION_E2E=NOT_EXECUTED. Los hashes coincidentes no acreditan esos E2E. Conservar respaldos `/home/loxi1/bbti-isolated/_g2b-safety-backups/`, base clonada y exportación; no iniciar sus servicios.
+
+### Migraciones: procedimiento vigente y límite G2-B
+
+Seguir [estrategia de migraciones](../06-database/02-migraciones.md), [onboarding](../30-developer-onboarding/06-como-crear-una-migracion.md) y runner versionado `packages/database/src/migrations/`. Unidad administrada: SQL definitivo + SHA256 en `infra/postgres/migrations/manifest.sha256`; verificación de archivos/runner, LAB y autorización propia de DB_WRITE antes de aplicar. Este texto describe el estándar, no lo ejecuta ni prepara una migración.
+
+En R4, las 12 entradas hasta 0024 conservan SHA256 del manifest `ff291e6e99b28edbb9ea9ca743083a06f77d704460142fb42a23f91153533d5b`, integridad local comprobada, sin consultar ledger. No existe 0025 en ese manifest. Para G2-B se dispone reutilizar posteriormente la base natural LAB3005, sin crear bases adicionales; no eliminar la clonada, cambiar conexiones, alterar auth_version, crear 0025 SQL ni ejecutar migraciones ahora. Su diseño/migración formal requiere una autorización separada después de cerrar la reconciliación Git.
+
+### Pendientes productivos y autoridad
+
+```ini
+APISPERU_PRIVATE_PROVISION=PENDING
+REMOTE_BACKUP_AUTHORIZATION=PENDING
+OCR_CHANGE_AUTHORIZATION=PENDING
+PRODUCTION_DEPLOY_AUTHORIZATION=PENDING
+```
+
+Último preflight acreditado: APISPERU_TOKEN ausente en Documentos; respaldo OCR local recuperable verificado, respaldo remoto/cambio OCR/despliegue no ejecutados. No se encontró evidencia local posterior que cambie estos estados. No solicitar credenciales ni inspeccionar tokens de aplicación o producción; las consultas Git usan el mecanismo privado existente sin revelar valores. No consultar ni modificar producción en R4.
+
+Se conservan las observaciones productivas históricas OCR tardío, expiración TEMP, referencia R2 HTTP403 y16 errores globales de tipado conocidos. No se tratan como defectos nuevos ni se corrigen aquí. NAS permanece fuera del alcance y no sustituye R2 por presunción.
+
+**Siguiente acción segura:** revisión MSI/PO del diff documental y de las aceptaciones pendientes por frente. Publicación documental, integración Almacén/Mi Perfil/G2-B, investigación P3, migración y promoción productiva requieren sus autorizaciones propias. No crear nuevas ramas/worktrees ni limpiar los existentes en esta orden. Esta edición permanece sin stage/commit/push en los dos worktrees identificados en el inventario.
+
+---
+
+
 Manual operativo oficial de Documental Platform.
 
 ## Objetivo
