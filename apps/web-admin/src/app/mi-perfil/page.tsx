@@ -203,7 +203,7 @@ export default function MiPerfilPage() {
           <p id="password-updated-message" className="mt-3 text-sm text-muted-foreground">
             Tu contraseña se cambió correctamente. Por seguridad, inicia sesión nuevamente con tu nueva contraseña.
           </p>
-          <button type="button" onClick={() => router.replace("/login")} className="mt-6 rounded-xl bg-brand-500 px-4 py-2 font-semibold text-white">
+          <button type="button" onClick={() => router.replace("/login")} className="mt-6 rounded-xl bg-primary px-4 py-2 font-semibold text-primary-foreground hover:bg-primary/80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">
             Ir a iniciar sesión
           </button>
         </div>
