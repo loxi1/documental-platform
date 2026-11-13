@@ -4,6 +4,7 @@ export const NatsSubjects = {
   AuthListWorkspaces: 'auth.workspaces.list',
   AuthSelectWorkspace: 'auth.workspaces.select',
   AuthValidateToken: 'auth.validate-token',
+  AuthChangePassword: 'auth.change-password',
 
   DocumentoSubido: 'documento.subido',
   DocumentoClasificado: 'documento.clasificado',

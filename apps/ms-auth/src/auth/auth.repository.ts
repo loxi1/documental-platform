@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import * as bcrypt from 'bcrypt';
 import { sql } from '@documental/database';
 
 type AuditEventInput = {
@@ -22,6 +23,138 @@ type AuditEventInput = {
 
 @Injectable()
 export class AuthRepository {
+  async changePasswordAndRevokeSessions(params: {
+    userId: number;
+    expectedAuthVersion: number;
+    currentPassword: string;
+    newPassword: string;
+    workspaceId?: number | null;
+    sessionContextId?: string | null;
+    empresaCodigo?: string | null;
+    sistemaCodigo?: string | null;
+    perfilCodigo?: string | null;
+  }) {
+    let stage = 'READ_USER';
+    return sql.begin(async (tx) => {
+      const rows = await tx`
+        SELECT
+          id,
+          estado,
+          password_hash,
+          auth_version
+        FROM auth.usuarios
+        WHERE id = ${params.userId}
+        FOR UPDATE
+      `;
+
+      const user = rows[0];
+
+      if (!user || user.estado !== 'activo') {
+        return { changed: false, reason: 'USER_UNAVAILABLE' as const };
+      }
+
+      if (
+        !Number.isSafeInteger(params.expectedAuthVersion) ||
+        params.expectedAuthVersion < 1 ||
+        Number(user.auth_version) !== params.expectedAuthVersion
+      ) {
+        return { changed: false, reason: 'TOKEN_REVOKED' as const };
+      }
+
+      stage = 'VERIFY_PASSWORD';
+      const passwordOk = await bcrypt.compare(
+        params.currentPassword,
+        user.password_hash,
+      );
+
+      if (!passwordOk) {
+        return { changed: false, reason: 'INVALID_CURRENT_PASSWORD' as const };
+      }
+
+      stage = 'HASH_PASSWORD';
+      const newHash = await bcrypt.hash(params.newPassword, 12);
+
+      stage = 'UPDATE_PASSWORD';
+      const updated = await tx`
+        UPDATE auth.usuarios
+        SET
+          password_hash = ${newHash},
+          auth_version = auth_version + 1,
+          actualizado_en = now()
+        WHERE id = ${params.userId}
+          AND auth_version = ${params.expectedAuthVersion}
+        RETURNING auth_version
+      `;
+
+      if (updated.length !== 1) {
+        throw new Error('AUTH_VERSION_UPDATE_FAILED');
+      }
+
+      stage = 'WRITE_AUDIT';
+      await tx`
+        INSERT INTO core.auditoria_eventos (
+          workspace_id,
+          session_context_id,
+          usuario_id,
+          empresa_codigo,
+          sistema_codigo,
+          perfil_codigo,
+          modulo,
+          entidad,
+          entidad_id,
+          accion,
+          descripcion,
+          antes,
+          despues
+        ) VALUES (
+          ${params.workspaceId ?? null},
+          ${params.sessionContextId ?? null},
+          ${params.userId},
+          ${params.empresaCodigo ?? null},
+          ${params.sistemaCodigo ?? null},
+          ${params.perfilCodigo ?? null},
+          'auth',
+          'auth.usuarios',
+          ${String(params.userId)},
+          'AUTH_PASSWORD_CHANGED',
+          'Cambio de contraseña y revocación global de sesiones',
+          ${JSON.stringify({
+            authVersion: Number(user.auth_version),
+          })}::jsonb,
+          ${JSON.stringify({
+            authVersion: Number(updated[0].auth_version),
+          })}::jsonb
+        )
+      `;
+
+      return {
+        changed: true as const,
+        authVersion: Number(updated[0].auth_version),
+      };
+    }).catch((error: unknown) => {
+      const e = error as { name?: unknown; code?: unknown; stack?: unknown };
+      const category = typeof e?.name === 'string' && ['Error', 'TypeError', 'PostgresError', 'RangeError'].includes(e.name) ? e.name : 'OTHER';
+      const code = typeof e?.code === 'string' && /^[0-9A-Z]{5}$/.test(e.code) ? e.code : null;
+      const location = typeof e?.stack === 'string' ? e.stack.match(/auth\.repository\.js:\d+:\d+/)?.[0] ?? null : null;
+      console.error('G2B_PASSWORD_DIAG', JSON.stringify({ stage, category, code, location }));
+      throw error;
+    });
+  }
+
+  async findUserAuthStateById(userId: number) {
+    const rows = await sql`
+      SELECT
+        id,
+        estado,
+        auth_version
+      FROM auth.usuarios
+      WHERE id = ${userId}
+      LIMIT 1
+    `;
+
+    return rows[0] ?? null;
+  }
+
   async findUserByEmail(email: string) {
     const rows = await sql`
       SELECT
@@ -30,6 +163,7 @@ export class AuthRepository {
         apellidos,
         email,
         password_hash,
+        auth_version,
         estado
       FROM auth.usuarios
       WHERE email = ${email}

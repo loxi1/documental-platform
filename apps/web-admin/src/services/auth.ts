@@ -41,6 +41,25 @@ export async function selectWorkspace(
   return response.data.data;
 }
 
+export async function changePassword(
+  accessToken: string,
+  currentPassword: string,
+  newPassword: string,
+  confirmPassword: string,
+) {
+  const response = await authApi.post<ApiResponse<{
+    success: boolean;
+    sessionRevoked: boolean;
+    requiresLogin: boolean;
+  }>>(
+    "/auth/change-password",
+    { currentPassword, newPassword, confirmPassword },
+    { headers: { Authorization: `Bearer ${accessToken}` } },
+  );
+
+  return response.data.data;
+}
+
 /** Compatibilidad temporal con imports anteriores. */
 export async function selectContext(
   identityToken: string,

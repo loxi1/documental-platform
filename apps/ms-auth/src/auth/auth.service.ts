@@ -20,6 +20,7 @@ type IdentityPayload = {
   email?: string;
   nombres?: string;
   purpose?: string;
+  authVersion: number;
 };
 
 type AccessPayload = {
@@ -33,6 +34,7 @@ type AccessPayload = {
   perfilId?: number;
   perfil?: string;
   permissionVersion?: number;
+  authVersion: number;
   sessionContextId?: string;
   permisos?: PermissionsShape;
 };
@@ -97,11 +99,23 @@ export class AuthService {
       throw new UnauthorizedException('Credenciales inválidas');
     }
 
+    const authVersion = Number(user.auth_version);
+
+    if (
+      !Number.isSafeInteger(authVersion) ||
+      authVersion < 1
+    ) {
+      throw new UnauthorizedException(
+        'No se pudo verificar la versión de autenticación',
+      );
+    }
+
     const identityToken = this.signIdentityToken({
       sub: user.id,
       email: user.email,
       nombres: user.nombres,
       purpose: 'identity',
+      authVersion,
     });
 
     await this.repo.touchUserLastLogin(user.id);
@@ -126,8 +140,76 @@ export class AuthService {
     };
   }
 
+  async changePassword(dto: {
+    accessToken: string;
+    currentPassword: string;
+    newPassword: string;
+    confirmPassword: string;
+  }) {
+    if (Array.from(dto.newPassword).length < 8) {
+      throw new ForbiddenException('La nueva contraseña debe tener al menos 8 caracteres');
+    }
+
+    if (dto.newPassword !== dto.confirmPassword) {
+      throw new ForbiddenException(
+        'La confirmación no coincide con la nueva contraseña',
+      );
+    }
+
+    if (dto.currentPassword === dto.newPassword) {
+      throw new ForbiddenException(
+        'La nueva contraseña debe ser diferente de la actual',
+      );
+    }
+
+    if (Buffer.byteLength(dto.newPassword, 'utf8') > 72) {
+      throw new ForbiddenException(
+        'La nueva contraseña no puede superar los 72 bytes UTF-8',
+      );
+    }
+
+    const identity = await this.verifyTokenWithAuthVersion(
+      dto.accessToken,
+    );
+
+    if (!identity.workspaceId) {
+      throw new UnauthorizedException(
+        'Se requiere una sesión contextual válida',
+      );
+    }
+
+    const result = await this.repo.changePasswordAndRevokeSessions({
+      userId: identity.sub,
+      expectedAuthVersion: identity.authVersion,
+      currentPassword: dto.currentPassword,
+      newPassword: dto.newPassword,
+
+      workspaceId: identity.workspaceId,
+      sessionContextId: identity.sessionContextId,
+      empresaCodigo: identity.empresa,
+      sistemaCodigo: identity.sistema,
+      perfilCodigo: identity.perfil,
+    });
+
+    if (!result.changed) {
+      if (result.reason === 'INVALID_CURRENT_PASSWORD') {
+        throw new UnauthorizedException({ message: 'Contraseña actual incorrecta', code: 'CURRENT_PASSWORD_INCORRECT' });
+      }
+
+      throw new UnauthorizedException(
+        'No se pudo completar el cambio de contraseña',
+      );
+    }
+
+    return {
+      success: true,
+      sessionRevoked: true,
+      requiresLogin: true,
+    };
+  }
+
   async listWorkspaces(dto: WorkspacesDto) {
-    const identity = this.verifySelectionToken(dto.identityToken);
+    const identity = await this.verifySelectionToken(dto.identityToken);
     const workspaces = await this.repo.findUserWorkspaces(identity.sub);
 
     await this.repo.auditEvent({
@@ -159,7 +241,7 @@ export class AuthService {
   }
 
   async selectWorkspace(dto: SelectWorkspaceDto) {
-    const identity = this.verifySelectionToken(dto.identityToken);
+    const identity = await this.verifySelectionToken(dto.identityToken);
     const workspace = await this.repo.findUserWorkspaceById({
       usuarioId: identity.sub,
       workspaceId: dto.workspaceId,
@@ -192,6 +274,7 @@ export class AuthService {
       perfilId: workspace.perfil_id,
       perfil: workspace.perfil_codigo,
       permissionVersion: workspace.permission_version ?? 1,
+      authVersion: identity.authVersion,
       sessionContextId,
       permisos,
     };
@@ -227,7 +310,7 @@ export class AuthService {
 
 
   async listUsuariosAdmin(accessToken: string) {
-    const admin = this.verifyAdminAccessToken(accessToken);
+    const admin = await this.verifyAdminAccessToken(accessToken);
     const usuarios = await this.repo.listUsuariosAdmin();
 
     await this.repo.auditEvent({
@@ -246,7 +329,7 @@ export class AuthService {
   }
 
   async findUsuarioAdminById(params: { accessToken: string; id: number }) {
-    this.verifyAdminAccessToken(params.accessToken);
+    await this.verifyAdminAccessToken(params.accessToken);
     const usuario = await this.repo.findUsuarioAdminById(params.id);
 
     if (!usuario) {
@@ -257,7 +340,7 @@ export class AuthService {
   }
 
   async listPerfilesAdmin(accessToken: string) {
-    const admin = this.verifyAdminAccessToken(accessToken);
+    const admin = await this.verifyAdminAccessToken(accessToken);
     const perfiles = await this.repo.listPerfilesAdmin();
 
     await this.repo.auditEvent({
@@ -276,7 +359,7 @@ export class AuthService {
   }
 
   async findPerfilAdminById(params: { accessToken: string; id: number }) {
-    this.verifyAdminAccessToken(params.accessToken);
+    await this.verifyAdminAccessToken(params.accessToken);
     const perfil = await this.repo.findPerfilAdminById(params.id);
 
     if (!perfil) {
@@ -287,7 +370,7 @@ export class AuthService {
   }
 
   async listUsuarioWorkspacesAdmin(params: { accessToken: string; usuarioId?: number }) {
-    const admin = this.verifyAdminAccessToken(params.accessToken);
+    const admin = await this.verifyAdminAccessToken(params.accessToken);
     const workspaces = await this.repo.listUsuarioWorkspacesAdmin({
       usuarioId: params.usuarioId,
     });
@@ -321,64 +404,90 @@ export class AuthService {
     );
   }
 
-  validateToken(dto: ValidateTokenDto) {
-    try {
-      const jwtSecret: Secret = process.env.JWT_SECRET ?? 'dev_secret';
-      const payload = jwt.verify(dto.token, jwtSecret);
+  async validateToken(dto: ValidateTokenDto) {
+    const payload = await this.verifyTokenWithAuthVersion(dto.token);
 
-      return {
-        valid: true,
-        payload,
-      };
-    } catch {
-      throw new UnauthorizedException('Token inválido o expirado');
-    }
+    return {
+      valid: true,
+      payload,
+    };
   }
 
-  private verifySelectionToken(token: string): IdentityPayload {
-    try {
-      const jwtSecret: Secret = process.env.JWT_SECRET ?? 'dev_secret';
-      const payload = jwt.verify(token, jwtSecret) as unknown as IdentityPayload & { workspaceId?: number };
+  private async verifySelectionToken(
+    token: string,
+  ): Promise<IdentityPayload> {
+    const payload = await this.verifyTokenWithAuthVersion(token);
 
-      if (!payload.sub) {
-        throw new UnauthorizedException('Token de selección inválido');
-      }
-
-      if (payload.purpose === 'identity' || payload.workspaceId) {
-        return payload;
-      }
-
-      throw new UnauthorizedException('Token de selección inválido');
-    } catch {
-      throw new UnauthorizedException('Token de selección inválido o expirado');
+    if (payload.purpose === 'identity' || payload.workspaceId) {
+      return payload;
     }
+
+    throw new UnauthorizedException('Token de selección inválido');
   }
 
+  private async verifyAdminAccessToken(
+    token: string,
+  ): Promise<AccessPayload> {
+    const payload = await this.verifyTokenWithAuthVersion(token);
 
-  private verifyAdminAccessToken(token: string): AccessPayload {
-    if (!token) {
-      throw new UnauthorizedException('Token requerido');
+    if (!payload.workspaceId) {
+      throw new UnauthorizedException('Token contextual inválido');
     }
 
-    try {
-      const jwtSecret: Secret = process.env.JWT_SECRET ?? 'dev_secret';
-      const payload = jwt.verify(token, jwtSecret) as unknown as AccessPayload;
+    if (payload.perfil !== 'admin') {
+      throw new ForbiddenException(
+        'Solo el perfil admin puede consultar administración de accesos',
+      );
+    }
 
-      if (!payload.sub || !payload.workspaceId) {
-        throw new UnauthorizedException('Token contextual inválido');
+    return payload;
+  }
+
+  private async verifyTokenWithAuthVersion(
+    token: string,
+  ): Promise<IdentityPayload & AccessPayload> {
+    try {
+      if (!token) {
+        throw new UnauthorizedException('Token requerido');
       }
 
-      if (payload.perfil !== 'admin') {
-        throw new ForbiddenException('Solo el perfil admin puede consultar administración de accesos');
+      const jwtSecret: Secret = process.env.JWT_SECRET ?? 'dev_secret';
+      const decoded = jwt.verify(token, jwtSecret);
+
+      if (
+        !decoded ||
+        typeof decoded !== 'object' ||
+        !('sub' in decoded) ||
+        !('authVersion' in decoded)
+      ) {
+        throw new UnauthorizedException('Token inválido');
+      }
+
+      const payload = decoded as unknown as IdentityPayload & AccessPayload;
+
+      if (
+        !Number.isSafeInteger(payload.sub) ||
+        payload.sub < 1 ||
+        !Number.isSafeInteger(payload.authVersion) ||
+        payload.authVersion < 1
+      ) {
+        throw new UnauthorizedException('Token inválido');
+      }
+
+      const user = await this.repo.findUserAuthStateById(payload.sub);
+
+      if (
+        !user ||
+        user.estado !== 'activo' ||
+        !Number.isSafeInteger(Number(user.auth_version)) ||
+        Number(user.auth_version) !== payload.authVersion
+      ) {
+        throw new UnauthorizedException('Token revocado o usuario inactivo');
       }
 
       return payload;
-    } catch (error) {
-      if (error instanceof ForbiddenException) {
-        throw error;
-      }
-
-      throw new UnauthorizedException('Token inválido o expirado');
+    } catch {
+      throw new UnauthorizedException('Token inválido, expirado o revocado');
     }
   }
 
@@ -466,18 +575,15 @@ export class AuthService {
     return jwt.sign(payload, jwtSecret, { expiresIn });
   }
 
-  private verifyIdentityToken(token: string): IdentityPayload {
-    try {
-      const jwtSecret: Secret = process.env.JWT_SECRET ?? 'dev_secret';
-      const payload = jwt.verify(token, jwtSecret) as unknown as IdentityPayload;
+  private async verifyIdentityToken(
+    token: string,
+  ): Promise<IdentityPayload> {
+    const payload = await this.verifyTokenWithAuthVersion(token);
 
-      if (payload.purpose !== 'identity' || !payload.sub) {
-        throw new UnauthorizedException('Identity token inválido');
-      }
-
-      return payload;
-    } catch {
-      throw new UnauthorizedException('Identity token inválido o expirado');
+    if (payload.purpose !== 'identity') {
+      throw new UnauthorizedException('Identity token inválido');
     }
+
+    return payload;
   }
 }

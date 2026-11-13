@@ -32,11 +32,21 @@ export function useAuth() {
   }, [refreshSession]);
 
   const logout = useCallback(async (): Promise<void> => {
-    await queryClient.cancelQueries();
-    queryClient.clear();
+    // Revocar primero la sesión local, sin depender de React Query.
     clearAuthSession();
     setSession(null);
-    router.replace("/login");
+
+    try {
+      await queryClient.cancelQueries();
+    } catch {
+      // Un fallo secundario no debe impedir el cierre de sesión.
+    } finally {
+      try {
+        queryClient.clear();
+      } finally {
+        router.replace("/login");
+      }
+    }
   }, [queryClient, router]);
 
   const validateCurrentSession = useCallback(async () => {

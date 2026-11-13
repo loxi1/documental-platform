@@ -4,6 +4,7 @@ import {
   ForbiddenException,
   Get,
   Headers,
+  HttpException,
   Inject,
   Param,
   ParseIntPipe,
@@ -63,12 +64,50 @@ export class AuthController {
     }
   }
 
+  @ApiOperation({ summary: 'Cambio de contraseña del usuario autenticado' })
+  @Post('change-password')
+  async changePassword(
+    @Headers('authorization') authorization: string | undefined,
+    @Body() body: unknown,
+  ) {
+    const accessToken = extractBearerToken(authorization);
+
+    if (!accessToken) {
+      throw new UnauthorizedException('Token de autenticación requerido.');
+    }
+
+    try {
+      return await firstValueFrom(
+        this.nats.send(NatsSubjects.AuthChangePassword, {
+          ...(body && typeof body === 'object' && !Array.isArray(body) ? body : {}),
+          accessToken,
+        }),
+      );
+    } catch (error) {
+      const statusCode = error !== null && typeof error === 'object' && 'statusCode' in error
+        ? error.statusCode : 500;
+      const messages: Record<number, string> = {
+        400: 'Datos de cambio de contraseña inválidos',
+        401: 'Contraseña actual incorrecta o sesión no válida',
+        403: 'La nueva contraseña no cumple las condiciones requeridas',
+      };
+      const status = typeof statusCode === 'number' && messages[statusCode] ? statusCode : 500;
+      const code = status === 401 && error !== null && typeof error === 'object' && 'code' in error && error.code === 'CURRENT_PASSWORD_INCORRECT' ? 'CURRENT_PASSWORD_INCORRECT' : undefined;
+      throw new HttpException({ message: messages[status] ?? 'No se pudo completar el cambio de contraseña', code }, status);
+    }
+  }
+
   @ApiOperation({ summary: 'Login vía API Gateway' })
   @Post('login')
   async login(@Body() body: unknown) {
-    return firstValueFrom(
-      this.nats.send(NatsSubjects.AuthLogin, body),
-    );
+    try {
+      return await firstValueFrom(this.nats.send(NatsSubjects.AuthLogin, body));
+    } catch (error) {
+      const statusCode = error !== null && typeof error === 'object' && 'statusCode' in error ? error.statusCode : 500;
+      const status = statusCode === 400 || statusCode === 401 ? statusCode : 500;
+      const message = status === 401 ? 'Credenciales inválidas' : status === 400 ? 'Datos de autenticación inválidos' : 'No se pudo completar la autenticación';
+      throw new HttpException(message, status);
+    }
   }
 
   @ApiOperation({ summary: 'Listar workspaces vía API Gateway' })
@@ -190,8 +229,23 @@ export class AuthController {
   @ApiOperation({ summary: 'Validar token vía API Gateway' })
   @Post('validate-token')
   async validateToken(@Body() body: unknown) {
-    return firstValueFrom(
-      this.nats.send(NatsSubjects.AuthValidateToken, body),
-    );
+    try {
+      return await firstValueFrom(
+        this.nats.send(NatsSubjects.AuthValidateToken, body),
+      );
+    } catch (error) {
+      if (
+        error !== null &&
+        typeof error === 'object' &&
+        'statusCode' in error &&
+        error.statusCode === 401
+      ) {
+        throw new UnauthorizedException(
+          'Token inválido, expirado o revocado',
+        );
+      }
+
+      throw error;
+    }
   }
 }

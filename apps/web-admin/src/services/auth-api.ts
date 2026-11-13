@@ -21,7 +21,10 @@ authApi.interceptors.request.use((config) => {
 authApi.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error?.response?.status === 401 && typeof window !== "undefined") {
+    const wrongCurrentPassword = error?.config?.method?.toLowerCase() === "post"
+      && error?.config?.url === "/auth/change-password"
+      && (error?.response?.data?.error?.code ?? error?.response?.data?.code) === "CURRENT_PASSWORD_INCORRECT";
+    if (!wrongCurrentPassword && error?.response?.status === 401 && typeof window !== "undefined") {
       clearAuthSession();
       window.location.href = "/login";
     }

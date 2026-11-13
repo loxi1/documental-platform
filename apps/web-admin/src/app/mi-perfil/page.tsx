@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { Modal } from "@/components/ui/modal";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
@@ -8,15 +9,14 @@ import {
   ArrowRightLeft,
   Building2,
   CheckCircle2,
-  Clock3,
   KeyRound,
   ShieldCheck,
   Star,
   UserRound,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
-import { getAuthSession, getStoredWorkspaces, saveAuthSession } from "@/lib/auth-storage";
-import { selectWorkspace } from "@/services/auth";
+import { clearAuthSession, getAuthSession, getStoredWorkspaces, saveAuthSession } from "@/lib/auth-storage";
+import { changePassword, selectWorkspace } from "@/services/auth";
 import type { AuthWorkspace } from "@/types/auth";
 import { getDefaultPathForContext } from "@/lib/workspace-navigation";
 
@@ -32,24 +32,133 @@ function formatDate(value?: string | null) {
   }).format(date);
 }
 
+function companyName(value?: string | null) {
+  const code = (value ?? "").trim().toUpperCase();
+  if (code === "BBTI" || code === "BBTI S.A.C.") return "BBTI S.A.C.";
+  if (code === "BBTEC" || code === "BB TECNOLOGIA INDUSTRIAL S.A.C.") {
+    return "BB TECNOLOGIA INDUSTRIAL S.A.C.";
+  }
+  return value || "Empresa no disponible";
+}
+
+function systemName(value?: string | null) {
+  return value?.trim().toUpperCase() === "DOCUMENTAL" ? "Gestión Documental" : value || "Sistema no disponible";
+}
+
+function profileName(value?: string | null) {
+  const profile = value?.trim();
+  if (!profile) return "Perfil no disponible";
+
+  if (profile.toLowerCase() === "almacen") return "Almacén";
+
+  return profile
+    .replace(/_/g, " ")
+    .split(/\s+/)
+    .map((word) =>
+      word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
+    )
+    .join(" ");
+}
+
 function workspaceLabel(workspace: AuthWorkspace) {
-  const empresa = workspace.empresaCodigo || workspace.empresa || "Empresa";
-  const perfil = workspace.perfilNombre || workspace.perfil || "Perfil";
-  return `${empresa} · ${perfil}`;
+  return companyName(workspace.empresaCodigo || workspace.empresa);
 }
 
 export default function MiPerfilPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
-  const { contexto, refreshSession } = useAuth();
+  const { contexto, refreshSession, logout } = useAuth();
   const [loadingWorkspaceId, setLoadingWorkspaceId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [changingPassword, setChangingPassword] = useState(false);
+  const [passwordUpdated, setPasswordUpdated] = useState(false);
+  const [passwordError, setPasswordError] = useState<string | null>(null);
 
   const workspaces = useMemo(() => getStoredWorkspaces(), []);
   const activeWorkspace = useMemo(
     () => workspaces.find((workspace) => workspace.workspaceId === contexto?.workspaceId),
     [contexto?.workspaceId, workspaces],
   );
+
+  const handlePasswordChange = async (
+    event: React.FormEvent<HTMLFormElement>,
+  ) => {
+    event.preventDefault();
+    if (changingPassword) return;
+
+    setPasswordError(null);
+
+    if (!currentPassword || !newPassword || !confirmPassword) {
+      setPasswordError("Completa los tres campos.");
+      return;
+    }
+
+    if (Array.from(newPassword).length < 8) {
+      setPasswordError("La nueva contraseña debe tener al menos 8 caracteres.");
+      return;
+    }
+
+    if (new TextEncoder().encode(newPassword).byteLength > 72) {
+      setPasswordError("La nueva contraseña no puede superar los 72 bytes UTF-8.");
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      setPasswordError("La confirmación no coincide.");
+      return;
+    }
+
+    if (currentPassword === newPassword) {
+      setPasswordError("La nueva contraseña debe ser diferente.");
+      return;
+    }
+
+    const session = getAuthSession();
+
+    if (!session?.accessToken) {
+      setPasswordError("Sesión no disponible. Inicia sesión nuevamente.");
+      return;
+    }
+
+    setChangingPassword(true);
+
+    try {
+      const result = await changePassword(
+        session.accessToken,
+        currentPassword,
+        newPassword,
+        confirmPassword,
+      );
+
+      if (!result.success || !result.sessionRevoked || !result.requiresLogin) {
+        throw new Error("Cambio no confirmado");
+      }
+
+      // Revoke local access before showing success, independent of modal actions.
+      clearAuthSession();
+      refreshSession();
+      setPasswordUpdated(true);
+      queryClient.clear();
+
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+    } catch (error) {
+      const failure = error as { response?: { status?: number; data?: { code?: string; error?: { code?: string } } } };
+      const code = failure.response?.data?.error?.code ?? failure.response?.data?.code;
+      if (failure.response?.status === 401 && code === "CURRENT_PASSWORD_INCORRECT") {
+        setPasswordError("La contraseña actual es incorrecta.");
+      } else setPasswordError(
+        "No se pudo cambiar la contraseña. Verifica los datos ingresados.",
+      );
+    } finally {
+      setChangingPassword(false);
+    }
+  };
 
   const handleChangeWorkspace = async (workspace: AuthWorkspace) => {
     if (workspace.workspaceId === contexto?.workspaceId) return;
@@ -81,14 +190,34 @@ export default function MiPerfilPage() {
     }
   };
 
+  if (passwordUpdated) {
+    return (
+      <Modal
+        isOpen
+        showCloseButton={false}
+        onClose={() => router.replace("/login")}
+        className="max-w-md p-6"
+      >
+        <div role="alertdialog" aria-modal="true" aria-labelledby="password-updated-title" aria-describedby="password-updated-message">
+          <h1 id="password-updated-title" className="text-xl font-semibold">Contraseña actualizada</h1>
+          <p id="password-updated-message" className="mt-3 text-sm text-muted-foreground">
+            Tu contraseña se cambió correctamente. Por seguridad, inicia sesión nuevamente con tu nueva contraseña.
+          </p>
+          <button type="button" onClick={() => router.replace("/login")} className="mt-6 rounded-xl bg-brand-500 px-4 py-2 font-semibold text-white">
+            Ir a iniciar sesión
+          </button>
+        </div>
+      </Modal>
+    );
+  }
+
   return (
-    <main className="space-y-6">
+    <main className="mx-auto max-w-7xl space-y-6 pb-8">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <p className="text-sm font-medium text-muted-foreground">Cuenta</p>
-          <h1 className="text-3xl font-semibold tracking-tight">Mi Perfil</h1>
+          <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">Mi perfil</h1>
           <p className="mt-2 text-sm text-muted-foreground">
-            Consulta tu sesión, contexto actual y espacios de trabajo disponibles.
+            Consulta tus datos y administra los espacios de trabajo a los que tienes acceso.
           </p>
         </div>
         <Link
@@ -105,7 +234,7 @@ export default function MiPerfilPage() {
         </div>
       ) : null}
 
-      <section className="grid gap-4 lg:grid-cols-[0.9fr_1.3fr]">
+      <section className="grid gap-4 lg:grid-cols-3">
         <article className="rounded-3xl border border-border bg-card p-6 shadow-sm">
           <div className="flex items-center gap-3">
             <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-950 text-white dark:bg-white dark:text-slate-950">
@@ -119,29 +248,25 @@ export default function MiPerfilPage() {
 
           <div className="mt-6 space-y-3 text-sm">
             <div className="rounded-2xl border border-border bg-muted/30 p-4">
-              <p className="text-xs uppercase tracking-wide text-muted-foreground">Workspace actual</p>
-              <p className="mt-1 font-semibold">{contexto?.empresa ?? "-"} · {contexto?.perfil ?? "-"}</p>
-              <p className="mt-1 text-xs text-muted-foreground">ID: {contexto?.workspaceId ?? "-"}</p>
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Espacio de trabajo actual</p>
+              <p className="mt-1 font-semibold">{companyName(contexto?.empresa)}</p>
+              <p className="mt-1 font-semibold">{profileName(contexto?.perfil)}</p>
             </div>
             <div className="rounded-2xl border border-border bg-muted/30 p-4">
               <p className="text-xs uppercase tracking-wide text-muted-foreground">Sistema</p>
-              <p className="mt-1 font-semibold">{contexto?.sistema ?? "-"}</p>
-            </div>
-            <div className="rounded-2xl border border-border bg-muted/30 p-4">
-              <p className="text-xs uppercase tracking-wide text-muted-foreground">Session Context ID</p>
-              <p className="mt-1 break-all font-mono text-xs">{contexto?.sessionContextId ?? "-"}</p>
+              <p className="mt-1 font-semibold">{systemName(contexto?.sistema)}</p>
             </div>
           </div>
         </article>
 
-        <article className="rounded-3xl border border-border bg-card p-6 shadow-sm">
+        <article className="rounded-3xl border border-border bg-card p-6 shadow-sm lg:col-span-2">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
             <div className="flex items-center gap-2">
               <ShieldCheck className="h-5 w-5 text-muted-foreground" />
               <div>
                 <h2 className="text-lg font-semibold">Espacios de trabajo</h2>
                 <p className="text-sm text-muted-foreground">
-                  Activa otro workspace sin volver a ingresar contraseña.
+                  Selecciona otro espacio de trabajo disponible sin volver a iniciar sesión.
                 </p>
               </div>
             </div>
@@ -167,8 +292,8 @@ export default function MiPerfilPage() {
                     <div className="flex min-w-0 items-start gap-3">
                       <Building2 className="mt-0.5 h-5 w-5 shrink-0 text-muted-foreground" />
                       <div className="min-w-0">
-                        <p className="truncate font-semibold">{workspaceLabel(workspace)}</p>
-                        <p className="truncate text-sm text-muted-foreground">{workspace.sistemaNombre || workspace.sistema}</p>
+                        <p className="break-words font-semibold leading-snug">{workspaceLabel(workspace)}</p>
+                        <p className="truncate text-sm text-muted-foreground">{systemName(workspace.sistemaNombre || workspace.sistema)}</p>
                       </div>
                     </div>
                     {active ? (
@@ -179,16 +304,10 @@ export default function MiPerfilPage() {
                     ) : null}
                   </div>
 
-                  <div className="mt-3 grid gap-2 text-xs text-muted-foreground sm:grid-cols-2">
-                    <div className="rounded-xl bg-background/70 p-3 dark:bg-white/5">
+                  <div className="mt-3 text-xs text-muted-foreground">
+                    <div className="w-full rounded-xl bg-background/70 p-3 dark:bg-white/5">
                       <p className="uppercase tracking-wide">Último uso</p>
                       <p className="mt-1 font-medium text-foreground">{formatDate(workspace.ultimoUsoEn)}</p>
-                    </div>
-                    <div className="rounded-xl bg-background/70 p-3 dark:bg-white/5">
-                      <p className="uppercase tracking-wide">Vigencia</p>
-                      <p className="mt-1 font-medium text-foreground">
-                        {workspace.vigenciaHasta ? `Hasta ${formatDate(workspace.vigenciaHasta)}` : "Sin vencimiento"}
-                      </p>
                     </div>
                   </div>
 
@@ -203,13 +322,13 @@ export default function MiPerfilPage() {
                     }`}
                   >
                     <ArrowRightLeft className="h-4 w-4" />
-                    {active ? "Workspace activo" : loading ? "Cambiando..." : "Activar workspace"}
+                    {active ? "Espacio de trabajo activo" : loading ? "Cambiando..." : "Activar espacio de trabajo"}
                   </button>
                 </div>
               );
             }) : (
               <div className="rounded-2xl border border-dashed border-border p-6 text-sm text-muted-foreground xl:col-span-2">
-                No hay workspaces cacheados en este navegador. Usa “Cambiar espacio de trabajo” para refrescarlos.
+                No hay espacios de trabajo disponibles en esta sesión. Usa «Cambiar espacio de trabajo» para consultar tus opciones.
               </div>
             )}
           </div>
@@ -219,16 +338,15 @@ export default function MiPerfilPage() {
       <section className="grid gap-4 lg:grid-cols-2">
         <article className="rounded-3xl border border-border bg-card p-6 shadow-sm">
           <div className="flex items-center gap-2">
-            <Clock3 className="h-5 w-5 text-muted-foreground" />
-            <h2 className="text-lg font-semibold">Último acceso</h2>
+            <UserRound className="h-5 w-5 text-muted-foreground" />
+            <h2 className="text-lg font-semibold">Información de mi cuenta</h2>
           </div>
-          <p className="mt-2 text-sm text-muted-foreground">
-            El historial detallado de accesos quedará alimentado desde auditoría base.
-          </p>
-          <div className="mt-4 rounded-2xl border border-border bg-muted/30 p-4 text-sm">
-            <p className="text-xs uppercase tracking-wide text-muted-foreground">Contexto actual</p>
-            <p className="mt-1 font-semibold">{contexto?.empresa ?? "-"} · {contexto?.perfil ?? "-"}</p>
-          </div>
+          <p className="mt-2 text-sm text-muted-foreground">Datos asociados a tu sesión actual.</p>
+          <dl className="mt-4 space-y-3 rounded-2xl border border-border bg-muted/30 p-4 text-sm">
+            <div><dt className="text-xs text-muted-foreground">Nombre</dt><dd className="mt-1 font-semibold">{contexto?.nombres ?? "Usuario"}</dd></div>
+            <div><dt className="text-xs text-muted-foreground">Correo</dt><dd className="mt-1 break-words font-semibold">{contexto?.email ?? "Correo no disponible"}</dd></div>
+            <div><dt className="text-xs text-muted-foreground">Perfil</dt><dd className="mt-1 font-semibold">{contexto?.perfil ?? "Perfil no disponible"}</dd></div>
+          </dl>
         </article>
 
         <article className="rounded-3xl border border-border bg-card p-6 shadow-sm">
@@ -237,24 +355,67 @@ export default function MiPerfilPage() {
             <h2 className="text-lg font-semibold">Seguridad</h2>
           </div>
           <p className="mt-2 text-sm text-muted-foreground">
-            Cambio de contraseña y cierre de otras sesiones quedan preparados para el siguiente incremento del módulo de Auth.
+            Actualiza tu contraseña para proteger tu cuenta. Usa al menos 8 caracteres.
+            Al confirmar el cambio, se cerrarán tus sesiones anteriores
+            y deberás iniciar sesión nuevamente.
           </p>
-          <div className="mt-4 grid gap-2 sm:grid-cols-2">
+
+          <form onSubmit={handlePasswordChange} className="mt-5 space-y-4">
+            {[
+              {
+                id: "current-password",
+                label: "Contraseña actual",
+                value: currentPassword,
+                setter: setCurrentPassword,
+                autoComplete: "current-password",
+              },
+              {
+                id: "new-password",
+                label: "Nueva contraseña",
+                value: newPassword,
+                setter: setNewPassword,
+                autoComplete: "new-password",
+              },
+              {
+                id: "confirm-password",
+                label: "Confirmar nueva contraseña",
+                value: confirmPassword,
+                setter: setConfirmPassword,
+                autoComplete: "new-password",
+              },
+            ].map((field) => (
+              <div key={field.id}>
+                <label htmlFor={field.id} className="mb-1 block text-sm font-medium">
+                  {field.label}
+                </label>
+                <input
+                  id={field.id}
+                  type="password"
+                  autoComplete={field.autoComplete}
+                  required
+                  minLength={field.id === "current-password" ? undefined : 8}
+                  value={field.value}
+                  onChange={(event) => field.setter(event.target.value)}
+                  disabled={changingPassword}
+                  className="w-full rounded-xl border border-border bg-background px-4 py-2.5 text-sm"
+                />
+              </div>
+            ))}
+
+            {passwordError && (
+              <p role="alert" className="text-sm text-destructive">
+                {passwordError}
+              </p>
+            )}
+
             <button
-              type="button"
-              disabled
-              className="rounded-xl border border-border px-4 py-2.5 text-sm font-semibold text-muted-foreground"
+              type="submit"
+              disabled={changingPassword}
+              className="rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground disabled:opacity-50"
             >
-              Cambiar contraseña
+              {changingPassword ? "Actualizando contraseña..." : "Cambiar contraseña"}
             </button>
-            <button
-              type="button"
-              disabled
-              className="rounded-xl border border-border px-4 py-2.5 text-sm font-semibold text-muted-foreground"
-            >
-              Cerrar otras sesiones
-            </button>
-          </div>
+          </form>
         </article>
       </section>
     </main>

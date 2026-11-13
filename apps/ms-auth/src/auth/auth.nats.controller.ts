@@ -1,8 +1,9 @@
-import { Controller } from '@nestjs/common';
-import { MessagePattern, Payload } from '@nestjs/microservices';
+import { Controller, HttpException, UnauthorizedException } from '@nestjs/common';
+import { MessagePattern, Payload, RpcException } from '@nestjs/microservices';
 import { NatsSubjects } from '@documental/shared';
 
 import { AuthService } from './auth.service';
+import { changePasswordSchema } from './schemas/change-password.schema';
 import { loginSchema } from './schemas/login.schema';
 import { selectContextSchema } from './schemas/select-context.schema';
 import { selectWorkspaceSchema } from './schemas/select-workspace.schema';
@@ -27,9 +28,15 @@ export class AuthNatsController {
   }
 
   @MessagePattern(authPattern(NatsSubjects.AuthLogin))
-  login(@Payload() payload: unknown) {
-    const dto = loginSchema.parse(payload);
-    return this.service.login(dto);
+  async login(@Payload() payload: unknown) {
+    const parsed = loginSchema.safeParse(payload);
+    if (!parsed.success) throw new RpcException({ statusCode: 400, message: 'Datos de autenticación inválidos' });
+    try {
+      return await this.service.login(parsed.data);
+    } catch (error) {
+      const statusCode = error instanceof HttpException && error.getStatus() === 401 ? 401 : 500;
+      throw new RpcException({ statusCode, message: statusCode === 401 ? 'Credenciales inválidas' : 'No se pudo completar la autenticación' });
+    }
   }
 
   @MessagePattern(authPattern('auth.workspaces.list'))
@@ -87,9 +94,47 @@ export class AuthNatsController {
     return this.service.selectContext(dto);
   }
 
+  @MessagePattern(authPattern(NatsSubjects.AuthChangePassword))
+  async changePassword(@Payload() payload: unknown) {
+    const parsed = changePasswordSchema.safeParse(payload);
+    if (!parsed.success) {
+      throw new RpcException({ statusCode: 400, message: 'Datos de cambio de contraseña inválidos' });
+    }
+    try {
+      return await this.service.changePassword(parsed.data);
+    } catch (error) {
+      const statusCode = error instanceof HttpException ? error.getStatus() : 500;
+      const messages: Record<number, string> = {
+        400: 'Datos de cambio de contraseña inválidos',
+        401: 'Contraseña actual incorrecta o sesión no válida',
+        403: 'La nueva contraseña no cumple las condiciones requeridas',
+      };
+      const response = error instanceof HttpException ? error.getResponse() : null;
+      const code = statusCode === 401 && typeof response === 'object' && response !== null && 'code' in response && response.code === 'CURRENT_PASSWORD_INCORRECT' ? 'CURRENT_PASSWORD_INCORRECT' : undefined;
+      throw new RpcException({
+        code,
+        statusCode: messages[statusCode] ? statusCode : 500,
+        message: messages[statusCode] ?? 'No se pudo completar el cambio de contraseña',
+      });
+    }
+  }
+
   @MessagePattern(authPattern(NatsSubjects.AuthValidateToken))
-  validateToken(@Payload() payload: unknown) {
+  async validateToken(@Payload() payload: unknown) {
     const dto = validateTokenSchema.parse(payload);
-    return this.service.validateToken(dto);
+
+    try {
+      return await this.service.validateToken(dto);
+    } catch (error) {
+      if (error instanceof UnauthorizedException) {
+        throw new RpcException({
+          statusCode: 401,
+          message: 'Token inválido, expirado o revocado',
+          error: 'Unauthorized',
+        });
+      }
+
+      throw error;
+    }
   }
 }

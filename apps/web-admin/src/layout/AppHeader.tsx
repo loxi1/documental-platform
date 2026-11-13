@@ -8,6 +8,15 @@ import Link from "next/link";
 import { Bell, Menu, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import Breadcrumbs from "./Breadcrumbs";
 
+function companyName(value?: string | null) {
+  const code = (value ?? "").trim().toUpperCase();
+  if (code === "BBTI" || code === "BBTI S.A.C.") return "BBTI S.A.C.";
+  if (code === "BBTEC" || code === "BB TECNOLOGIA INDUSTRIAL S.A.C.") {
+    return "BB TECNOLOGIA INDUSTRIAL S.A.C.";
+  }
+  return value || "Sin empresa";
+}
+
 type Props = {
   userCod?: string | null;
 };
@@ -17,15 +26,7 @@ export default function AppHeader({ userCod }: Props) {
   const { contexto } = useAuth();
 
   const userName = contexto?.nombres || userCod || "Administrador";
-  const empresa = contexto?.empresa || "Sin empresa";
-  const perfil = contexto?.perfil
-    ? contexto.perfil
-        .replace(/_/g, " ")
-        .split(" ")
-        .filter(Boolean)
-        .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
-        .join(" ")
-    : "Sin perfil";
+  const empresa = companyName(contexto?.empresa);
 
   return (
     <header className="sticky top-0 z-30 border-b border-slate-200/70 bg-background/85 backdrop-blur-xl dark:border-white/10">
@@ -56,14 +57,14 @@ export default function AppHeader({ userCod }: Props) {
         <div className="flex shrink-0 items-center gap-2 sm:gap-3">
           <Link
             href="/mi-perfil"
-            className="hidden min-w-0 rounded-xl px-3 py-2 text-right transition-colors hover:bg-slate-100 dark:hover:bg-white/5 sm:block"
+            className="hidden min-w-0 max-w-72 rounded-xl px-3 py-2 text-right transition-colors hover:bg-slate-100 dark:hover:bg-white/5 sm:block"
             title="Ver perfil y espacio de trabajo"
           >
             <p className="truncate text-sm font-semibold text-slate-950 dark:text-white">
               {userName}
             </p>
             <p className="truncate text-xs text-muted-foreground">
-              {empresa} · {perfil}
+              {empresa}
             </p>
           </Link>
 
