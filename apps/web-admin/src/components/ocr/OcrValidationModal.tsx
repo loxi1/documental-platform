@@ -1071,6 +1071,8 @@ export function OcrValidationModal({
   ]);
 const accionesComprasSimplificadas = formularioContexto === "COMPRAS" &&
     ["OC", "OS", "FACTURA"].includes(String(form.tipoDocumental).toUpperCase());
+  const accionesAlmacenSimplificadas = formularioContexto === "ALMACEN" &&
+    ["GUIA", "GUIA_REMISION", "NOTA_INGRESO"].includes(String(form.tipoDocumental).toUpperCase());
   const esFactura = tipoProveedor === "FACTURA";
   const metadataDetectada = useMemo(
     () => buildInitialForm(resultado, expedienteContexto),
@@ -1619,7 +1621,7 @@ const accionesComprasSimplificadas = formularioContexto === "COMPRAS" &&
               </button>
             ) : (
               <>
-                {!accionesComprasSimplificadas && formularioContexto !== "FINANZAS" &&
+                {!accionesComprasSimplificadas && !accionesAlmacenSimplificadas && formularioContexto !== "FINANZAS" &&
                 modo !== "pendiente_manual" && modo !== "pendiente_manual_almacen" ? (
                   <button
                     type="button"
@@ -1635,11 +1637,11 @@ const accionesComprasSimplificadas = formularioContexto === "COMPRAS" &&
                   onClick={onClose}
                   className="inline-flex h-9 items-center justify-center rounded-lg border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100 dark:hover:bg-slate-900"
                 >
-                  {accionesComprasSimplificadas || formularioContexto === "FINANZAS" ? "Cancelar" : "Cancelar / Cerrar"}
+                  {accionesAlmacenSimplificadas ? "Cerrar" : accionesComprasSimplificadas || formularioContexto === "FINANZAS" ? "Cancelar" : "Cancelar / Cerrar"}
                 </button>
                 {!duplicadoDetails ? (
                   <>
-                    {!accionesComprasSimplificadas && formularioContexto !== "FINANZAS" &&
+                    {!accionesComprasSimplificadas && !accionesAlmacenSimplificadas && formularioContexto !== "FINANZAS" &&
                     modo !== "pendiente_manual" && modo !== "pendiente_manual_almacen" ? (
                       <button
                         type="button"
