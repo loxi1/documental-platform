@@ -614,3 +614,30 @@ Los nueve archivos constituyen un inventario candidato, no un delta final acepta
 Evidencias durables: `/home/loxi1/bbti-evidence/unified-manifest-continuity-g2b-r2/g2b-backend-e2e.json` y `/home/loxi1/bbti-evidence/unified-manifest-continuity-g2b-r2/g2b-candidate-inventory.json`.
 
 Cierre documental R4 ya publicado: SOURCE `d343a1bfb9ecc4f933ea425486de892fe74009b1` / Enterprise `85b6486ecbf7ae2c652cafd84f2217b0e43590a2`. Son identidades documentales independientes del checkout EC2 observado y no acreditan otro despliegue.
+
+
+---
+
+## Continuidad posterior G3/G4-A — 13/11/2026
+
+Registro documental incremental; no acredita promoción Enterprise ni despliegue productivo.
+
+La composición G2-B/Almacén comprende 17 rutas únicas. Su historia SOURCE incluye estos tres commits G3:
+
+- `45b367022dadc58e7ce17de46c3dd9f361cb8def`: G2-B, 16 rutas.
+- `85cf59a141d5336ecb80766c3d6f0405d3ef7e4e`: modal OCR Almacén.
+- `8ec3c7e4c0340aace5554f568dc2c1bb9e259482`: contraste del botón de contraseña actualizada, sobre una ruta ya incluida.
+
+G3=ACCEPTED_WITH_OBSERVATIONS. El PO aceptó cambio de contraseña, nuevo login, invalidación observable de sesión anterior y botón de éxito. Almacén Guía/NI queda aceptado con observaciones; ALMACEN_VISUAL_ACCEPTANCE=NOT_ACCREDITED.
+
+La corrección posterior `35a318eb7e3d7b9561661afba4849fb7ec3aa616` modifica exclusivamente el contenido y SHA-256 de `tests/g2b/policy.test.cjs` para comprobar limpieza de sesión/contexto/caché y apertura del modal de éxito. No modifica código funcional ni aumenta las 17 rutas únicas.
+
+SOURCE_G4A=COMMITTED_AND_PUSHED.
+SOURCE_PUBLISHED_MAIN=35a318eb7e3d7b9561661afba4849fb7ec3aa616.
+ENTERPRISE_G4A=NOT_COMMITTED.
+GHCR_G4A=NOT_ACCREDITED.
+EC2_G4A=NOT_ACCREDITED.
+AUTH_VERSION_PRODUCTION=UNKNOWN.
+G4A_PRODUCTION_FUNCTIONAL_ACCEPTANCE=NOT_ACCREDITED.
+
+Referencias: `g3-release-handoff-r1/HANDOFF.md`, objetos Git de los cuatro commits y baseline posterior ratificado por PO/MSE. Las evidencias externas se encuentran bajo `/home/loxi1/bbti-evidence/`.
