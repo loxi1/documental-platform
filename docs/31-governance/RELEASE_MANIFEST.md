@@ -685,3 +685,72 @@ Evidencia consultada:
 /home/loxi1/evidencias/documental-platform/finanzas-release-promotion-r1/release-freeze.json
 /home/loxi1/evidencias/documental-platform/finanzas-release-promotion-r1/ghcr-digests.json
 ```
+
+
+## Adenda histórica G4-A — reconciliación RDS 0025 y GHCR — 16/11/2026
+
+**ACTION:** `BBTI_G4A_SOURCE_MANIFEST_ADENDA_R1`
+**MODE:** `FOCAL_DOCUMENTARY_CHANGE`
+**SCOPE:** `SOURCE_MANIFEST_ONLY`
+
+### Identidades Git y continuidad
+
+- SOURCE main de referencia: `384424247439b1376275aeaaf676b29f5e2f71e5`.
+- Enterprise main de referencia: `e691d48179605465d796a9f6cb7a47d9ad5401a3`.
+- Integración funcional G4-A Enterprise: `6622daf0e0c70d64e1d0662baf0b345ded69fdf2`.
+- Referencia Git utilizada como tag GHCR: `42e94d9bd925a3b4ff838e2e5c31938f529fd6ea`.
+
+La ascendencia de `6622daf0` respecto de `42e94d9b` fue verificada: `PASS`.
+
+El commit `42e94d9b` es documental y no debe confundirse con el commit de integración funcional ni con el estado Git Enterprise posterior `e691d481`.
+
+### Migración RDS 0025
+
+- Migración: `0025_auth_usuarios_auth_version.sql`.
+- Coincidencia de contenido SOURCE/Enterprise: `PASS`.
+- Coincidencia de `infra/postgres/migrations/manifest.sha256`: `PASS`.
+- Estado de ejecución RDS producción: `CLOSED_PASS`.
+- Esta adenda no ejecuta ni modifica migraciones.
+
+### GHCR G4-A
+
+Tag de referencia:
+`42e94d9bd925a3b4ff838e2e5c31938f529fd6ea`.
+
+Cuatro manifiestos remotos accesibles: `4/4 PASS`.
+
+Digests acreditados de manifiestos `linux/amd64`:
+
+| Servicio | Digest linux/amd64 |
+|---|---|
+| `api-gateway` | `sha256:2bc36f8bbae870d1193a21c8fabb01cefb4d73d14822e000e661ab2609ee42aa` |
+| `ms-auth` | `sha256:f5af1ad3f1040c7776976a10f022eb309a53d6af4627868b2690542422ead502` |
+| `ms-documentos` | `sha256:4253bd542e2d3823c2cf16f447f84436b0956d3fb2a4cef1f417a497259214fd` |
+| `web-admin` | `sha256:0da3a689b322a991812ee8a30b807e84861561b334c4063f5e64d8c01fa51832` |
+
+Los descriptores `unknown/unknown` observados en el índice no se consideran imágenes ejecutables `linux/amd64`.
+
+### Decisión de reconstrucción
+
+Entre la referencia `42e94d9b` y Enterprise main `e691d481` únicamente cambiaron el SQL de migración `0025` y el manifest de checksums.
+
+Los Dockerfiles empleados para las cuatro imágenes de aplicación no incorporan directamente `infra/postgres/migrations`.
+
+**NEW_BUILD_FOR_0025=NOT_REQUIRED.**
+
+Esta conclusión se limita al cambio conocido `0025`; no constituye autorización de despliegue.
+
+### Estado de promoción y aceptación
+
+- SOURCE/Enterprise promoción de esta adenda: `PENDING`.
+- EC2 G4-A: `NOT_ACCREDITED`.
+- UX G4-A: `NOT_ACCEPTED`.
+- Commit/push de esta adenda: `NOT_EXECUTED`.
+- Build/push GHCR adicional: `NOT_EXECUTED`.
+- Intervención RDS, EC2, LAB, R2 o NAS: `NOT_EXECUTED`.
+
+Esta entrada es histórica y aditiva. No sustituye ni reescribe estados anteriores.
+
+### Siguiente gate
+
+Revisión del diff por MSE Actual y autorización independiente del PO para commit/push SOURCE. La integración documental Enterprise permanece pendiente y requiere su propio control.
