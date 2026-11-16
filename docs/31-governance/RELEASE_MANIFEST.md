@@ -641,3 +641,47 @@ AUTH_VERSION_PRODUCTION=UNKNOWN.
 G4A_PRODUCTION_FUNCTIONAL_ACCEPTANCE=NOT_ACCREDITED.
 
 Referencias: `g3-release-handoff-r1/HANDOFF.md`, objetos Git de los cuatro commits y baseline posterior ratificado por PO/MSE. Las evidencias externas se encuentran bajo `/home/loxi1/bbti-evidence/`.
+
+---
+
+## Adenda de reconciliación documental — 16/11/2026
+
+Acción `BBTI_RELEASE_MANIFEST_ADDITIVE_EDIT_R1`. Adenda estrictamente aditiva; no reemplaza, reordena ni elimina ningún estado histórico anterior de este manifest, incluida la sección "Continuidad posterior G3/G4-A — 13/11/2026", que se conserva íntegra como antecedente.
+
+### Corrección 1 — Estado Git local de G4-A en Enterprise
+
+La sección histórica del 13/11/2026 registró `ENTERPRISE_G4A=NOT_COMMITTED`. Evidencia Git posterior, obtenida en modo solo lectura sobre el checkout Enterprise operativo (`/home/loxi1/projects/apps/documental-platform-bbti-prod`), acredita que la rama `main` tiene como HEAD el commit `6622daf0e0c70d64e1d0662baf0b345ded69fdf2`: integración de 17 archivos G4-A acreditada; worktree limpio al momento de la verificación. `origin/main` local coincidente con ese HEAD al momento de dicha verificación; publicación remota actual no verificada.
+
+```ini
+ENTERPRISE_G4A=COMMITTED_LOCAL
+ENTERPRISE_PUSHED_REMOTE=NOT_VERIFIED
+GHCR_G4A=NOT_ACCREDITED
+EC2_G4A=NOT_ACCREDITED
+UX_ACCEPTED_G4A=NOT_ACCREDITED
+AUTH_VERSION_PRODUCTION=UNKNOWN
+```
+
+Esta corrección describe únicamente el estado del checkout Enterprise local inspeccionado; no se presenta la integración Git local como despliegue ni como aceptación productiva.
+
+### Corrección 2 — Expediente GHCR Finanzas del 27/10/2026, no desplegado
+
+Se registra el expediente `finanzas-release-promotion-r1` (27/10/2026) como antecedente GHCR, hasta ahora no reflejado en este manifest:
+
+```ini
+ENTERPRISE_COMMIT=15bcc460ce325ff7493a4b6860a39ce17dbfa364
+GITHUB_ACTIONS_RUN=40519336692
+GHCR_IMAGES_PUBLISHED=4_OF_4
+EC2_DEPLOY_AUTHORIZED=false
+PRODUCTION_SERVICE_RECREATE=false
+FINANZAS_GHCR_2026_10_27=PUBLISHED_NOT_DEPLOYED
+```
+
+Este build publicó cuatro imágenes en GHCR asociadas al commit Enterprise `15bcc460ce325ff7493a4b6860a39ce17dbfa364`, pero no fue desplegado en EC2. Es anterior al release productivo documentado del 05–07/11/2026 en este mismo manifest; no se reinterpreta como el último runtime productivo, y ninguno de los digests de ese release documentado se modifica o sustituye por esta adenda.
+
+Evidencia consultada:
+
+```text
+/home/loxi1/evidencias/documental-platform/finanzas-release-promotion-r1/result.json
+/home/loxi1/evidencias/documental-platform/finanzas-release-promotion-r1/release-freeze.json
+/home/loxi1/evidencias/documental-platform/finanzas-release-promotion-r1/ghcr-digests.json
+```
