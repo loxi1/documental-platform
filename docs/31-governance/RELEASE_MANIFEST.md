@@ -754,3 +754,137 @@ Esta entrada es histórica y aditiva. No sustituye ni reescribe estados anterior
 ### Siguiente gate
 
 Revisión del diff por MSE Actual y autorización independiente del PO para commit/push SOURCE. La integración documental Enterprise permanece pendiente y requiere su propio control.
+
+
+---
+
+## Adenda de continuidad SOURCE y reconciliación productiva — 17/11/2026
+
+ACTION: BBTI_SOURCE_DOCUMENTARY_CONTINUITY_R1.
+
+Registro incremental de estados acreditados. Se conserva
+íntegramente la historia anterior. Este cierre documental
+no constituye una autorización de despliegue.
+
+### Ejecución productiva histórica del 07/11
+
+La publicación selectiva de Documentos y Web corresponde
+al run GHCR 42401171156, build Enterprise
+`2ed7dd0f2e73b58d6d595606af56b8477e9496e8`,
+y manifest Enterprise
+`f80d05e80b522c18ab20751a7e18a9e6f626984c`.
+
+El expediente `prepare-ghcr-release-with-manifest-r1`
+acredita publicación y preflight. Sus archivos
+production-preflight.json y production-after.json
+corresponden a la preparación, no a la ejecución posterior.
+
+El testigo independiente del 11/11, contenido en
+`unified-manifest-continuity-g2b-r2/ec2-ghcr-identity.json`,
+acredita las siguientes identidades de ejecución:
+
+| Servicio | Digest observado | StartedAt UTC |
+|---|---|---|
+| ms-documentos | sha256:3d48dbcfebc60b1b69db84b2f2fabecee2b024ed991cb53511c585a2e51c37f7 | 2026-11-07T21:14:08.985017452Z |
+| web-admin | sha256:f54bfb0bc69a015452c5123f2f36c70ca196ecbfb85e83f784a8415359c93cf9 | 2026-11-07T21:15:24.3394647Z |
+| api-gateway | sha256:d0e0875318b91512b308add1fbf80d9542239eca1ffc3a32125bd3a29b0f4a12 | 2026-11-05T19:15:21.813323243Z |
+| ms-auth | sha256:e299d52aa019c9d76e37618641ba2bce61b740b2df9c4523e8935e2df4a726b5 | 2026-10-24T03:18:24.223569413Z |
+
+POST_MVP_DOCUMENTOS_WEB_DEPLOY=ACCREDITED_HISTORICAL.
+POST_MVP_OCR_UPDATE=NOT_ACCREDITED.
+POST_MVP_APISPERU_CONFIGURATION=NOT_ACCREDITED.
+POST_MVP_PRODUCTION_UX=NOT_ACCREDITED.
+CURRENT_EC2_RUNTIME=NOT_REVALIDATED.
+
+El extractor OCR previo y el candidato, el backup
+local y el plan de rollback están preservados en
+el expediente de preparación. No se acredita aquí
+su ejecución posterior en EC2.
+
+### Continuidad G4-A
+
+La adenda SOURCE del 16/11 quedó comprometida en
+`9359b9720328d0bb4c429e90330c997269be5dc3`.
+
+Enterprise main observado:
+`e691d48179605465d796a9f6cb7a47d9ad5401a3`.
+
+Se conserva la integración funcional `6622daf0`,
+la publicación GHCR referenciada por `42e94d9b`,
+el cierre histórico RDS 0025 y los cuatro digests
+completos registrados en la adenda precedente.
+
+NEW_BUILD_FOR_0025=NOT_REQUIRED.
+EC2_G4A=NOT_ACCREDITED.
+G4A_PRODUCTION_UX=NOT_ACCREDITED.
+ENTERPRISE_SECOND_DOCUMENTARY_ADENDA=PENDING.
+
+### Cierre SOURCE LAB del 17/11
+
+Baseline funcional y documental observado:
+`9359b9720328d0bb4c429e90330c997269be5dc3`.
+
+SOURCE_NATIVE_RUNTIME=CLOSED_PASS.
+SOURCE_FUNCTIONAL_ACCEPTANCE=CLOSED_PASS_WITH_OBSERVATIONS.
+CONTABILIDAD_UX=PASS_PO.
+CUSTODY_RELEASE=CLOSED_PASS.
+
+Aceptación testigo PO: login/workspace, Mi Perfil,
+cambio de contraseña, lectura R2, Compras OC temporal,
+factura OC y recuperación/versionado, Guía y versión,
+Nota de Ingreso, sustentos OC y OP, regularización
+Factura y RH OP y visualización en Contabilidad.
+
+Contabilidad: OC en mayo y OP172/OP173 en noviembre
+de 2026. No equivale a aprobación contable ni a
+aceptación de estos cambios en producción.
+
+Runtime SOURCE nativo pnpm; almacenamiento R2 DEV;
+OCR Python systemd local aislado. Se conserva la
+separación con R2 y OCR productivos.
+
+Las observaciones funcionales y límites del alcance
+se registran en docs/ai/successor-II/README.md.
+
+Referencia de respaldo y evidencia histórica:
+`/home/loxi1/bbti-evidence/`.
+
+No repetir pruebas, migraciones, builds o despliegues
+por esta actualización documental.
+
+
+---
+
+## Ratificación funcional y arquitectónica PO — 17/11/2026
+
+La presente ratificación prevalece sobre las clasificaciones
+históricas incompatibles de P3/R3, TEMP328/334 y NAS.
+
+- Aceptación funcional PO: PASS para SOURCE LAB,
+  Compras, Almacén, Finanzas y Contabilidad.
+- P3/R3: la propuesta universal TEMP fue sustituida.
+  Respetar el canal de carga existente según origen y
+  tipo documental: TEMP o carga directa al periodo.
+- Incidencia Almacén: regularizada mediante intervención
+  en base de datos, según PO.
+- Modal OCR Almacén: mantener visibles únicamente
+  Guardar y confirmar y Cancelar. Ocultar los demás
+  botones, no eliminarlos ni suprimir capacidades backend.
+  Cancelar únicamente cierra el modal.
+- TEMP328/334: incidencia operativa resuelta según PO.
+  El diseño especial de recuperación queda histórico;
+  no reabrirlo ni inferir eliminación física en R2.
+- Compras: OC regularizada y APISPERU configurado,
+  según PO, para corregir la selección del RUC emisor.
+- RDS 0025: ejecutada en producción desde Enterprise
+  según PO. Evidencia SQL aportada: gestion_documental,
+  usuario postgres, auth_version integer NOT NULL
+  DEFAULT 1. No repetir migración.
+- G2-A residual: alcance no identificado suficientemente;
+  no constituye un bloqueo acreditado.
+- NAS DEV y archivado definitivo: entregable independiente,
+  fuera del alcance de este cierre.
+
+La ratificación funcional no acredita por sí misma
+nuevas identidades de imágenes, despliegues EC2,
+borrados físicos ni nuevas pruebas automatizadas.

@@ -247,3 +247,145 @@ R4 documental publicado: SOURCE `d343a1bfb9ecc4f933ea425486de892fe74009b1` / Ent
 G2-B: backend E2E y revocación global PASS; mínimo8 probado focalmente, máximo72bytesUTF8 preservado. Nueve archivos candidatos; delta final NOT_ESTABLISHED, ampliable por interceptor/UX. Integración y UX3005 PENDING; producción G2-B NOT_EXECUTED; trazabilidad versionada auth_version pendiente. Conservar pnpm/supervisor, puertos originales, R2 DEV directo y OCR local.
 
 Evidencias: `/home/loxi1/bbti-evidence/unified-manifest-continuity-g2b-r2/{ec2-ghcr-identity.json,g2b-backend-e2e.json,g2b-candidate-inventory.json}`. Ver detalles en el manifest; no repetir inventarios ni crear otro manifest.
+
+
+---
+
+## Vigencia operativa SOURCE LAB — 17/11/2026
+
+ACTION: BBTI_SOURCE_DOCUMENTARY_CONTINUITY_R1.
+
+El entorno SOURCE nativo ha sido recuperado y aceptado
+por el PO. Las instrucciones históricas de reconstrucción
+Docker LAB se conservan como referencia, no como orden
+de reconstruir el entorno actualmente operativo.
+
+| Componente | Runtime LAB acreditado |
+|---|---|
+| api-gateway | SOURCE nativo, puerto 3000 |
+| ms-auth | SOURCE nativo, puerto 3001 |
+| ms-documentos | SOURCE nativo, puerto 3002 |
+| web-admin | SOURCE nativo, puerto 3005 |
+| PostgreSQL | Contenedor LAB existente |
+| NATS | Contenedor LAB existente |
+| Almacenamiento | Cloudflare R2 DEV |
+| OCR Python | systemd local aislado |
+
+SOURCE baseline previo a esta adenda:
+`9359b9720328d0bb4c429e90330c997269be5dc3`.
+
+Node 24.16.0, pnpm 11.4.0; preparación de builds
+R4 acreditada 7/7. No implica orden de reconstrucción
+en cada sesión ni modificación del estándar R1.
+
+OCR DEV: `documental-ocr-worker.service`.
+Subjects DEV:
+- `dev.source.r2dev.ocr.procesar-archivo`
+- `dev.source.r2dev.documento.clasificado`
+
+Carga segura acreditada con
+DOCUMENTOS_CARGA_SEGURA_2_1C_ENABLED=true.
+
+Mantener las credenciales y configuraciones efectivas
+privadas, fuera de Git. No reutilizar secretos productivos.
+No imprimir archivos .env ni entornos de procesos.
+
+Conservar R2 DEV separado de producción; los documentos
+legacy MinIO se resuelven según metadata, sin fallback
+general ni migración masiva.
+
+TEMP OC/OS y regularizaciones Factura/RH de OP:
+OCR no bloqueante, recuperación por identificador,
+ventana TEMP de 24 horas como contrato, promoción
+solo tras confirmación.
+
+Guía, NI y sustentos: conservar cargas y periodo
+documental conforme a sus contratos específicos.
+
+Las tres custodias obsoletas quedaron liberadas.
+No recuperar procesos históricos ni detener terminales
+actuales por referencia a PIDs antiguos.
+
+Antes de cualquier intervención identificar listeners,
+propietarios, procesos y checkout efectivo.
+No eliminar .next mientras Web esté operativo.
+No introducir supervisores, timers ni workers paralelos
+por este cierre.
+
+Los procedimientos exactos de arranque deben respetar
+la carga efectiva de configuración y el aislamiento DEV.
+No se declara acreditada una reconstrucción integral
+desde cero mediante esta adenda.
+
+Producción conserva su arquitectura independiente
+R2 productivo, OCR systemd y despliegue Enterprise/GHCR.
+La aceptación LAB no autoriza EC2.
+
+### Precedencia operativa
+
+La presente adenda prevalece sobre las referencias
+operativas anteriores a candidatos aislados, supervisor
+y UX3005 pendiente, exclusivamente respecto del runtime
+SOURCE LAB recuperado y aceptado el 17/11.
+
+Los servicios actualmente acreditados se ejecutan
+de forma nativa. No introducir un supervisor por
+interpretacion de instrucciones historicas.
+
+Se conserva la evidencia G2-B anterior, sin extender
+su alcance ni declarar probada nuevamente la revocacion
+global durante la aceptacion del 17/11.
+
+
+---
+
+## Ratificación funcional y arquitectónica PO — 17/11/2026
+
+La presente ratificación prevalece sobre las clasificaciones
+históricas incompatibles de P3/R3, TEMP328/334 y NAS.
+
+- Aceptación funcional PO: PASS para SOURCE LAB,
+  Compras, Almacén, Finanzas y Contabilidad.
+- P3/R3: la propuesta universal TEMP fue sustituida.
+  Respetar el canal de carga existente según origen y
+  tipo documental: TEMP o carga directa al periodo.
+- Incidencia Almacén: regularizada mediante intervención
+  en base de datos, según PO.
+- Modal OCR Almacén: mantener visibles únicamente
+  Guardar y confirmar y Cancelar. Ocultar los demás
+  botones, no eliminarlos ni suprimir capacidades backend.
+  Cancelar únicamente cierra el modal.
+- TEMP328/334: incidencia operativa resuelta según PO.
+  El diseño especial de recuperación queda histórico;
+  no reabrirlo ni inferir eliminación física en R2.
+- Compras: OC regularizada y APISPERU configurado,
+  según PO, para corregir la selección del RUC emisor.
+- RDS 0025: ejecutada en producción desde Enterprise
+  según PO. Evidencia SQL aportada: gestion_documental,
+  usuario postgres, auth_version integer NOT NULL
+  DEFAULT 1. No repetir migración.
+- G2-A residual: alcance no identificado suficientemente;
+  no constituye un bloqueo acreditado.
+- NAS DEV y archivado definitivo: entregable independiente,
+  fuera del alcance de este cierre.
+
+La ratificación funcional no acredita por sí misma
+nuevas identidades de imágenes, despliegues EC2,
+borrados físicos ni nuevas pruebas automatizadas.
+
+### Manuales técnicos permanentes
+
+Colección instalada por el PO el 17/11/2026:
+
+`~/Documentos/importantesProyectos/Documentacion_tecnica/BBTI_MANUALES_2026-11-17/`
+
+Punto de entrada: `00_LEER_PRIMERO_BBTI.md`.
+
+Nueve manuales cubren arquitectura, operación SOURCE,
+Git y releases, R2/OCR, producción, aceptación,
+autonomía y custodia de los 48 archivos históricos.
+
+No repetir investigaciones cerradas. Consultar el manual
+específico y la documentación institucional vigente.
+Las referencias Git de los manuales se actualizarán
+después de la publicación SOURCE y Enterprise.

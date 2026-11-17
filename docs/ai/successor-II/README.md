@@ -178,3 +178,136 @@ G2-B backend E2E y revocación multicontexto PASS; mínimo8 probado focalmente y
 Pendientes: activación selectiva segura, tratamiento401, éxito visible, aceptación UX y trazabilidad versionada auth_version antes de promoción. R4 documental publicado en SOURCE `d343a1bfb9ecc4f933ea425486de892fe74009b1` / Enterprise `85b6486ecbf7ae2c652cafd84f2217b0e43590a2`; las menciones históricas sin commit no representan este cierre.
 
 Evidencias durables: `/home/loxi1/bbti-evidence/unified-manifest-continuity-g2b-r2/{ec2-ghcr-identity.json,g2b-backend-e2e.json,g2b-candidate-inventory.json}`. Sin aceptación UX ni despliegue G2-B por inferencia.
+
+
+---
+
+## Relevo vigente MSII — aceptación SOURCE LAB 17/11/2026
+
+ACTION: BBTI_SOURCE_DOCUMENTARY_CONTINUITY_R1.
+
+SOURCE_NATIVE_RUNTIME=CLOSED_PASS.
+SOURCE_FUNCTIONAL_ACCEPTANCE=CLOSED_PASS_WITH_OBSERVATIONS.
+CONTABILIDAD_UX=PASS_PO.
+CUSTODY_RELEASE=CLOSED_PASS.
+
+SOURCE main baseline anterior a esta adenda:
+`9359b9720328d0bb4c429e90330c997269be5dc3`.
+
+El PO aceptó el entorno nativo puerto 3005 y sus
+servicios SOURCE. No repetir las pruebas testigo
+ni volver a cargar documentos por el cambio de sucesor.
+
+### Alcance funcional acreditado
+
+| Frente | Testigo |
+|---|---|
+| Login/workspace y Mi Perfil | PASS PO |
+| Cambio de contraseña y lectura R2 | PASS PO |
+| Compras OC TEMP | temp366, doc530, archivo533 |
+| Factura OC | doc531, archivo vigente535 |
+| Guía | doc532, archivo536, OCR514 |
+| Versión Guía | archivo538, versión 2 |
+| Nota de Ingreso | doc533, archivo537, OCR515 |
+| Sustento OC | doc534, archivo539, OCR516 |
+| Sustento OP172 | doc537, archivo542, OCR518 |
+| Factura OP172 | temp374, doc538, archivo543, OCR519 |
+| RH OP173 | temp376, doc540, archivo545, OCR520 |
+| Contabilidad | OC mayo; OP172 y OP173 noviembre 2026 |
+
+Los identificadores corresponden a registros testigo
+LAB; no son identificadores productivos ni instrucciones
+para modificar datos.
+
+### Observaciones conservadas
+
+- Guía y NI: ruta R2 mayo frente a campos internos
+  noviembre; Contabilidad presenta correctamente mayo.
+  Contrastar el contrato antes de modificar metadata.
+- NI requirió revisión manual por OCR incompleto.
+  La versión Guía fue agregada sin OCR nuevo. No se
+  acredita fallback raster ni recuperación OCR tardía
+  de Guía mediante esa prueba.
+- Sustento OC: documento sintético de S/1000 frente al
+  importe registrado S/3350.73 y proveedor Moneda.
+  La aceptación funcional no certifica exactitud financiera.
+- Factura OP172: datos OCR de comprador/emisor y
+  beneficiario requieren contraste; importe manual S/50.
+  Sustento OP reportó contexto COMPRAS_EDITAR_MODAL.
+- Versión Guía538: columnas de contexto nulas pese a
+  metadata y vínculo existentes; contrato pendiente.
+- No acreditados integralmente: caso OS independiente,
+  expiración TEMP real de 24 horas, revocación JWT y
+  auditoría authVersion, rutas finales TEMP de ambos
+  regularizadores y aislamiento exhaustivo.
+
+No extender la aceptación a P3/PRE_PUT, TEMP334 u otros
+casos no cubiertos específicamente.
+
+### Próxima continuidad
+
+Conservar SOURCE nativo, R2 DEV y OCR systemd.
+No reabrir recuperación de runtime ni custodias.
+
+Completar reconciliación documental SOURCE/Enterprise
+y guías externas. No atribuir a producción la aceptación
+LAB. G4-A tiene publicación GHCR y cierre histórico RDS
+0025 acreditados, pero EC2 y UX productiva no acreditados.
+
+Volver al ciclo NORMAL para nuevos requerimientos según
+los estándares institucionales aprobados. Solo abrir
+una nueva intervención funcional conforme a alcance PO.
+
+
+---
+
+## Ratificación funcional y arquitectónica PO — 17/11/2026
+
+La presente ratificación prevalece sobre las clasificaciones
+históricas incompatibles de P3/R3, TEMP328/334 y NAS.
+
+- Aceptación funcional PO: PASS para SOURCE LAB,
+  Compras, Almacén, Finanzas y Contabilidad.
+- P3/R3: la propuesta universal TEMP fue sustituida.
+  Respetar el canal de carga existente según origen y
+  tipo documental: TEMP o carga directa al periodo.
+- Incidencia Almacén: regularizada mediante intervención
+  en base de datos, según PO.
+- Modal OCR Almacén: mantener visibles únicamente
+  Guardar y confirmar y Cancelar. Ocultar los demás
+  botones, no eliminarlos ni suprimir capacidades backend.
+  Cancelar únicamente cierra el modal.
+- TEMP328/334: incidencia operativa resuelta según PO.
+  El diseño especial de recuperación queda histórico;
+  no reabrirlo ni inferir eliminación física en R2.
+- Compras: OC regularizada y APISPERU configurado,
+  según PO, para corregir la selección del RUC emisor.
+- RDS 0025: ejecutada en producción desde Enterprise
+  según PO. Evidencia SQL aportada: gestion_documental,
+  usuario postgres, auth_version integer NOT NULL
+  DEFAULT 1. No repetir migración.
+- G2-A residual: alcance no identificado suficientemente;
+  no constituye un bloqueo acreditado.
+- NAS DEV y archivado definitivo: entregable independiente,
+  fuera del alcance de este cierre.
+
+La ratificación funcional no acredita por sí misma
+nuevas identidades de imágenes, despliegues EC2,
+borrados físicos ni nuevas pruebas automatizadas.
+
+### Manuales técnicos permanentes
+
+Colección instalada por el PO el 17/11/2026:
+
+`~/Documentos/importantesProyectos/Documentacion_tecnica/BBTI_MANUALES_2026-11-17/`
+
+Punto de entrada: `00_LEER_PRIMERO_BBTI.md`.
+
+Nueve manuales cubren arquitectura, operación SOURCE,
+Git y releases, R2/OCR, producción, aceptación,
+autonomía y custodia de los 48 archivos históricos.
+
+No repetir investigaciones cerradas. Consultar el manual
+específico y la documentación institucional vigente.
+Las referencias Git de los manuales se actualizarán
+después de la publicación SOURCE y Enterprise.

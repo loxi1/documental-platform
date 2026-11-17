@@ -956,3 +956,100 @@ Evidencias durables: `/home/loxi1/bbti-evidence/unified-manifest-continuity-g2b-
 
 - **Almacén — modal OCR Guía/NI:** implementación focal únicamente local en el worktree `documental-platform-almacen-filter-r1`; 31 pruebas focales PASS. Sin commit funcional, integración Enterprise, publicación GHCR ni despliegue acreditados. Aceptación UX no acreditada. Independiente del doble filtro integrado en SOURCE mediante `89cd4c6e`.
 - **Factura TEMP334:** incidencia independiente; último estado reportado `RESERVED_INCOMPLETE`. Recuperación diseñada, no implementada ni ejecutada. Reparación productiva no autorizada. No forma parte del release ni constituye funcionalidad cerrada.
+
+
+---
+
+## Actualización de vigencia SOURCE — 17/11/2026
+
+ACTION: BBTI_SOURCE_DOCUMENTARY_CONTINUITY_R1.
+
+SOURCE canónico:
+`/home/loxi1/projects/apps/documental-platform`.
+
+Rama main, baseline previo a esta adenda:
+`9359b9720328d0bb4c429e90330c997269be5dc3`.
+
+HEAD y origin/main local coincidían y el checkout
+estaba limpio antes de esta edición documental.
+No constituye consulta nueva del remoto.
+
+La situación histórica de 48 cambios del checkout
+SOURCE en `fix/bbti-finanzas-op-periodo-documental-r1`,
+HEAD `034a1abc7af9b4fe1a107dbe72ad3893e1f47992`,
+queda superada como estado operativo vigente.
+
+Respaldo protegido: 40 archivos tracked modificados,
+8 untracked, 0 staged; custodia acreditada 48/48 en:
+
+`/home/loxi1/bbti-evidence/source-original-48-backup-20261116T204534Z/`
+
+Comparación histórica: 40 idénticos, 5 con contenido
+superado por main, 1 configuración sensible y 2 bak.
+No restaurar indiscriminadamente sobre main.
+No interpretar los 48 como un delta funcional pendiente.
+Preservar el respaldo privado.
+
+Las tres custodias de recuperación del runtime anterior
+quedaron liberadas el 17/11 sin sustituir los servicios
+SOURCE acreditados. No confundir custodia de memoria
+con rama Git ni con autorización de borrar respaldos.
+
+Enterprise es un repositorio independiente:
+`/home/loxi1/projects/apps/documental-platform-bbti-prod`,
+main observado `e691d48179605465d796a9f6cb7a47d9ad5401a3`,
+limpio y coincidente con su origin/main local.
+
+No se declara eliminada ninguna rama o worktree histórico.
+No se autoriza limpieza de candidatos, contenedores
+o respaldos mediante esta actualización.
+
+Para futuros requerimientos aplicar el estándar
+docs/23-standards/11-source-development-and-release.md
+y docs/23-standards/07-git.md:
+SOURCE main limpio y sincronizado, rama focal cuando
+corresponda, aceptación, integración y actualización
+del inventario según el ciclo real de la rama.
+
+### Precedencia del estado funcional
+
+Las referencias historicas al modal OCR Guia/NI
+como implementacion exclusivamente local preceden
+a la integracion SOURCE y Enterprise posterior.
+
+La historia funcional G3 y G4-A consta en el
+RELEASE_MANIFEST.md. La aceptacion SOURCE LAB del
+17/11 acredita Guia, version y NI con las observaciones
+registradas por MSII.
+
+No inferir cierre Git o eliminacion del worktree
+historico, ni aceptacion productiva de G4-A.
+
+
+---
+
+## Ratificación funcional y arquitectónica PO — 17/11/2026
+
+La aceptación PO queda ratificada como PASS.
+No reabrir la reconciliación de los 48 archivos
+originales ni restaurar ramas históricas sobre main.
+
+El cierre actual es exclusivamente documental.
+NAS DEV constituye otro entregable.
+
+### Manuales técnicos permanentes
+
+Colección instalada por el PO el 17/11/2026:
+
+`~/Documentos/importantesProyectos/Documentacion_tecnica/BBTI_MANUALES_2026-11-17/`
+
+Punto de entrada: `00_LEER_PRIMERO_BBTI.md`.
+
+Nueve manuales cubren arquitectura, operación SOURCE,
+Git y releases, R2/OCR, producción, aceptación,
+autonomía y custodia de los 48 archivos históricos.
+
+No repetir investigaciones cerradas. Consultar el manual
+específico y la documentación institucional vigente.
+Las referencias Git de los manuales se actualizarán
+después de la publicación SOURCE y Enterprise.
