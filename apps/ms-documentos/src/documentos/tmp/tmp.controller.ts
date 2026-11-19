@@ -4,6 +4,7 @@ import { CARGA_SEGURA_MULTER_FIELDS, CARGA_SEGURA_MULTER_OPTIONS } from '../carg
 import { CargaSeguraHttpExceptionFilter } from '../carga-segura/http/carga-segura-http.filter';
 import { resolveCargaSeguraHttpIdentity } from '../carga-segura/http/carga-segura-http.validation';
 import { TmpService } from './tmp.service';
+import { COMPRAS_FACTURA_ACCESS } from './tmp.repository';
 
 @Controller('documentos/tmp')
 @UseFilters(new CargaSeguraHttpExceptionFilter())
@@ -19,8 +20,16 @@ export class TmpController {
   @UseInterceptors(FileFieldsInterceptor([...CARGA_SEGURA_MULTER_FIELDS], CARGA_SEGURA_MULTER_OPTIONS))
   reserve(@Headers() headers: Record<string, string>, @Body() body: Record<string, unknown>,
     @UploadedFiles() files: { archivo?: { originalname: string; mimetype: string; buffer: Buffer }[] }) {
-    if (Object.keys(body ?? {}).length || files?.archivo?.length !== 1) throw new BadRequestException('TEMP requiere únicamente un archivo');
-    return this.service.reserve(this.actor(headers), files.archivo[0]);
+    if (Object.keys(body ?? {}).some(k => k !== 'comprasFactura') || files?.archivo?.length !== 1) throw new BadRequestException('TEMP requiere únicamente un archivo');
+    if (body?.comprasFactura === undefined) return this.service.reserve(this.actor(headers), files.archivo[0]);
+    return this.reserveCompras(headers, body.comprasFactura, files.archivo[0]);
+  }
+  private async reserveCompras(headers: Record<string,string>, contextJson: unknown, file: { originalname: string; mimetype: string; buffer: Buffer }) {
+    let raw: any;
+    try { raw = JSON.parse(String(contextJson)); } catch { throw new BadRequestException('Contexto Compras inválido'); }
+    if (!raw || Object.keys(raw).some(k => !['expedienteId','documentoBaseId'].includes(k))) throw new BadRequestException('Contexto Compras inválido');
+    const actor = await this.service.comprasActor(this.actor(headers), headers.authorization, raw.expedienteId, raw.documentoBaseId);
+    return this.service.reserve(this.actor(headers), file, actor[COMPRAS_FACTURA_ACCESS]);
   }
   @Post(':tempId/regularizacion-op/reemplazar')
   @UseInterceptors(
@@ -95,6 +104,25 @@ export class TmpController {
       Number(ordenPagoId),
       tipoRegularizador,
     );
+  }
+
+  @Get('compras-facturas/:expedienteId/:documentoBaseId')
+  async listCompras(@Headers() h: Record<string,string>, @Param('expedienteId') e: string, @Param('documentoBaseId') d: string) {
+    return this.service.listCompras(await this.service.comprasActor(this.actor(h, true), h.authorization, e, d));
+  }
+  @Get('compras-facturas/:expedienteId/:documentoBaseId/:tempId')
+  async consultCompras(@Headers() h: Record<string,string>, @Param('expedienteId') e: string, @Param('documentoBaseId') d: string, @Param('tempId') id: string) {
+    return this.service.consult(Number(id), await this.service.comprasActor(this.actor(h, true), h.authorization, e, d));
+  }
+  @Get('compras-facturas/:expedienteId/:documentoBaseId/:tempId/preview-url')
+  async previewCompras(@Headers() h: Record<string,string>, @Param('expedienteId') e: string, @Param('documentoBaseId') d: string, @Param('tempId') id: string) {
+    return this.service.previewUrl(Number(id), await this.service.comprasActor(this.actor(h, true), h.authorization, e, d));
+  }
+  @Post('compras-facturas/:expedienteId/:documentoBaseId/:tempId/promover')
+  async confirmCompras(@Headers() h: Record<string,string>, @Param('expedienteId') e: string, @Param('documentoBaseId') d: string, @Param('tempId') id: string, @Body() body: Record<string,unknown>) {
+    if (!body || Object.keys(body).length !== 1 || !('confirmacionDocumental' in body || 'borradorDocumental' in body)) throw new BadRequestException('Confirmación Compras inválida');
+    const actor = await this.service.comprasActor(this.actor(h, true), h.authorization, e, d, true);
+    return this.service.documental(Number(id), actor, body.confirmacionDocumental ?? body.borradorDocumental, 'borradorDocumental' in body);
   }
 
   @Get(':tempId')

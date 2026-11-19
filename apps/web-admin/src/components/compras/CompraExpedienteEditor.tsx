@@ -1,5 +1,5 @@
 "use client";
-import { cargarTemporalCompras, recuperarTemporalCompras, validarTemporalCompras, type ComprasTempResult } from "@/services/carga-segura";
+import { cargarTemporalCompras, recuperarTemporalCompras, validarTemporalCompras, listarFacturasTempCompras, type ComprasTempResult } from "@/services/carga-segura";
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -28,6 +28,7 @@ import {
   subirDocumentoCargaSegura,
 } from "@/services/carga-segura";
 import { api } from "@/services/api";
+import { getContexto } from "@/lib/auth-storage";
 import { getFacturasPendientes, type FacturaPendienteValidacion } from "@/services/expedientes";
 import { getOcrResultado } from "@/services/ocr-resultados";
 import { buscarProveedoresCatalogo } from "@/services/ocr-procesamiento";
@@ -1293,6 +1294,10 @@ export function CompraExpedienteEditor({
   const principalSeleccionado = principalSelection.selected;
 
   const principalPendientesId = getDocumentoId(principalSeleccionado);
+  const authTemp = getContexto();
+  const tempScopeKey = [authTemp?.sub, authTemp?.workspaceId, authTemp?.empresa, authTemp?.clienteDestinoId].join(':');
+  const tempScopeRef = useRef(tempScopeKey);
+  tempScopeRef.current = tempScopeKey;
   const contextoPendienteRef = useRef({ expedienteId: String(id), principalId: principalPendientesId, readOnly: modoSoloLectura });
   contextoPendienteRef.current = { expedienteId: String(id), principalId: principalPendientesId, readOnly: modoSoloLectura };
   useEffect(() => {
@@ -1311,6 +1316,46 @@ export function CompraExpedienteEditor({
       setPendienteManualAbierto(null);
     }
   }, [id, principalPendientesId, modoSoloLectura, pendienteOcrAbierto, pendienteManualAbierto]);
+
+  const abrirFacturaTemp = async (tempId?: number) => {
+    if (modoSoloLectura || !principalPendientesId || aperturaEnCursoRef.current) return;
+    const request = ++aperturaPendienteRef.current;
+    const principal = principalPendientesId;
+    const scope = tempScopeKey;
+    aperturaEnCursoRef.current = true;
+    setAbriendoPendiente(true);
+    try {
+      const temp = await recuperarTemporalCompras({ tipoDocumental: 'FACTURA', expedienteId: Number(id), documentoBaseId: Number(principal) }, tempId);
+      if (request !== aperturaPendienteRef.current || tempScopeRef.current !== scope || contextoPendienteRef.current.principalId !== principal || contextoPendienteRef.current.readOnly) return;
+      if (!temp) { setMensajeValidacion('No hay una referencia local histórica recuperable.'); return; }
+      if (temp.documentalResult) { setMensajeValidacion('Esta factura ya fue confirmada. Actualiza los documentos.'); return; }
+      const option = DOCUMENTO_ADJUNTO_OPTIONS.find(o => o.tipoEsperado === 'FACTURA');
+      if (!option) return;
+      setAccionActual({ ...option, grupo: 'adjunto' });
+      setPendienteManualAbierto(null); setPendienteOcrAbierto(null); setModalSoloLectura(false);
+      setResultadoModal(temp); setModalAbierto(true);
+    } catch (error) {
+      if (request === aperturaPendienteRef.current) setMensajeValidacion(error instanceof Error ? error.message : 'No se pudo recuperar la factura');
+    } finally {
+      if (request === aperturaPendienteRef.current) { aperturaEnCursoRef.current = false; setAbriendoPendiente(false); }
+    }
+  };
+  useEffect(() => {
+    const context = (resultadoModal as any)?.comprasFactura;
+    if (modalAbierto && context && (context.expedienteId !== Number(id) || context.documentoBaseId !== Number(principalPendientesId) || modoSoloLectura)) {
+      setModalAbierto(false); setResultadoModal(null); setAccionActual(null);
+    }
+  }, [id, principalPendientesId, modoSoloLectura, modalAbierto, resultadoModal]);
+  const temporalesFacturaQuery = useQuery({
+    queryKey: ['compras-facturas-temp', tempScopeKey, String(id), principalPendientesId],
+    enabled: Boolean(principalPendientesId) && !modoSoloLectura && Boolean(principalSeleccionado && isDocumentoConfirmado(principalSeleccionado)),
+    placeholderData: undefined,
+    queryFn: () => listarFacturasTempCompras({ tipoDocumental: 'FACTURA', expedienteId: Number(id), documentoBaseId: Number(principalPendientesId) }),
+    refetchOnMount: 'always',
+  });
+  useEffect(() => {
+    if (!modalAbierto) void queryClient.invalidateQueries({ queryKey: ['compras-facturas-temp', tempScopeKey, String(id), principalPendientesId] });
+  }, [modalAbierto, documentosQuery.dataUpdatedAt, tempScopeKey, id, principalPendientesId, queryClient]);
 
   const facturasPendientesQuery = useQuery({
     queryKey: ["compras-facturas-pendientes", String(id), principalPendientesId],
@@ -3072,6 +3117,28 @@ export function CompraExpedienteEditor({
           </CardHeader>
 
           <CardContent>
+            {!modoSoloLectura && principalPendientesId && principalSeleccionado && isDocumentoConfirmado(principalSeleccionado) ? (
+              <section className="mb-4 space-y-2 rounded-xl border p-4" aria-label="Facturas pendientes de confirmar">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h3 className="text-sm font-semibold">Facturas pendientes de confirmar</h3>
+                  <Button type="button" variant="ghost" disabled={temporalesFacturaQuery.isFetching} onClick={() => void temporalesFacturaQuery.refetch()}>Actualizar pendientes</Button>
+                </div>
+                {temporalesFacturaQuery.isPending ? <p className="text-sm text-muted-foreground">Consultando pendientes…</p> : null}
+                {temporalesFacturaQuery.isError ? <p role="alert" className="text-sm text-destructive">No se pudieron consultar las facturas pendientes.</p> : null}
+                {!temporalesFacturaQuery.isError && temporalesFacturaQuery.data?.length === 0 ? <p className="text-sm text-muted-foreground">No hay facturas TEMP pendientes en esta OC/OS.</p> : null}
+                {!temporalesFacturaQuery.isError && temporalesFacturaQuery.data?.map(fila => (
+                  <div key={fila.tempId} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border p-3">
+                    <div className="text-sm">
+                      <p className="font-medium">{fila.nombreOriginal}</p>
+                      <p className="text-xs text-muted-foreground">TEMP {fila.tempId} · Usuario que adjuntó: {fila.actorId} · {fila.creadoEn ? new Date(fila.creadoEn).toLocaleString() : ''}</p>
+                      <p className="text-xs text-muted-foreground">{fila.tieneBorrador ? 'Borrador guardado' : `OCR: ${fila.ocrEstado}`} {fila.reservada ? '· Confirmación iniciada' : ''}</p>
+                    </div>
+                    <Button type="button" variant="outline" disabled={procesando || abriendoPendiente} onClick={() => void abrirFacturaTemp(fila.tempId)}>Recuperar factura</Button>
+                  </div>
+                ))}
+                <Button type="button" variant="ghost" disabled={procesando || abriendoPendiente} onClick={() => void abrirFacturaTemp()}>Recuperar referencia histórica de esta sesión</Button>
+              </section>
+            ) : null}
             {!facturas.length ? (
               <div className="rounded-xl border border-dashed px-4 py-8 text-center text-sm text-muted-foreground">
                 Aún no se han adjuntado facturas.
@@ -3668,7 +3735,7 @@ export function CompraExpedienteEditor({
 
       <div className="flex flex-wrap gap-2">
         {[...DOCUMENTO_PRINCIPAL_OPTIONS, ...DOCUMENTO_ADJUNTO_OPTIONS]
-          .filter(option => ['OC','OS','FACTURA'].includes(String(option.tipoEsperado)))
+          .filter(option => ['OC','OS'].includes(String(option.tipoEsperado)))
           .map(option => {
             const grupo = option.tipoEsperado === 'FACTURA' ? 'adjunto' as const : 'principal' as const;
             return <Button key={option.tipoEsperado} type="button" variant="outline"
@@ -3695,8 +3762,8 @@ export function CompraExpedienteEditor({
           descripcion,
           empresa,
           rucComprador,
-          rucProveedor:principalProveedorRuc,
-          razonSocialProveedor:principalProveedorNombre,
+          rucProveedor: (resultadoModal as any)?.temporal && (resultadoModal as any)?.tipoDocumental === "FACTURA" ? undefined : principalProveedorRuc,
+          razonSocialProveedor: (resultadoModal as any)?.temporal && (resultadoModal as any)?.tipoDocumental === "FACTURA" ? undefined : principalProveedorNombre,
         }}
         onClose={() => {
           setModalAbierto(false);

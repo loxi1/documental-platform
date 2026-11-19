@@ -1,5 +1,6 @@
 const connection: any = jest.fn();
 connection.unsafe = jest.fn();
+connection.json = jest.fn(v => v);
 connection.release = jest.fn();
 jest.mock('@documental/database', () => ({ sql: { reserve: jest.fn(async () => connection) } }));
 import { TmpRepository } from './tmp.repository';
@@ -167,6 +168,22 @@ describe('regresión JSONB con cliente compartido inicializado por Drizzle', () 
       assert.equal(bound.integration.identity,'confirm');
       assert.equal(captured.args[1],320);
       assert.deepEqual(row.metadata,original);
+      const context = module.exports.comprasFacturaContext(118,10);
+      const inserts = [];
+      const reserveConnection = (parts,...args) => {
+        const query = parts.join('?');
+        inserts.push({query,args});
+        return Promise.resolve(query.includes('INSERT INTO documentos.carga_operaciones') ? [{id:321}] : []);
+      };
+      reserveConnection.json = sql.json;
+      reserveConnection.unsafe = async () => [];
+      await new module.exports.TmpRepository().reserve(reserveConnection,
+        {actorId:6,workspaceId:12,empresaCodigo:'BBTI',clienteDestinoId:2,idempotencyKey:'test',requestId:'test',correlationId:'test'},
+        {name:'test.pdf',mime:'application/pdf',size:9,hash:'a'.repeat(64)},'fingerprint','synthetic',context);
+      const jsonParameter = inserts.find(q => q.query.includes('INSERT INTO documentos.carga_operaciones')).args.find(v => v?.type === 3802);
+      const contextWire = sql.options.serializers[3802](jsonParameter.value);
+      assert.equal(typeof contextWire,'string');
+      assert.deepEqual(JSON.parse(contextWire),{comprasFactura:context});
       await sql.end({timeout:0});
       console.log('PREVIOUS_TYPE_ERROR_REPRODUCED; FIX_OBJECT_ROUNDTRIP_PASS; NO_DB_CONNECTION');
     `;

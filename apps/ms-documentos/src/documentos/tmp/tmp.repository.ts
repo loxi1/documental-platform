@@ -4,6 +4,17 @@ import type { CargaSeguraHttpResolvedIdentity as Identity } from '../carga-segur
 
 export type TmpConnection = Awaited<ReturnType<typeof sql.reserve>>;
 type Connection = TmpConnection;
+// Solo se establece tras validar JWT y contexto; no proviene de headers/body.
+export const COMPRAS_FACTURA_ACCESS = Symbol('comprasFacturaAccess');
+export type ComprasFacturaContext = { expedienteId: number; documentoBaseId: number;
+  tipoDocumental: 'FACTURA'; tipoRelacion: 'adjunto_factura'; origen: 'COMPRAS' };
+export type TmpActor = Identity & { [COMPRAS_FACTURA_ACCESS]?: ComprasFacturaContext };
+export function comprasFacturaContext(expedienteId: unknown, documentoBaseId: unknown): ComprasFacturaContext {
+  if (![expedienteId, documentoBaseId].every(v => typeof v === 'number' || typeof v === 'string' && /^[1-9]\d*$/.test(v))) throw new ConflictException('TMP_COMPRAS_CONTEXT_INVALID');
+  const e = Number(expedienteId), d = Number(documentoBaseId);
+  if (![e, d].every(v => Number.isSafeInteger(v) && v > 0)) throw new ConflictException('TMP_COMPRAS_CONTEXT_INVALID');
+  return { origen: 'COMPRAS', tipoDocumental: 'FACTURA', tipoRelacion: 'adjunto_factura', expedienteId: e, documentoBaseId: d };
+}
 export type TmpRow = Record<string, any>;
 // Extensión interna: ningún endpoint acepta callbacks o identidades consumidoras.
 export interface TmpIntegration {
@@ -90,7 +101,7 @@ export class TmpRepository {
     }
   }
 
-  async reserve(c: Connection, actor: Identity, file: { name: string; mime: string; size: number; hash: string }, fingerprint: string, bucket: string): Promise<TmpRow> {
+  async reserve(c: Connection, actor: Identity, file: { name: string; mime: string; size: number; hash: string }, fingerprint: string, bucket: string, context?: ComprasFacturaContext): Promise<TmpRow> {
     return this.transaction(c, async tx => {
       const previous = await tx`SELECT * FROM documentos.carga_operaciones WHERE operacion_tipo='tmp'
         AND workspace_id=${actor.workspaceId} AND empresa_codigo=${actor.empresaCodigo} AND idempotency_key=${actor.idempotencyKey}`;
@@ -101,21 +112,78 @@ export class TmpRepository {
       const [row] = await tx`INSERT INTO documentos.carga_operaciones
         (operacion_tipo,workspace_id,empresa_codigo,cliente_destino_id,actor_id,idempotency_key,
          payload_fingerprint,request_id,correlation_id,canal_ingreso,nombre_archivo_original,content_type,
-         tamano_bytes,hash_sha256,storage_provider,storage_bucket,expira_en)
+         tamano_bytes,hash_sha256,storage_provider,storage_bucket,expira_en,metadata)
         VALUES ('tmp',${actor.workspaceId},${actor.empresaCodigo},${actor.clienteDestinoId},${actor.actorId},${actor.idempotencyKey},
-          ${fingerprint},${actor.requestId},${actor.correlationId},'TMP',${file.name},${file.mime},${file.size},${file.hash},'r2',${bucket},now()+interval '24 hours') RETURNING *`;
+          ${fingerprint},${actor.requestId},${actor.correlationId},'TMP',${file.name},${file.mime},${file.size},${file.hash},'r2',${bucket},now()+interval '24 hours',${tx.json(JSON.stringify(context ? { comprasFactura: context } : {}))}) RETURNING *`;
       const key = `documentos/tmp/${actor.workspaceId}/${row.id}`;
       await tx`UPDATE documentos.carga_operaciones SET storage_key=${key} WHERE id=${row.id}`;
       await this.audit(tx, row.id, actor, 'TMP_RESERVADO', { storageKey: key, hash: file.hash, tamanoBytes: file.size });
       return { ...row, storage_key: key };
     });
   }
-  async own(c: Connection, id: number, actor: Identity): Promise<TmpRow> {
+  async own(c: Connection, id: number, actor: TmpActor): Promise<TmpRow> {
+    const context = actor[COMPRAS_FACTURA_ACCESS];
+    if (context) {
+      // workspaceId identifica una asignación personal, no el ámbito compartido.
+      // Validar ambas asignaciones sin cambiar el workspace ni actor de la carga.
+      const [row] = await c`SELECT * FROM documentos.carga_operaciones carga WHERE id=${id} AND operacion_tipo='tmp'
+        AND empresa_codigo=${actor.empresaCodigo}
+        AND cliente_destino_id=${actor.clienteDestinoId}
+        AND metadata->'comprasFactura'=${c.json(JSON.stringify(context))}::jsonb
+        AND EXISTS (
+          SELECT 1 FROM auth.usuario_workspaces origen
+          JOIN auth.usuario_workspaces acceso
+            ON acceso.id=${actor.workspaceId} AND acceso.usuario_id=${actor.actorId}
+            AND acceso.sistema_id=origen.sistema_id
+            AND acceso.empresa_codigo=origen.empresa_codigo
+            AND acceso.cliente_destino_id=origen.cliente_destino_id
+          JOIN core.sistemas sistema ON sistema.id=acceso.sistema_id
+          WHERE origen.id=carga.workspace_id AND origen.usuario_id=carga.actor_id
+            AND origen.empresa_codigo=carga.empresa_codigo
+            AND origen.cliente_destino_id=carga.cliente_destino_id
+            AND sistema.codigo='DOCUMENTAL' AND sistema.estado='activo'
+            AND acceso.estado='activo'
+            AND (acceso.vigencia_desde IS NULL OR acceso.vigencia_desde<=CURRENT_DATE)
+            AND (acceso.vigencia_hasta IS NULL OR acceso.vigencia_hasta>=CURRENT_DATE)
+        )`;
+      if (!row || row.metadata?.regularizacionOp ||
+          (row.metadata?.integration && row.metadata.integration.consumer !== 'COMPRAS_TEMP_DOCUMENTAL'))
+        throw new NotFoundException('TEMP no disponible');
+      await this.assertDocumentalScope(c, row, context);
+      return row;
+    }
     const [row] = await c`SELECT * FROM documentos.carga_operaciones WHERE id=${id} AND operacion_tipo='tmp'
       AND actor_id=${actor.actorId} AND workspace_id=${actor.workspaceId} AND empresa_codigo=${actor.empresaCodigo}
       AND cliente_destino_id=${actor.clienteDestinoId}`;
     if (!row) throw new NotFoundException('TEMP no disponible');
     return row;
+  }
+  async listCompras(c: Connection, actor: TmpActor, context: ComprasFacturaContext): Promise<TmpRow[]> {
+    await this.assertDocumentalScope(c, { empresa_codigo: actor.empresaCodigo, cliente_destino_id: actor.clienteDestinoId }, context);
+    return c`SELECT * FROM documentos.carga_operaciones carga WHERE operacion_tipo='tmp'
+      AND empresa_codigo=${actor.empresaCodigo}
+      AND cliente_destino_id=${actor.clienteDestinoId}
+      AND metadata->'comprasFactura'=${c.json(JSON.stringify(context))}::jsonb
+      AND EXISTS (
+        SELECT 1 FROM auth.usuario_workspaces origen
+        JOIN auth.usuario_workspaces acceso
+          ON acceso.id=${actor.workspaceId} AND acceso.usuario_id=${actor.actorId}
+          AND acceso.sistema_id=origen.sistema_id
+          AND acceso.empresa_codigo=origen.empresa_codigo
+          AND acceso.cliente_destino_id=origen.cliente_destino_id
+        JOIN core.sistemas sistema ON sistema.id=acceso.sistema_id
+        WHERE origen.id=carga.workspace_id AND origen.usuario_id=carga.actor_id
+          AND origen.empresa_codigo=carga.empresa_codigo
+          AND origen.cliente_destino_id=carga.cliente_destino_id
+          AND sistema.codigo='DOCUMENTAL' AND sistema.estado='activo'
+          AND acceso.estado='activo'
+          AND (acceso.vigencia_desde IS NULL OR acceso.vigencia_desde<=CURRENT_DATE)
+          AND (acceso.vigencia_hasta IS NULL OR acceso.vigencia_hasta>=CURRENT_DATE)
+      )
+      AND estado='almacenada' AND promovida_en IS NULL AND documento_id IS NULL AND archivo_id IS NULL
+      AND expira_en > now() AND NOT (metadata ? 'regularizacionOp')
+      AND (metadata->'integration' IS NULL OR metadata#>>'{integration,consumer}'='COMPRAS_TEMP_DOCUMENTAL')
+      ORDER BY iniciada_en, id`;
   }
   async saveDocumentalMetadata(c: Connection, id: number, metadata: Record<string, any>) {
     await c`UPDATE documentos.carga_operaciones SET metadata=${c.json(JSON.stringify(metadata))}::jsonb,

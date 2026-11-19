@@ -154,29 +154,41 @@ export type ComprasTempResult = Record<string, any> & { tempId: number; tempIden
 function comprasTempContextKey(context: ComprasTempContext) {
   return `bbti:compras-temp:${context.expedienteId}:${context.tipoDocumental}:${context.documentoBaseId ?? ''}`;
 }
-export async function recuperarTemporalCompras(context: ComprasTempContext): Promise<ComprasTempResult | null> {
+export type FacturaTempPendiente = { tempId: number; nombreOriginal: string; actorId: number;
+  creadoEn: string; ocrEstado: string; tieneBorrador: boolean; reservada: boolean };
+function facturasTempPath(context: ComprasTempContext) {
+  if (context.tipoDocumental !== 'FACTURA' || !Number.isSafeInteger(context.expedienteId) || context.expedienteId <= 0 ||
+      !Number.isSafeInteger(context.documentoBaseId) || context.documentoBaseId! <= 0) throw new Error('Contexto de factura inválido');
+  return `/documentos/tmp/compras-facturas/${context.expedienteId}/${context.documentoBaseId}`;
+}
+export async function listarFacturasTempCompras(context: ComprasTempContext): Promise<FacturaTempPendiente[]> {
+  let response = (await api.get(facturasTempPath(context))).data;
+  // El objeto funcional también contiene data; no confundirlo con el envelope HTTP.
+  for (let i = 0; i < 2 && !response?.contexto && response?.data; i++) response = response.data;
+  if (response?.contexto?.expedienteId !== context.expedienteId || response?.contexto?.documentoBaseId !== context.documentoBaseId ||
+      !Array.isArray(response.data)) throw new Error('Respuesta de pendientes fuera de contexto');
+  return response.data;
+}
+// La recuperación es lectura: el OCR inicial se ejecuta exclusivamente en cargarTemporalCompras.
+export async function recuperarTemporalCompras(context: ComprasTempContext, tempId?: number): Promise<ComprasTempResult | null> {
   const contextKey = comprasTempContextKey(context);
-  const record = sessionStorage.getItem(contextKey);
-  if (!record) return null;
-  const identity = JSON.parse(record);
-  if (!identity.tempId) throw new Error('La reserva TEMP no devolvió respuesta. Reintenta seleccionando el mismo archivo.');
-  const row = unwrap<any>((await api.get(`/documentos/tmp/${identity.tempId}`)).data);
-  const candidate = row.ocrCandidate;
-  let result: any = candidate?.resultado ?? {};
-  if (!candidate && !row.documentalResult) {
-    try {
-      result = unwrap<any>((await api.post(`/documentos/tmp/${identity.tempId}/procesar-ocr`,
-        { tipoEsperado: context.tipoDocumental,
-          ...(['OC', 'OS'].includes(context.tipoDocumental) && context.canalIngreso ? { canalIngreso: context.canalIngreso } : {}) }, { headers: { 'Idempotency-Key': identity.key } })).data);
-    } catch {
-      // Consultar recupera una respuesta tardía; nunca se vuelve a subir el archivo.
-      const latest = unwrap<any>((await api.get(`/documentos/tmp/${identity.tempId}`)).data);
-      result = latest.ocrCandidate?.resultado ?? { ok: false, ocrEstado: latest.ocrCandidate?.status ?? 'FAILED' };
-    }
+  const record = tempId === undefined ? sessionStorage.getItem(contextKey) : null;
+  if (tempId === undefined && !record) return null;
+  const identity = record ? JSON.parse(record) : { tempId };
+  if (!Number.isSafeInteger(identity.tempId) || identity.tempId <= 0) throw new Error('La reserva TEMP no devolvió respuesta. Reintenta seleccionando el mismo archivo.');
+  let path = tempId === undefined ? `/documentos/tmp/${identity.tempId}` : `${facturasTempPath(context)}/${identity.tempId}`;
+  const row = unwrap<any>((await api.get(path)).data);
+  const shared = row.comprasFactura;
+  if (shared) {
+    if (shared.expedienteId !== context.expedienteId || shared.documentoBaseId !== context.documentoBaseId || context.tipoDocumental !== 'FACTURA')
+      throw new Error('TEMP fuera del contexto seleccionado');
+    path = `${facturasTempPath(context)}/${identity.tempId}`;
   }
-  const preview = row.documentalResult ? null : unwrap<any>((await api.get(`/documentos/tmp/${identity.tempId}/preview-url`)).data);
+  const result: any = row.ocrCandidate?.resultado ?? {};
+  const preview = row.documentalResult ? null : unwrap<any>((await api.get(`${path}/preview-url`)).data);
   const draft = row.borradorDocumental?.metadata;
-  return { ...result, tempId: identity.tempId, tempIdentity: identity.key, tempContextKey: contextKey,
+  return { ...result, ...(draft ?? {}), tempId: identity.tempId, tempIdentity: identity.key ?? '', tempContextKey: contextKey,
+    comprasFactura: shared ?? null, ocrEstado: row.ocrCandidate?.status ?? 'ABSENT',
     id: null, documentoId: null, documento_id: null, archivoId: null, archivo_id: null, ocrResultadoId: null, ocr_resultado_id: null,
     tipoDocumental: context.tipoDocumental, tipoEsperado: context.tipoDocumental,
     metadata: { ...(result.metadata?.metadata ?? result.metadata ?? {}), ...(draft ?? {}), tipoDocumental: context.tipoDocumental },
@@ -190,13 +202,28 @@ export async function cargarTemporalCompras(file: File, context: ComprasTempCont
     .map(v => v.toString(16).padStart(2, '0')).join('');
   const previous = sessionStorage.getItem(contextKey);
   let record = previous ? JSON.parse(previous) : null;
-  if (record && record.hash !== hash) throw new Error('Existe una carga TEMP pendiente. Recupérala antes de seleccionar otro archivo.');
+  if (record && record.hash !== hash) {
+    if (context.tipoDocumental === 'FACTURA' && record.tempId) record = null;
+    else throw new Error('Existe una carga TEMP pendiente. Recupérala antes de seleccionar otro archivo.');
+  }
   if (!record) { record = { key: randomId(), hash }; sessionStorage.setItem(contextKey, JSON.stringify(record)); }
   if (!record.tempId) {
     const form = new FormData(); form.append('archivo', file);
+    if (context.tipoDocumental === 'FACTURA') {
+      facturasTempPath(context);
+      form.append('comprasFactura', JSON.stringify({ expedienteId: context.expedienteId, documentoBaseId: context.documentoBaseId }));
+    }
     const row = unwrap<any>((await api.post('/documentos/tmp', form, { headers: { 'Idempotency-Key': record.key } })).data);
     if (!Number.isSafeInteger(row.tempId) || row.tempId <= 0) throw new Error('TEMP sin identidad válida');
     record.tempId = row.tempId; sessionStorage.setItem(contextKey, JSON.stringify(record));
+  }
+  const row = unwrap<any>((await api.get(`/documentos/tmp/${record.tempId}`)).data);
+  if (!row.ocrCandidate && !row.documentalResult) {
+    try {
+      await api.post(`/documentos/tmp/${record.tempId}/procesar-ocr`, { tipoEsperado: context.tipoDocumental,
+        ...(['OC','OS'].includes(context.tipoDocumental) && context.canalIngreso ? { canalIngreso: context.canalIngreso } : {}) },
+        { headers: { 'Idempotency-Key': record.key } });
+    } catch { /* El resultado persistido, incluso fallido/parcial, se recupera sin otro intento OCR. */ }
   }
   return (await recuperarTemporalCompras(context))!;
 }
@@ -204,9 +231,15 @@ export async function validarTemporalCompras(result: ComprasTempResult, input: R
   const data = { ...input, expedienteId: Number(input.expedienteId),
     ...(input.documentoBaseId == null ? {} : { documentoBaseId: Number(input.documentoBaseId) }),
     tipoDocumental: result.tipoDocumental };
-  const response = unwrap<any>((await api.post(`/documentos/tmp/${result.tempId}/promover`,
+  const path = result.comprasFactura
+    ? `${facturasTempPath({ ...result.comprasFactura, tipoDocumental: 'FACTURA' })}/${result.tempId}`
+    : `/documentos/tmp/${result.tempId}`;
+  const response = unwrap<any>((await api.post(`${path}/promover`,
     draft ? { borradorDocumental: data } : { confirmacionDocumental: data },
-    { headers: { 'Idempotency-Key': result.tempIdentity } })).data);
-  if (!draft) sessionStorage.removeItem(result.tempContextKey);
+    { headers: result.comprasFactura ? {} : { 'Idempotency-Key': result.tempIdentity } })).data);
+  if (!draft) {
+    const record = sessionStorage.getItem(result.tempContextKey);
+    if (record && JSON.parse(record).tempId === result.tempId) sessionStorage.removeItem(result.tempContextKey);
+  }
   return response;
 }

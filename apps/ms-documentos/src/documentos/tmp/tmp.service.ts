@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { BadRequestException, ConflictException, Inject, Injectable, Optional, ServiceUnavailableException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, UnauthorizedException, ConflictException, Inject, Injectable, Optional, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { CARGA_SEGURA_STORAGE } from '../carga-segura/carga-segura.constants';
 import { buildCargaSeguraStorageKey } from '../carga-segura/carga-segura.storage';
@@ -10,7 +10,7 @@ import type { CargaSeguraHttpResolvedIdentity as Identity } from '../carga-segur
 import { validateCargaSeguraFileSignature } from '../carga-segura/http/carga-segura-file-signature';
 import { sanitizeCargaSeguraFilename } from '../carga-segura/http/carga-segura-filename';
 import { validateCargaSeguraFileSize } from '../carga-segura/http/carga-segura-http.validation';
-import { TmpRepository, TmpRow, TmpIntegration, assertTmpIntegration } from './tmp.repository';
+import { TmpRepository, TmpRow, TmpIntegration, assertTmpIntegration, TmpActor, COMPRAS_FACTURA_ACCESS, comprasFacturaContext, ComprasFacturaContext } from './tmp.repository';
 
 import { ClientProxy } from '@nestjs/microservices';
 import { firstValueFrom, timeout } from 'rxjs';
@@ -29,16 +29,43 @@ export class TmpService {
     @Optional() private readonly documentalV2?: OrquestarConfirmacionDocumentalV2UseCase,
 ) {}
 
-  async reserve(actor: Identity, file: { originalname: string; mimetype: string; buffer: Buffer }) {
+  async comprasActor(actor: Identity, authorization: string | undefined, expedienteId: unknown, documentoBaseId: unknown, confirm = false): Promise<TmpActor> {
+    const context = comprasFacturaContext(expedienteId, documentoBaseId);
+    if (!authorization?.startsWith('Bearer ')) throw new UnauthorizedException('Token requerido');
+    const auth: any = await firstValueFrom(this.nats.send(NatsSubjects.AuthValidateToken,
+      { token: authorization.slice(7).trim() }).pipe(timeout(10000)));
+    const p = auth?.payload;
+    const actions = p?.permisos?.actions;
+    if (!auth?.valid || Number(p?.sub) !== Number(actor.actorId) || Number(p?.workspaceId) !== actor.workspaceId ||
+      Number(p?.clienteDestinoId) !== actor.clienteDestinoId || String(p?.empresa ?? p?.empresaCodigo ?? '').trim().toUpperCase() !== actor.empresaCodigo)
+      throw new ForbiddenException('TMP_COMPRAS_IDENTITY_CONFLICT');
+    if (p?.sistema !== 'DOCUMENTAL' || !Array.isArray(p?.permisos?.menus) || !p.permisos.menus.includes('compras') ||
+      !Array.isArray(actions) || !actions.includes('documentos.subir') || !actions.includes('documentos.vincular_expediente') ||
+      (confirm && !actions.some(a => ['documentos.confirmar_ocr', 'ocr.confirmar'].includes(a))))
+      throw new ForbiddenException('TMP_COMPRAS_PERMISSION_REQUIRED');
+    return { ...actor, [COMPRAS_FACTURA_ACCESS]: context };
+  }
+  async listCompras(actor: TmpActor) {
+    const context = actor[COMPRAS_FACTURA_ACCESS];
+    if (!context) throw new ForbiddenException('TMP_COMPRAS_PERMISSION_REQUIRED');
+    return this.repository.locked(`compras:${actor.workspaceId}:${context.expedienteId}:${context.documentoBaseId}`, async c => {
+      const rows = await this.repository.listCompras(c, actor, context);
+      return { contexto: context, data: rows.map(row => ({ tempId: Number(row.id), nombreOriginal: row.nombre_archivo_original,
+        actorId: Number(row.actor_id), creadoEn: row.iniciada_en, ocrEstado: row.metadata?.ocrCandidate?.status ?? 'ABSENT',
+        tieneBorrador: Boolean(row.metadata?.borradorDocumental), reservada: Boolean(row.metadata?.integration) })) };
+    });
+  }
+  async reserve(actor: Identity, file: { originalname: string; mimetype: string; buffer: Buffer }, context?: ComprasFacturaContext) {
     validateCargaSeguraFileSize(file?.buffer);
     const mime = validateCargaSeguraFileSignature(file.mimetype, file.buffer);
     const name = sanitizeCargaSeguraFilename(file.originalname, mime);
     const hash = createHash('sha256').update(file.buffer).digest('hex');
     const bucket = this.config.get<string>('R2_BUCKET') || this.config.get<string>('R2_BUCKET_NAME') || this.config.get<string>('STORAGE_R2_BUCKET');
     if (!bucket) throw new ServiceUnavailableException('Storage TEMP no configurado');
-    const fingerprint = createHash('sha256').update(JSON.stringify([actor.actorId, actor.clienteDestinoId, name, mime, hash])).digest('hex');
+    const fingerprint = createHash('sha256').update(JSON.stringify([actor.actorId, actor.clienteDestinoId, name, mime, hash, ...(context ? [context] : [])])).digest('hex');
     const row = await this.repository.locked(`reserve:${actor.workspaceId}:${actor.empresaCodigo}:${actor.idempotencyKey}`, async c => {
-      return this.repository.reserve(c, actor, { name, mime, hash, size: file.buffer.length }, fingerprint, bucket);
+      if (context) await this.repository.assertDocumentalScope(c, { empresa_codigo: actor.empresaCodigo, cliente_destino_id: actor.clienteDestinoId }, context);
+      return this.repository.reserve(c, actor, { name, mime, hash, size: file.buffer.length }, fingerprint, bucket, context);
     });
       // La reserva y promoción tienen el mismo bloqueo por tempId, incluso durante recuperación.
       return this.repository.locked(String(row.id), async locked => {
@@ -448,7 +475,7 @@ export class TmpService {
     if (row.estado !== 'almacenada' || !row.expira_en || !Number.isFinite(new Date(row.expira_en).getTime()) || new Date(row.expira_en).getTime() <= Date.now())
       throw new ConflictException('TMP_DOCUMENTAL_EXPIRED_OR_NOT_STAGED');
   }
-  async documental(id: number, actor: Identity, raw: unknown, draft = false) {
+  async documental(id: number, actor: TmpActor, raw: unknown, draft = false) {
     this.id(id);
     const input = this.documentalInput(raw, !draft);
     if (!draft && (!this.documentos || !this.documentalV2))
@@ -464,6 +491,12 @@ export class TmpService {
     const consumer = 'COMPRAS_TEMP_DOCUMENTAL';
     const key = await this.repository.locked(String(id), async c => {
       const row = await this.repository.own(c, id, actor);
+      const bound = row.metadata?.comprasFactura;
+      if (bound && (input.tipoDocumental !== 'FACTURA' || input.expedienteId !== bound.expedienteId ||
+          input.documentoBaseId !== bound.documentoBaseId || input.grupoFacturaId != null))
+        throw new ConflictException('TMP_COMPRAS_CONTEXT_CONFLICT');
+      // Se conserva la identidad de la carga; el actor de auditoría sigue siendo el validador real.
+      if (actor[COMPRAS_FACTURA_ACCESS]) actor = { ...actor, idempotencyKey: row.idempotency_key };
       const claim = row.metadata?.integration;
       if (claim) {
         if (draft || claim.consumer !== consumer || claim.identity !== actor.idempotencyKey ||
@@ -575,6 +608,7 @@ export class TmpService {
       actorId: Number(row.actor_id), workspaceId: Number(row.workspace_id), empresaCodigo: row.empresa_codigo,
       clienteDestinoId: Number(row.cliente_destino_id), nombreOriginal: row.nombre_archivo_original, mime: row.content_type,
       tamanoBytes: Number(row.tamano_bytes), hashSha256: row.hash_sha256, storageKey: row.storage_key,
+      comprasFactura: row.metadata?.comprasFactura ?? null,
       borradorDocumental: row.metadata?.borradorDocumental ?? null,
       ocrCandidate: row.metadata?.ocrCandidate ?? null, documentalResult: row.metadata?.documentalResult ?? null,
       expiraEn: row.expira_en, creadoEn: row.iniciada_en, destinoStorageKey: row.destino_storage_key ?? null };

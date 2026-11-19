@@ -2,7 +2,7 @@ jest.mock('@documental/shared',()=>({NatsSubjects:{OcrProcesarArchivo:'lab.ocr.p
 jest.mock('@documental/database',()=>({sql:{}}));
 import {TmpService} from './tmp.service';
 import {TmpController} from './tmp.controller';
-import {TmpRepository} from './tmp.repository';
+import {TmpRepository, COMPRAS_FACTURA_ACCESS, comprasFacturaContext} from './tmp.repository';
 import {Subject, of} from 'rxjs';
 describe('G2 TEMP documental, storage/DB simulados',()=>{
  const actor={actorId:6,workspaceId:12,empresaCodigo:'BBTI',clienteDestinoId:2,idempotencyKey:'confirm',requestId:'req',correlationId:'req'};
@@ -23,6 +23,39 @@ describe('G2 TEMP documental, storage/DB simulados',()=>{
     deleteObject:jest.fn(async(o:any)=>{objects.delete(o.key);identities.delete(o.key);})};
   docs={validarTemporalAntesDeReserva:jest.fn(async()=>undefined),materializarTemporalConExecutor:jest.fn(async()=>({documentoId:90,archivoId:91,confirmed:{documento:{id:90},tipoDocumental:'OC'}}))};v2={integrarTemporalConExecutor:jest.fn(async(_:any,c:any)=>c)};
   svc=new TmpService(repo,{get:()=> 'lab'} as any,storage,{} as any,{} as any,docs,v2);
+ });
+ it('A adjunta; B y C confirman concurrentemente con identidad original y una sola materialización',async()=>{
+  row.idempotency_key='original-upload';row.metadata.comprasFactura=comprasFacturaContext(118,10);
+  // Asignaciones personales distintas dentro del ámbito autorizado de Compras.
+  repo.own.mockImplementation(async(_:any,id:any,a:any)=>{
+    if(id!==50 || ![12,13,14].includes(a.workspaceId) || a.empresaCodigo!=='BBTI' || a.clienteDestinoId!==2) throw Error('scope');
+    return structuredClone(row);
+  });
+  const b={...actor,actorId:7,workspaceId:13,idempotencyKey:'consulta',[COMPRAS_FACTURA_ACCESS]:row.metadata.comprasFactura};
+  const c={...b,actorId:8,workspaceId:14};
+  await Promise.all([svc.documental(50,b,input('FACTURA')),svc.documental(50,c,input('FACTURA'))]);
+  expect(row.actor_id).toBe(6);expect(row.workspace_id).toBe(12);expect(row.metadata.promocionIdentity).toBe('original-upload');
+  expect(row.metadata.integration.identity).toBe('original-upload');
+  expect(docs.materializarTemporalConExecutor).toHaveBeenCalledTimes(1);
+  expect(docs.materializarTemporalConExecutor.mock.calls[0][4].actorId).toBe(7);
+  expect(v2.integrarTemporalConExecutor.mock.calls[0][3].usuarioId).toBe(7);
+  expect(repo.promoted.mock.calls[0][2].actorId).toBe(7);
+  expect(repo.promoted.mock.calls[0][2].workspaceId).toBe(13);
+ });
+ it('no permite mover factura contextual a otro expediente/principal ni a grupo ajeno',async()=>{
+  row.metadata.comprasFactura=comprasFacturaContext(118,10);
+  for(const delta of [{expedienteId:119},{documentoBaseId:11},{grupoFacturaId:20},{tipoDocumental:'OC',esPrincipal:true,tipoRelacion:'principal_oc'}]){
+    await expect(svc.documental(50,actor,{...input('FACTURA'),...delta})).rejects.toThrow('CONTEXT_CONFLICT');
+  }
+  expect(storage.copyObject).not.toHaveBeenCalled();expect(repo.saveDocumentalMetadata).not.toHaveBeenCalled();
+ });
+ it('confirmaciones compartidas con datos incompatibles mantienen conflicto',async()=>{
+  row.idempotency_key='original-upload';row.metadata.comprasFactura=comprasFacturaContext(118,10);
+  const b={...actor,actorId:7,[COMPRAS_FACTURA_ACCESS]:row.metadata.comprasFactura};
+  await svc.documental(50,b,input('FACTURA'));
+  const changed=input('FACTURA');changed.metadata.numero='different';
+  await expect(svc.documental(50,{...b,actorId:8},changed)).rejects.toThrow('IDEMPOTENCY_CONFLICT');
+  expect(docs.materializarTemporalConExecutor).toHaveBeenCalledTimes(1);
  });
  it.each(['OC','OS','FACTURA'])('%s usa fecha documental',async t=>{expect(await svc.documental(50,actor,input(t))).toEqual({documentoId:90,archivoId:91,tempId:50});expect(row.destino_storage_key).toBe('documentos/2026/01/BBTI/50__a.pdf');expect(v2.integrarTemporalConExecutor).toHaveBeenCalledTimes(1);expect(objects.has(row.storage_key)).toBe(false);});
  it.each([undefined,'2026-02-30','2026-13-01','2026-01-31T23:00:00Z'])('rechaza fecha %s antes de storage',async f=>{const x=input();x.metadata.fechaEmision=f as any;await expect(svc.documental(50,actor,x)).rejects.toThrow('DATE_INVALID');expect(repo.saveDocumentalMetadata).not.toHaveBeenCalled();});

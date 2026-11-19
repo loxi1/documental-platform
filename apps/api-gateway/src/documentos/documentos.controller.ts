@@ -811,16 +811,59 @@ export class DocumentosGatewayController {
   }
 
   @Post('tmp')
-  @UseInterceptors(AnyFilesInterceptor({ limits: { fileSize: SECURE_UPLOAD.fileSizeBytes, files: 1, fields: 0, parts: SECURE_UPLOAD.maxParts } }))
+  @UseInterceptors(AnyFilesInterceptor({ limits: { fileSize: SECURE_UPLOAD.fileSizeBytes, files: 1, fields: 1, fieldSize: 2048, parts: SECURE_UPLOAD.maxParts } }))
   async reservarTmp(@Headers('authorization') authorization: string | undefined,
     @Headers(REQUEST_ID_HEADER) requestId: string | undefined,
     @Headers('idempotency-key') key: string, @UploadedFiles() files: SecureUploadFile[], @Body() body: Record<string, unknown>) {
     const headers = await this.tmpHeaders(authorization, requestId, key);
-    if (Object.keys(body ?? {}).length || files?.length !== 1) throw new HttpException('TEMP requiere únicamente un archivo', 400);
+    if (Object.keys(body ?? {}).some(k => k !== 'comprasFactura') || files?.length !== 1) throw new HttpException('TEMP requiere únicamente un archivo y contexto Compras opcional', 400);
     const file = validateSecureUploadFile(files[0]);
     const form = new FormData();
     form.append('archivo', file.buffer, { filename: file.originalname, contentType: file.mimetype, knownLength: file.size });
+    if (body?.comprasFactura !== undefined) {
+      let input: any;
+      try { input = JSON.parse(String(body.comprasFactura)); } catch { throw new HttpException('Contexto Compras inválido', 400); }
+      if (!input || Object.keys(input).some(k => !['expedienteId','documentoBaseId'].includes(k))) throw new HttpException('Contexto Compras inválido', 400);
+      await this.comprasTmpScope(authorization, requestId, String(input.expedienteId), String(input.documentoBaseId));
+      form.append('comprasFactura', JSON.stringify(input));
+    }
     return this.tmpRequest('POST', '/documentos/tmp', { ...headers, ...form.getHeaders() }, form);
+  }
+
+  private async comprasTmpScope(authorization: string | undefined, requestId: string | undefined, e: string, d: string, confirm = false) {
+    const expedienteId = this.tmpId(e), documentoBaseId = this.tmpId(d);
+    const context = await this.validateAuthorization(authorization);
+    if (!Array.isArray(context?.permisos?.menus) || !context.permisos.menus.includes('compras')) throw new ForbiddenException('TMP_COMPRAS_PERMISSION_REQUIRED');
+    this.assertAnyActionPermitida(context, ['documentos.subir'], 'recuperar facturas TEMP de Compras');
+    this.assertAnyActionPermitida(context, ['documentos.vincular_expediente'], 'vincular facturas TEMP');
+    if (confirm) this.assertAnyActionPermitida(context, ['documentos.confirmar_ocr','ocr.confirmar'], 'confirmar factura TEMP');
+    await this.assertExpedientePermitido(Number(expedienteId), context, requestId);
+    await this.assertDocumentoPermitido(documentoBaseId, context, requestId);
+    return `/documentos/tmp/compras-facturas/${expedienteId}/${documentoBaseId}`;
+  }
+  @Get('tmp/compras-facturas/:expedienteId/:documentoBaseId')
+  async listarFacturasTmp(@Headers('authorization') auth: string | undefined, @Headers(REQUEST_ID_HEADER) req: string | undefined,
+    @Param('expedienteId') e: string, @Param('documentoBaseId') d: string) {
+    const path = await this.comprasTmpScope(auth, req, e, d);
+    return this.tmpRequest('GET', path, await this.tmpHeaders(auth, req));
+  }
+  @Get('tmp/compras-facturas/:expedienteId/:documentoBaseId/:tempId')
+  async recuperarFacturaTmp(@Headers('authorization') auth: string | undefined, @Headers(REQUEST_ID_HEADER) req: string | undefined,
+    @Param('expedienteId') e: string, @Param('documentoBaseId') d: string, @Param('tempId') id: string) {
+    const path = await this.comprasTmpScope(auth, req, e, d);
+    return this.tmpRequest('GET', `${path}/${this.tmpId(id)}`, await this.tmpHeaders(auth, req));
+  }
+  @Get('tmp/compras-facturas/:expedienteId/:documentoBaseId/:tempId/preview-url')
+  async previewFacturaTmp(@Headers('authorization') auth: string | undefined, @Headers(REQUEST_ID_HEADER) req: string | undefined,
+    @Param('expedienteId') e: string, @Param('documentoBaseId') d: string, @Param('tempId') id: string) {
+    const path = await this.comprasTmpScope(auth, req, e, d);
+    return this.tmpRequest('GET', `${path}/${this.tmpId(id)}/preview-url`, await this.tmpHeaders(auth, req));
+  }
+  @Post('tmp/compras-facturas/:expedienteId/:documentoBaseId/:tempId/promover')
+  async confirmarFacturaTmp(@Headers('authorization') auth: string | undefined, @Headers(REQUEST_ID_HEADER) req: string | undefined,
+    @Param('expedienteId') e: string, @Param('documentoBaseId') d: string, @Param('tempId') id: string, @Body() body: Record<string,unknown>) {
+    const path = await this.comprasTmpScope(auth, req, e, d, true);
+    return this.tmpRequest('POST', `${path}/${this.tmpId(id)}/promover`, await this.tmpHeaders(auth, req), body);
   }
 
   @Get('tmp/:tempId')
