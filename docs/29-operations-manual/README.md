@@ -720,3 +720,222 @@ No introducir migraciones, cambios Auth, cambios OCR Python
 ni integración NAS por este requerimiento.
 
 NAS permanece fuera del alcance.
+
+
+---
+
+## 2026-11-19 — Cierre productivo R3 Factura TEMP
+
+ACTION: BBTI_FACTURA_TEMP_POST_DEPLOY_DOCUMENTARY_CLOSURE_R1
+
+Adenda exclusivamente documental posterior al despliegue
+y aceptación funcional productiva del 19/11/2026.
+
+Prevalece sobre estados anteriores incompatibles de R3.
+Se preservan íntegramente los antecedentes históricos.
+
+
+### Identidades acreditadas
+
+- SOURCE funcional:
+  `793152d3cdc9ab752cfb699839358255a1db25c5`.
+- SOURCE cierre G3:
+  `3716b71c2ff812710f4d9c44242dbad73331336f`.
+- SOURCE consolidado previo a esta adenda:
+  `5f5ff49b1e48d2dea200c4a1476a7cff3f6e9f58`.
+- Enterprise funcional:
+  `c2198dcb8a6eaeb063f45c31d6b225e630e81af9`.
+- Enterprise publicado y desplegado:
+  `5066a6e9eaeb95e3039ce16f6a0acb732846ea0e`.
+- EC2 checkout acreditado durante despliegue:
+  `5066a6e9eaeb95e3039ce16f6a0acb732846ea0e`.
+- GHCR workflow: `.github/workflows/build-images.yml`.
+- GHCR run: `44563965795`.
+- GHCR job: `135700545256`.
+- Publicacion integrada: 4/4 SUCCESS.
+- Plataforma: linux/amd64.
+
+### Operacion vigente
+
+Web: https://bbtecnologia.com
+API: https://api.bbtecnologia.com/api/v1
+
+Compose productivo:
+
+- Proyecto docker.
+- deployment/env/.env.production.
+- deployment/docker/docker-compose.production.yml.
+- release.images.yml del release efectivo.
+- /etc/documental-platform/ms-documentos.apisperu.override.yml.
+
+APISPERU ya configurado.
+No solicitar nuevas credenciales ni reinstalar.
+
+El smoke test acredita disponibilidad, no consumo
+efectivo del proveedor externo.
+
+El procedimiento vigente de despliegue mantiene
+ONE_INTEGRATED_RELEASE con cuatro aplicaciones.
+
+No modificar runbooks, workflows ni configuracion
+productiva por esta consolidacion documental.
+
+### Despliegue integrado EC2
+
+Directorio permanente:
+
+`/home/ubuntu/releases/documental-platform-bbti/integrated-44563965795-5066a6e9-r1`
+
+- Inicio: 2026-11-19T16:42:29Z.
+- Recreacion y control final: 2026-11-19T16:42:49Z.
+- Smoke test: 2026-11-19T16:44:56Z.
+- Recreacion exclusiva: api-gateway, ms-auth,
+  ms-documentos y web-admin.
+- Runtime efectivo: 4/4 PASS.
+- RestartCount: 0 en los cuatro servicios.
+- NATS y Traefik preservados.
+- OCR Python systemd activo, PID 540240,
+  NRestarts=0 durante la comprobacion.
+- Override APISPERU existente preservado.
+- Configuracion productiva protegida: PASS.
+- Sin intervencion administrativa RDS.
+- Sin migraciones ni cambios OCR por R3.
+- Sin rollback.
+
+SHA256 release.images.yml:
+
+`c581386de55e2063fdcc44b0f733f9530b58e93e85c61694d182f99351fb4c48`
+
+SHA256 rollback.images.yml:
+
+`10219b37c5a2f27409155af48cc1a9bbc681a4a8c57945d249881b3b31815a22`
+
+El rollback corresponde al runtime efectivo anterior.
+No autoriza rollback automatico ni reversion de auth_version.
+
+Evidencias principales en el subdirectorio evidence:
+
+- deployment.started.utc
+- deployment.completed.utc
+- deployment-compose.txt
+- application-runtime.before.txt
+- application-runtime.after.txt
+- protected-runtime.before.txt
+- protected-runtime.after.txt
+- protected-config.before.sha256
+- protected-config.after.sha256
+- release-manifests.sha256
+- production-health-smoke.txt
+
+### Disponibilidad productiva
+
+- API publica HTTPS: PASS.
+- Web publica HTTPS: HTTP 200.
+- API Gateway interno 3000: HTTP 200.
+- MS Auth interno 3001: HTTP 200.
+- MS Documentos interno 3002: HTTP 200.
+- Web Admin interno 3005: HTTP 200.
+- NATS health: PASS.
+- OCR systemd: PASS.
+- Integridad de manifests: PASS.
+
+EC2_TECHNICAL_DEPLOYMENT=CLOSED_PASS.
+PRODUCTION_HEALTH_SMOKE=CLOSED_PASS.
+
+### Aceptacion funcional productiva PO
+
+Fecha: 2026-11-19.
+
+Resultados expresamente reportados por PO:
+
+1. Carga de factura TEMP: PASS.
+2. Recuperacion despues de actualizar: PASS.
+3. Recuperacion por otro usuario: PASS.
+4. Preservacion OCR y PDF: PASS.
+5. Aislamiento documental: PASS.
+6. Confirmacion por otro usuario: PASS.
+7. Persistencia definitiva: PASS.
+8. Regresion OC/OS: PASS.
+
+PRODUCTION_FUNCTIONAL_ACCEPTANCE_R3=CLOSED_PASS.
+R3_FUNCTIONAL_TESTS=8_OF_8_PASS.
+
+La confirmacion cross-user pendiente de acreditacion
+en SOURCE queda aceptada funcionalmente en produccion.
+
+La evidencia funcional corresponde a declaracion PO;
+no implica auditoria SQL/R2 independiente ni prueba
+exhaustiva de concurrencia.
+
+No extender esta aceptacion a pendientes historicos
+Auth, OCR o consumo efectivo de APISPERU.
+
+### Observacion posterior y decision PO
+
+Contexto: BBTEC OC 002870, expediente 3,
+documento base 500.
+
+- TEMP 336 y 337: mismo nombre de factura FF62-1891.
+- TEMP 338: factura FF62-1695, nombre diferente.
+- Los registros fueron observados como pendientes.
+- Identidad binaria SHA256 no verificada.
+- Duplicidad documental definitiva no establecida.
+
+PO decide mantener R3 PASS y diferir el diagnostico.
+No realizar borrados, cambios de contexto ni
+intervenciones correctivas por esta observacion.
+
+Requerimiento futuro separado:
+
+- Descartar/eliminar factura TEMP cargada por error.
+- Cambiar OC/OS de una factura TEMP pendiente.
+
+El diseno y autorizacion de ese requerimiento
+permanecen pendientes.
+
+TEMP_DUPLICATE_DIAGNOSTIC=DEFERRED_BY_PO.
+
+### Gobernanza y continuidad
+
+- MODE=NORMAL.
+- GOVERNANCE=R1.
+- MANUALS_VERSION=R3.
+- MAX_GATES=4.
+- RELEASE_MODEL=ONE_INTEGRATED_RELEASE.
+- MSE 2.0 conserva arquitectura y gobierno institucional.
+- MSE 3.0 dirige el ciclo operativo delegado.
+- PO conserva las autorizaciones.
+- Codex es colaborador opcional.
+
+Preservar SOURCE nativo pnpm, OCR Python systemd
+y Cloudflare R2 directo en LAB unificado y PROD.
+No reintroducir MinIO como intermediario en ese circuito.
+
+No reintroducir PID files, timers administrativos
+ni supervisores adicionales para SOURCE.
+
+No repetir pruebas, migracion 0025, builds, publicacion
+GHCR o recreacion por cambios exclusivamente documentales.
+
+Conservar la limpieza .next diferida hasta la detencion
+ordinaria de Web LAB, segun disposicion PO.
+
+La presente adenda no acredita su propia publicacion.
+Registrar las identidades documentales posteriores
+solo despues de commit/push y sincronizacion efectivos.
+
+Pendientes:
+
+1. Publicacion documental SOURCE autorizada.
+2. Adaptacion y publicacion documental Enterprise.
+3. Fast-forward documental EC2 autorizado,
+   sin recreacion de servicios.
+4. Entrega de continuidad a MSE Actual.
+5. Actualizacion de manuales externos y Bibliotecario
+   bajo responsabilidad institucional MSE 2.0.
+
+No abrir G5. El cierre documental pertenece a G4.
+
+Siguiente requerimiento: R2 NAS, conservando G1
+y la validacion de infraestructura NAS DEV ya acreditadas.
+No iniciar implementacion NAS antes del cierre R3.

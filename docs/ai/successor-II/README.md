@@ -620,3 +620,157 @@ ni modificar los manuales externos.
 Escalar divergencias materiales, incompatibilidad,
 riesgos productivos, fallos de publicación/despliegue
 o insuficiencia real de evidencia.
+
+
+---
+
+## 2026-11-19 — Cierre productivo R3 Factura TEMP
+
+ACTION: BBTI_FACTURA_TEMP_POST_DEPLOY_DOCUMENTARY_CLOSURE_R1
+
+Adenda exclusivamente documental posterior al despliegue
+y aceptación funcional productiva del 19/11/2026.
+
+Prevalece sobre estados anteriores incompatibles de R3.
+Se preservan íntegramente los antecedentes históricos.
+
+
+### Identidades acreditadas
+
+- SOURCE funcional:
+  `793152d3cdc9ab752cfb699839358255a1db25c5`.
+- SOURCE cierre G3:
+  `3716b71c2ff812710f4d9c44242dbad73331336f`.
+- SOURCE consolidado previo a esta adenda:
+  `5f5ff49b1e48d2dea200c4a1476a7cff3f6e9f58`.
+- Enterprise funcional:
+  `c2198dcb8a6eaeb063f45c31d6b225e630e81af9`.
+- Enterprise publicado y desplegado:
+  `5066a6e9eaeb95e3039ce16f6a0acb732846ea0e`.
+- EC2 checkout acreditado durante despliegue:
+  `5066a6e9eaeb95e3039ce16f6a0acb732846ea0e`.
+- GHCR workflow: `.github/workflows/build-images.yml`.
+- GHCR run: `44563965795`.
+- GHCR job: `135700545256`.
+- Publicacion integrada: 4/4 SUCCESS.
+- Plataforma: linux/amd64.
+
+### Instrucciones al siguiente colaborador
+
+El requerimiento R3 Factura TEMP esta desplegado
+y cuenta con aceptacion funcional productiva 8/8 PASS.
+
+No tratar los estados PENDING historicos como
+incidencias vigentes cuando esta adenda los supera.
+
+Consultar RELEASE_MANIFEST.md para digests completos,
+directorio release, evidencias y rollback.
+
+La gobernanza y la transferencia al Bibliotecario
+permanecen bajo MSE Actual.
+
+No repetir el diagnostico cross-user ni reabrir
+custodias historicas de TEMP328/334 o 48 archivos.
+
+R2 NAS es el siguiente requerimiento autorizado
+para continuidad una vez cerrado G4 documental.
+Recuperar su acuerdo funcional y evidencia DEV.
+No comenzar nuevamente desde cero.
+
+### Aceptacion funcional productiva PO
+
+Fecha: 2026-11-19.
+
+Resultados expresamente reportados por PO:
+
+1. Carga de factura TEMP: PASS.
+2. Recuperacion despues de actualizar: PASS.
+3. Recuperacion por otro usuario: PASS.
+4. Preservacion OCR y PDF: PASS.
+5. Aislamiento documental: PASS.
+6. Confirmacion por otro usuario: PASS.
+7. Persistencia definitiva: PASS.
+8. Regresion OC/OS: PASS.
+
+PRODUCTION_FUNCTIONAL_ACCEPTANCE_R3=CLOSED_PASS.
+R3_FUNCTIONAL_TESTS=8_OF_8_PASS.
+
+La confirmacion cross-user pendiente de acreditacion
+en SOURCE queda aceptada funcionalmente en produccion.
+
+La evidencia funcional corresponde a declaracion PO;
+no implica auditoria SQL/R2 independiente ni prueba
+exhaustiva de concurrencia.
+
+No extender esta aceptacion a pendientes historicos
+Auth, OCR o consumo efectivo de APISPERU.
+
+### Observacion posterior y decision PO
+
+Contexto: BBTEC OC 002870, expediente 3,
+documento base 500.
+
+- TEMP 336 y 337: mismo nombre de factura FF62-1891.
+- TEMP 338: factura FF62-1695, nombre diferente.
+- Los registros fueron observados como pendientes.
+- Identidad binaria SHA256 no verificada.
+- Duplicidad documental definitiva no establecida.
+
+PO decide mantener R3 PASS y diferir el diagnostico.
+No realizar borrados, cambios de contexto ni
+intervenciones correctivas por esta observacion.
+
+Requerimiento futuro separado:
+
+- Descartar/eliminar factura TEMP cargada por error.
+- Cambiar OC/OS de una factura TEMP pendiente.
+
+El diseno y autorizacion de ese requerimiento
+permanecen pendientes.
+
+TEMP_DUPLICATE_DIAGNOSTIC=DEFERRED_BY_PO.
+
+### Gobernanza y continuidad
+
+- MODE=NORMAL.
+- GOVERNANCE=R1.
+- MANUALS_VERSION=R3.
+- MAX_GATES=4.
+- RELEASE_MODEL=ONE_INTEGRATED_RELEASE.
+- MSE 2.0 conserva arquitectura y gobierno institucional.
+- MSE 3.0 dirige el ciclo operativo delegado.
+- PO conserva las autorizaciones.
+- Codex es colaborador opcional.
+
+Preservar SOURCE nativo pnpm, OCR Python systemd
+y Cloudflare R2 directo en LAB unificado y PROD.
+No reintroducir MinIO como intermediario en ese circuito.
+
+No reintroducir PID files, timers administrativos
+ni supervisores adicionales para SOURCE.
+
+No repetir pruebas, migracion 0025, builds, publicacion
+GHCR o recreacion por cambios exclusivamente documentales.
+
+Conservar la limpieza .next diferida hasta la detencion
+ordinaria de Web LAB, segun disposicion PO.
+
+La presente adenda no acredita su propia publicacion.
+Registrar las identidades documentales posteriores
+solo despues de commit/push y sincronizacion efectivos.
+
+Pendientes:
+
+1. Publicacion documental SOURCE autorizada.
+2. Adaptacion y publicacion documental Enterprise.
+3. Fast-forward documental EC2 autorizado,
+   sin recreacion de servicios.
+4. Entrega de continuidad a MSE Actual.
+5. Actualizacion de manuales externos y Bibliotecario
+   bajo responsabilidad institucional MSE 2.0.
+
+No abrir G5. El cierre documental pertenece a G4.
+
+Siguiente requerimiento: R2 NAS, conservando G1
+y la validacion de infraestructura NAS DEV ya acreditadas.
+No iniciar implementacion NAS antes del cierre R3.
