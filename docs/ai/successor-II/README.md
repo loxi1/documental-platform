@@ -311,3 +311,143 @@ No repetir investigaciones cerradas. Consultar el manual
 específico y la documentación institucional vigente.
 Las referencias Git de los manuales se actualizarán
 después de la publicación SOURCE y Enterprise.
+
+
+---
+
+## R3 Factura TEMP — aceptación SOURCE y relevo — 19/11/2026
+
+Acción `BBTI_FACTURA_TEMP_G3_SOURCE_CLOSURE_R1`. Para este frente prevalece esta adenda sobre el estado de G3 pendiente del informe G2; se conserva el historial. PO/MSE 3.0 ratifica aceptación SOURCE con observaciones, no aceptación PROD. Rama `feat/compras-factura-temp-recovery-r1`, base `8807b4a9a99870396ec35a7ef1011cec1402c745`; commit e integración SOURCE pendientes.
+
+- PASS PO: recuperación por cargador y tras refrescar, OCR parcial editable, confirmación, dos pendientes simultáneos, aislamiento OC/OS y regresión OC/OS. Testigo TEMP378 / expediente121 / principal541 / documento542 / archivo547 / grupo150 / OCR522, noviembre 2026.
+- **CROSS_USER_RECOVERY=FAIL; DEFERRED_BY_PO.** No anunciar recuperación entre usuarios como funcionalmente aceptada ni corregirla en esta intervención. La implementación y las pruebas offline no sustituyen ese resultado real.
+- Listado contextual en Documentos de compra, selección individual, PDF/TEMP originales, OCR y borrador persistidos y edición manual sin OCR nuevo por recuperar. Mantener el modal existente, cierre sin confirmación y validaciones de Guardar y confirmar. No inferir persistencia de ediciones manuales nunca guardadas.
+- La recuperación genérica de Factura y Factura directa se sustituyó en ese bloque por el listado y un acceso histórico por identidad propia conocida. OC/OS conserva su recuperación. No se modifican constantes globales ni Almacén.
+- 218 PASS, tres typechecks y builds backend 2/2/Web PASS son evidencia heredada ratificada en la orden G3; no repetir. No se dispone de captura exhaustiva de red, inspección física independiente R2 posterior o concurrencia exhaustiva.
+- Mantener observaciones OCR legacy FINANZAS/TEMP_REGULARIZACION_OP y `principalActivo`, sin atribuirles causa o asociación incorrecta no demostradas.
+- Web3005 permanece activo por decisión PO. Build formal con URLs PROD mientras estaba activo: desviación operativa registrada; no ejecutar el artefacto formal ni limpiar `.next` ahora. Arranques backend acreditados, no tareas pendientes de este cierre.
+
+Revisión focal estática: controles JWT/permisos y ámbito contextual presentes; rutas generales conservan propietario. No se halló un bypass nuevo demostrable en el alcance revisado. Esto no certifica todos los accesos reales ni amplía autoridad MSII a backend/seguridad.
+
+Ver [operación SOURCE](../../29-operations-manual/README.md#r3-factura-temp--cierre-g3-source-con-observaciones--19112026), [contrato](../../28-api-cookbook/04-documentos.md#r3-factura-temp--contrato-contextual-y-estado-g3--19112026) y [delta técnico de entrega](../../../DELTA_TECNICO_MSE3_A_MSE_ACTUAL.md). Manifest e inventario: propuestas aditivas pendientes de cierre Git, con SHA funcional real solo después del commit. Enterprise/GHCR/EC2 y aceptación PROD R3 pendientes; sin migración, OCR Python o NAS. No iniciar G4 por esta lectura.
+
+
+### Corrección cross-user R3 — 19/11/2026
+
+**CROSS_USER_RECOVERY=FIX_IMPLEMENTED_PENDING_PO_VALIDATION.** Sustituye únicamente el estado vigente de la observación diferida; conserva el FAIL real y las evidencias anteriores. Se acreditó que workspaceId es una asignación individual de usuario, no un identificador compartido entre A y B. La corrección se limita al repositorio TEMP: verifica pertenencias del origen y del operador al mismo DOCUMENTAL/empresa/cliente, manteniendo autenticación, permisos y contexto OC/OS. No cambian frontend, rutas ni OCR; no se solicita nuevo upload para recuperar. Los tests entre actores ahora incluyen IDs personales distintos; 27 PASS focales y typecheck Documentos PASS, sin validación física PostgreSQL o aceptación visual aún. MSE debe actualizar solo Documentos3002 y coordinar la comprobación sobre un pendiente vigente como TEMP382/exp121/principal541. No reiniciar por leer esta nota ni declarar PASS funcional. Véase el delta técnico para diff exacto, límites y propuesta de manifest actualizada. SOURCE main, Enterprise y producción siguen sin promoción de R3 en esta intervención.
+
+
+---
+
+## R3 Factura TEMP - consolidacion documental G3 - 19/11/2026
+
+ACTION: BBTI_FACTURA_TEMP_G3_DOCUMENTARY_FINALIZATION_R1
+
+- Base SOURCE: `8807b4a9a99870396ec35a7ef1011cec1402c745`.
+- Rama focal: `feat/compras-factura-temp-recovery-r1`.
+- Commit funcional SOURCE local: `793152d3cdc9ab752cfb699839358255a1db25c5`.
+- Inventario funcional: 12 archivos, +593/-45.
+- Commit documental e integracion SOURCE main: pendientes.
+- Publicacion remota de R3: pendiente.
+
+### Aceptacion SOURCE LAB y precedencia
+
+Esta entrada actualiza el estado vigente de R3 Factura TEMP.
+Conserva el FAIL, HOLD y diferimiento anteriores como
+antecedentes historicos.
+
+- CROSS_USER_RECOVERY=PASS_PO.
+- CROSS_USER_CONFIRMATION=NOT_ACCREDITED.
+- DOCUMENTOS_BUILD=PASS, exit 0.
+- DOCUMENTOS_RESTART=PASS_PO.
+- SOURCE_FUNCTIONAL_ACCEPTANCE=PASS_WITH_OBSERVATIONS.
+
+El PO confirma que, despues de actualizar Documentos3002,
+puede recuperar una factura cargada por otro usuario.
+Este resultado acredita el recorrido funcional observado,
+no una auditoria SQL, de seguridad o concurrencia integral.
+
+Se conservan las aceptaciones anteriores: recuperacion
+por cargador y despues de refrescar, OCR parcial editable,
+confirmacion ordinaria, pendientes simultaneos, aislamiento
+OC/OS y regresion OC/OS.
+
+No inferir confirmacion cruzada, nueva materializacion,
+verificacion fisica independiente R2 ni aceptacion PROD.
+
+### Evidencia tecnica y limites
+
+- Pruebas G2: 218 PASS, evidencia historica.
+- Typechecks G2: 3/3 PASS.
+- Builds previos Documentos/Gateway: 2/2 PASS.
+- Build formal Web: PASS, 22/22 prerender, exit 0.
+- Correccion cross-user: 27 PASS, 0 FAIL,
+  24 omitidas por filtro, dos suites.
+- Typecheck focal Documentos: PASS.
+- Build Documentos posterior a la correccion: PASS.
+- SECURITY_FOCAL_RESULT=PASS_STATIC_WITH_OBSERVATIONS.
+- STAGED_DIFF_CHECK=PASS.
+
+No sumar las 218 pruebas y las 27 focales como casos
+independientes. No afirmar repeticion integral posterior.
+
+La correccion valida las asignaciones personales del
+cargador y operador al mismo DOCUMENTAL, empresa y cliente,
+conservando contexto OC/OS, permisos y propietario de las
+rutas generales. No modifica Auth ni suplanta actores.
+
+El recorrido real de recuperacion funciona en SOURCE LAB.
+No se acredita una auditoria independiente de privilegios
+SQL ni su disponibilidad en produccion. Si faltan permisos
+SELECT requeridos, STOP, sin GRANT automatico.
+
+Se conservan las observaciones OCR legacy, principalActivo,
+captura de red no exhaustiva y concurrencia no acreditada.
+
+### Actualizacion operativa acreditada
+
+Solo Documentos3002 fue recompilado y actualizado por
+la correccion cross-user. El primer arranque encontro
+EADDRINUSE por el proceso anterior activo. El PO confirma
+recuperacion correcta despues del reinicio.
+
+No repetir build ni reinicio por leer esta entrada.
+Preservar Gateway3000, Auth3001, Web3005, PostgreSQL,
+NATS, R2 DEV y OCR systemd existentes.
+
+Web3005 permanece activo. La limpieza de .next queda
+diferida hasta su detencion ordinaria. No ejecutar el
+artefacto Web formal con URLs PROD como runtime LAB.
+
+Sin PID files, timers ni supervisores adicionales.
+
+### Alcance y promocion
+
+- Migraciones nuevas: NONE.
+- Cambios OCR Python: NONE.
+- Cambios Auth: NONE.
+- Cambios NAS: NONE.
+- Enterprise R3: NOT_PROMOTED.
+- GHCR R3: NOT_PUBLISHED.
+- EC2 R3: NOT_DEPLOYED.
+- Aceptacion PROD R3: NOT_PERFORMED.
+- G4: NOT_AUTHORIZED.
+
+Aplicar ONE_INTEGRATED_RELEASE de cuatro componentes,
+tras cierre SOURCE y autorizacion independiente del PO,
+bajo direccion de MSE Actual.
+
+No atribuir a R3 digests de releases anteriores.
+MSE Actual conserva gobernanza del manifest, promocion,
+despliegue y cierre institucional posterior.
+
+NAS constituye un entregable independiente y posterior.
+
+### Continuidad MSE
+
+Siguiente paso: finalizar commit documental e integrar
+SOURCE main tras verificar su identidad local/remota.
+Entregar el delta tecnico a MSE Actual antes de G4.
+
+No reabrir diagnostico cross-user, repetir pruebas
+cerradas ni modificar los servicios por este cierre.

@@ -1053,3 +1053,44 @@ No repetir investigaciones cerradas. Consultar el manual
 específico y la documentación institucional vigente.
 Las referencias Git de los manuales se actualizarán
 después de la publicación SOURCE y Enterprise.
+
+
+---
+
+## R3 Factura TEMP - consolidacion documental G3 - 19/11/2026
+
+ACTION: BBTI_FACTURA_TEMP_G3_DOCUMENTARY_FINALIZATION_R1
+
+- Base SOURCE: `8807b4a9a99870396ec35a7ef1011cec1402c745`.
+- Rama focal: `feat/compras-factura-temp-recovery-r1`.
+- Commit funcional SOURCE local: `793152d3cdc9ab752cfb699839358255a1db25c5`.
+- Inventario funcional: 12 archivos, +593/-45.
+- Commit documental e integracion SOURCE main: pendientes.
+- Publicacion remota de R3: pendiente.
+
+### Estado Git observado y alcance
+
+SOURCE canonico:
+`/home/loxi1/projects/apps/documental-platform`.
+
+Rama focal `feat/compras-factura-temp-recovery-r1` con commit funcional `793152d3cdc9ab752cfb699839358255a1db25c5`.
+Padre funcional: `8807b4a9a99870396ec35a7ef1011cec1402c745`.
+
+Commit funcional: 12 archivos, +593/-45.
+Sin cambios funcionales pendientes reportados.
+Cuatro documentos pendientes antes de esta adenda;
+se incorporan manifest e inventario al cierre,
+para un total documental previsto de seis rutas.
+
+SOURCE main, origin/main y remoto se verificaran
+antes de integrar. No se declara realizada la
+integracion, publicacion o eliminacion de la rama.
+
+Enterprise es un repositorio independiente.
+No se modifica ni consulta mediante esta adenda.
+
+No borrar ramas, worktrees ni custodias historicas.
+
+CROSS_USER_RECOVERY=PASS_PO.
+CROSS_USER_CONFIRMATION=NOT_ACCREDITED.
+G4=NOT_AUTHORIZED.

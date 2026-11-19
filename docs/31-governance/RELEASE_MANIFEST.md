@@ -888,3 +888,120 @@ históricas incompatibles de P3/R3, TEMP328/334 y NAS.
 La ratificación funcional no acredita por sí misma
 nuevas identidades de imágenes, despliegues EC2,
 borrados físicos ni nuevas pruebas automatizadas.
+
+
+---
+
+## R3 Factura TEMP - consolidacion documental G3 - 19/11/2026
+
+ACTION: BBTI_FACTURA_TEMP_G3_DOCUMENTARY_FINALIZATION_R1
+
+- Base SOURCE: `8807b4a9a99870396ec35a7ef1011cec1402c745`.
+- Rama focal: `feat/compras-factura-temp-recovery-r1`.
+- Commit funcional SOURCE local: `793152d3cdc9ab752cfb699839358255a1db25c5`.
+- Inventario funcional: 12 archivos, +593/-45.
+- Commit documental e integracion SOURCE main: pendientes.
+- Publicacion remota de R3: pendiente.
+
+### Aceptacion SOURCE LAB y precedencia
+
+Esta entrada actualiza el estado vigente de R3 Factura TEMP.
+Conserva el FAIL, HOLD y diferimiento anteriores como
+antecedentes historicos.
+
+- CROSS_USER_RECOVERY=PASS_PO.
+- CROSS_USER_CONFIRMATION=NOT_ACCREDITED.
+- DOCUMENTOS_BUILD=PASS, exit 0.
+- DOCUMENTOS_RESTART=PASS_PO.
+- SOURCE_FUNCTIONAL_ACCEPTANCE=PASS_WITH_OBSERVATIONS.
+
+El PO confirma que, despues de actualizar Documentos3002,
+puede recuperar una factura cargada por otro usuario.
+Este resultado acredita el recorrido funcional observado,
+no una auditoria SQL, de seguridad o concurrencia integral.
+
+Se conservan las aceptaciones anteriores: recuperacion
+por cargador y despues de refrescar, OCR parcial editable,
+confirmacion ordinaria, pendientes simultaneos, aislamiento
+OC/OS y regresion OC/OS.
+
+No inferir confirmacion cruzada, nueva materializacion,
+verificacion fisica independiente R2 ni aceptacion PROD.
+
+### Inventario funcional comprometido
+
+- `apps/api-gateway/src/documentos/documentos.controller.ts`
+- `apps/api-gateway/src/documentos/documentos.tmp-compras.controller.spec.ts`
+- `apps/ms-documentos/src/documentos/tmp/tmp.compras-recovery.spec.ts`
+- `apps/ms-documentos/src/documentos/tmp/tmp.controller.ts`
+- `apps/ms-documentos/src/documentos/tmp/tmp.documental.spec.ts`
+- `apps/ms-documentos/src/documentos/tmp/tmp.repository.spec.ts`
+- `apps/ms-documentos/src/documentos/tmp/tmp.repository.ts`
+- `apps/ms-documentos/src/documentos/tmp/tmp.service.ts`
+- `apps/web-admin/src/components/compras/CompraExpedienteEditor.temp-recovery.test.cjs`
+- `apps/web-admin/src/components/compras/CompraExpedienteEditor.tsx`
+- `apps/web-admin/src/services/carga-segura.temp.test.cjs`
+- `apps/web-admin/src/services/carga-segura.ts`
+
+### Evidencia tecnica y limites
+
+- Pruebas G2: 218 PASS, evidencia historica.
+- Typechecks G2: 3/3 PASS.
+- Builds previos Documentos/Gateway: 2/2 PASS.
+- Build formal Web: PASS, 22/22 prerender, exit 0.
+- Correccion cross-user: 27 PASS, 0 FAIL,
+  24 omitidas por filtro, dos suites.
+- Typecheck focal Documentos: PASS.
+- Build Documentos posterior a la correccion: PASS.
+- SECURITY_FOCAL_RESULT=PASS_STATIC_WITH_OBSERVATIONS.
+- STAGED_DIFF_CHECK=PASS.
+
+No sumar las 218 pruebas y las 27 focales como casos
+independientes. No afirmar repeticion integral posterior.
+
+La correccion valida las asignaciones personales del
+cargador y operador al mismo DOCUMENTAL, empresa y cliente,
+conservando contexto OC/OS, permisos y propietario de las
+rutas generales. No modifica Auth ni suplanta actores.
+
+El recorrido real de recuperacion funciona en SOURCE LAB.
+No se acredita una auditoria independiente de privilegios
+SQL ni su disponibilidad en produccion. Si faltan permisos
+SELECT requeridos, STOP, sin GRANT automatico.
+
+Se conservan las observaciones OCR legacy, principalActivo,
+captura de red no exhaustiva y concurrencia no acreditada.
+
+### Alcance y promocion
+
+- Migraciones nuevas: NONE.
+- Cambios OCR Python: NONE.
+- Cambios Auth: NONE.
+- Cambios NAS: NONE.
+- Enterprise R3: NOT_PROMOTED.
+- GHCR R3: NOT_PUBLISHED.
+- EC2 R3: NOT_DEPLOYED.
+- Aceptacion PROD R3: NOT_PERFORMED.
+- G4: NOT_AUTHORIZED.
+
+Aplicar ONE_INTEGRATED_RELEASE de cuatro componentes,
+tras cierre SOURCE y autorizacion independiente del PO,
+bajo direccion de MSE Actual.
+
+No atribuir a R3 digests de releases anteriores.
+MSE Actual conserva gobernanza del manifest, promocion,
+despliegue y cierre institucional posterior.
+
+NAS constituye un entregable independiente y posterior.
+
+### Referencias de continuidad
+
+- [Delta tecnico MSE 3.0](../../DELTA_TECNICO_MSE3_A_MSE_ACTUAL.md).
+- [Manual operativo](../29-operations-manual/README.md).
+- [Contrato API](../28-api-cookbook/04-documentos.md).
+- [Legado](../ai/successor-II/README.md).
+- [Inventario Git](BRANCH_INVENTORY.md).
+
+Esta adenda es exclusivamente R3 Factura TEMP.
+No sustituye entradas historicas ni reconcilia
+otros releases o estados productivos.
