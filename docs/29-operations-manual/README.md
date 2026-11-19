@@ -524,3 +524,199 @@ MSE Actual conserva gobernanza del manifest, promocion,
 despliegue y cierre institucional posterior.
 
 NAS constituye un entregable independiente y posterior.
+
+
+---
+
+## Consolidación de continuidad del release integrado — 19/11/2026
+
+ACTION: BBTI_INTEGRATED_RELEASE_SOURCE_DOCUMENTARY_CONSOLIDATION_R1
+
+
+### Publicación SOURCE de Factura TEMP — 19/11/2026
+
+- Baseline SOURCE:
+  `8807b4a9a99870396ec35a7ef1011cec1402c745`.
+- Commit funcional:
+  `793152d3cdc9ab752cfb699839358255a1db25c5`.
+- Commit documental y cierre SOURCE publicado:
+  `3716b71c2ff812710f4d9c44242dbad73331336f`.
+- Integración fast-forward autorizada por PO: PASS.
+- Publicación SOURCE main: CLOSED_PASS.
+- main, origin/main y remoto real coincidentes en
+  `3716b71c2ff812710f4d9c44242dbad73331336f`.
+- Working tree limpio en la comprobación previa a esta edición.
+- Rama `feat/compras-factura-temp-recovery-r1` preservada.
+- Delta acumulado: 18 archivos, +1673/-45.
+- Composición: 6 funcionales, 6 tests y 6 documentales.
+- G3=CLOSED_PASS_WITH_OBSERVATIONS.
+- CROSS_USER_RECOVERY=PASS_PO.
+- CROSS_USER_CONFIRMATION=NOT_ACCREDITED.
+
+Estas identidades corresponden al cierre publicado,
+anterior al commit de la presente consolidación.
+No anticipar la SHA de esta nueva adenda.
+
+### Continuidad del release integrado del 18/11
+
+- Enterprise y checkout EC2 acreditados: f26f292d.
+- GHCR run 44327350315, job 134882118595.
+- Publicación integrada linux/amd64: 4/4 PASS.
+- Despliegue técnico: CLOSED_PASS.
+- Rendimiento: CLOSED_PASS_WITH_OBSERVATIONS.
+- Aceptación funcional productiva integral: PENDING.
+
+Consultar [manifest rector](../31-governance/RELEASE_MANIFEST.md)
+para las identidades completas, digests ejecutables,
+índices OCI y evidencia durable del release anterior.
+
+### Compatibilidad Enterprise y SQL productiva
+
+Evidencia recibida y acreditada por MSE 2.0
+en la delegación operativa del 19/11/2026.
+
+- Enterprise baseline:
+  `f26f292d2c07c9a75feba9db782c5b30982b1060`.
+- Compatibilidad funcional/test: 12/12 PASS.
+- Adaptaciones funcionales necesarias: NONE.
+- DATABASE=gestion_documental.
+- ROLE=document_platform.
+- TRANSACTION_READ_ONLY=on.
+- AUTH_USUARIO_WORKSPACES_SELECT=PASS.
+- CORE_SISTEMAS_SELECT=PASS.
+- SQL_PREFLIGHT=PASS.
+- PRODUCTION_SQL_COMPATIBILITY=CLOSED_PASS.
+
+La comprobación SQL fue realizada desde MS Documentos
+productivo, según evidencia institucional de MSE Actual.
+Supera la condición de privilegios no acreditados
+registrada durante G3.
+
+No repetir las consultas ni conceder GRANT.
+No equivale a aceptación funcional productiva de R3.
+
+### Preparación operativa del nuevo candidato
+
+Después de publicar esta consolidación SOURCE:
+
+1. Verificar identidades SOURCE y Enterprise.
+2. Transferir las doce rutas funcionales/test.
+3. Adaptar selectivamente documentación Enterprise.
+4. Validar composición y solicitar autorización PO
+   de commit y push Enterprise.
+5. Preparar publicación integrada GHCR de 4 componentes.
+6. Publicar únicamente con autorización PO.
+7. Preparar evidencia EC2, baseline efectivo,
+   digests, configuración y rollback.
+8. Desplegar únicamente con autorización expresa PO.
+9. Verificar técnicamente y coordinar aceptación real.
+10. Consolidar documentalmente los resultados efectivos.
+
+No constituye autorización de ejecución de estas
+operaciones ni creación de gates administrativos.
+
+Utilizar procedimiento del manual 05 y conservar:
+
+- Checkout `/home/ubuntu/apps/documental-platform-bbti-prod`.
+- Proyecto Compose `docker`.
+- Ejecución autorizada mediante sudo -n.
+- RDS, Cloudflare R2, NATS y Traefik.
+- OCR Python systemd y override APISPERU.
+- Configuraciones, secretos, redes y volúmenes.
+
+Migración 0025 previamente aplicada; no reejecutar.
+Extractor OCR instalado; no reinstalar.
+Sin down global ni limpieza Docker.
+
+Preparar rollback desde el runtime productivo efectivo
+anterior, no desde un override ancestral.
+
+STOP si el rollback compromete la revocación Auth.
+No revertir auth_version ni restaurar Auth inseguro.
+
+### Preservación de SOURCE LAB
+
+No repetir compilaciones o reinicios de G3.
+No modificar la configuración SOURCE acreditada.
+
+Web3005 permanece activo por disposición PO.
+Limpieza de .next diferida a la detención ordinaria.
+No ejecutar el artefacto Web formal con URLs PROD
+como runtime LAB.
+
+Sin PID files, timers ni supervisores adicionales.
+
+### Aceptación productiva posterior
+
+Distinguir publicación GHCR, despliegue técnico,
+aceptación funcional y cierre documental.
+
+HTTP 200 no acredita aceptación funcional.
+
+Coordinar recuperación tras refrescar, conservación
+del archivo y OCR persistido, edición de incompletos,
+aislamiento contextual, recuperación y confirmación
+cross-user, confirmación ordinaria y regresiones.
+
+Conservar pendientes de aceptación Auth y OCR
+del release integrado anterior.
+
+No presentar pruebas SOURCE LAB como pruebas PROD.
+
+### Gobernanza y precedencia
+
+Se preservan todas las entradas históricas. La presente
+adenda prevalece únicamente sobre estados anteriores
+incompatibles con estos acontecimientos acreditados.
+
+MSE 2.0 acepta la entrega G3 y delega a MSE 3.0
+la coordinación y ejecución operativa del ciclo G4.
+
+- MODE=NORMAL.
+- GOVERNANCE=R1.
+- MANUALS_VERSION=R3.
+- MAX_GATES=4.
+- RELEASE_MODEL=ONE_INTEGRATED_RELEASE.
+- ARCHITECTURE_OWNER=MSE_2_0.
+- RELEASE_GOVERNANCE_OWNER=MSE_2_0.
+- OPERATIONAL_EXECUTOR=MSE_3_0.
+- AUTHORIZATION_OWNER=PO.
+- MANUALS_AND_LIBRARIAN_OWNER=MSE_2_0.
+- MSE3_IS_SUCCESSOR=NO.
+- CODEX=OPTIONAL_SPECIALIZED_COLLABORATOR.
+
+La delegación no concede autorización automática
+de commit, push, publicación GHCR ni despliegue EC2.
+
+No reabrir G2/G3 ni activar RECOVERY por estados
+documentales históricos superados.
+
+La colección permanente vigente es R3, diez manuales
+00-09 del 18/11/2026, instalada en:
+
+`~/Documentos/importantesProyectos/Documentacion_tecnica/BBTI_MANUALES_2026-11-18_R3/`
+
+Consultar primero el manual 00 y los manuales
+específicos según la intervención.
+
+La actualización externa y transferencia a Bibliotecario
+permanecen bajo responsabilidad de MSE 2.0.
+
+### Estado del nuevo release Factura TEMP
+
+- SOURCE_FUNCTIONAL_PUBLICATION=CLOSED_PASS.
+- SOURCE_DOCUMENTARY_CONSOLIDATION=PREPARED_PENDING_PUBLICATION.
+- ENTERPRISE_PROMOTION=PENDING.
+- GHCR_PUBLICATION=NOT_AUTHORIZED.
+- EC2_DEPLOYMENT=NOT_AUTHORIZED.
+- PRODUCTION_FUNCTIONAL_ACCEPTANCE_R3=NOT_PERFORMED.
+- POST_DEPLOY_DOCUMENTATION_R3=PENDING.
+
+El release anterior del 18/11 y R3 Factura TEMP del 19/11
+son acontecimientos diferenciados.
+
+No atribuir a R3 imágenes o digests anteriores.
+No introducir migraciones, cambios Auth, cambios OCR Python
+ni integración NAS por este requerimiento.
+
+NAS permanece fuera del alcance.

@@ -1094,3 +1094,127 @@ No borrar ramas, worktrees ni custodias historicas.
 CROSS_USER_RECOVERY=PASS_PO.
 CROSS_USER_CONFIRMATION=NOT_ACCREDITED.
 G4=NOT_AUTHORIZED.
+
+
+---
+
+## Consolidación de continuidad del release integrado — 19/11/2026
+
+ACTION: BBTI_INTEGRATED_RELEASE_SOURCE_DOCUMENTARY_CONSOLIDATION_R1
+
+
+### Publicación SOURCE de Factura TEMP — 19/11/2026
+
+- Baseline SOURCE:
+  `8807b4a9a99870396ec35a7ef1011cec1402c745`.
+- Commit funcional:
+  `793152d3cdc9ab752cfb699839358255a1db25c5`.
+- Commit documental y cierre SOURCE publicado:
+  `3716b71c2ff812710f4d9c44242dbad73331336f`.
+- Integración fast-forward autorizada por PO: PASS.
+- Publicación SOURCE main: CLOSED_PASS.
+- main, origin/main y remoto real coincidentes en
+  `3716b71c2ff812710f4d9c44242dbad73331336f`.
+- Working tree limpio en la comprobación previa a esta edición.
+- Rama `feat/compras-factura-temp-recovery-r1` preservada.
+- Delta acumulado: 18 archivos, +1673/-45.
+- Composición: 6 funcionales, 6 tests y 6 documentales.
+- G3=CLOSED_PASS_WITH_OBSERVATIONS.
+- CROSS_USER_RECOVERY=PASS_PO.
+- CROSS_USER_CONFIRMATION=NOT_ACCREDITED.
+
+Estas identidades corresponden al cierre publicado,
+anterior al commit de la presente consolidación.
+No anticipar la SHA de esta nueva adenda.
+
+### Estado de Enterprise y del checkout EC2
+
+Repositorio Enterprise independiente:
+
+`/home/loxi1/projects/apps/documental-platform-bbti-prod`
+
+Baseline acreditada por MSE Actual:
+
+`f26f292d2c07c9a75feba9db782c5b30982b1060`
+
+Main limpio en la última comprobación institucional.
+Compatibilidad de doce rutas funcionales/test: 12/12 PASS.
+
+Checkout productivo EC2 del despliegue del 18/11:
+
+`f26f292d2c07c9a75feba9db782c5b30982b1060`
+
+GHCR run anterior: 44327350315, publicación 4/4.
+
+Consultar RELEASE_MANIFEST.md para identidades OCI
+y evidencia del despliegue técnico anterior.
+
+No se acredita una nueva consulta Enterprise o EC2
+mediante esta edición SOURCE.
+
+No existe promoción Enterprise R3 ejecutada.
+
+Preservar ramas, worktrees y custodias anteriores.
+No reabrir la reconciliación histórica de 48 archivos.
+
+La presente consolidación modifica exclusivamente
+cuatro documentos institucionales. El delta técnico
+G3 y el contrato API permanecen íntegros.
+
+### Gobernanza y precedencia
+
+Se preservan todas las entradas históricas. La presente
+adenda prevalece únicamente sobre estados anteriores
+incompatibles con estos acontecimientos acreditados.
+
+MSE 2.0 acepta la entrega G3 y delega a MSE 3.0
+la coordinación y ejecución operativa del ciclo G4.
+
+- MODE=NORMAL.
+- GOVERNANCE=R1.
+- MANUALS_VERSION=R3.
+- MAX_GATES=4.
+- RELEASE_MODEL=ONE_INTEGRATED_RELEASE.
+- ARCHITECTURE_OWNER=MSE_2_0.
+- RELEASE_GOVERNANCE_OWNER=MSE_2_0.
+- OPERATIONAL_EXECUTOR=MSE_3_0.
+- AUTHORIZATION_OWNER=PO.
+- MANUALS_AND_LIBRARIAN_OWNER=MSE_2_0.
+- MSE3_IS_SUCCESSOR=NO.
+- CODEX=OPTIONAL_SPECIALIZED_COLLABORATOR.
+
+La delegación no concede autorización automática
+de commit, push, publicación GHCR ni despliegue EC2.
+
+No reabrir G2/G3 ni activar RECOVERY por estados
+documentales históricos superados.
+
+La colección permanente vigente es R3, diez manuales
+00-09 del 18/11/2026, instalada en:
+
+`~/Documentos/importantesProyectos/Documentacion_tecnica/BBTI_MANUALES_2026-11-18_R3/`
+
+Consultar primero el manual 00 y los manuales
+específicos según la intervención.
+
+La actualización externa y transferencia a Bibliotecario
+permanecen bajo responsabilidad de MSE 2.0.
+
+### Estado del nuevo release Factura TEMP
+
+- SOURCE_FUNCTIONAL_PUBLICATION=CLOSED_PASS.
+- SOURCE_DOCUMENTARY_CONSOLIDATION=PREPARED_PENDING_PUBLICATION.
+- ENTERPRISE_PROMOTION=PENDING.
+- GHCR_PUBLICATION=NOT_AUTHORIZED.
+- EC2_DEPLOYMENT=NOT_AUTHORIZED.
+- PRODUCTION_FUNCTIONAL_ACCEPTANCE_R3=NOT_PERFORMED.
+- POST_DEPLOY_DOCUMENTATION_R3=PENDING.
+
+El release anterior del 18/11 y R3 Factura TEMP del 19/11
+son acontecimientos diferenciados.
+
+No atribuir a R3 imágenes o digests anteriores.
+No introducir migraciones, cambios Auth, cambios OCR Python
+ni integración NAS por este requerimiento.
+
+NAS permanece fuera del alcance.
