@@ -2429,3 +2429,31 @@ No se acredita un nuevo release publicado ni desplegado.
 No se modifica la identidad funcional de releases anteriores.
 
 NEXT_ACTION=MSE_ACTUAL_SOURCE_COMMIT_PUSH_AUTHORIZATION
+
+---
+
+## 2026-11-24 — NAS integrated release: focal SMB runtime packaging R1
+
+- Action: BBTI_NAS_INTEGRATED_RELEASE_ENTERPRISE_PROMOTION_R1.
+- Governance: R1 / NORMAL / ONE_INTEGRATED_RELEASE.
+- Authority: MSE Actual, conditional focal SOURCE packaging delta authorized.
+- Accepted SOURCE base: `79e133ae7c4ccbf78dfc322236f18e096be81144`.
+- Packaging functional commit: `f013c786f26d570627ce1067176a2b0068793bb4`.
+- Previous NAS engineering and physical DEV acceptance remain CLOSED_PASS / PASS_PO.
+- EC2 host NAS production SMB operations remain CLOSED_PASS.
+- Finding: the NAS adapter invokes smbclient, but the institutional Nest runtime Dockerfile did not install it.
+- Scope: deployment/docker/Dockerfile.nest only.
+- Runtime base: node:22-alpine.
+- Package: samba-client, installed exclusively for APP_PATH=apps/ms-documentos.
+- Build-time verification: command -v smbclient and smbclient --version in the final runtime stage.
+- No functional contract, OCR, database, NATS, authentication or document naming changes.
+- No additional SMB package installation for ms-auth or api-gateway.
+- Local structural validation and Git diff checks: PASS.
+- Final image build and SMB dependency accreditation: pending institutional GHCR integral publication.
+- DEV functional acceptance is preserved; no repetition required.
+- Migration 0026 remains pending production ledger READ_ONLY verification.
+- NAS production root: PLATAFORMA_DOCUMENTAL.
+- NAS backup and restore: not accredited; Hyper Backup deferred by PO.
+- EC2 deployment, production archiver activation and production R2 DELETE remain HOLD.
+- Excluded local recovery script preserved and not published.
+- No independent image release, auxiliary container or Codex execution.
