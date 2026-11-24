@@ -1368,3 +1368,57 @@ No abrir G5. El cierre documental pertenece a G4.
 Siguiente requerimiento: R2 NAS, conservando G1
 y la validacion de infraestructura NAS DEV ya acreditadas.
 No iniciar implementacion NAS antes del cierre R3.
+
+
+---
+
+## Continuidad SOURCE integrada R2-NAS - 24/11/2026
+
+ACTION=BBTI_NAS_INTEGRATED_RELEASE_SOURCE_PREPARATION_R1
+
+Esta adenda actualiza exclusivamente la identidad SOURCE y
+las referencias del requerimiento R2-NAS. Los antecedentes
+inferiores o anteriores se conservan sin reescritura.
+
+### Identidades acreditadas
+
+| Referencia | HEAD | Situacion |
+| --- | --- | --- |
+| SOURCE main | `18d0e1bd53d40da002872471924af41d001dd8bb` | Base publicada; delta local aceptado pendiente de commit |
+| origin/main | `18d0e1bd53d40da002872471924af41d001dd8bb` | Coincidente con HEAD y remoto consultado |
+| `feat/r2-nas-archive-r1` | `18d0e1bd53d40da002872471924af41d001dd8bb` | Referencia historica de desarrollo NAS; preservada |
+| `feat/g2-nas-integral-candidate-r1` | `18d0e1bd53d40da002872471924af41d001dd8bb` | Referencia historica de integracion; preservada |
+
+Las dos ramas NAS conservan cero commits exclusivos respecto
+de SOURCE main en la identidad acreditada.
+
+La integracion funcional se realizo por contenido en SOURCE
+principal y permanece pendiente de commit institucional.
+No se declara merge, publicacion de las ramas por su nombre,
+ni igualdad de sus arboles de trabajo actuales.
+
+No reutilizar los candidatos como origen de publicacion.
+El origen autorizado es SOURCE principal, rama main.
+
+### Composicion y proteccion
+
+- Aceptacion funcional DEV: PASS_PO.
+- Ingenieria: CLOSED.
+- Checkpoint final previo a esta adenda: 71/71 PASS.
+- Composicion funcional propuesta: 70 archivos.
+- Composicion documental propuesta: 2 archivos.
+- Exclusiones locales: 1 script de recuperacion historica.
+- Huella funcional: `141941aec973f7dc198418bb9faa3c1948fdd2c5d2192b3e68a1b03fb1430b22`.
+
+No se eliminan ramas, worktrees ni referencias.
+No se ejecuta worktree prune ni limpieza historica.
+
+SOURCE_COMMIT=NOT_AUTHORIZED
+SOURCE_PUSH=NOT_AUTHORIZED
+ENTERPRISE=HOLD
+GHCR=HOLD
+EC2=HOLD
+
+Las identidades de los commits resultantes se registraran
+despues de su ejecucion y publicacion efectivas, bajo
+autorizacion de MSE Actual.

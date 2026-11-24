@@ -1469,3 +1469,963 @@ No abrir G5. El cierre documental pertenece a G4.
 Siguiente requerimiento: R2 NAS, conservando G1
 y la validacion de infraestructura NAS DEV ya acreditadas.
 No iniciar implementacion NAS antes del cierre R3.
+
+
+## 2026-11-23 — Integracion incremental NAS G2 en SOURCE
+
+ACTION=BBTI_G2_CANONICAL_SOURCE_INTEGRATED_CONTINUITY_R1
+
+- MODE=NORMAL.
+- GOVERNANCE=R1.
+- RELEASE_MODEL=ONE_INTEGRATED_RELEASE.
+- SOURCE base: `18d0e1bd53d40da002872471924af41d001dd8bb`.
+- Rama SOURCE: main.
+- Procedencia: feat/g2-nas-integral-candidate-r1.
+- Integracion local autorizada por MSE Actual.
+- Composicion funcional: 43 archivos, 41 preservados y 2 deltas incorporados.
+- SOURCE commit/push: HOLD.
+
+### Alcance funcional
+
+- Archivado documental R2/NAS y nomenclatura.
+- Visor NAS desacoplado del procesamiento.
+- Tickets HMAC y autorizacion contextual.
+- Rutas Gateway y Documentos.
+- Verificacion de integridad SHA-256.
+- Regularizacion frontend condicionada al procesamiento.
+- Preservacion de carga normal, TEMP, OCR, confirmacion y recuperacion.
+- Compatibilidad integral pendiente de validacion SOURCE.
+
+### Migracion
+
+- Archivo: `infra/postgres/migrations/0026_archivados_documentales.sql`.
+- SHA-256: `609bb06532b8bcc745a0caff695bd60e20eb98079e33436b542c9aae0343aae6`.
+- Aplicacion anterior acreditada en G2.
+- No repetir migracion ni modificar SQL aplicado.
+
+### Inventario integrado SHA-256
+
+| Archivo | SHA-256 |
+|---|---|
+| `apps/api-gateway/src/documentos/documentos.controller.ts` | `473bb53d6df135247b3ad3bffaecc0cdc298757244cac96acaa6f6dd22d57288` |
+| `apps/ms-documentos/src/documental-v2/documental-v2.module.ts` | `b0a03333b12ccb9bd527c32363043e340441255181cff6dfacf4139c3da94a67` |
+| `apps/ms-documentos/src/documental-v2/use-cases/orquestar-confirmacion-documental-v2.usecase.ts` | `58118bc83120da40553b976cb365e5efe8be423187fc755a802d3c06d8d29a5d` |
+| `apps/ms-documentos/src/documental-v2/use-cases/regularizar-obligacion-op-factura.usecase.ts` | `4fd4511abbe72101050d337cd4bfdfbfd966e87bca40b60b24bcb2db3686183a` |
+| `apps/ms-documentos/src/documental-v2/use-cases/regularizar-obligacion-op-recibo-honorario.usecase.ts` | `8afcaccb390f895b7d794a6b50adfec186096f168a876fcbfda1aeea3ee61fa4` |
+| `apps/ms-documentos/src/documentos/archivado/archivado-core.module.ts` | `22a9747aaf1d378d3e3015967d5ff42a25d163e140c286dbb078dc85d19bee68` |
+| `apps/ms-documentos/src/documentos/archivado/archivado-documental.service.ts` | `dc25a558dd6fe536437ac37153da263984f9544aac585f441d0b3d3a084a119e` |
+| `apps/ms-documentos/src/documentos/archivado/archivado-exclusion.ts` | `46f9d63f6f17140275b467e5f2f5c818b93382f419c31a29f2138c7de3e96bb4` |
+| `apps/ms-documentos/src/documentos/archivado/archivado-move.service.ts` | `82d5e11612ef8433b0302d0bf16a86b261ced15ff132bac981cb4a74fd750ef2` |
+| `apps/ms-documentos/src/documentos/archivado/archivado-nomenclatura.ts` | `33767c8103da52384df5326c5e3900b99bb466e5d9f328a1243c0e7efe440548` |
+| `apps/ms-documentos/src/documentos/archivado/archivado-preview-token.ts` | `46cd2c64c16561f2b37b22fab5f2ad789fe72997af85fcc19796b9c067df49fc` |
+| `apps/ms-documentos/src/documentos/archivado/archivado-r2.adapter.ts` | `64b16e5b258d70c306dcee7cd9ea1823db9097cacfe05804404fc93a9ea93273` |
+| `apps/ms-documentos/src/documentos/archivado/archivado-runtime.service.ts` | `209733167e66d4e42e6f427fc098022a2d58cbf6b395fdf7c5995f635fb2f219` |
+| `apps/ms-documentos/src/documentos/archivado/archivado-runtime.spec.ts` | `01d5cd7b3968cb542bc4e66e1ebccf6d7b65a9a338f60a088d635ee19e4d3850` |
+| `apps/ms-documentos/src/documentos/archivado/archivado-seguridad.ts` | `3879685434de202a60fbae08b18751192cd4538eddeab81905d3a25c8f282532` |
+| `apps/ms-documentos/src/documentos/archivado/archivado-smb.adapter.ts` | `e63d6d7a74f15709164fe94a344fc1daf3f45c420aa3621d8afd7a4cf236aa2f` |
+| `apps/ms-documentos/src/documentos/archivado/archivado-writers.spec.ts` | `779b56e453b98f37ed2bb56f0f49ac794f6c602b547655dd132ef1dd38efd5be` |
+| `apps/ms-documentos/src/documentos/archivado/archivado.controller.ts` | `9482baf62946f7429f2e3cb4f1a3e3fa3b03e65ced2770213b67cd613663bc70` |
+| `apps/ms-documentos/src/documentos/archivado/archivado.repository.ts` | `d1654e584ef28a500c27d70ea35d80ba38af5d3a733b3b449c3c81def613478a` |
+| `apps/ms-documentos/src/documentos/carga-segura/carga-segura.persistence.ts` | `79a9674309fe919065886ab311481166de6cf52470533e17c3013e4d8a35c4a2` |
+| `apps/ms-documentos/src/documentos/carga-segura/carga-segura.storage.ts` | `4415df7b34aa5edc1f9dd24d1302b8b51845e0edb6fde2cf9a3ad75256ba466b` |
+| `apps/ms-documentos/src/documentos/documentos-preview.nas-contract.spec.ts` | `1b81854d3a9f39c42998f26cc1fb3a6383c69598c27c13e15bb6be1fec16ff18` |
+| `apps/ms-documentos/src/documentos/documentos-preview.service.ts` | `5e3f239449da7a630a7557132080f92c3ec282c8b2e5d7f9a73ec9d85a68a45c` |
+| `apps/ms-documentos/src/documentos/documentos-upload.service.ts` | `1a038da40d761136abf8db0ed18320816b60e3dd70ee991e1c1269b3183cd64d` |
+| `apps/ms-documentos/src/documentos/documentos.controller.ts` | `634f0d039237f82a765ee011a42ed0c1f9a5bceb2b2e20d82c6a839610058811` |
+| `apps/ms-documentos/src/documentos/documentos.module.ts` | `a4153aa7788b16b779edaf9cefd9651aecf43be24ba35e818f75b53b44b8e5dd` |
+| `apps/ms-documentos/src/documentos/documentos.repository.ts` | `8d6b1f408c88de79f79681484a5c4d6e824aae560711d4fa8935097a31ab7f0b` |
+| `apps/ms-documentos/src/documentos/documentos.service.ts` | `5a52f544922253405010615335009ea4551f65aed32116bb604a1869681facbe` |
+| `apps/ms-documentos/src/documentos/orden-pago/orden-pago-archivo.repository.ts` | `030c344a85b02176025489f0cf31a2e1504a79515bc88c25b2ed8eea0ca10b60` |
+| `apps/ms-documentos/src/documentos/orden-pago/orden-pago-archivo.service.ts` | `606583bb8afecbbec50603731140028b59ab0ab10e787f0f488bdc37b2c77ac1` |
+| `apps/ms-documentos/src/documentos/tmp/tmp.service.ts` | `24c4fc5e3f5eaf46da79bd30e1b04621e163cf864be7826dcb01408bb3a7d157` |
+| `apps/web-admin/src/components/compras/CompraExpedienteEditor.tsx` | `ed6297cb14d8256a0c1e25dd907bc3d950b7b8e8999d845d621556438178112b` |
+| `apps/web-admin/src/components/documentos/ArchivadoResumen.tsx` | `3ccb796a291366a639aacf7eeeacb9f91a2acd2fba201d1fa82775717fd55bdf` |
+| `infra/postgres/migrations/0026_archivados_documentales.sql` | `609bb06532b8bcc745a0caff695bd60e20eb98079e33436b542c9aae0343aae6` |
+| `infra/postgres/migrations/manifest.sha256` | `f4ea628f89fa26fbaed078c25db1957172f364219d71400ee4c1c92420737f8f` |
+| `tests/r2-nas/archivado-adapters.test.cjs` | `97e3abc4ad502ac6ea9d56089849c58a59a6f31c3c90c99e4e40e0eecc31ea41` |
+| `tests/r2-nas/archivado-core.test.cjs` | `8fa0979c115f0459547441a992ce9f439d8679efa5384dafbbad0fcaa0d898bc` |
+| `tests/r2-nas/archivado-domain.test.cjs` | `004e2ee5d2e135ca1bf22f39416ecd90ca02dc40a531dda0a2ec5d41a97ff686` |
+| `tests/r2-nas/archivado-exclusion.test.cjs` | `d4d13335fdb336164b5892e214496b76f60657b6f930227021d272ccbf423083` |
+| `tests/r2-nas/archivado-move.test.cjs` | `a0aa24d90278a1f3c481003f6637f03fd78abcd28a832042cd214c973b6e933e` |
+| `tests/r2-nas/archivado-preview.test.cjs` | `570720ee0f8323f2ea77c5f06d6d90d76545f6876213b2ba8310c000e9aa2fce` |
+| `tests/r2-nas/archivado-staging.test.cjs` | `efb7119df00500c57e2f8d3038b364f1b58816ff3412c22e25194bc37056b482` |
+| `tests/r2-nas/verify-offline.cjs` | `0ff40d8554d6e6356884a391031965fc59dff8ad992b19d4ce4b343875e9468c` |
+
+### Configuracion DEV prevista
+
+- SOURCE nativo, Node v24.16.0 y PNPM.
+- Cloudflare R2 DEV directo.
+- OCR Python systemd y NATS existentes.
+- NAS DEV: GESTION-DOCUMENTARIA/_DEV_DOCUMENTAL_PLATFORM.
+- R2_NAS_VIEWER_ENABLED=true.
+- R2_NAS_ARCHIVE_ENABLED=false.
+- R2_NAS_PUBLIC_GATEWAY_URL=http://localhost:3000.
+- Secreto HMAC y credenciales fuera de Git.
+- R2 DELETE debe permanecer deshabilitado.
+- Configuracion efectiva runtime pendiente.
+
+### Evidencias y pendientes
+
+- Candidato: PNPM offline PASS, paquetes internos 3/3 PASS.
+- Candidato: Documentos y Gateway build exit 0.
+- Candidato: Web build exit 1 por rechazo de URL local.
+- HMAC 7/7 y Jest 13/13 PASS anteriores.
+- NAS archivo 546: lectura e integridad acreditadas anteriormente.
+- NAS bytes: 388820.
+- NAS SHA-256: 1fc2f2755fb1e04599d110a4d5bc73327612ff73123010efae006788dd347295.
+- SOURCE integracion funcional: 43/43 conciliados.
+- SOURCE build integral: PENDING.
+- SOURCE runtime: PENDING.
+- HTTP E2E 546: PENDING.
+- Validacion visual PO: PENDING.
+- Aceptacion funcional PO: PENDING.
+- Enterprise, GHCR y EC2: HOLD.
+
+La presente adenda registra integracion local, no acredita
+publicacion Git, aceptacion funcional ni despliegue productivo.
+
+### Acreditacion build integral y pruebas focales SOURCE
+
+- Node v24.16.0; PNPM 11.4.0.
+- MS Auth build: PASS.
+- MS Documentos build: PASS.
+- API Gateway build: PASS.
+- Web Admin build formal: PASS.
+- Web build con URLs HTTPS institucionales y flag local false.
+- No se modifico la validacion de seguridad Web.
+- Build integral SOURCE: 4/4 PASS.
+- Evidencia: /home/loxi1/bbti-source-build-zqQj15.
+- Pruebas focales SOURCE: 2 suites, 13/13 PASS.
+- Ajuste exclusivo de dos archivos de pruebas.
+- Sin cambios adicionales de codigo funcional.
+- PostgreSQL configurado: gestion_documental_g2_prodclone_20261028.
+
+Hashes actualizados que prevalecen sobre el inventario inicial:
+
+- `apps/ms-documentos/src/documentos/archivado/archivado-runtime.spec.ts`: `4bf7f9290195b178640326b089a20e76b9431df761d4103e19be454d847bfa11`.
+- `apps/ms-documentos/src/documentos/documentos-preview.nas-contract.spec.ts`: `fbb1bcc212cbbf786907130e2d71f253cd7662a23850d7f746b3bd96cb249f1b`.
+
+- Runtime y HTTP E2E: pendientes.
+- Validacion visual PO: pendiente.
+- SOURCE commit/push: HOLD.
+
+
+## 2026-11-23 — BBTI_NAS_MVP_TRANSVERSAL_SOURCE_COMPLETION_R1
+
+Incremento local SOURCE sobre main `18d0e1bd53d40da002872471924af41d001dd8bb`.
+Conserva los cambios acumulados anteriores. Sin commit, push, promoción ni activación runtime.
+Estado: IMPLEMENTACION_PARCIAL_VALIDADA_OFFLINE; no acredita cierre integral del MVP ni aceptación PO.
+
+### Implementación nueva acreditada técnicamente
+
+- Un único runtime compartido mediante ArchivadoCoreModule y CargaSeguraStorageModule; sin ciclo Documentos/DocumentalV2 ni proveedor R2 duplicado.
+- ArchivadoPostcommit recoge documento y archivo exactos, deduplica, aísla solicitudes concurrentes y ejecuta después de resolver el commit exterior. Rollback no procesa; fallo posterior no revierte la confirmación.
+- Integración de la frontera postcommit en Compras TEMP, confirmación V2/recuperación Almacén, confirmación simple, OP inicial con TEMP, regularizaciones Factura/RH OP y aceptación de versiones. Las variantes sin regla siguen bloqueadas individualmente.
+- Selector exacto con versión opcional y OP sin expediente, acreditada mediante principal, contenedor, empresa/cliente y relaciones persistidas; no fabrica expediente.
+- Preparación semántica previa a promoción para regularizadores Factura/RH OP, consumiendo el periodo OP existente y conservando la reserva hasta asociación final.
+- Principales de igual tipo/número pero diferente identidad no se colapsan. Colisión de nomenclatura bloquea archivado sin inventar variante.
+- Reintento de TEMP ya archivado usa evidencia durable y no exige HEAD/PUT del definitivo eliminado.
+- Lectura NAS sin privilegios de confirmación OCR, manteniendo JWT/contexto. Resumen Gateway conserva control contextual sin exigir confirmar OCR. Regularización conserva autorización de escritura.
+- Fallback R2 cuando NAS falla y R2 está PRESENTE; R2 eliminado nunca produce URL R2 de fallback, incluso con visor deshabilitado.
+- Parámetros NAS por entorno y origen público HTTPS productivo mediante allowlist exacta. No se modificaron configuraciones activas ni credenciales.
+
+### Política y configuración preparada, NO activada
+
+- R2_NAS_ARCHIVE_ENABLED: registro; R2_NAS_VIEWER_ENABLED: lectura; R2_NAS_AUTO_ENABLED: procesamiento postcommit (nuevo, false por defecto).
+- Ámbito DEV explícito: R2_NAS_DEV_ALLOWED_FILE_IDS, R2_NAS_DEV_ALLOWED_EXPEDIENTE_IDS o R2_NAS_DEV_ALLOWED_OP_IDS. Listas de enteros positivos, vacías por defecto. OP se contrasta con relaciones persistidas, no con metadata aportada.
+- R2_NAS_DEV_DELETE_ENABLED: false por defecto; exige NODE_ENV=development, destino SYNOLOGY_DEV, visor aceptado e identidad exacta autorizada. No existe habilitación DELETE general/productiva.
+- Host/share/root/user: R2_NAS_SMB_HOST, R2_NAS_SMB_SHARE, R2_NAS_SMB_ROOT, R2_NAS_SMB_USER. DEV mantiene valores acreditados. Producción exige valores explícitos y rechaza raíz DEV. Archivo protegido existente: R2_NAS_SMB_AUTH_FILE.
+- URL pública: R2_NAS_PUBLIC_GATEWAY_URL; producción exige HTTPS y pertenencia exacta a R2_NAS_PUBLIC_GATEWAY_ALLOWED_ORIGINS. Mantiene secreto de tickets existente, sin publicarlo.
+- Archivo 546: entrada focal cerrada. Archivos 546/552/553 excluidos de procesamiento ordinario/manual/diario nuevo.
+
+### Validación ejecutada
+
+- Node offline: 116/116 PASS, siete suites; typecheck estricto del núcleo PASS. Evidencia temporal `/tmp/bbti-archive-offline-PlrpHe/result.json` y logs por suite.
+- Jest MS Documentos: 198/198 PASS, 14 suites focales (archivado, preview, TMP, orquestador, OP, materializadores y regularizadores).
+- Jest Gateway: 2/2 PASS, `src/documentos/documentos.archivado-read.spec.ts`.
+- Total focal: 316 PASS, 0 FAIL en los resultados finales de las suites ejecutadas.
+- Builds Nest MS Documentos y Gateway PASS con configuración extendida de tsconfig.build.json y salida aislada en `/tmp/bbti-nas-mvp-transversal-build-r1/`, sin sobrescribir dist en uso.
+- El typecheck general que incluye todos los fixtures del repositorio encontró errores fuera de las suites modificadas (constructores/mocks históricos). No se presenta como PASS global; los builds de producción y el typecheck focal sí pasaron.
+- Sin pruebas integradas DB/SMB/R2 ni aceptación visual nueva. Migración 0026 no modificada ni ejecutada; SHA256 observado `609bb06532b8bcc745a0caff695bd60e20eb98079e33436b542c9aae0343aae6`.
+
+Comandos de validación reutilizables:
+
+```bash
+BBTI_EXISTING_DEPS_SOURCE=/home/loxi1/projects/apps/documental-platform node tests/r2-nas/verify-offline.cjs
+pnpm --filter @documental/ms-documentos exec jest --runInBand --runTestsByPath src/documentos/archivado/archivado-postcommit.spec.ts src/documentos/archivado/archivado-configuracion.spec.ts src/documentos/archivado/archivado-core.module.spec.ts src/documentos/archivado/archivado-runtime.spec.ts src/documentos/documentos-preview.nas-contract.spec.ts src/documentos/factura-temp/factura-temp-materialization.service.spec.ts src/documentos/recibo-honorario-temp/recibo-honorario-temp-materialization.service.spec.ts src/documental-v2/use-cases/regularizar-obligacion-op-factura.spec.ts src/documental-v2/use-cases/regularizar-obligacion-op-recibo-honorario.spec.ts src/documental-v2/use-cases/orquestar-confirmacion-documental-v2.usecase.spec.ts src/documentos/orden-pago/orden-pago-archivo.service.spec.ts src/documentos/tmp/tmp.service.spec.ts src/documentos/factura-temp/factura-temp-materialization.repository.spec.ts src/documentos/recibo-honorario-temp/recibo-honorario-temp-materialization.repository.spec.ts
+pnpm --filter @documental/api-gateway exec jest --runInBand --runTestsByPath src/documentos/documentos.archivado-read.spec.ts
+```
+
+### Pendientes reales y límites del resultado
+
+- Se conservan NUEVO_TARDIO y la protección ARCHIVADO_ORIGEN_PREVIO_REQUIERE_REGULARIZACION. Canonicaliza antes de NAS, pero su objeto técnico previo no se elimina automáticamente; tiene contexto durable y bloqueo identificable. No se acredita el ciclo completo DELETE para esos casos.
+- En cargas con identidad conocida solo al confirmar, la canonicalización tardía aún ocurre después del commit documental y antes de copiar NAS. No se acredita el orden íntegro materialización canónica antes del commit para todos los caminos.
+- Sustentos de transferencia/detracción y versiones: propuestas preparadas y probadas únicamente en resolverNombrePropuesto(), sin llamadas desde el flujo real. Requieren aprobación literal PO. Seguros, independientes sin principal y extensiones no PDF sin regla recuperada permanecen bloqueados.
+- La ruta común y nombres aprobados V1 están implementados; no se declara cobertura integral de todos los escritores/orígenes ni aceptación transversal visual.
+- Regularización utiliza el mismo motor y selectores exactos; no se instaló programación diaria. La UI existente por expediente no se amplió con una pantalla específica para OP sin expediente.
+- MSE/PO deben coordinar actualización ordinaria únicamente de MS Documentos y Gateway. Auth/Web/OCR/DB/NATS no se reinician por este incremento. No se arrancaron ni detuvieron servicios en esta ejecución.
+- Sin SQL operativo, transferencias, DELETE real, infraestructura, Enterprise, GHCR ni EC2. Cierre 546 y preservación 552/553 no revalidados ni intervenidos.
+
+
+## 2026-11-23 — Continuación directa: cierre de ingeniería NAS para variantes aprobadas
+
+Complementa aditivamente BBTI_NAS_MVP_TRANSVERSAL_SOURCE_COMPLETION_R1. No elimina ni reinterpreta la evidencia histórica de la sección anterior. SOURCE permanece main `18d0e1bd53d40da002872471924af41d001dd8bb` con el incremento local sin commit/push.
+
+ESTADO: ENGINEERING_APPROVED_VARIANTS_PASS_OFFLINE; aceptación integrada PO pendiente. No es aceptación productiva ni evidencia de operaciones físicas nuevas.
+
+### Cierres implementados
+
+- `ArchivadoMaterializacionService.ejecutar()` reserva durablemente el destino antes del COPY/PUT, reutiliza el escritor R2 existente y su exclusión, verifica contenido e identidad, y actualiza referencias/confirmación en la transacción documental antes de su commit final. La reserva independiente se obtiene por un canal reservado adquirido antes de los bloqueos de negocio; concurrencia acotada, sin nuevo pool, servicio, PID o temporizador.
+- El rollback conserva el origen y la reserva no confirmada; el destino ya creado se verifica y reutiliza en el reintento sin otro PUT. No hay NAS dentro de la transacción documental. No se elimina el respaldo de origen durante la preparación.
+- El puente final bloquea archivo/documento, utiliza los resolutores documentales existentes, y consume la emisión propia o la Factura/OP organizadora persistida. No usa el mes del upload como sustituto. Una Factura fundadora encuentra su principal también por `grupos_factura.factura_documento_id`.
+- Carga guiada y candidata de versión persisten tenant/workspace/actor; Gateway deriva esos encabezados del JWT validado. El materializador tardío ordinario puede así operar con identidad completa. El flujo sin identidad válida falla antes del PUT.
+- Compras TEMP, materializadores Factura/RH OP y OP inicial conservan la preparación semántica existente. Cargas normales/Almacén y confirmaciones V2/simple completan la materialización cuando la identidad se conoce al confirmar. Todos reutilizan el postcommit exacto ya implementado. Versiones y sustentos no aprobados siguen bloqueados individualmente.
+- Para documentos nuevos correctamente materializados el MOVE recibe ruta/nombre definitivos persistidos, modo NUEVO, sin recalcularlos. NUEVO_TARDIO queda para recuperación/regularización; ARCHIVADO_ORIGEN_PREVIO_REQUIERE_REGULARIZACION permanece intacto y probado.
+- El origen técnico de una materialización nueva tiene identidad durable `origenMaterializacion`. Con DELETE explícitamente autorizado, después de verificar NAS/visor se comprueban sus referencias, bytes y SHA256; se registran ORIGEN_INTENTO, ORIGEN_RESPUESTA y ORIGEN_AUSENCIA por lease/CAS antes de completar la eliminación del definitivo R2. La respuesta perdida seguida de 404 no acredita autoría ni dispara otro DELETE. No hay tabla adicional ni modificación de 0026.
+- Las pruebas acreditan ausencia de copias técnicas y definitivas R2 al completar el ciclo simulado autorizado. Con DELETE deshabilitado, ambas copias se preservan deliberadamente y el trabajo queda recuperable; esto no se presenta como MOVE físico completado.
+
+### Validación real de esta continuación
+
+- Recuperados: 195/195 Jest Documentos (13 suites afectadas) y 5/5 Gateway (dos suites, incluyendo propagación de identidad).
+- Último pase focal pendiente completado tras la interrupción: 69/69 Node, tres suites (dominio 21, MOVE 31, adaptadores 17), cero fallos; typecheck estricto del núcleo PASS.
+- Evidencia del pase final: `/tmp/bbti-archive-offline-cZKfGV/archivado/result.json` y tres logs del mismo directorio. Los pases completos anteriores quedan conservados, sin duplicarlos como nuevas pruebas.
+- Builds Nest Documentos y Gateway PASS con salidas separadas del runtime en `/tmp/bbti-nas-mvp-transversal-build-r1/`. Documentos recompilado al reanudar para incluir FOR UPDATE OF f,d. Gateway PASS recuperado de la ejecución previa, sin reconstrucción innecesaria.
+- BBTI_ARCHIVE_SUITE_FILTER confirmado aplicado en `tests/r2-nas/verify-offline.cjs`; selección limitada a nombres de suites conocidos.
+- `git diff --check` PASS. Índice Git vacío. 0026 conserva SHA256 `609bb06532b8bcc745a0caff695bd60e20eb98079e33436b542c9aae0343aae6`; no se aplicó ni modificó.
+
+Reproducción focal, offline:
+
+```bash
+BBTI_EXISTING_DEPS_SOURCE=/home/loxi1/projects/apps/documental-platform BBTI_ARCHIVE_SUITE_FILTER=archivado-domain.test.cjs,archivado-move.test.cjs,archivado-adapters.test.cjs node tests/r2-nas/verify-offline.cjs
+pnpm --filter @documental/ms-documentos exec jest --runInBand --runTestsByPath src/documentos/archivado/archivado-materializacion.spec.ts src/documentos/archivado/archivado-runtime.spec.ts src/documentos/archivado/archivado-postcommit.spec.ts src/documentos/archivado/archivado-core.module.spec.ts src/documentos/documentos-upload.archivado.spec.ts src/documentos/documentos-upload.service.spec.ts src/documentos/factura-temp/factura-temp-materialization.service.spec.ts src/documentos/recibo-honorario-temp/recibo-honorario-temp-materialization.service.spec.ts src/documental-v2/use-cases/orquestar-confirmacion-documental-v2.usecase.spec.ts src/documental-v2/use-cases/regularizar-obligacion-op-factura.spec.ts src/documental-v2/use-cases/regularizar-obligacion-op-recibo-honorario.spec.ts src/documentos/orden-pago/orden-pago-archivo.service.spec.ts src/documentos/tmp/tmp.service.spec.ts
+pnpm --filter @documental/api-gateway exec jest --runInBand --runTestsByPath src/documentos/documentos.controller.spec.ts src/documentos/documentos.archivado-read.spec.ts
+```
+
+### Configuración para la futura aceptación DEV, no aplicada
+
+Antes del único arranque coordinado y antes de crear el expediente nuevo, establecer una fecha UTC de corte y conservarla durante toda la aceptación/reintentos. No se cambia por cada documento. La fecha controla elegibilidad, nunca el periodo contable.
+
+```bash
+export NODE_ENV=development
+export R2_NAS_DESTINATION=SYNOLOGY_DEV
+export R2_NAS_ARCHIVE_ENABLED=true
+export R2_NAS_VIEWER_ENABLED=true
+export R2_NAS_AUTO_ENABLED=true
+export R2_NAS_DEV_NEW_DOCUMENTS_ENABLED=true
+export R2_NAS_ACTIVATION_FROM="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+export R2_NAS_DEV_EMPRESAS=BBTI
+export R2_NAS_DEV_CLIENTE_IDS=2
+export R2_NAS_DEV_ALLOWED_FILE_IDS=
+export R2_NAS_DEV_ALLOWED_EXPEDIENTE_IDS=
+export R2_NAS_DEV_ALLOWED_OP_IDS=
+export R2_NAS_DEV_DELETE_ENABLED=false
+```
+
+La configuración admite expedientes creados después del corte desde su primera confirmación y OP nuevas sin expediente mediante relaciones persistidas. Excluye archivos históricos y 546/552/553. No exige conocer previamente archivoId/expedienteId ni reiniciar por documento.
+
+El cargador institucional debe mantener DB/R2/NATS del `.env` DEV acreditado, aplicando después solo estas variables NAS públicas. Ejemplo para el futuro arranque de Documentos, únicamente con el servicio anterior detenido ordinariamente, puerto libre y coordinación PO/MSE:
+
+```bash
+node -e 'const {parseEnv}=require("node:util");const {readFileSync}=require("node:fs");const {spawnSync}=require("node:child_process");const env={...process.env,...parseEnv(readFileSync(".env","utf8"))};const keys=["R2_NAS_DESTINATION","R2_NAS_ARCHIVE_ENABLED","R2_NAS_VIEWER_ENABLED","R2_NAS_AUTO_ENABLED","R2_NAS_DEV_NEW_DOCUMENTS_ENABLED","R2_NAS_ACTIVATION_FROM","R2_NAS_DEV_EMPRESAS","R2_NAS_DEV_CLIENTE_IDS","R2_NAS_DEV_ALLOWED_FILE_IDS","R2_NAS_DEV_ALLOWED_EXPEDIENTE_IDS","R2_NAS_DEV_ALLOWED_OP_IDS","R2_NAS_DEV_DELETE_ENABLED"];for(const k of keys)if(process.env[k]!==undefined)env[k]=process.env[k];env.NODE_ENV="development";const r=spawnSync("node",["--enable-source-maps","dist/main"],{cwd:"apps/ms-documentos",env,stdio:"inherit"});process.exit(r.status??1)'
+```
+
+El build validado usa salida separada, no reemplaza el dist activo. Antes de un arranque posterior, preparar los dist de los dos servicios afectados mediante los builds institucionales desde SOURCE. No reiniciar Auth/Web/OCR/DB/NATS por este incremento.
+
+DELETE permanece false; habilitar true solo bajo autorización física explícita PO, antes del arranque coordinado de esa aceptación. No se habilita aquí. Mantener las configuraciones existentes de autenticación NAS, R2 y tickets, sin copiar secretos.
+
+En producción el procesamiento ordinario no depende de listas DEV: `R2_NAS_NEW_DOCUMENTS_ENABLED` y la fecha de activación consideran archivos nuevos acreditados. DELETE productivo continúa deshabilitado; no hay promoción/configuración productiva autorizada por este registro.
+
+### Matriz única de decisiones literales pendientes
+
+P = OC, OS u OP con asociación válida; N = número persistido del principal.
+
+| Variante | Patrón preparado, inactivo | Decisión |
+|---|---|---|
+| Transferencia | `P_N__TRANSFERENCIA_BANCO_OPERACION.pdf` | Aprobación literal PO pendiente |
+| Detracción | `P_N__DETRACCION_BANCO_OPERACION.pdf` | Aprobación literal PO pendiente |
+| Versión | `<nombre-v1-sin-extension>__V<version>.pdf` | Aprobación literal PO pendiente |
+| Seguro, independiente sin principal, no PDF | Sin patrón aprobado recuperado | No inventar; permanece bloqueado individualmente |
+
+Las variantes V1 PDF aprobadas OC/OS/OP, Factura OC/OS/OP, Guía/NI OC/OS y RH OP conservan sus patrones literales. No se activaron los patrones propuestos.
+
+### Identidad de código y restricciones conservadas
+
+- archivado-materializacion.service.ts: `17ec83aeaa0fed096cebe95c59a5e3c9c23b613028675a26ae7c54a9155a4c2b`.
+- archivado-documental.service.ts: `ab0517b25c83e7b2785803eecd837698a056ef6caadd0671a145270db10c4fd4`.
+- archivado-move.service.ts: `0b247a014272eab4072a67a1c4bef9b6b9a1178a7fbbd3600db7c8ba9c71c5cc`.
+- archivado-runtime.service.ts: `d25014107debb1d3a237756966c0fa4004e6d8e38c85d76ac09617b7c5f2370d`.
+
+Sin SQL operativo, cambios DB, transferencias, DELETE real, reinicios, commits, push, Enterprise, GHCR o EC2. Sin intervención física de 546/552/553. Aceptación integrada y visual PO pendiente; las pruebas offline no la sustituyen. No quedan bloqueos de ingeniería identificados para las variantes aprobadas; las variantes sin regla literal permanecen sujetas a la decisión indicada.
+
+
+## 2026-11-23 — BBTI_NAS_COMPRAS_TEMP_SERIALIZATION_FIX_R1
+
+Corrección focal SOURCE durante aceptación física. Sin activación runtime ni nueva aceptación funcional.
+
+### Causa acreditada
+
+La ruta `TmpService.documental()` → `ArchivadoDocumentalService.prepararCompras()` → `ArchivadoRepository.reservar()` pasaba un objeto JavaScript en el parámetro **$6::jsonb** del INSERT de `documentos.archivados_documentales` (columna `contexto`). El mismo defecto estaba presente en el SELECT de comprobación de replay.
+
+El cliente institucional se crea en `packages/database/src/index.ts` con `postgres(...)` y posteriormente se comparte con `drizzle(sql, {schema})`. El driver Drizzle sustituye los serializers JSON/JSONB (OID 114/3802) por una función transparente. Por ello el objeto llega sin serializar al Bind de postgres@3.4.9 y a `Buffer.byteLength()`, reproduciendo `TypeError / ERR_INVALID_ARG_TYPE`. Sin inicializar Drizzle, la misma prueba pasa: no es evidencia suficiente probar solo un cliente postgres aislado.
+
+La sentencia exacta se contrastó mediante Parse/Describe sin ejecución del INSERT. Tipos de sus 17 parámetros: `2950,25,23,20,23,3802,25,23,23,25,25,25,1043,20,25,25,23`. Únicamente el sexto valor produjo tipo wire `object`; bigint, fechas ISO y restantes valores comprobados serializan correctamente.
+
+### Cambio mínimo y alcance compartido
+
+- `apps/ms-documentos/src/documentos/archivado/archivado.repository.ts`, `reservar()`: serializa una sola vez `JSON.stringify(i.contexto)` y utiliza el texto JSON en INSERT y replay.
+- No se cambian serializers globales, adaptadores de conexión ni configuración Drizzle. El servidor sigue recibiendo JSONB objeto, no una cadena JSON doblemente codificada.
+- La corrección se comparte con Compras TEMP, OP, materialización de confirmación y registro/regularización mediante el repositorio común. No se detectó otra entrada de objeto JSON crudo en los adaptadores unsafe del núcleo revisado; las demás evidencias JSON ya se pasan serializadas.
+- Se preservan los cambios anteriores de TmpRepository, autorización, nomenclatura, reserva permanente, CAS, auditoría, postcommit y protecciones DELETE.
+
+### Regresión efectiva y verificaciones
+
+- Nuevo `tests/r2-nas/archivado-postgres-readonly.cjs`: opt-in exclusivamente DEV, postgres@3.4.9 inicializado con Drizzle, sesión `default_transaction_read_only=on`, identidad exacta de base. Captura las sentencias generadas por el repositorio SOURCE y describe sus tipos sin ejecutar escrituras; ejecuta SELECT con los mismos parámetros/tipos, reproduce el fallo anterior y verifica el round-trip corregido de INSERT y replay. Bigint y fecha ISO PASS. Sin cambios de node_modules ni dependencias.
+- PostgreSQL DEV identificado: contenedor existente `bbti-mvp3005-postgres`, IP `172.29.0.2`, base `gestion_documental_g2_prodclone_20261028`. La inspección Docker leyó exclusivamente nombre/IP/puertos; no variables ni credenciales.
+- Consulta READ_ONLY de TEMP 385: `almacenada`, vigente, origen registrado, `promovida_en=NULL`, `documento_id=NULL`, `archivo_id=NULL`, `requiere_reconciliacion=false`, sin destino/reserva en metadata, cero archivos y cero reservas asociados. Estado idéntico antes/después de la prueba. Recuperabilidad SQL acreditada; objeto R2 no consultado ni promovido.
+- Node focal: **53/53 PASS** (dominio 21, MOVE/repositorio 32); typecheck estricto PASS. Evidencia `/tmp/bbti-archive-offline-S3jF7w/archivado/result.json` y logs del mismo directorio.
+- Jest focal: **31/31 PASS**, `tmp.documental.spec.ts` y `archivado-materializacion.spec.ts`.
+- Build Nest MS Documentos PASS, con salida separada en `/tmp/bbti-nas-serialization-fix-r1-build/dist/`, sin sobrescribir el dist activo. Gateway no afectado; no reconstruido.
+- `git diff --check` PASS. No se promovió TEMP 385 ni se ejecutaron COPY, PUT, DELETE o escrituras PostgreSQL.
+
+Comandos reproducibles (no son autorización de promoción ni de reinicio):
+
+```bash
+BBTI_PG_READONLY_REGRESSION=1 node tests/r2-nas/archivado-postgres-readonly.cjs
+BBTI_EXISTING_DEPS_SOURCE=/home/loxi1/projects/apps/documental-platform BBTI_ARCHIVE_SUITE_FILTER=archivado-domain.test.cjs,archivado-move.test.cjs node tests/r2-nas/verify-offline.cjs
+pnpm --filter @documental/ms-documentos exec jest --runInBand --runTestsByPath src/documentos/tmp/tmp.documental.spec.ts src/documentos/archivado/archivado-materializacion.spec.ts
+```
+
+Identidad del incremento:
+
+- Repositorio SOURCE corregido SHA256: `3c0dd53dea07b691a3875a202a7173d950dc258402241f5eaff37f5f5dee004b`.
+- Regresión READ_ONLY SHA256: `d0f11edc22517669e4a875095d3554e2733bab8114f0aa2d2628e31bfb1fee7a`.
+- Repositorio compilado SHA256: `2582a6dcdde42e2149e937e7f041db784fcad2a211ebaf28531f3071b49094a5`.
+
+SOURCE_FIX=VALIDATED. ACTIVE_RUNTIME_UPDATE=PENDING_MSE_PO. TEMP_385_RETRY=NOT_EXECUTED.
+Sin reinicios, migraciones, modificaciones de configuración, credenciales, escrituras DB, R2/NAS físicos, intervención de archivos 546/552/553, commit/push, Enterprise, GHCR ni EC2. Producción intacta. La nueva confirmación física no se declara PASS y no se ejecuta automáticamente.
+
+
+## Continuidad automática NAS transversal — BBTI_NAS_AUTOMATIC_ELIGIBILITY_CONTINUITY_R1
+
+Corrección SOURCE de elegibilidad DEV: se conserva el corte `2026-11-24T02:24:30Z`, confirmación documental, metadata `archivadoNuevo=true` y fecha de creación del archivo posterior al corte. Se elimina únicamente la exigencia de antigüedad del expediente/documento principal: un archivo nuevo elegible puede pertenecer a un expediente existente. Los archivos 546/552/553 siguen excluidos. Las listas históricas de IDs no permiten eludir estos controles.
+
+Autorización simultánea por pares explícitos `R2_NAS_DEV_CONTEXTS=[{"empresa":"BBTI","clienteId":2},{"empresa":"BBTEC","clienteId":1}]`. No se cruzan empresas y clientes mediante producto cartesiano; configuración malformada deniega. Compatibilidad con listas antiguas solo cuando definen un único par inequívoco. PostgreSQL debe corroborar empresa/cliente del archivo y su expediente o asociación OP vigente; no se modifica la resolución de periodo ni nomenclatura.
+
+El conector postcommit, alGuardar y procesamiento diario conservan el motor existente. No se añade scheduler, servidor ni consumidor. La copia ordinaria admite ambos contextos; DELETE DEV exige además identidad exacta del conjunto autorizado por PO (reserva3/archivo554/documento549 y reserva4/archivo555/documento550, BBTEC/cliente1/expediente6), whitelist 554/555 y flags existentes. Una whitelist ampliada no amplía esta autorización. Integridad NAS, verificación del visor, referencias físicas, lease/CAS y evidencia durable del motor permanecen obligatorios.
+
+Recuperación preparada en `recuperarPendientesExactosDev` y adaptador `apps/ms-documentos/scripts/recuperar-nas-554-555.cjs`: preflight completo de las dos identidades antes de reclamar, sin volver a confirmar/subir/materializar. Rechaza origen técnico alternativo o NUEVO_TARDIO para este lote, no procesa otras reservas, no repite una eliminación ya completada y detiene el lote ante error informando resultados parciales. El adaptador comprueba base y servidor DEV, no inicia Nest ni utiliza consumidores NATS y solo modifica variables en su propio proceso.
+
+Comando preparado para ejecución posterior MSE/PO; **NO EJECUTADO en esta intervención**, puede producir copia NAS y DELETE exclusivamente de 554/555 tras verificaciones:
+
+```bash
+cd /home/loxi1/projects/apps/documental-platform
+NODE_PATH="$PWD/apps/ms-documentos/node_modules" \
+BBTI_NAS_COMPILED_DIR=/tmp/bbti-nas-eligibility-continuity-r1-build/dist \
+BBTI_NAS_RECOVER_554_555=ARCHIVAR_554_555 \
+R2_NAS_VIEWER_ACCEPTED=true \
+node apps/ms-documentos/scripts/recuperar-nas-554-555.cjs
+```
+
+Configuración de continuidad ordinaria, pendiente de incorporación coordinada al runtime activo (no se edita .env ni se reinician servicios aquí): NODE_ENV=development, R2_NAS_DESTINATION=SYNOLOGY_DEV, R2_NAS_ARCHIVE_ENABLED=true, R2_NAS_VIEWER_ENABLED=true, R2_NAS_AUTO_ENABLED=true, R2_NAS_DEV_NEW_DOCUMENTS_ENABLED=true, corte original y pares anteriores. DELETE requiere además R2_NAS_DEV_DELETE_ENABLED=true, R2_NAS_DEV_DELETE_FILE_IDS=554,555 y R2_NAS_VIEWER_ACCEPTED=true. Aplicar las variables públicas después de la carga institucional de configuración para evitar que .env las reemplace. No es necesario reiniciar por cada empresa o documento una vez activada esta configuración conjunta. Otros documentos nuevos pueden archivarse, pero no quedan autorizados para DELETE por esta intervención.
+
+Validación actual: 34/34 pruebas focales PASS (runtime y postcommit); build MS Documentos PASS con salida aislada `/tmp/bbti-nas-eligibility-continuity-r1-build/dist`; sintaxis del adaptador PASS. Gateway no afectado. Logs: `/tmp/bbti-eligibility-final-tests.log` y `/tmp/bbti-eligibility-final-build.log`. Se cubren expediente antiguo/archivo nuevo, ambos pares y cruces rechazados, históricos, configuración inválida, lote exacto y completo, fallo parcial sin reintento, no-op completado y límites DELETE. No se declara aceptación física ni adopción del código por servicios activos.
+
+Hashes del incremento y artefacto:
+
+- `apps/ms-documentos/src/documentos/archivado/archivado-runtime.service.ts`: `fc09a3bec08c686632dd0d788771286ab791b1d020f4b5a0c99e6f3fb4cfcea5`.
+- `apps/ms-documentos/src/documentos/archivado/archivado-runtime.spec.ts`: `78c0364a783efe2374eabe9dc34d3d220232e543ed79e26613c4974bc1909d9f`.
+- `apps/ms-documentos/scripts/recuperar-nas-554-555.cjs`: `34eddbcf018428a14f39bcfa162de2a65d4528da35469310006527d974250adf`.
+- `/tmp/bbti-nas-eligibility-continuity-r1-build/dist/documentos/archivado/archivado-runtime.service.js`: `6e5161a8d62042a12806257e07b457d866bd4fd2451ec8407280df99496582b2`.
+
+REAL_STORAGE_MUTATIONS=NO. SERVICES_RESTARTED=NO. Migraciones, credenciales, nomenclaturas pendientes, archivos protegidos, Enterprise, GHCR y EC2 intactos. Sin commit/push ni consultas productivas.
+
+
+## 2026-11-24 — BBTI_NAS_TRANSVERSAL_REAL_ACCEPTANCE_CORRECTION_R1
+
+**Estado: CORRECCIONES_FOCALES_VALIDADAS_OFFLINE; aceptación física transversal pendiente.** SOURCE canónico, sin commit/push. Esta adenda sustituye únicamente las restricciones operativas DEV por listas estáticas del incremento anterior; conserva sus evidencias y el corte `2026-11-24T02:24:30Z`.
+
+### Conciliación real READ ONLY
+
+Sesión PostgreSQL `gestion_documental_g2_prodclone_20261028`, `transaction_read_only=on`, sin DDL/DML. Una primera SELECT rechazó una columna no disponible (42703); se corrigió la proyección y la segunda SELECT concluyó. No se consultaron contraseñas, tokens ni datos personales. Se concilió exclusivamente 556–560 y carga392:
+
+| Archivo / documento / reserva | Hecho acreditado SQL | Resultado físico disponible |
+|---|---|---|
+| 556 / 551 / 5 | OC002952, expediente4, BBTEC/cliente1; R2 y NAS `documentos/2026/01/BBTEC/OC_002952.pdf`; nuevo, NASVERIFICADO, trabajoREINTENTABLE, R2NO_COMPROBADO | HEAD R2 existe,355063 bytes; previewNAS HTTP200 aportado PO |
+| 557 / 552 / 6 | FACTURA FF62-00001878, expediente4; ambos destinos `documentos/2026/03/BBTEC/OC_002952__FACTURA_FF62-00001878_20101351921.pdf`; nuevo, NASVERIFICADO, REINTENTABLE, NO_COMPROBADO | PreviewNAS correcto aportado PO; sin nuevo GET ni DELETE |
+| 558 / 553 / 7 | **Tipo confirmado OC**, numero000177, expediente6; ambos destinos `documentos/2025/09/BBTEC/OC_000177.pdf`; nuevo, NASVERIFICADO, REINTENTABLE, NO_COMPROBADO | HEAD OC existe,327057 bytes; HEAD FOC_000177.pdf no existe. No se infiere OS por filename |
+| 559 / 554 / 8 | GUIA_REMISION T004/307; carga390, expediente4; origen ALMACEN_LEGACY_UPLOAD_GUIA; archivo sin archivadoNuevo; reservaHISTORICO,PENDIENTE. R2 técnico390__..., NAS canónico OC_002952__GUIA_T004-307_20101351921.pdf | PreviewR2 aportado PO; no transferencia nueva |
+| 560 / 555 / 9 | NOTA_INGRESO0000003279; carga391, expediente4; origen ALMACEN_LEGACY_UPLOAD_NOTA_INGRESO; archivo sin archivadoNuevo; reservaHISTORICO,PENDIENTE. R2 técnico391__..., NAS canónico OC_002952__NOTA_INGRESO_0000003279.pdf | PreviewR2 aportado PO; no transferencia nueva |
+| 561 / 556 / sin reserva | Sustento carga392, TRANSFERENCIA, FINANZAS_EDITAR_UPLOAD, expediente4; clave392__03_TRANSFERENCIA_BBVA_114460_compania_electro.pdf; archivadoBloqueo=VARIANTE_SIN_REGLA_APROBADA | No nomenclatura literal autorizada; no se inventa regla |
+
+La prohibición sobre **archivos**552/553 se conserva; documentoId552/553 de esta tabla no son esos archivos. Todos los registros consultados pertenecen a BBTEC/cliente1.
+
+### Causas y correcciones
+
+1. CargaSeguraPersistence marcaba archivadoNuevo en metadata del documento, pero omitía el flag en metadata del **archivo**, que es lo consumido por el puente y el runtime. Guía/NI se clasificaban como HISTORICO, conservaban clave técnica y quedaban excluidas del postcommit automático. Se añade el flag al INSERT real del archivo cuando feature habilitada. La confirmación existente ahora reserva/materializa el nombre definitivo antes de su commit y registra el archivo exacto para el postcommit. No se modifica periodo/OCR ni se copia lógica del archivador.
+2. DELETE DEV seguía limitado a la cohorte554/555: nuevos archivos556+ podían copiarse sin eliminación. Nuevo opt-in `R2_NAS_DEV_DELETE_NEW_CONFIRMED=true` habilita el recorrido DEV nuevo aprobado, sin alta por archivo/reinicio. Antes de construir el motor se vuelve a acreditar en SQL archivo/documento/version, confirmación, markerNuevo, fecha posterior al corte y contexto institucional. Se preservan NAS/visor, exclusión, referencias, lease/CAS, evidencia durable de respuesta y HEAD posterior, incertidumbre y protecciones de origen técnico. No habilita DELETE productivo. El modo legacy exacto554/555 sigue disponible si no se activa el nuevo modo.
+3. `R2_NAS_DEV_DYNAMIC_CONTEXTS=true` permite resolver contextos desde las relaciones persistidas verificadas, sin listas estáticas. SQL conserva correspondencia empresa/cliente entre archivo, documento y expediente o principal/grupo OP activo. PROD ya utilizaba relaciones institucionales y no depende de listas DEV; no se activa ni modifica PROD.
+4. ComprasTEMP OC/OS/Factura ya utiliza prepararCompras→reserva→promoción→confirmar→postcommit. SQL/HEAD no corroboran la discrepancia FOC reportada. No se modifica tipo ni filename por inferencia. OP inicial y regularizadores Factura/RH mantienen sus puntos prepararOp/prepararRegularizador→promoción→confirmación exacta. La confirmación V2 registra tras asociaciones; no se sustituye por Regularizar ahora.
+5. Guided/version upload SOURCE ya contiene markerNuevo condicionado al feature. La ausencia de marker en561 no prueba por sí sola si su runtime cargó ese código/configuración: causa operacional exacta UNKNOWN. Además, TRANSFERENCIA carece de regla aprobada, bloqueo conservado. No se afirma cobertura física de OP/regularizadores ni de todos los flujos por pruebas de puentes.
+
+### Validación de este incremento
+
+- 56/56 Jest PASS en5 suites: runtime, nuevo archivado-real-writers (10casos), materialización, postcommit y atomicidad terminal de carga segura. Los casos nuevos ejecutan el cuerpo real de persistencia Guía/NI con executor simulado; confirmaciones OC/OS/OP, Factura OC/OP, Guía, NI y RH OP atraviesan el puente real con reserva/materializador simulado y verifican orden materialización→commit→NAS. No sustituyen E2E PostgreSQL/R2 físico.
+- 38/38 Node PASS: MOVE32 y preview6, typecheck estrictoPASS. Primer intento sandbox EPERM al iniciar subprocesos; repetición autorizada offline PASS. Evidencia `/tmp/bbti-archive-offline-nMesEB/archivado/result.json`.
+- Build MS DocumentosPASS con salida `/tmp/bbti-nas-real-acceptance-build/dist`; dist activo no sobrescrito. Gateway no afectado.
+- Logs `/tmp/bbti-nas-real-acceptance-tests.log`, `/tmp/bbti-nas-real-acceptance-move.log`, `/tmp/bbti-nas-real-acceptance-build.log`. git diff --checkPASS.
+
+### Recuperación preparada, NO ejecutada
+
+- Reservas5/6/7: usar `recuperarPendientesExactosDev` con tuplas `{reservaId:5,archivoId:556,documentoId:551,empresa:'BBTEC',clienteId:1,expedienteId:4}`, `{reservaId:6,archivoId:557,documentoId:552,empresa:'BBTEC',clienteId:1,expedienteId:4}`, `{reservaId:7,archivoId:558,documentoId:553,empresa:'BBTEC',clienteId:1,expedienteId:6}`. Preflight de lote completo y motor existente, sin upload/reconfirmación. No ejecutar el script antiguo554/555 como sustituto.
+- Reservas8/9: **HOLD individual**. El contrato aplicado0026 fija r2_key/ruta permanentemente y archivo_id único. Sus identidades ya fueron reservadas con ruta física técnica y destinoNAS distinto. No basta marcar metadata ni llamar el recuperador canónico: este rechaza la discrepancia. Conciliación de esas reservas requiere procedimiento específico revisado; no se reescriben reservas, no se permite duplicarlas, no se reconfirma ni se renombra físicamente aquí. La prevención para nuevos Guía/NI sí está corregida. No se añade migración ni se debilita inmutabilidad para solventar el legado de esta aceptación.
+- Archivo561: HOLD por nomenclatura literal de sustento pendiente. Propuestas existentes únicamente: `<OC|OS|OP>_<numero>__TRANSFERENCIA_<BANCO>_<OPERACION>.pdf`, equivalente DETRACCION y versiones `<nombre-v1>__V<version>.pdf`; no llamadas desde flujo operativo hasta aprobación PO. No se toma el número original del filename como dato de dominio.
+
+### Comando SOURCE conjunto preparado, NO ejecutado
+
+Solo después de autorización/coordinación para detener el listener anterior y acreditar puerto3002 libre. Arranca únicamente Documentos; no inicia otros roles, scheduler ni supervisor. Mantiene secretos en memoria y aplica flags después de parsear .env. No se requiere configuración por empresa. El flag de visor conserva la aceptación física previa aportada; el motor comprueba disponibilidad en cada operación destructiva.
+
+```bash
+# PREPARADO, NO EJECUTADO. Solo tras parada coordinada del MS Documentos anterior y puerto 3002 libre.
+# No ejecutar junto al listener existente. Conserva .env y secretos privados, sin imprimirlos.
+cd /home/loxi1/projects/apps/documental-platform
+node <<'NODE'
+const fs=require('node:fs'),{parseEnv}=require('node:util'),{spawnSync}=require('node:child_process');
+const root=process.cwd();
+const env={...process.env,...parseEnv(fs.readFileSync('.env','utf8')),
+ NODE_ENV:'development',NODE_PATH:root+'/apps/ms-documentos/node_modules',
+ R2_NAS_ARCHIVE_ENABLED:'true',R2_NAS_VIEWER_ENABLED:'true',R2_NAS_AUTO_ENABLED:'true',
+ R2_NAS_DESTINATION:'SYNOLOGY_DEV',R2_NAS_DEV_NEW_DOCUMENTS_ENABLED:'true',
+ R2_NAS_ACTIVATION_FROM:'2026-11-24T02:24:30Z',R2_NAS_DEV_DYNAMIC_CONTEXTS:'true',
+ R2_NAS_DEV_DELETE_ENABLED:'true',R2_NAS_DEV_DELETE_NEW_CONFIRMED:'true',R2_NAS_VIEWER_ACCEPTED:'true'};
+const r=spawnSync(process.execPath,['--enable-source-maps','/tmp/bbti-nas-real-acceptance-build/dist/main.js'],
+ {cwd:root+'/apps/ms-documentos',env,stdio:'inherit'});
+process.exit(r.status??1);
+NODE
+```
+
+No se ejecutó este comando, ninguna recuperación, reinicio, upload, confirmación, PUT/COPY/DELETE, migración, commit/push, Enterprise, GHCR ni EC2. HEAD R2 y SELECT DEV fueron exclusivamente lectura. Producción intacta. No se declara aceptación integral.
+
+Hashes SOURCE afectados en esta intervención:
+
+- `apps/ms-documentos/src/documentos/carga-segura/carga-segura.persistence.ts`: `3ef6ce85e8e2e5b5c03eafadcba1b370c43e3165d326a8e7153097c95893bc75`.
+- `apps/ms-documentos/src/documentos/archivado/archivado-runtime.service.ts`: `522d75707f2c0b1f48a5868817b7cbe5d7376212d3be49d6cad7d2d9f31e62ff`.
+- `apps/ms-documentos/src/documentos/archivado/archivado-runtime.spec.ts`: `8449bb1463011fa35629c362ddc5b55ecac09b2256700d57a10a95b5b6766a29`.
+- `apps/ms-documentos/src/documentos/archivado/archivado-real-writers.spec.ts`: `25f222d8a0336964dcd6cb7b341a9d9fe33d3e8d5966adc2ccd3fca605df5a91`.
+
+
+## 2026-11-24 — BBTI_NAS_MVP_TRANSVERSAL_FINAL_CONTINUITY_R1
+
+Continuación del checkpoint de aceptación real anterior. SOURCE main18d0e1bd53d40da002872471924af41d001dd8bb, incremento local conservado; sin commit/push. **Ingeniería focal aprobada por pruebas; MVP_PHYSICAL_ACCEPTANCE=PENDING.** No se recuperan, reconcilian, renombran, borran ni reprocesan los smokes anteriores. La propuesta previa de recuperación556–561 queda cancelada por decisión expresa PO. TEMP397/398 y archivos566/567 no se regularizan realmente.
+
+### Causa acreditada común Factura/RH OP y corrección
+
+Los logs originales de los requests no se localizaron en las ubicaciones focales consultadas. Se reprodujeron ambos caminos con casos de uso y repositorios reales compilados, executor READ ONLY, SELECTs reales y Parse/Describe + SELECT Bind de parámetros para las escrituras, **sin ejecutar INSERT/UPDATE**. Se incorporó Drizzle a postgres para conservar el contrato institucional de serializers. La excepción reproducida es `Error: ARCHIVADO_CONFIRMACION_NO_ACREDITADA` en ArchivadoRepository.confirmar; no ERR_INVALID_ARG_TYPE. No se atribuye el fallo a la edición manual27→28 ni a OCR.
+
+Para archivos566 y567, cada reserva12/13 contiene expediente6, mientras el archivo persistido tiene expediente_idNULL. Provider, bucket, key, hash, empresa y cliente coinciden. La SELECT con el mismo WHERE de confirmar devuelve0 para ambos porque `(a.expediente_id IS NULL OR f.expediente_id=a.expediente_id)` no es true. Los dos INSERT de los materializadores utilizaban NULL literal. Las asociaciones y snapshot previos son parte de la transacción definitiva y el fallo impide su commit.
+
+Corrección para **documentos nuevos**: obtenerExpedienteOpPersistido reutiliza relaciones OP→contenedor→expediente con empresa/cliente, principal activo, documento confirmado y bloqueo compartido. Ambos repositorios de materialización persisten ese expediente en vez de NULL cuando existe reserva NAS. Conservan NULL legítimo para OP sin expediente. Replays con contexto discrepante se rechazan, no se reparan silenciosamente. No se modifica la reserva, periodo, OCR, nombres operativos ni los registros anteriores.
+
+Segundo cierre: registrarDocumentoConfirmado ya no excluye indiscriminadamente archivos con reserva. Una reserva vinculada y confirmada con identidad completa se reutiliza y registra el postcommit exacto de la asociación posterior, sin volver a resolver periodo/nombre ni UPDATE redundante. La reserva aún no confirmada se confirma con las protecciones originales. TMP_DOCUMENTAL mantiene su confirmación propia y no introduce segunda identidad. No se reconstruye el runtime.
+
+### Aislamiento del siguiente recorrido DEV
+
+SELECT READ ONLY acreditó MAX(archivo.id)=567. Se conserva el corte original `2026-11-24T02:24:30Z` y se añade una frontera de admisión DEV verificable `R2_NAS_DEV_ACCEPTANCE_MIN_FILE_ID=568`. No es una lista de empresas ni de nuevos archivos: todos los archivos posteriores elegibles pueden entrar sin reinicios; todos los IDs anteriores quedan fuera, incluso si tienen timestamps futuros. Se aplica en SQL y antes de consultar/reclamar. No se deduce nueva elegibilidad desde la fecha del expediente.
+
+`R2_NAS_DEV_DELETE_NEW_CONFIRMED=true` requiere frontera positiva explícita; sin ella falla cerrado. Mantiene R2_NAS_DEV_DYNAMIC_CONTEXTS=true, relaciones institucionales, confirmación, markerNuevo, fecha posterior al corte, tenant, identidad exacta, NAS/visor, referencias/exclusión, lease/CAS, auditoría durable, HEAD posterior y tratamiento de respuestas inciertas. Los archivos546/552/553 siguen excluidos por identidad. PROD no utiliza esta frontera DEV y su DELETE permanece deshabilitado. No hay barrido nuevo ni scheduler, no se ejecuta ejecutarDiario ni Regularizar ahora.
+
+### Matriz consolidada y campos de dominio
+
+| Origen/variante | Patrón | Fuente autorizada | Estado |
+|---|---|---|---|
+| OC / OS V1 PDF | OC_NUMERO.pdf / OS_NUMERO.pdf | documentos.tipo_documental,numero; fecha_emision propia; empresa contextual | APROBADO, operativo |
+| Factura OC/OS V1 PDF | OC_NUMERO__FACTURA_SERIE-NUMERO_RUC.pdf, equivalente OS | principal activo y grupos; factura serie,numero,ruc_emisor,fecha_emision | APROBADO, operativo |
+| Guía OC/OS V1 PDF | OC_NUMERO__GUIA_SERIE-NUMERO_RUC.pdf, equivalente OS | principal/grupo autorizado; documento serie,numero,ruc_emisor; periodo factura vinculada | APROBADO; OS solo si dominio admite |
+| NI OC/OS V1 PDF | OC_NUMERO__NOTA_INGRESO_NUMERO.pdf, equivalente OS | documento.numero y principal; periodo factura vinculada | APROBADO; OS solo si dominio admite |
+| OP inicial PDF | OP_NUMERO.pdf | OP documento.numero y fecha_emision; contenedor | APROBADO, operativo |
+| Factura OP / RH OP V1 PDF | OP_NUMERO__FACTURA_SERIE-NUMERO_RUC.pdf / OP_NUMERO__RH_SERIE-NUMERO_RUC.pdf | OP y documento fiscal persistidos; periodo emisiónOP | APROBADO; contexto expediente corregido |
+| Sustentos OC/OS/OP | PRINCIPAL_NUMERO__TRANSFERENCIA_BANCO_OPERACION.ext / __DETRACCION_BANCO_OPERACION.ext | tipo/principal; metadata bancaria validada (banco,numeroOperacion/numeroConstancia), sin filename ni números inventados | RATIFICACIÓN LITERAL PENDIENTE; propuesta aislada |
+| Versiones admitidas por dominio | V1sin sufijo; nombrebase__V2.ext; __V3etc | archivo.version y periodo original autorizado | RATIFICACIÓN LITERAL PENDIENTE; no habilita nuevos versionamientos |
+| OP imagen | OP_NUMERO.png / OP_NUMERO.jpg | MIME/firma existentes image/png,image/jpeg y OP.numero | Upload admite formato; nombre NAS operativo sigue bloqueado hasta ratificación; propuesta preparada, sin conversión |
+| Seguro independiente OP | OP_NUMERO__SEGURO_POLIZA_NUMERO.ext | principalOP y póliza explícitamente validada; no se localizó campo contractual universal numeroPoliza | RATIFICACIÓN Y CAMPO DE DOMINIO PENDIENTES; propuesta pura, no nuevo tipo habilitado |
+| Factura de seguro | OP_NUMERO__FACTURA_SERIE-NUMERO_RUC.pdf | identidad fiscal FACTURA, no clasificación SEGURO | APROBADO como FACTURA |
+
+El delta puro resolverNombrePropuesto prepara extensiones pdf/png/jpg, sufijos de versión y póliza, siempre marcado PROPUESTA_NO_APROBADA y sin llamadas desde materializadores/runtime. Resolver operativo no activa esas reglas. No se impone padding ni se cambian identidades humanas.
+
+### Caminos efectivos preservados
+
+Compras OC/OS/factura: prepararCompras→reserva→promoción existente→asociación/confirmación→postcommit exacto. Almacén: carga-segura marca **archivo** nuevo, confirmación V2/simple materializa destino canónico antes del commit; guía/NI consumen periodo de factura. OP inicialPDF: prepararOp→promoción→complete→confirmar. Factura/RH OP: prepararRegularizador→promoción y archivo con expediente correcto→regularización de negocio→confirmación de reserva→postcommit. La materialización PROMOTED aislada no sustituye la asociación final ni activa NAS por upload. Sustentos/versiones sin aprobación literal se bloquean individualmente. Contabilidad/otros visores conservan los contratos actuales de previewNAS y fallbackR2; no se modifican rutas de lectura.
+
+### Pruebas y build reales
+
+- 97/97 Jest PASS en10 suites afectadas: integración nueva OP(10), escritores transversales(10), runtime(32), materialización, postcommit, repositorios fiscales Factura/RH, casos de uso regularizadores y fechaOP. Son simulaciones de transacción/SQL/storage, no E2E físico.
+- 6/6 Jest adicionales PASS en nomenclatura propuesta: extensionesOP, sustentos OC/OS/OP, versiones y póliza/facturaSeguro.
+- Tras el endurecimiento final: runtime32/32 PASS; puente/escritores20/20 PASS. No se cuentan de nuevo para inflar los103 casos únicos.
+- Node: MOVE32 y preview6 PASS; dominio21 PASS final; typecheck estrictoPASS. Un primer dominio dio9 fallos porque su fixture respondía id1 a la nueva SELECT de reserva vinculada; se ajustó exclusivamente esa respuesta a [] y se conservó la prueba TMP sin consultas adicionales. No campaña de fixtures ajenos. Evidencias finales dominio `/tmp/bbti-archive-offline-FadwwK/archivado/result.json`; MOVE/preview del pase `/tmp/bbti-archive-offline-AaCidd/archivado` (dominio falló en ese pase, no se presenta como PASSglobal).
+- Build final MS DocumentosPASS, salida aislada `/tmp/bbti-nas-mvp-final-continuity-r1-build/dist`, después de todos los cambios. Gateway/Web/Auth no afectados en este incremento; no se reconstruyen. Dist activo no sobrescrito.
+- Logs: /tmp/bbti-nas-final-focused.log, /tmp/bbti-nas-final-runtime-tests.log, /tmp/bbti-nas-final-bridge-tests.log, /tmp/bbti-nas-final-naming-tests.log, /tmp/bbti-nas-final-offline.log, /tmp/bbti-nas-final-domain.log, /tmp/bbti-nas-final-build.log, /tmp/bbti-nas-final-readonly-evidence.log. Driver READ ONLY: escrituras del negocio descritas, cero DML ejecutado. git diff --checkPASS.
+
+### Terminal2 definitivo — PREPARADO, NO EJECUTADO
+
+Sustituye operativamente los comandos anteriores para la próxima aceptación. Requiere parada coordinada del Documentos anterior por MSE/PO; el script **no detiene procesos** y rechaza puerto3002 ocupado o preflight fallido. Compila SOURCE final con Node24.16.0 y solo entonces arranca Documentos, conservando config privada y aplicando flags después de parsear.env. Sin listas por empresa/archivo; sin recuperar smokes previos. La frontera568 se conserva durante todo este recorrido, no se recalcula por documento o empresa.
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+cd /home/loxi1/projects/apps/documental-platform
+export PATH=/home/loxi1/.nvm/versions/node/v24.16.0/bin:$PATH
+[ "$(node --version)" = v24.16.0 ] || { echo STOP_NODE_VERSION; exit 1; }
+# Preflight only: never stops/restarts an existing listener.
+listeners=$(ss -H -ltn 'sport = :3002') || { echo STOP_PORT_PREFLIGHT; exit 1; }
+if [ -n "$listeners" ]; then echo STOP_PORT3002_OCCUPIED; exit 1; fi
+pnpm --filter @documental/ms-documentos build
+node <<'NODE'
+const fs=require('node:fs'),assert=require('node:assert/strict'),{parseEnv}=require('node:util'),{spawnSync}=require('node:child_process');
+const root=process.cwd();
+assert.equal(process.version,'v24.16.0');
+const env={...process.env,...parseEnv(fs.readFileSync('.env','utf8')),
+ NODE_ENV:'development',MS_DOCUMENTOS_PORT:'3002',
+ R2_NAS_ARCHIVE_ENABLED:'true',R2_NAS_VIEWER_ENABLED:'true',R2_NAS_AUTO_ENABLED:'true',
+ R2_NAS_DESTINATION:'SYNOLOGY_DEV',R2_NAS_DEV_NEW_DOCUMENTS_ENABLED:'true',
+ R2_NAS_ACTIVATION_FROM:'2026-11-24T02:24:30Z',
+ R2_NAS_DEV_ACCEPTANCE_MIN_FILE_ID:'568',R2_NAS_DEV_DYNAMIC_CONTEXTS:'true',
+ R2_NAS_DEV_DELETE_ENABLED:'true',R2_NAS_DEV_DELETE_NEW_CONFIRMED:'true',R2_NAS_VIEWER_ACCEPTED:'true'};
+const url=new URL(env.DATABASE_URL);
+assert.equal(decodeURIComponent(url.pathname.slice(1)),'gestion_documental_g2_prodclone_20261028');
+assert(['127.0.0.1','localhost','bbti-mvp3005-postgres','172.29.0.2'].includes(url.hostname),'STOP_NOT_DEV_DATABASE');
+assert.equal(env.R2_NAS_SMB_HOST??'192.168.0.198','192.168.0.198');
+assert.equal(env.R2_NAS_SMB_SHARE??'GESTION-DOCUMENTARIA','GESTION-DOCUMENTARIA');
+assert.equal(env.R2_NAS_SMB_ROOT??'_DEV_DOCUMENTAL_PLATFORM','_DEV_DOCUMENTAL_PLATFORM');
+const r=spawnSync(process.execPath,['--enable-source-maps',root+'/apps/ms-documentos/dist/main.js'],
+ {cwd:root+'/apps/ms-documentos',env,stdio:'inherit'});
+process.exit(r.status??1);
+NODE
+```
+
+### Checkpoint y siguiente acción
+
+Checkpoint focal persistente previsto: `/home/loxi1/bbti-evidence/r2-nas-g2-focal-integration-r1/checkpoints/nas-mvp-final-continuity-r1`. Incluye archivos SOURCE completos del incremento actual, hashes, patch contraHEAD como referencia histórica (no aplicación automática), logs, reproducción READ ONLY y Terminal2.sh. No incluye.env, credenciales, dependencias ni builds. El código canónico permanece en SOURCE; este checkpoint no es otro candidato/LAB. RELEASE_MANIFEST y este apartado conservan las decisiones y restricciones.
+
+Último punto: corrección y validaciones offline terminadas; runtime no reiniciado. Siguiente: MSE/PO coordina Terminal2 y aceptación por aplicación con documentos nuevos568+, sin recuperar nada anterior. Pendientes reales: ratificación literal sustentos/versiones/imágenesOP/póliza, y aceptación física nueva de los caminos aprobados. No se promete cobertura física transversal ni eliminación productiva.
+
+REAL_STORAGE_MUTATIONS=NO. SERVICES_RESTARTED=NO. Sin migraciones, cambios de reservas aplicadas, recuperación de smokes, commit/push, Enterprise, GHCR, EC2 ni producción.
+
+Hashes SOURCE del incremento focal:
+
+- `apps/ms-documentos/src/documentos/orden-pago/orden-pago-fecha-emision.ts`: `acd8bdb9547d15aebd4ba5bd723a57021d48fc5fdf29a0256d26b3ac238e3782`.
+- `apps/ms-documentos/src/documentos/factura-temp/factura-temp-materialization.repository.ts`: `4166f58070c5053f8eecaa9eecbd72031ec57af1b93c58aa998b1779068ca5eb`.
+- `apps/ms-documentos/src/documentos/recibo-honorario-temp/recibo-honorario-temp-materialization.repository.ts`: `6dab8560f772abc830725b1d1ce6328c7fbf93935fb21432b0442e20f45ca7b1`.
+- `apps/ms-documentos/src/documentos/archivado/archivado-documental.service.ts`: `f592f21c8a7b2c0e1e5435c5dbb70b9c6b22d2da2efff7faec10ebb4cf5fa7a4`.
+- `apps/ms-documentos/src/documentos/archivado/archivado-runtime.service.ts`: `5e38d245a65a2eccd6c85c65ebe1f793adbcebb515328ad90f8f3219d07d74db`.
+- `apps/ms-documentos/src/documentos/archivado/archivado-runtime.spec.ts`: `ed7157ddeef4f4f0e7d2d757e699bc6b49a008fd78f53b9d351b5d899ded2836`.
+- `apps/ms-documentos/src/documentos/archivado/archivado-op-regularizadores.integration.spec.ts`: `7733cc56db1c2648312f1c5218fc47e715d5ad4fe710b820eb2057a49a4bbcfe`.
+- `apps/ms-documentos/src/documentos/archivado/archivado-nomenclatura.ts`: `6981eaea763e74cd11e3c06896ad6f9673dd80b82a86c86463012ce0addceadf`.
+- `apps/ms-documentos/src/documentos/archivado/archivado-nomenclatura-propuesta.spec.ts`: `2a29dbce7cdaf4c04784ece4aecaa36f58bd86cc9c8a27af0bbf081b7931e23b`.
+- `tests/r2-nas/archivado-domain.test.cjs`: `da4ea8f39bcaae4a1fcdfb6e790f11bee72ed3fadeb5dd19b98efd078dc81829`.
+
+Terminal2.sh SHA256: `dcd8bbc93b913d520a7ecdce44f16f0151778d11acb94fcebc45c83b59e9680a`.
+
+Checkpoint persistido y verificado: `/home/loxi1/bbti-evidence/r2-nas-g2-focal-integration-r1/checkpoints/nas-mvp-final-continuity-r1`,64 archivos SOURCE completos con SHA256 coincidentes, sin secretos/dependencias/builds. Incluye TERMINAL2.sh, logs, inventario y patch de referencia no aplicable automáticamente. Copia del manifest tomada antes de esta constancia final; contrato y comando de la adenda íntegros. CHECKPOINT=PASS.
+
+
+## 2026-11-24 — BBTI_NAS_MVP_FINAL_NAMING_IMPLEMENTATION_R1
+
+**PO_NAMING_APPROVAL=CONFIRMED. ENGINEERING_FINAL_NAMING=PASS_OFFLINE. MVP_PHYSICAL_ACCEPTANCE=PENDING.** Se ratifican expresamente sustentos OC/OS/OP, versiones documentales ya admitidas y OP inicial PDF/PNG/JPG. Las filas de propuestas pendientes de la adenda anterior quedan superadas solo para este alcance. Seguros/pólizas/subtipos nuevos están **EXCLUIDOS**, no pendientes de implementación ni habilitados por el concepto del gasto. Factura de seguro sigue FACTURA.
+
+### Matriz definitiva operativa
+
+Ruta común `documentos/AAAA/MM/EMPRESA/NOMBRE.ext`, sin CLIENTE ni IDs técnicos en el nombre definitivo. Conservar números validados sin padding inventado.
+
+| Origen/tipo admitido | Nombre definitivo V1 | Periodo institucional |
+|---|---|---|
+| OC / OS | OC_NUMERO.pdf / OS_NUMERO.pdf | Emisión propia |
+| Factura OC/OS | OC_NUMERO__FACTURA_SERIE-NUMERO_RUC.pdf; equivalente OS | Emisión factura |
+| Guía OC/OS | OC_NUMERO__GUIA_SERIE-NUMERO_RUC.pdf; equivalente OS donde dominio admite | Factura vinculada |
+| NI OC/OS | OC_NUMERO__NOTA_INGRESO_NUMERO.pdf; equivalente OS donde dominio admite | Factura vinculada |
+| Transferencia OC/OS/OP | OC_NUMERO__TRANSFERENCIA_BANCO_OPERACION.pdf; equivalentes OS/OP | Factura vinculada para OC/OS; emisiónOP para OP |
+| Detracción OC/OS/OP | OC_NUMERO__DETRACCION_BANCO_OPERACION.pdf; equivalentes OS/OP | Factura vinculada para OC/OS; emisiónOP para OP |
+| OP inicial | OP_NUMERO.pdf / OP_NUMERO.png / OP_NUMERO.jpg | Emisión OP |
+| Regularización Factura OP | OP_NUMERO__FACTURA_SERIE-NUMERO_RUC.pdf | Emisión OP |
+| Regularización RH OP | OP_NUMERO__RH_SERIE-NUMERO_RUC.pdf | Emisión OP |
+| Versiones ya admitidas | V1 sin sufijo; NOMBRE_BASE__V2.ext, __V3.ext, __Vn.ext | Referencia original, nunca fecha de carga |
+
+### Integración efectiva
+
+- ResolverNombreArchivado habilita las reglas aprobadas. Sustentos requieren banco y numeroOperacion explícitos, validados y persistidos; el puente lee `documento.metadata.validacionManual.metadata` o `documento.metadata.ocr.metadata`, nunca originalFilename, candidatoOCR crudo ni un numero genérico que pueda ser importe. Banco se normaliza tipográficamente a mayúsculas/espacios como `_`; el número conserva ceros y segmentos seguros. Datos ausentes/tipos no string/segmentos inseguros bloquean individualmente `IDENTIDAD_BANCARIA_INCOMPLETA`, manteniendo el archivo recuperable. `buildClaveDocumental` no cambia: conserva su identidad bancaria y contrato vigente.
+- El puente consume relaciones activas grupo→principal→contenedor para OC/OS/OP. Sustentos OC/OS reutilizan el resolutor institucional de relaciones, extendiendo exclusivamente su operación interna `NUEVO_SUSTENTO` con la misma regla de factura vinculada; no se crea otro resolutor ni se usa reloj. OP conserva emisiónOP. Reserva/materialización canónica precede al commit; NAS utiliza la ruta persistida.
+- Versiones: originalV1 único del mismo documento/empresa/cliente aporta periodo y, cuando existe, nombre semántico archivado. Se utiliza su ruta SQL aun cuando el objetoR2 original ya haya sido eliminado tras NAS. Se conserva nombre base, se sustituye un sufijo previo y se evita acumulación; versión/type/empresa/periodo incoherentes se bloquean. Si el original conserva clave técnica histórica, se mantiene esa clave y se deriva exclusivamente el nuevo nombre semántico desde identidad documental confirmada, sin copiar su nombre original técnico. No se renombra el legado. Solo el escritor de aceptación de versión ya existente invoca este flujo.
+- Se detectó que el upload candidato de versión puede no traer expediente_id. Al aceptar, el puente completa exclusivamente el expediente del nuevo archivo desde el original autorizado mediante CAS en la misma transacción; contexto diferente se rechaza. No modifica el archivo original ni añade permisos/versionamientos al dominio. DestinosV2/V3 y reservas son distintos; PUT condicional, reserva permanente y exclusión impiden sobrescritura. No se toca el contrato inmutable0026.
+- OP inicial: prepararOp→prepararCompras conserva MIME validado por las firmas institucionales, elige pdf/png/jpg y reserva antes de la promoción. Las regularizaciones Factura/RH permanecen PDF y conservan la corrección del expediente ya acreditada; no existe implementación SEGURO ni POLIZA. El nombre histórico resolverNombrePropuesto queda como alias compatible del resolver aprobado; ya no activa propuestas independientes.
+- Materializador conserva ContentType real, rechaza discrepancia MIME/extensión antes de reservar/copiar y mantiene identidad/hash/tamaño, compensación, referencias y postcommit. No se falsean imágenes como PDF.
+- Visor: la misma ruta NAS valida formato por firma del contenido y extensión de la reserva después de la lectura íntegra autorizada; respuesta PDF/PNG/JPG correcta. Controller y Gateway conservan contenido, nosniff, caché privada y ticket/controles actuales; Gateway solo admite esos MIME explícitos, sin convertir ni etiquetar todo comoPDF. No se cambia endpoint ni autorización. Este ajuste de headers hace necesario actualizar el artefacto Gateway en su operación ordinaria coordinada antes de aceptación de imágenes; **no se reinició ni activó aquí**.
+
+### Protecciones conservadas
+
+Factura/RH OP y markerNuevo Guía/NI intactos. Postcommit exacto único, sin Regularizar ahora como sustituto ordinario. R2_NAS_DEV_DYNAMIC_CONTEXTS=true y R2_NAS_DEV_DELETE_NEW_CONFIRMED=true, frontera568 y corte `2026-11-24T02:24:30Z` conservados. No listas por empresa/archivo nuevo, no reproceso de smokes anteriores. Archivos546/552/553 excluidos. DELETE sigue exigiendo identidad, ámbitoDEV, NAS/visor, auditoría durable, referencias, lease/CAS/exclusión, respuesta atribuida y HEAD posterior; incertidumbre no se transforma en eliminación acreditada. DELETE productivo deshabilitado. No se habilitó ni ejecutó rutina diaria nueva.
+
+### Validación de este incremento
+
+- **153 casos Jest únicos PASS**: 72 Documentos en5 suites focales de nombres/integración/materialización/runtime/regularizadoresOP; 74 en6 suites de regresión afectada (visor formatos, escritores, postcommit, previewNAS, OP inicial, periodo institucional); 7 Gateway en2 suites (formatos y lectura). Los pases finales21 de nombres/puente y4 de Gateway repiten casos existentes; no se suman otra vez.
+- Se cubren transferencias/detracciones OC/OS/OP con metadata persistida, ausencia/tipo inválido de campos, claveDocumental preservada, V2/V3 y V1 no sobrescrita, periodo original, contexto de versión, OP PDF/PNG/JPG, firmas/MIME/extensión, materialización→commit→NAS y error sin falso éxito. Regularizadores Factura/RH OP continúan PASS con/sin expediente, rollback e idempotencia. Son ejecutores/storage simulados; no E2E físico.
+- **65/65 Node PASS**: núcleo44 y dominio21; typecheck estrictoPASS. Primer pase rechazó dos expectativas históricas que aún trataban nombres recién aprobados como bloqueados y un fixtureTEMP sin version. Se adaptaron exclusivamente esas expectativas a la decisiónPO y se añadió version1 al fixture. Pase final `/tmp/bbti-archive-offline-LzEhmP/archivado/result.json` PASS.
+- Builds finales **MS DocumentosPASS y GatewayPASS**, salidas aisladas `/tmp/bbti-nas-final-naming-r1-build/documentos/dist` y `/tmp/bbti-nas-final-naming-r1-build/gateway/dist`. Dist activos no sobrescritos. Sin nuevas dependencias, instalaciones ni migraciones.
+- Logs: `/tmp/bbti-nas-naming-final-focused.log`, `/tmp/bbti-nas-naming-regression.log`, `/tmp/bbti-nas-naming-gateway-tests.log`, `/tmp/bbti-nas-naming-last-base.log`, `/tmp/bbti-nas-naming-gateway-last.log`, `/tmp/bbti-nas-naming-node-final.log`, `/tmp/bbti-nas-naming-docs-build.log`, `/tmp/bbti-nas-naming-gateway-build.log`. git diff --checkPASS. Bash syntax TERMINAL2.sh PASS, sin ejecutarlo.
+
+### Activación y checkpoint
+
+Se actualiza el checkpoint **existente** `/home/loxi1/bbti-evidence/r2-nas-g2-focal-integration-r1/checkpoints/nas-mvp-final-continuity-r1/`, conservando su revisión previa en history/before-final-naming-r1, sin otro candidato ni entorno. Incluye código completo actualizado, hashes, logs, patch de referencia no automático y el TERMINAL2.sh actualizado. No contiene credenciales,.env, dependencias ni builds.
+
+Comando único preparado, **NO EJECUTADO**:
+
+```bash
+bash /home/loxi1/bbti-evidence/r2-nas-g2-focal-integration-r1/checkpoints/nas-mvp-final-continuity-r1/TERMINAL2.sh
+```
+
+Ese script comprueba Node24.16.0 y puerto3002 libre, compila SOURCE final y solo entonces arranca MS Documentos con flags conjuntos después de parsear.env. No utiliza un dist anterior ni inicia Gateway/otros roles. Conserva origenDEV, frontera568, corte original, secretos y proceso ordinario. MSE/PO coordina actualización de Gateway por el deltaMIME cuando corresponda; su build ya está acreditado. No hay reinicios automáticos ni ejecución de instrucciones por leer esta adenda.
+
+PENDING_NAMING_DECISIONS=NONE dentro del alcance aprobado. Ausencia de banco/operación/identidad u original unívoco es incidencia individual recuperable, no autorización para inventarlos. Seguros/pólizas excluidos. MVP_PHYSICAL_ACCEPTANCE=PENDING con documentos nuevos. Sin PUT/COPY/DELETE reales, lecturas físicas de nuevos documentos, SQL operativo, recuperación/conciliación de smokes, commit/push, Enterprise, GHCR, EC2 ni producción.
+
+Hashes SOURCE de esta intervención:
+
+- `apps/ms-documentos/src/documentos/archivado/archivado-nomenclatura.ts`: `e16faec6c51b4cb8446f0864dceb8db645b3bd751de2dc53783b6dec9afcfbe3`.
+- `apps/ms-documentos/src/documentos/archivado/archivado-documental.service.ts`: `0daf97fcf2797b004f09a748ce5057631e9f1b539d23c1d1f049ea062a9da3c3`.
+- `apps/ms-documentos/src/documentos/archivado/archivado-materializacion.service.ts`: `840f1b4007c9e1e0204acc8de2e2bdc3af8fa368b39ecff74344101afd8e6e1d`.
+- `apps/ms-documentos/src/documentos/archivado/archivado-materializacion.spec.ts`: `49f088cb5ffbc9abd60099fcf77d771340520abfa87acbed707dbfcc0d0583fe`.
+- `apps/ms-documentos/src/documentos/archivado/archivado-runtime.service.ts`: `8b835b4cc40aa3c5844cbd8bce28285f336258fda6b0261ec74755c07309700b`.
+- `apps/ms-documentos/src/documentos/archivado/archivado-runtime.spec.ts`: `2793bedb2f2fc201a1b93933a8647d3646adc24384e909795aa0f5289f59a454`.
+- `apps/ms-documentos/src/documentos/archivado/archivado.controller.ts`: `e08776befb5007ced4a17d74c5b48a3dd59c402a27d57862592299f024757d1d`.
+- `apps/ms-documentos/src/documentos/archivado/archivado-formats.spec.ts`: `fec841706c009e145a5f47312681640a3046b0fe7a7d47252958ccc9847c754c`.
+- `apps/ms-documentos/src/documentos/archivado/archivado-nomenclatura-propuesta.spec.ts`: `4f5de31c5e9a1c8bae2b689aa1ed8a06d7f51fea9824196f1d3a5b175e716f95`.
+- `apps/ms-documentos/src/documentos/archivado/archivado-final-naming.integration.spec.ts`: `c40285b1346c78917fc92033c195779e0977c393b18a96c490d75d8919da01c6`.
+- `apps/ms-documentos/src/documentos/periodo-documental-r2.resolver.ts`: `43889ae12e573bc7827aae662b74e93e416df4584d3bfee5f18cb14ff0c1059d`.
+- `apps/api-gateway/src/documentos/documentos.controller.ts`: `dae292fe0eb30146cd61638015e291d6df3ab5171a9b4483cc3014010189e04d`.
+- `apps/api-gateway/src/documentos/documentos.archivado-formats.spec.ts`: `a8e99f4ce838f57a26b4b56240eaf25eac97ad4cb5690f8f9e302fa3aa4f79c9`.
+- `tests/r2-nas/archivado-core.test.cjs`: `ef3e6fcfd688cad9143aae03bac8c9dafa0ab272ffd57eb8da1d28736cb775fc`.
+- `tests/r2-nas/archivado-domain.test.cjs`: `028dc6f7adb2cb299b634594dc4ad82b45272a9c20e5b44070361855864c3c57`.
+
+TERMINAL2.sh actualizado SHA256: `be25dbe2a43de2a38d88c05d31565779a4dbbbe0a7e6fc8713531c3443b21e62`.
+
+
+## 2026-11-24 — BBTI_NAS_MVP_PHYSICAL_ACCEPTANCE_FOCAL_CORRECTION_R1
+
+Continuación focal del checkpoint final de nombres. SOURCE canónico; un único incremento integrado, sin commit/push. **Tres causas corregidas para documentos nuevos; MVP_PHYSICAL_ACCEPTANCE=PENDING.** No se procesa, recupera, concilia ni modifica ningún smoke anterior. Gateway no modificado ni reconstruido en esta intervención; solo MS Documentos requiere futura actualización coordinada.
+
+### Aceptación física aportada por PO, preservada sin repetición
+
+Según confirmación física PO, NAS contiene exactamente las rutas siguientes y R2 DEV ya fue eliminado para esos cuatro documentos:
+
+- documentos/2026/03/BBTEC/OS_000248.pdf
+- documentos/2026/03/BBTEC/OS_000248__FACTURA_E001-1119_20541464264.pdf
+- documentos/2026/01/BBTEC/OC_002968.pdf
+- documentos/2026/03/BBTEC/OC_002968__FACTURA_FE01-59004_20508179031.pdf
+
+OC_OS_ARCHIVING=PASS_PHYSICAL_PO; OC_OS_INVOICE_ARCHIVING=PASS_PHYSICAL_PO; R2_DELETE=PASS_PHYSICAL_PO. No se repitieron HEAD/GET ni se tocaron estos documentos. No se extrapola ese PASS a Guía/NI/sustentos/OP.
+
+### A. Guía/NI: API real de conexión reservada
+
+Causa acreditada PO y confirmada por código/driver real: postgres@3.4.9 reserve() expone unsafe/release, **no begin()**. La llamada session.begin provocaba TypeError; el mock anterior inventaba begin y ocultaba el error. Eliminada esa llamada y corregido el mock.
+
+transaccionReservaDurable utiliza BEGIN, trabajo y COMMIT explícitos exclusivamente en la misma conexión previamente reservada. Acredita las etiquetas de respuesta BEGIN/COMMIT; un COMMIT que responde ROLLBACK no se toma como éxito. Error en BEGIN/trabajo/COMMIT ejecuta ROLLBACK en la misma conexión y acredita su respuesta. Nunca usa sql.begin global para la reserva independiente. El sql.begin funcional del orquestador permanece separado.
+
+Se mantiene la adquisición antes de bloqueos de negocio, concurrencia acotada2, reserva durable sin FK no confirmada antes de COPY/PUT, supervivencia al rollback funcional y exclusión física. COPY no comienza si el commit durable falla o es incierto. El postcommit NAS solo se emite después del commit funcional.
+
+Si ROLLBACK no puede acreditarse, se retiene la conexión y **no se llama release**: postgres3.4.9 no ofrece un destroy público individual en el objeto reservado. La instancia rechaza nuevas reservas independientes con503 ARCHIVADO_CONEXION_RETENIDA_REQUIERE_REVISION; no cierra el pool global, no mata backend ajeno ni reinicia servicios. Es una condición excepcional fail-closed que requiere revisión operativa si sucede realmente, no un fallo presente observado. Se prueban BEGIN/COMMIT/ROLLBACK fallidos y no liberación incierta.
+
+Regresión real `tests/r2-nas/archivado-reserved-readonly.cjs`: postgres3.4.9 + Drizzle, sesiones default_transaction_read_only=on, SELECT únicamente para el trabajo. Acreditó reserved.beginABSENT, misma conexión/PID, COMMIT, rollback de error de aplicación, rollback tras errorSQL22012, canal independiente del rollback funcional y estado final idle observado por otra conexión. No INSERT de reservas, DML/DDL ni operaciones de almacenamiento. El pool del test es privado al proceso y se cierra al terminar; no es el pool del servicio activo.
+
+Reproducción autorizada del test READ ONLY (no requisito de repetirlo):
+
+```bash
+BBTI_NAS_RESERVED_READONLY=1 BBTI_NAS_RESERVED_COMPILED=/tmp/bbti-nas-physical-correction-build/dist NODE_PATH="$PWD/apps/ms-documentos/node_modules" node tests/r2-nas/archivado-reserved-readonly.cjs
+```
+
+Grupo161, lectura DEV efectiva: principal184, documento569, tipoOC, numero002968, expediente6, BBTEC/cliente1, factura570. La resolución institucional del archivador es correcta; no se cambia ni se utiliza el principal513 sugerido por prevalidación. Los tests del orquestador real + puente/materializador reales con SQL/storage simulados producen OC_002968__GUIA_TG01-0030634_20508179031.pdf y OC_002968__NOTA_INGRESO_0000003257.pdf en marzo2026. No se reconfirman OCR549/551 ni archivo575.
+
+### B. Sustentos: datos persistidos correctos, validación de caracteres demasiado estrecha
+
+SELECT READ ONLY acreditó:
+
+| Carga | Archivo/documento | Tipo/estado y relación | Banco/operación persistidos | Resultado previo |
+|---|---|---|---|---|
+|403|572/568|TRANSFERENCIA confirmado; grupo160, principalOS; origenFINANZAS_EDITAR_UPLOAD|documento.metadata.ocr.metadata.banco=BBVA; numeroOperacion=2,452-8|archivadoNuevo=true; IDENTIDAD_BANCARIA_INCOMPLETA; sin reserva|
+|407|576/572|TRANSFERENCIA confirmado; grupo161, principalOC; mismo escritor|misma estructura, BBVA; numeroOperacion=2,453-0|mismo bloqueo; sin reserva|
+
+No era una ausencia ni error de extracción: la estructura que lee el archivador es la efectivamente persistida. ClavesDocumentales acreditadas BBTEC|TRANSFERENCIA|BBVA|2,452-8 y BBTEC|TRANSFERENCIA|BBVA|2,453-0. Se conserva literalmente esa identidad. No se atribuye a importe/OCR sin evidencia, ni se usa filename o numero documental como fallback.
+
+El validador del segmento operación excluía coma, aunque las operaciones estaban validadas/persistidas. Se admite coma literal entre segmentos alfanuméricos, conservando ceros y guiones; no se elimina ni sustituye para fabricar otra identidad. El patrón PO PRINCIPAL_NUMERO__TRANSFERENCIA/DETRACCION_BANCO_OPERACION.pdf no cambia. Se conserva banco/operación y buildClaveDocumental. Se rechazan espacios, traversal, comillas, barras, punto y coma, metacaracteres y datos ausentes. El adaptador SMB admite la misma coma segura como parte del filename sin shell ni separador de comandos; también corrige su antiguo filtroPDF-only para los formatosOP ya aprobados PNG/JPG.
+
+Escritores OC/OS/OP usan el mismo puente de confirmación y la misma extracción bancaria persistida. Pruebas de los tres orígenes y ambos tipos con operación2,453-0 producen el destino correcto, periodo de factura para OC/OS y emisiónOP para OP, sin cambiar claveDocumental. No se recuperan cargas403/407 ni se modifican sus registros. Nombres que corresponderían con sus datos validados: OS_000248__TRANSFERENCIA_BBVA_2,452-8.pdf y OC_002968__TRANSFERENCIA_BBVA_2,453-0.pdf; no materializados aquí.
+
+### C. OP: TEMP409 PNG rechazado por regla PDF-only
+
+Lectura DEV: TEMP409 image/png, almacenada, documento574, archivoNULL, promovida_enNULL, integración incompleta; OP0000000185. Destino reservado documentos/2026/11/BBTEC/OP_0000000185.png. Reserva20 sin archivo/documento confirmados. Coinciden bucket, clave, hash, empresa, cliente e identidades de promoción/integración. Cero archivos referidos por carga409. La condición PDF-only explica el conflicto efectivo; no se detectó otra discrepancia en esos controles. No se reintenta la creación ni se cambia su numeración.
+
+destination() reutiliza extensionArchivadoDesdeMime, admite exclusivamente pdf/png/jpg según MIME persistido, verifica namespace de empresa exacto, destino exacto e identidad no vacía y exacta. La prueba institucional de reserva sigue siendo acreditarDestino(), antes de validar y antes de I/O. Los destinos técnicos/históricos conservan sus reglas separadas. Las promociones efectivas simuladas PDF/PNG/JPG son idempotentes, sin otra copia; se rechazan MIME/extensión, empresa, reserva, identidad o extensión no admitida. SEGUROS sigue siendo concepto financiero válido, no se implementan pólizas ni tipo documentalSEGURO. Regularizadores Factura/RH conservan la corrección del expediente y su contratoPDF.
+
+### Protección del próximo recorrido — propuesta, NO activada
+
+Snapshot READ ONLY: MAX archivo577, MAX carga409, MAX reserva20. Reservas pendientes3/4/5/6/7/8/9/10/11/12/13/20; sin archivo definitivo10/11/12/13/20 (TEMP395/396/397/398/409). No se procesó ninguna. Algunas reservas son anteriores a la frontera568 y otras nacen de la aceptación descartada; un límite de archivo por sí solo no basta si después un TEMP viejo genera un archivo nuevo.
+
+Se propone admisión **archivo>=578, carga>=410 cuando exista origen de carga y reserva>=21**. Se extiende el mecanismo existente de watermark de identidad, sin nueva tabla, motor, scheduler o lista por empresa/documento. El corte2026-11-24T02:24:30Z no cambia. La preparación semántica rechaza una carga anterior antes de reservar/copiar; el puente evita materializar archivos/cargas anteriores; el runtime evita reclamar reservas anteriores y revalida la carga real del archivo enSQL. Cargas ausentes legítimas de escritores directos conservan el filtro de archivo y reserva. Identidades de reserva permanente y relaciones multitenant intactas.
+
+Configuraciones añadidas, **solo propuestas para la próxima autorización**:
+
+- R2_NAS_DEV_ACCEPTANCE_MIN_FILE_ID=578
+- R2_NAS_DEV_ACCEPTANCE_MIN_CARGA_ID=410
+- R2_NAS_DEV_ACCEPTANCE_MIN_RESERVA_ID=21
+
+El runtime activo conserva su configuración anterior568; no se escribió.env ni se activaron estos valores. MSE/PO debe aprobarlos y revalidarlos si hubo nuevas cargas tras el snapshot. No se recalculan silenciosamente al arrancar ni por documento. Contextos dinámicos, DELETE_DEV opt-in, exclusiones546/552/553, NAS/visor, integridad, referencias, auditoría, CAS, HEAD e incertidumbre preservados; DELETE productivo deshabilitado.
+
+### Pruebas, artefactos y alcance
+
+- **210 Jest únicos PASS**:46 en4 suites focales (corrección física/driver simulado, materialización, nombres/escritores bancarios y promoción semántica) +164 en5 suites de regresión afectada (TmpService, OP inicial, Factura/RH integración, runtime, orquestador). Pase final17 repite casos tras ajuste de excepción503, no se suma.
+- **67 Node PASS**: núcleo44, adaptadores17, staging6; typecheck estrictoPASS. Evidencia `/tmp/bbti-archive-offline-WusQrG/archivado/result.json`. Sin procesos ni almacenamiento reales salvo subprocesos de pruebas.
+- **Driver real READ ONLY PASS**: mismo canal y API real, BEGIN/COMMIT/ROLLBACK y estadoidle; log `/tmp/bbti-nas-reserved-driver-readonly.log`. No se confunde este test de conexión con inserción real de reservas ni E2E físico.
+- Build final **MS DocumentosPASS** en `/tmp/bbti-nas-physical-correction-build/dist`, salida aislada sin sobrescribir dist activo. Gateway/Auth/Web/OCR no modificados ni reconstruidos.
+- Logs `/tmp/bbti-nas-physical-focal-final.log`, `/tmp/bbti-nas-physical-regression.log`, `/tmp/bbti-nas-physical-final-admission.log`, `/tmp/bbti-nas-physical-node.log`, `/tmp/bbti-nas-physical-docs-build.log`, `/tmp/bbti-nas-physical-temp409-readonly.log`. Diagnóstico sanitizado `/tmp/bbti-nas-physical-diagnostic.json`; comandos READ ONLY preservados en checkpoint. git diff --checkPASS y bash-n TERMINAL2.shPASS.
+
+### Comando exacto preparado — requiere aprobación MSE/PO de los límites
+
+Se actualiza el checkpoint existente conservando su revisión previa bajo history/before-physical-correction-r1. TERMINAL2.sh exige los tres límites explícitos y no tiene nuevos valores por defecto; compila SOURCE con Node24.16.0, exige3002libre y aplica configuraciónDEV después de parseEnv. No modifica ni detiene ningún proceso. No es activación de la propuesta por generar el archivo.
+
+**NO EJECUTADO; usar únicamente después de autorización MSE/PO:**
+
+```bash
+R2_NAS_DEV_ACCEPTANCE_MIN_FILE_ID=578 \
+R2_NAS_DEV_ACCEPTANCE_MIN_CARGA_ID=410 \
+R2_NAS_DEV_ACCEPTANCE_MIN_RESERVA_ID=21 \
+bash /home/loxi1/bbti-evidence/r2-nas-g2-focal-integration-r1/checkpoints/nas-mvp-final-continuity-r1/TERMINAL2.sh
+```
+
+Solo MS Documentos afectado. No solicitar reinicioGateway por esta corrección. Aceptación física siguiente exclusivamente con documentos nuevos y ámbito aprobado; smokes descartados permanecen intactos. No nuevas nomenclaturas, gates, LAB, motores, PID, temporizadores, seguros/pólizas, migraciones, reservas reescritas, commit/push, Enterprise/GHCR/EC2 ni producción.
+
+REAL_STORAGE_MUTATIONS=NO. REAL_SQL_MUTATIONS=NO (SELECT y control transaccional READ ONLY, cero DML/DDL). SERVICES_RESTARTED=NO. SOURCE_COMMIT_PUSH=NO. PRODUCTION=UNCHANGED. MVP_PHYSICAL_ACCEPTANCE=PENDING.
+
+Hashes SOURCE focales:
+
+- `apps/ms-documentos/src/documentos/archivado/archivado-materializacion.service.ts`: `cde002d28bd21ebb47cab28fcb9237b2f806c7e7dd018c536a9b52929697e701`.
+- `apps/ms-documentos/src/documentos/archivado/archivado-materializacion.spec.ts`: `99f6da0a99a23ddc6c9ea0974ff630a44c1ed6b79ea23cf95bd68acd581d3c04`.
+- `apps/ms-documentos/src/documentos/archivado/archivado-nomenclatura.ts`: `1b08c91333b5efc15deacc2fe29edfc1e4917f30e00f234a06274a1cc058f475`.
+- `apps/ms-documentos/src/documentos/archivado/archivado-smb.adapter.ts`: `6d18067203546872e104ab9d61d750f13358de495003a5d9b950a4ea44bf821d`.
+- `apps/ms-documentos/src/documentos/archivado/archivado-documental.service.ts`: `892359675f26a77514fe186fbf268ee4fabbedb895e393163baf89b909073f7f`.
+- `apps/ms-documentos/src/documentos/archivado/archivado-runtime.service.ts`: `ad5d00b3df7e041dd5f37141208290e15e4fd156b3aceced0c383341eb25e16e`.
+- `apps/ms-documentos/src/documentos/archivado/archivado-seguridad.ts`: `9559319292d040adc96469a9cbb6ec7c5fd834a66d1c4b4184520eaea068e1c6`.
+- `apps/ms-documentos/src/documentos/archivado/archivado-physical-correction.spec.ts`: `9616a02a57f63771d0a56f854303ec5e813bf93a32067c8ae2c0c1fef07b9ec8`.
+- `apps/ms-documentos/src/documentos/archivado/archivado-final-naming.integration.spec.ts`: `66e2a334263849c654d6e6c899bf0f5a3b44a79e63bf3adeab2e827a79132a10`.
+- `apps/ms-documentos/src/documentos/tmp/tmp.service.ts`: `4670726ee6b112739d1ce6b312309d62212fbb6d1f9accae1631d7098b0c57b3`.
+- `apps/ms-documentos/src/documentos/tmp/tmp-semantic-formats.spec.ts`: `06ac466d39abe1b7201dcf7648cd722e05219cee65987b4a51cc62828c8e0307`.
+- `tests/r2-nas/archivado-reserved-readonly.cjs`: `a520a1f1d8638946a94bbe15c991b0fc913e23550cc2a4f5782af77559e55556`.
+
+TERMINAL2.sh preparado SHA256: `155a9075912552072cfa41aa74d5a8b8667bb1f3a4160ce956ffaf9f03bcd6f4`.
+
+
+---
+
+## Cierre de ingenieria NAS y preparacion institucional SOURCE - 24/11/2026
+
+ACTION=BBTI_NAS_INTEGRATED_RELEASE_SOURCE_PREPARATION_R1
+
+MODE=NORMAL
+GOVERNANCE=R1
+MANUALS_BASE=R3_VIGENTES
+RELEASE_MODEL=ONE_INTEGRATED_RELEASE
+
+AUTHORITY=MSE_ACTUAL_EQUALS_MSE_2_0
+AUTHORIZATION=SOURCE_RELEASE_PREPARATION
+
+### Aceptacion funcional DEV
+
+El PO confirma el cumplimiento del recorrido fisico pendiente:
+documentos nuevos confirmados archivados automaticamente en NAS,
+eliminacion correspondiente en R2 DEV y visualizacion desde
+los modulos existentes, incluida Contabilidad.
+
+ENGINEERING=CLOSED
+ENGINEERING_REOPEN=NO
+MVP_PHYSICAL_ACCEPTANCE=PASS_PO
+PO_ACCEPTANCE=CONFIRMED
+INSTITUTIONAL_HANDOFF=ACCEPTED
+
+La presente aceptacion prevalece sobre el estado PENDING
+de la accion de correccion focal precedente, sin alterar
+su evidencia historica.
+
+Se conserva la nomenclatura documental aprobada, resolucion
+del periodo, identidad bancaria, formatos OP admitidos,
+regularizacion Factura/RH, reserva durable, postcommit,
+integridad, auditoria y visualizacion NAS.
+
+La aceptacion corresponde a declaracion expresa del PO.
+No constituye una nueva auditoria independiente SQL/R2/NAS.
+
+### Evidencias tecnicas conservadas
+
+- Build integral DEV anterior: 4/4 PASS.
+- Build focal final ms-documentos: PASS.
+- Pruebas focales y regresiones: 210 Jest PASS.
+- Pruebas Node: 67 PASS.
+- Driver PostgreSQL real 3.4.9: READ ONLY PASS, cero DML/DDL.
+- Checkpoint final existente: 71/71 hashes PASS.
+- Correspondencia checkpoint/SOURCE previa a esta adenda:
+  71/71 PASS.
+- Migracion 0026 y manifest.sha256: checksum coincidente.
+- Revision focal de secretos: nueve coincidencias resueltas;
+  siete subjects simulados y dos fixtures sinteticos.
+- Manuales R3: integridad 10/10 PASS; consultados 00, 03 y 07.
+
+No se repiten builds, pruebas, migraciones ni operaciones
+fisicas para justificar este cierre documental.
+
+### Identidad y composicion SOURCE
+
+SOURCE_PATH=/home/loxi1/projects/apps/documental-platform
+SOURCE_BRANCH=main
+SOURCE_HEAD_BASE=18d0e1bd53d40da002872471924af41d001dd8bb
+SOURCE_ORIGIN_MAIN=18d0e1bd53d40da002872471924af41d001dd8bb
+SOURCE_REMOTE_MAIN_LAST_VERIFIED=18d0e1bd53d40da002872471924af41d001dd8bb
+SOURCE_DIVERGENCE=0/0
+
+Inventario previo a la presente edicion:
+
+- Tracked modificados: 26.
+- Untracked: 46.
+- Staged: 0.
+- Commits pendientes: 0.
+
+La composicion publicable propuesta incluye el delta funcional
+acumulado de SOURCE, sin limitarlo exclusivamente al archivador
+NAS ni seleccionar parches aislados.
+
+Commit funcional propuesto: 70 archivos.
+Commit documental propuesto: 2 archivos.
+Total publicable propuesto: 72 archivos.
+
+FUNCTIONAL_SCOPE_SHA256=141941aec973f7dc198418bb9faa3c1948fdd2c5d2192b3e68a1b03fb1430b22
+
+#### Inventario funcional explicito
+
+- `apps/api-gateway/src/documentos/documentos.archivado-formats.spec.ts`
+- `apps/api-gateway/src/documentos/documentos.archivado-read.spec.ts`
+- `apps/api-gateway/src/documentos/documentos.controller.ts`
+- `apps/ms-documentos/src/documental-v2/documental-v2.module.ts`
+- `apps/ms-documentos/src/documental-v2/use-cases/orquestar-confirmacion-documental-v2.usecase.ts`
+- `apps/ms-documentos/src/documental-v2/use-cases/regularizar-obligacion-op-factura.usecase.ts`
+- `apps/ms-documentos/src/documental-v2/use-cases/regularizar-obligacion-op-recibo-honorario.usecase.ts`
+- `apps/ms-documentos/src/documentos/archivado/archivado-configuracion.spec.ts`
+- `apps/ms-documentos/src/documentos/archivado/archivado-configuracion.ts`
+- `apps/ms-documentos/src/documentos/archivado/archivado-core.module.spec.ts`
+- `apps/ms-documentos/src/documentos/archivado/archivado-core.module.ts`
+- `apps/ms-documentos/src/documentos/archivado/archivado-documental.service.ts`
+- `apps/ms-documentos/src/documentos/archivado/archivado-exclusion.ts`
+- `apps/ms-documentos/src/documentos/archivado/archivado-final-naming.integration.spec.ts`
+- `apps/ms-documentos/src/documentos/archivado/archivado-formats.spec.ts`
+- `apps/ms-documentos/src/documentos/archivado/archivado-materializacion.service.ts`
+- `apps/ms-documentos/src/documentos/archivado/archivado-materializacion.spec.ts`
+- `apps/ms-documentos/src/documentos/archivado/archivado-move.service.ts`
+- `apps/ms-documentos/src/documentos/archivado/archivado-nomenclatura-propuesta.spec.ts`
+- `apps/ms-documentos/src/documentos/archivado/archivado-nomenclatura.ts`
+- `apps/ms-documentos/src/documentos/archivado/archivado-op-regularizadores.integration.spec.ts`
+- `apps/ms-documentos/src/documentos/archivado/archivado-physical-correction.spec.ts`
+- `apps/ms-documentos/src/documentos/archivado/archivado-postcommit.spec.ts`
+- `apps/ms-documentos/src/documentos/archivado/archivado-postcommit.ts`
+- `apps/ms-documentos/src/documentos/archivado/archivado-preview-token.ts`
+- `apps/ms-documentos/src/documentos/archivado/archivado-r2.adapter.ts`
+- `apps/ms-documentos/src/documentos/archivado/archivado-real-writers.spec.ts`
+- `apps/ms-documentos/src/documentos/archivado/archivado-runtime.service.ts`
+- `apps/ms-documentos/src/documentos/archivado/archivado-runtime.spec.ts`
+- `apps/ms-documentos/src/documentos/archivado/archivado-seguridad.ts`
+- `apps/ms-documentos/src/documentos/archivado/archivado-smb.adapter.ts`
+- `apps/ms-documentos/src/documentos/archivado/archivado-writers.spec.ts`
+- `apps/ms-documentos/src/documentos/archivado/archivado.controller.ts`
+- `apps/ms-documentos/src/documentos/archivado/archivado.repository.ts`
+- `apps/ms-documentos/src/documentos/carga-segura/carga-segura-storage.module.ts`
+- `apps/ms-documentos/src/documentos/carga-segura/carga-segura.persistence.ts`
+- `apps/ms-documentos/src/documentos/carga-segura/carga-segura.storage.ts`
+- `apps/ms-documentos/src/documentos/documentos-preview.nas-contract.spec.ts`
+- `apps/ms-documentos/src/documentos/documentos-preview.service.ts`
+- `apps/ms-documentos/src/documentos/documentos-upload.archivado.spec.ts`
+- `apps/ms-documentos/src/documentos/documentos-upload.service.spec.ts`
+- `apps/ms-documentos/src/documentos/documentos-upload.service.ts`
+- `apps/ms-documentos/src/documentos/documentos.controller.ts`
+- `apps/ms-documentos/src/documentos/documentos.module.ts`
+- `apps/ms-documentos/src/documentos/documentos.repository.ts`
+- `apps/ms-documentos/src/documentos/documentos.service.ts`
+- `apps/ms-documentos/src/documentos/factura-temp/factura-temp-materialization.repository.ts`
+- `apps/ms-documentos/src/documentos/factura-temp/factura-temp-materialization.service.ts`
+- `apps/ms-documentos/src/documentos/orden-pago/orden-pago-archivo.repository.ts`
+- `apps/ms-documentos/src/documentos/orden-pago/orden-pago-archivo.service.ts`
+- `apps/ms-documentos/src/documentos/orden-pago/orden-pago-fecha-emision.ts`
+- `apps/ms-documentos/src/documentos/periodo-documental-r2.resolver.ts`
+- `apps/ms-documentos/src/documentos/recibo-honorario-temp/recibo-honorario-temp-materialization.repository.ts`
+- `apps/ms-documentos/src/documentos/recibo-honorario-temp/recibo-honorario-temp-materialization.service.ts`
+- `apps/ms-documentos/src/documentos/tmp/tmp-semantic-formats.spec.ts`
+- `apps/ms-documentos/src/documentos/tmp/tmp.service.ts`
+- `apps/web-admin/src/components/compras/CompraExpedienteEditor.tsx`
+- `apps/web-admin/src/components/documentos/ArchivadoResumen.tsx`
+- `infra/postgres/migrations/0026_archivados_documentales.sql`
+- `infra/postgres/migrations/manifest.sha256`
+- `tests/r2-nas/archivado-adapters.test.cjs`
+- `tests/r2-nas/archivado-core.test.cjs`
+- `tests/r2-nas/archivado-domain.test.cjs`
+- `tests/r2-nas/archivado-exclusion.test.cjs`
+- `tests/r2-nas/archivado-move.test.cjs`
+- `tests/r2-nas/archivado-postgres-readonly.cjs`
+- `tests/r2-nas/archivado-preview.test.cjs`
+- `tests/r2-nas/archivado-reserved-readonly.cjs`
+- `tests/r2-nas/archivado-staging.test.cjs`
+- `tests/r2-nas/verify-offline.cjs`
+
+#### Inventario documental explicito
+
+- `docs/31-governance/RELEASE_MANIFEST.md`
+- `docs/31-governance/BRANCH_INVENTORY.md`
+
+#### Exclusiones
+
+- `apps/ms-documentos/scripts/recuperar-nas-554-555.cjs`
+
+El script de recuperacion historica se conserva localmente.
+No forma parte de la composicion publicable propuesta.
+
+Se excluyen credenciales reales, configuraciones privadas,
+archivos de entorno, evidencias externas y artefactos
+generados no correspondientes al repositorio.
+
+El checkpoint se conserva intacto como evidencia de la
+implementacion aceptada. La presente adenda y la actualizacion
+del inventario de ramas son cambios documentales posteriores;
+no se exige igualdad del manifest actualizado con su copia
+historica del checkpoint.
+
+### Promocion institucional pendiente
+
+Propuesta de commit funcional:
+
+feat(documental): integra archivado documental R2-NAS y continuidad multiarea
+
+Propuesta de commit documental:
+
+docs(governance): registra aceptacion PO y cierre integrado R2-NAS
+
+Ambos commits pertenecen a un unico release integrado.
+
+SOURCE_COMMIT_AUTHORIZATION=PENDING
+SOURCE_PUSH_AUTHORIZATION=PENDING
+SOURCE_COMMIT_EXECUTED=NO
+SOURCE_PUSH_EXECUTED=NO
+
+ENTERPRISE=HOLD
+GHCR=HOLD
+EC2=HOLD
+
+Se reserva para la preparacion productiva la acreditacion
+del destino NAS definitivo, conectividad SMB desde EC2,
+credenciales protegidas, diferenciacion R2 DEV/PROD,
+ledger real RDS y autorizacion especifica de DELETE productivo.
+
+No trasladar automaticamente los limites de aceptacion DEV
+a produccion. No intervenir documentos historicos.
+
+No se acredita un nuevo release publicado ni desplegado.
+No se modifica la identidad funcional de releases anteriores.
+
+NEXT_ACTION=MSE_ACTUAL_SOURCE_COMMIT_PUSH_AUTHORIZATION
