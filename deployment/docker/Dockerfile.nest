@@ -24,6 +24,14 @@ RUN corepack enable
 COPY --from=deps /app ./
 
 ARG APP_PATH
+
+# NAS archival transport is required only by ms-documentos.
+RUN if [ "${APP_PATH}" = "apps/ms-documentos" ]; then \
+      apk add --no-cache samba-client && \
+      command -v smbclient && \
+      smbclient --version; \
+    fi
+
 COPY --from=build /app/${APP_PATH}/dist /app/${APP_PATH}/dist
 COPY --from=build /app/packages/shared/dist /app/packages/shared/dist
 COPY --from=build /app/packages/config/dist /app/packages/config/dist
