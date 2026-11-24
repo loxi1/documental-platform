@@ -1,6 +1,9 @@
+import { ejecutarConfirmacion } from './archivado/archivado-postcommit';
+import { ArchivadoDocumentalService } from './archivado/archivado-documental.service';
+import type { SqlExecutor } from '../documental-v2/sql-executor';
 import { AlmacenContexto, AlmacenRecuperacionRepository } from './almacen-recuperacion.repository';
 
-import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException, UnauthorizedException, ForbiddenException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException, UnauthorizedException, ForbiddenException, Optional } from '@nestjs/common';
 import { ClientProxy } from '@nestjs/microservices';
 import { firstValueFrom, timeout } from 'rxjs';
 import { NatsSubjects } from '@documental/shared';
@@ -41,6 +44,7 @@ export class DocumentosService {
     private readonly nats: ClientProxy,
     private readonly confirmacionDocumental: ConfirmacionDocumentalService,
     private readonly grupoFacturaRepository: GrupoFacturaRepository,
+    @Optional() private readonly archivado?: ArchivadoDocumentalService,
   ) {}
 
   findAll(filters: DocumentosFilters) {
@@ -465,14 +469,21 @@ export class DocumentosService {
     const metadata = result.metadata;
     const extracted = metadata?.metadata ?? {};
 
-    await this.repo.updateDocumentoOcrResult({
-      documentoId: result.documento_id,
-      tipoDocumental: result.tipo_propuesto,
-      estado: 'confirmado',
-      metadata,
-    });
-
-    const confirmado = await this.repo.confirmarOcrResultado(id, usuarioId);
+    const guardar = async (tx?: SqlExecutor) => {
+      const update={documentoId:result.documento_id,tipoDocumental:result.tipo_propuesto,estado:'confirmado',metadata};
+      if(tx) await this.repo.updateDocumentoOcrResult(update,tx);
+      else await this.repo.updateDocumentoOcrResult(update);
+      const confirmed=tx?await this.repo.confirmarOcrResultado(id,usuarioId,tx):await this.repo.confirmarOcrResultado(id,usuarioId);
+      if(tx && result.documento_id) await this.archivado?.registrarDocumentoConfirmado(tx,Number(result.documento_id),usuarioId??null,'CONFIRMACION_SIMPLE',result.archivo_id?Number(result.archivo_id):undefined);
+      return confirmed;
+    };
+    const confirmado = await ejecutarConfirmacion(this.archivado,()=>this.archivado?.habilitado()?sql.begin(async tx=>{
+      const rows=await tx`SELECT id FROM documentos.ocr_resultados WHERE id=${id}
+        AND documento_id IS NOT DISTINCT FROM ${result.documento_id}::integer
+        AND archivo_id IS NOT DISTINCT FROM ${result.archivo_id}::integer FOR UPDATE`;
+      if(rows.length!==1)throw new ConflictException('ARCHIVADO_CONFIRMACION_CAMBIO_CONCURRENTE');
+      return guardar(tx);
+    }):guardar());
 
     await this.documentoEventos.registrarEvento({
       documentoId: result.documento_id ? Number(result.documento_id) : null,

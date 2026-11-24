@@ -1,4 +1,5 @@
-import { ConflictException, Injectable } from '@nestjs/common';
+import { ArchivadoDocumentalService, type ReservaDocumental } from '../archivado/archivado-documental.service';
+import { ConflictException, Injectable, Optional } from '@nestjs/common';
 import { AuditoriaOperativaV2Repository } from '../../documental-v2/auditoria-operativa-v2.repository';
 import type { OrdenPagoActor } from '../../documental-v2/finanzas/orden-pago.dto';
 import type { TmpConnection, TmpRow } from '../tmp/tmp.repository';
@@ -9,7 +10,7 @@ export type OpIds = { ordenPagoId: number; documentoId: number; grupoFacturaId: 
 
 @Injectable()
 export class OrdenPagoArchivoRepository {
-  constructor(private readonly auditoria: AuditoriaOperativaV2Repository) {}
+  constructor(private readonly auditoria: AuditoriaOperativaV2Repository, @Optional() private readonly archivado?: ArchivadoDocumentalService) {}
 
   assertClaim(row: TmpRow, identity: string, ids?: OpIds) {
     const claim = row.metadata?.integration;
@@ -17,9 +18,10 @@ export class OrdenPagoArchivoRepository {
         (ids && Number(row.documento_id) !== ids.documentoId)) throw new ConflictException('OP_TEMP_ALREADY_RESERVED');
   }
 
-  async reserve(tx: TmpConnection, row: TmpRow, ids: OpIds, identity: string, destination: string) {
+  async reserve(tx: TmpConnection, row: TmpRow, ids: OpIds, identity: string, destination: string, reserva?: ReservaDocumental | null, bloqueo?: string) {
     if (row.metadata?.integration) { this.assertClaim(row, identity, ids); return; }
     const metadata = { ...row.metadata, destinoReservado: destination, promocionIdentity: identity,
+      ...(reserva||bloqueo?{archivadoReserva:reserva??null,archivadoBloqueo:bloqueo??null}:{}),
       integration: { consumer: OP_INITIAL_FILE, identity, completed: false } };
     await tx`UPDATE documentos.carga_operaciones SET documento_id=${ids.documentoId},
       metadata=${JSON.stringify(metadata)}::jsonb, actualizado_en=now() WHERE id=${row.id}`;
@@ -53,7 +55,7 @@ export class OrdenPagoArchivoRepository {
           Number(existing.metadata?.tamanoBytes) !== Number(row.tamano_bytes)) throw new ConflictException('OP_FILE_CONFLICT');
       archivoId = Number(existing.id);
     } else {
-      const metadata = { rol: 'ARCHIVO_INICIAL_OP', tipoPrincipal: 'ORDEN_PAGO', tempId: Number(row.id),
+      const metadata = { ...(this.archivado?.habilitado()?{archivadoNuevo:true}:{}), rol: 'ARCHIVO_INICIAL_OP', tipoPrincipal: 'ORDEN_PAGO', tempId: Number(row.id),
         contentType: row.content_type, tamanoBytes: Number(row.tamano_bytes), ocrRequerido: false };
       const [file] = await tx`INSERT INTO documentos.documentos_archivos
         (documento_id,carga_operacion_id,nombre_archivo,ruta_archivo,storage_provider,storage_bucket,storage_key,
@@ -73,6 +75,7 @@ export class OrdenPagoArchivoRepository {
     }
     await tx`UPDATE documentos.carga_operaciones SET archivo_id=${archivoId} WHERE id=${row.id}`;
     await this.integrationState(tx, ids, Number(row.id), 'COMPLETE', archivoId);
+    await this.archivado?.confirmar(tx,row,archivoId,ids.documentoId);
   }
 
   assertReplacementClaim(row: TmpRow, identity: string, ids?: OpIds) {
@@ -184,6 +187,7 @@ export class OrdenPagoArchivoRepository {
       archivoId = Number(existing.id);
     } else {
       const metadata = {
+        ...(this.archivado?.habilitado()?{archivadoNuevo:true}:{}),
         rol: 'ARCHIVO_INICIAL_OP',
         tipoPrincipal: 'ORDEN_PAGO',
         reemplazoArchivoInicial: true,

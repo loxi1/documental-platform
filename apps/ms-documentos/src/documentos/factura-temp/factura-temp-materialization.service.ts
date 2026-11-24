@@ -1,8 +1,9 @@
+import { ArchivadoDocumentalService } from '../archivado/archivado-documental.service';
 import { randomUUID } from 'node:crypto';
 import {
   ConflictException,
   ForbiddenException,
-  Injectable,
+  Injectable, Optional,
 } from '@nestjs/common';
 import { buildCargaSeguraStorageKey } from '../carga-segura/carga-segura.storage';
 import { obtenerFechaEmisionOpPersistida } from '../orden-pago/orden-pago-fecha-emision';
@@ -29,6 +30,7 @@ export class FacturaTempMaterializationService {
     private readonly repository: FacturaTempMaterializationRepository,
     private readonly temps: TmpRepository,
     private readonly tmp: TmpService,
+    @Optional() private readonly archivado?:ArchivadoDocumentalService,
   ) {}
 
   async materializar(
@@ -110,7 +112,7 @@ export class FacturaTempMaterializationService {
                 repositoryActor,
               );
 
-          const destination =
+          let destination =
             row.metadata?.destinoReservado ||
             buildCargaSeguraStorageKey({
               operacionId: tempId,
@@ -120,6 +122,13 @@ export class FacturaTempMaterializationService {
               fecha: fechaEmisionOp!,
             });
 
+          let archive:any=null;
+          if(!row.metadata?.destinoReservado && this.archivado?.habilitado()){
+            archive=await this.archivado.prepararRegularizador(tx,row,regularizacionOp.ordenPagoId,
+              'FACTURA',metadata,destination,repositoryActor,identity);
+            destination=archive.destination;
+            if(archive.reserva)row.metadata={...row.metadata,archivadoReserva:archive.reserva};
+          }
           const ids = await this.repository.reserve(
             tx,
             row,

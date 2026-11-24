@@ -1,4 +1,5 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { ArchivadoRuntimeService } from './archivado/archivado-runtime.service';
+import { BadRequestException, Injectable, Optional, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { GetObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
@@ -40,9 +41,9 @@ function firstNonEmpty(...values: Array<string | undefined | null>) {
 
 @Injectable()
 export class DocumentosPreviewService {
-  constructor(private readonly config: ConfigService) {}
+  constructor(private readonly config: ConfigService, @Optional() private readonly archivado?: ArchivadoRuntimeService) {}
 
-  async getArchivoPreviewUrl(archivoId: number) {
+  async getArchivoPreviewUrl(archivoId: number, authorization?: string) {
     const rows = await sql<ArchivoPreviewRow[]>`
       SELECT
         id,
@@ -60,6 +61,23 @@ export class DocumentosPreviewService {
 
     if (!archivo) {
       throw new NotFoundException(`Archivo ${archivoId} no encontrado`);
+    }
+
+    const archived = await this.archivado?.previewUrl(archivoId, authorization);
+    if (archived) {
+      const filename = archivo.nombre_archivo || `archivo-${archivoId}`;
+      const expiresIn = archived.expiresIn;
+      return {
+        archivoId,
+        filename,
+        contentType: inferContentType(filename, archivo.storage_key),
+        storageProvider: 'nas',
+        storageBucket: null,
+        storageKey: archivo.storage_key,
+        signedUrl: archived.url,
+        expiresIn,
+        expiresAt: new Date(Date.now() + expiresIn * 1000).toISOString(),
+      };
     }
 
     const storageProvider = String(archivo.storage_provider ?? '').trim().toLowerCase();

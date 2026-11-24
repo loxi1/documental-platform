@@ -1,3 +1,7 @@
+import { ArchivadoCoreModule } from './archivado/archivado-core.module';
+import { ArchivadoRuntimeService } from './archivado/archivado-runtime.service';
+import { ArchivadoController } from './archivado/archivado.controller';
+import { ArchivadoDocumentalService } from './archivado/archivado-documental.service';
 import { TmpController } from './tmp/tmp.controller';
 import { OrdenPagoCreacionController } from './orden-pago/orden-pago-creacion.controller';
 import { OrdenPagoArchivoService } from './orden-pago/orden-pago-archivo.service';
@@ -29,8 +33,8 @@ import { DocumentosUploadService } from './documentos-upload.service';
 import { PeriodoDocumentalR2Repository } from './periodo-documental-r2.repository';
 
 @Module({
-  imports: [DocumentoEventosModule, DocumentalV2Module],
-  controllers: [DocumentosController, CargaSeguraController, TmpController, OrdenPagoCreacionController, FacturaTempMaterializationController, ReciboHonorarioTempMaterializationController],
+  imports: [ArchivadoCoreModule, DocumentoEventosModule, DocumentalV2Module],
+  controllers: [ArchivadoController, DocumentosController, CargaSeguraController, TmpController, OrdenPagoCreacionController, FacturaTempMaterializationController, ReciboHonorarioTempMaterializationController],
   providers: [
     TmpService, TmpRepository,
     FacturaTempMaterializationRepository,
@@ -45,11 +49,6 @@ import { PeriodoDocumentalR2Repository } from './periodo-documental-r2.repositor
     PeriodoDocumentalR2Repository,
     CargaSeguraRepository,
     CargaSeguraPersistence,
-    R2CargaSeguraStorage,
-    {
-      provide: CARGA_SEGURA_STORAGE,
-      useExisting: R2CargaSeguraStorage,
-    },
     CargaSeguraCompensation,
     CargaSeguraService,
   ],

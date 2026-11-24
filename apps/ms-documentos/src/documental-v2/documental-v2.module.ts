@@ -1,3 +1,4 @@
+import { ArchivadoCoreModule } from '../documentos/archivado/archivado-core.module';
 import { BuscarContextosOpService } from './finanzas/buscar-contextos-op.service';
 import { OrdenPagoController } from './finanzas/orden-pago.controller';
 import { OrdenPagoService } from './finanzas/orden-pago.service';
@@ -46,7 +47,7 @@ import {
 } from './finanzas/evaluar-correspondencia-pago-factura.usecase';
 
 @Module({
-  imports: [DocumentoEventosModule],
+  imports: [ArchivadoCoreModule,DocumentoEventosModule],
   controllers: [DocumentalV2Controller, OrdenPagoController],
   providers: [
     ConfirmacionDocumentalService,

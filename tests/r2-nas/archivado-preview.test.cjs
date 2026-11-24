@@ -1,0 +1,10 @@
+const{test}=require('node:test'),assert=require('node:assert/strict'),path=require('node:path');
+const{ArchivadoPreviewToken}=require(path.join(process.env.BBTI_ARCHIVE_COMPILED,'archivado-preview-token.js'));
+const secret='synthetic-test-only-secret-of-32-bytes-or-more',tokens=new ArchivadoPreviewToken(secret),now=1800000000000;
+const c={archivoId:10,reservaId:'10000000-0000-4000-a000-000000000001',empresa:'BBTI',clienteId:2,sha256:'a'.repeat(64)};
+test('preview ticket binds file tenant and immutable content',()=>{const t=tokens.emitir(c,now);const r=tokens.validar(t,10,now);for(const k of Object.keys(c))assert.equal(r[k],c[k])});
+test('preview rejects another file',()=>{assert.throws(()=>tokens.validar(tokens.emitir(c,now),11,now),/INVALID/)});
+test('preview rejects expiration',()=>{assert.throws(()=>tokens.validar(tokens.emitir(c,now),10,now+120000),/INVALID/)});
+test('preview rejects modified tenant',()=>{const t=tokens.emitir(c,now).split('.'),raw=JSON.parse(Buffer.from(t[0],'base64url'));raw.clienteId=999;t[0]=Buffer.from(JSON.stringify(raw)).toString('base64url');assert.throws(()=>tokens.validar(t.join('.'),10,now),/INVALID/)});
+test('preview uses dedicated secret not an interchangeable key',()=>{const other=new ArchivadoPreviewToken('another-synthetic-purpose-secret-32-bytes');assert.throws(()=>other.validar(tokens.emitir(c,now),10,now),/INVALID/)});
+test('preview refuses missing or short key',()=>assert.throws(()=>new ArchivadoPreviewToken('short'),/SECRET_REQUIRED/));

@@ -1,4 +1,6 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { ejecutarConfirmacion } from '../../documentos/archivado/archivado-postcommit';
+import { ArchivadoDocumentalService } from '../../documentos/archivado/archivado-documental.service';
+import { BadRequestException, ConflictException, Injectable, NotFoundException, Optional } from '@nestjs/common';
 import { sql } from '@documental/database';
 
 import { DocumentosRepository } from '../../documentos/documentos.repository';
@@ -53,6 +55,7 @@ export class OrquestarConfirmacionDocumentalV2UseCase {
     private readonly asociarGrupoFactura: AsociarGrupoFacturaV2UseCase,
     private readonly asociarDocumentoGrupo: AsociarDocumentoGrupoFacturaV2UseCase,
     private readonly documentosOperativosPrincipales: DocumentoOperativoPrincipalRepository,
+    @Optional() private readonly archivado?: ArchivadoDocumentalService,
   ) {}
 
   execute(
@@ -60,9 +63,9 @@ export class OrquestarConfirmacionDocumentalV2UseCase {
     input: ConfirmacionDocumentalIntegradaInput,
     audit: ConfirmacionDocumentalAudit = {},
   ) {
-    return sql.begin((tx) =>
+    return ejecutarConfirmacion(this.archivado,()=>sql.begin((tx) =>
       this.confirmarConExecutor(tx, ocrResultadoId, input, audit),
-    );
+    ));
   }
 
   executeManualFactura(
@@ -73,7 +76,7 @@ export class OrquestarConfirmacionDocumentalV2UseCase {
     input: ConfirmacionDocumentalIntegradaInput,
     audit: ConfirmacionDocumentalAudit = {},
   ) {
-    return sql.begin(async (tx) => {
+    return ejecutarConfirmacion(this.archivado,()=>sql.begin(async (tx) => {
       const validacionManual =
         await this.documentosLegacy.crearValidacionManualFacturaConExecutor(
           tx,
@@ -92,17 +95,17 @@ export class OrquestarConfirmacionDocumentalV2UseCase {
         },
         audit,
       );
-    });
+    }));
   }
 
   executeRecuperacionAlmacen(documentoId: number, archivoId: number, input: any, usuarioId?: number) {
-    return sql.begin(async tx => {
+    return ejecutarConfirmacion(this.archivado,()=>sql.begin(async tx => {
       const confirmado = await this.documentosLegacy.confirmarRecuperacionAlmacenConExecutor(tx, documentoId, archivoId, input, usuarioId);
       return this.confirmarConExecutor(tx, input.ocrResultadoId ?? 0, {
         expedienteId: input.contexto.expedienteId, documentoBaseId: input.contexto.documentoBaseId,
         grupoFacturaId: input.contexto.grupoFacturaId,
       }, { usuarioId }, confirmado);
-    });
+    }));
   }
 
   async integrarTemporalConExecutor(tx: SqlExecutor, confirmado: any,
@@ -147,6 +150,9 @@ export class OrquestarConfirmacionDocumentalV2UseCase {
       const esAdjuntoGrupoV2 = RELACIONES_ADJUNTO_V2.has(tipoRelacion);
 
       if (!esPrincipalOperativoV2 && !esFacturaGrupoV2 && !esAdjuntoGrupoV2) {
+        const id = documentoId;
+        if (Number.isSafeInteger(id)&&id>0) await this.archivado?.registrarDocumentoConfirmado(tx,id,audit.usuarioId??null,'CONFIRMACION_DOCUMENTAL',
+          confirmado.ocrResultado?.archivo_id?Number(confirmado.ocrResultado.archivo_id):undefined);
         return {
           ...confirmado,
           documentalV2: null,
@@ -299,6 +305,10 @@ export class OrquestarConfirmacionDocumentalV2UseCase {
         }
       }
 
+      const documentoArchivo = documentoId;
+      if (Number.isSafeInteger(documentoArchivo) && documentoArchivo>0)
+        await this.archivado?.registrarDocumentoConfirmado(tx,documentoArchivo,audit.usuarioId??null,'CONFIRMACION_DOCUMENTAL',
+          confirmado.ocrResultado?.archivo_id?Number(confirmado.ocrResultado.archivo_id):undefined);
       return {
         ...confirmado,
         documentalV2: {

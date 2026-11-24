@@ -1,5 +1,7 @@
+import { ejecutarConfirmacion } from '../archivado/archivado-postcommit';
+import { ArchivadoDocumentalService } from '../archivado/archivado-documental.service';
 import { randomUUID } from 'node:crypto';
-import { ConflictException, ForbiddenException, Injectable } from '@nestjs/common';
+import { ConflictException, ForbiddenException, Injectable, Optional } from '@nestjs/common';
 import { OrdenPagoService } from '../../documental-v2/finanzas/orden-pago.service';
 import { AuditoriaOperativaV2Repository } from '../../documental-v2/auditoria-operativa-v2.repository';
 import { validarActorOp, validarOrdenPago, OrdenPagoActor } from '../../documental-v2/finanzas/orden-pago.dto';
@@ -23,6 +25,7 @@ export class OrdenPagoArchivoService {
     private readonly tmp: TmpService,
     private readonly documentos: DocumentosRepository,
     private readonly auditoria: AuditoriaOperativaV2Repository,
+    @Optional() private readonly archivado?: ArchivadoDocumentalService,
   ) {}
 
   async reemplazarArchivoInicial(
@@ -244,7 +247,10 @@ export class OrdenPagoArchivoService {
     };
   }
 
-  async crear(body: unknown, key: string, actor: OrdenPagoActor) {
+  crear(body:unknown,key:string,actor:OrdenPagoActor){
+    return ejecutarConfirmacion(this.archivado,()=>this.crearConfirmado(body,key,actor));
+  }
+  private async crearConfirmado(body: unknown, key: string, actor: OrdenPagoActor) {
     validarActorOp(actor);
     const input = validarOrdenPago(body, key);
     if (input.tempId == null) return this.op.crear(body, key, actor);
@@ -263,8 +269,12 @@ export class OrdenPagoArchivoService {
       const ids = await this.op.crear(body, identity, actor, tx);
       const destination = row.metadata?.destinoReservado || buildCargaSeguraStorageKey({ operacionId: tempId,
         empresaCodigo: row.empresa_codigo, nombreArchivo: row.nombre_archivo_original, fecha: new Date(input.fechaEmision) });
-      await this.repository.reserve(tx, row, ids, identity, destination);
-      return { ids, destination };
+      const archive=this.archivado
+        ? await this.archivado.prepararOp(tx,row,ids,destination,actor,identity)
+        : {destination,reserva:null,bloqueo:undefined};
+      if(archive.reserva||archive.bloqueo) await this.repository.reserve(tx,row,ids,identity,archive.destination,archive.reserva,archive.bloqueo);
+      else await this.repository.reserve(tx,row,ids,identity,archive.destination);
+      return { ids, destination:archive.destination };
     }));
     // T1 ya hizo COMMIT. COPY/VERIFY no sostienen una transacción PostgreSQL.
     const promoted = await this.tmp.promote(tempId, tmpActor, reserved.destination, {

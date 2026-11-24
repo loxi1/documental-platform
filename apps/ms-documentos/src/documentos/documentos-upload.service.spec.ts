@@ -39,7 +39,7 @@ describe('DocumentosUploadService - múltiples principales por relación', () =>
   });
 
   function service() {
-    return new DocumentosUploadService({} as any, {} as any, {} as any, { resolverParaVersion: jest.fn().mockResolvedValue({ fecha: new Date("2026-07-21T00:00:00Z") }) } as any);
+    return new DocumentosUploadService({get:jest.fn()} as any, {} as any, {} as any, { resolverParaVersion: jest.fn().mockResolvedValue({ fecha: new Date("2026-07-21T00:00:00Z") }) } as any);
   }
 
   function mockSqlPorConsulta(fixtures: {

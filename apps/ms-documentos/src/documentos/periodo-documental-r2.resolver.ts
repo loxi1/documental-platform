@@ -17,7 +17,7 @@ export type PeriodoR2Contexto = {
 
 export type PeriodoR2Solicitud =
   | {
-      operacion: 'NUEVA_GUIA' | 'NUEVA_NI';
+      operacion: 'NUEVA_GUIA' | 'NUEVA_NI' | 'NUEVO_SUSTENTO';
       grupoFacturaId: number;
     }
   | {
@@ -71,7 +71,7 @@ function validarSolicitud(solicitud: PeriodoR2Solicitud): void {
     id = solicitud.documentoId;
   } else if (
     solicitud.operacion === 'NUEVA_GUIA' ||
-    solicitud.operacion === 'NUEVA_NI'
+    solicitud.operacion === 'NUEVA_NI' || solicitud.operacion === 'NUEVO_SUSTENTO'
   ) {
     id = solicitud.grupoFacturaId;
   } else {

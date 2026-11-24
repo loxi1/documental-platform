@@ -1,3 +1,4 @@
+import { conExclusionFisica, poseeExclusionFisica } from '../archivado/archivado-exclusion';
 import {
   DeleteObjectCommand,
   HeadObjectCommand,
@@ -153,7 +154,7 @@ export class R2CargaSeguraStorage implements CargaSeguraStorage {
     }
   }
 
-  async copyObject(
+  private async copiar(
     input: CargaSeguraStorageCopyInput,
   ): Promise<CargaSeguraStorageCopyResult> {
     // Keep the existing adapter contract, but never issue S3 CopyObject here.
@@ -231,7 +232,7 @@ export class R2CargaSeguraStorage implements CargaSeguraStorage {
     } finally { body?.destroy(); }
   }
 
-  async putObject(
+  private async poner(
     input: CargaSeguraStoragePutInput,
   ): Promise<CargaSeguraStoragePutResult> {
     try {
@@ -270,7 +271,7 @@ export class R2CargaSeguraStorage implements CargaSeguraStorage {
     };
   }
 
-  async deleteObject(input: CargaSeguraStorageDeleteInput): Promise<void> {
+  private async borrar(input: CargaSeguraStorageDeleteInput): Promise<void> {
     try {
       await this.getClient().send(
         new DeleteObjectCommand({
@@ -282,6 +283,31 @@ export class R2CargaSeguraStorage implements CargaSeguraStorage {
       throw this.storageError('No se pudo eliminar el objeto R2', error);
     }
   }
+
+  async copyObject(input:CargaSeguraStorageCopyInput):Promise<CargaSeguraStorageCopyResult>{
+    return this.conExclusion(input.bucket,[input.sourceKey,input.destinationKey],()=>this.copiar(input));
+  }
+  async putObject(input:CargaSeguraStoragePutInput):Promise<CargaSeguraStoragePutResult>{
+    return this.conExclusion(input.bucket,[input.key],()=>this.poner(input));
+  }
+  async deleteObject(input:CargaSeguraStorageDeleteInput):Promise<void>{
+    return this.conExclusion(input.bucket,[input.key],()=>this.borrar(input));
+  }
+  private async conExclusion<T>(bucket:string,keys:string[],work:()=>Promise<T>):Promise<T>{
+    if(this.config.get<string>('R2_NAS_ARCHIVE_ENABLED')!=='true')return work();
+    const account=this.config.get<string>('R2_ACCOUNT_ID')||this.config.get<string>('CLOUDFLARE_ACCOUNT_ID');
+    if(!account)throw new Error('ARCHIVADO_CUENTA_R2_REQUERIDA');
+    const ordered=[...new Set(keys)].sort();
+    if(ordered.every(key=>poseeExclusionFisica(account,bucket,key)))return work();
+    const {sql}=await import('@documental/database');
+    const c=await sql.reserve();try{
+      const run=async(i:number):Promise<T>=>i===ordered.length?work():conExclusionFisica(c,account,bucket,ordered[i],()=>run(i+1));
+      return await run(0);
+    }finally{c.release();}
+  }
+
+  /** Internal archive adapter reuses this exact configured SDK client. */
+  getArchivadoClient(): S3Client { return this.getClient(); }
 
   private getClient(): S3Client {
     if (this.client) {

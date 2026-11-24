@@ -1,7 +1,9 @@
+import { ejecutarConfirmacion } from './archivado/archivado-postcommit';
+import { ArchivadoDocumentalService } from './archivado/archivado-documental.service';
 import { AlmacenRecuperacionRepository, AlmacenContexto, AlmacenScope } from './almacen-recuperacion.repository';
 import { buildClaveDocumental } from './identidad-documental';
 import { ExpedientesRepository } from '../expedientes/expedientes.repository';
-import { ConflictException, Injectable } from '@nestjs/common';
+import { ConflictException, Injectable, Optional } from '@nestjs/common';
 import { sql } from '@documental/database';
 import type { SqlExecutor } from '../documental-v2/sql-executor';
 
@@ -27,6 +29,7 @@ type SaveOcrResultadoParams = {
 
 @Injectable()
 export class DocumentosRepository {
+  constructor(@Optional() private readonly archivado?: ArchivadoDocumentalService) {}
   async validarTemporalAntesDeReserva(tx: SqlExecutor, row: any, input: any) {
     const [e] = await tx`SELECT codigo_expediente FROM documentos.expedientes
       WHERE id=${input.expedienteId} AND empresa_codigo=${row.empresa_codigo}
@@ -46,7 +49,9 @@ export class DocumentosRepository {
     const metadata = { ...input.metadata, tipoDocumental: input.tipoDocumental,
       clienteAbreviatura: row.empresa_codigo,
       origenValidacion: real ? 'OCR_TEMP_VALIDADO' : 'MANUAL_SIN_OCR',
-      validadoPor: actor.actorId, tempId: Number(row.id) };
+      validadoPor: actor.actorId, tempId: Number(row.id),
+      ...(this.archivado?.habilitado()?{archivadoNuevo:true}: {}),
+      ...(row.metadata?.archivadoReserva?{archivadoReserva:row.metadata.archivadoReserva}:{}) };
     const fecha = String(metadata.fechaEmision);
     const [documento] = await tx`INSERT INTO documentos.documentos
       (cliente_abreviatura,anio,mes,periodo_anio,periodo_mes,tipo_documental,estado,metadata)
@@ -591,11 +596,12 @@ export class DocumentosRepository {
     tipoDocumental: string;
     estado: string;
     metadata: any;
-  }) {
+  }, executor?: SqlExecutor) {
+    const db=executor??sql;
     const ocrMetadata = params.metadata;
     const extracted = ocrMetadata?.metadata ?? {};
 
-    const rows = await sql`
+    const rows = await db`
       UPDATE documentos.documentos
       SET
         tipo_documental = ${params.tipoDocumental},
@@ -905,10 +911,11 @@ export class DocumentosRepository {
     return rows[0] ?? null;
   }
 
-  async confirmarOcrResultado(id: number, usuarioId?: number) {
+  async confirmarOcrResultado(id: number, usuarioId?: number, executor?: SqlExecutor) {
+    const db=executor??sql;
     const usuarioIdFinal: number | null = usuarioId ?? null;
 
-    const rows = await sql`
+    const rows = await db`
       WITH ocr AS (
         UPDATE documentos.ocr_resultados
         SET
@@ -1976,6 +1983,7 @@ export class DocumentosRepository {
         RETURNING *
       `;
 
+      await this.archivado?.registrarDocumentoConfirmado(tx,Number(params.documentoId),params.usuarioId??null,'VERSION_ACEPTADA',Number(params.archivoId));
       return {
         ok: true,
         documento,
@@ -1990,9 +1998,9 @@ export class DocumentosRepository {
       };
     };
     // Keep legacy Almacén semantics; only this guarded fallback uses serializable isolation.
-    return params.recuperacionCompras || params.recuperacionAlmacen
+    return ejecutarConfirmacion(this.archivado,()=>params.recuperacionCompras || params.recuperacionAlmacen
       ? sql.begin('isolation level serializable', ejecutar)
-      : sql.begin(ejecutar);
+      : sql.begin(ejecutar));
   }
 
 

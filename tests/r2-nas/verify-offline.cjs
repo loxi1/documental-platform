@@ -1,0 +1,16 @@
+const fs=require('node:fs'),path=require('node:path'),os=require('node:os'),{createRequire}=require('node:module'),{spawnSync}=require('node:child_process');
+const root=path.resolve(__dirname,'../..'),deps=process.env.BBTI_EXISTING_DEPS_SOURCE;
+if(!deps||!fs.existsSync(path.join(deps,'package.json')))throw Error('Set BBTI_EXISTING_DEPS_SOURCE to the accredited existing monorepo; no install is performed');
+const ts=createRequire(path.join(deps,'package.json'))('typescript'),dir=path.join(root,'apps/ms-documentos/src/documentos/archivado'),files=fs.readdirSync(dir).filter(n=>n.endsWith('.ts')&&!n.endsWith('.spec.ts'));
+const options={noEmit:true,strict:true,skipLibCheck:true,target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS,moduleResolution:ts.ModuleResolutionKind.Node10,experimentalDecorators:true,esModuleInterop:true,typeRoots:[path.join(deps,'apps/ms-documentos/node_modules/@types')],types:['node'],lib:['lib.es2022.d.ts','lib.dom.d.ts']};
+const diagnostics=ts.getPreEmitDiagnostics(ts.createProgram(files.map(n=>path.join(dir,n)),options));
+for(const d of diagnostics)console.error(ts.flattenDiagnosticMessageText(d.messageText,' '));
+if(diagnostics.length)process.exit(1);
+const sandbox=fs.mkdtempSync(path.join(os.tmpdir(),'bbti-archive-offline-')),output=path.join(sandbox,'archivado');fs.mkdirSync(output);fs.symlinkSync(path.join(deps,'apps/ms-documentos/node_modules'),path.join(sandbox,'node_modules'),'dir');
+for(const name of files){const r=ts.transpileModule(fs.readFileSync(path.join(dir,name),'utf8'),{fileName:name,compilerOptions:{...options,noEmit:false}});fs.writeFileSync(path.join(output,name.replace(/\.ts$/,'.js')),r.outputText)}
+for(const name of ['periodo-documental-r2.fecha.ts','periodo-documental-r2.resolver.ts']){const r=ts.transpileModule(fs.readFileSync(path.join(dir,'..',name),'utf8'),{fileName:name,compilerOptions:{...options,noEmit:false}});fs.writeFileSync(path.join(sandbox,name.replace(/\.ts$/,'.js')),r.outputText)}
+const available=['archivado-core.test.cjs','archivado-move.test.cjs','archivado-adapters.test.cjs','archivado-domain.test.cjs','archivado-staging.test.cjs','archivado-preview.test.cjs','archivado-exclusion.test.cjs'];
+const selected=process.env.BBTI_ARCHIVE_SUITE_FILTER?process.env.BBTI_ARCHIVE_SUITE_FILTER.split(','):available;
+if(!selected.length||selected.some(n=>!available.includes(n)))throw Error('Invalid focal suite selection');
+let failures=0;for(const name of selected){const r=spawnSync(process.execPath,[path.join(__dirname,name)],{env:{...process.env,BBTI_ARCHIVE_COMPILED:output},encoding:'utf8'});fs.writeFileSync(path.join(output,name+'.log'),r.stdout+r.stderr);process.stdout.write(r.stdout);process.stderr.write(r.stderr);if(r.error || r.status!==0 || !/tests [1-9][0-9]*/.test(r.stdout)){failures++;console.error('TEST_SUBPROCESS_FAILED',r.error?.code ?? 'NO_TEST_SUMMARY')}}
+const result={typecheck:'PASS',suites:selected.length,failedSuites:failures,scope:'offline core, repository mocks, MOVE mocks and adapter contracts; no DB or network',artifacts:output};fs.writeFileSync(path.join(output,'result.json'),JSON.stringify(result,null,2));console.log('OFFLINE_EVIDENCE='+output);process.exitCode=failures?1:0;

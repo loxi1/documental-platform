@@ -1,0 +1,8 @@
+const{test}=require('node:test'),assert=require('node:assert/strict'),path=require('node:path');
+const{conExclusionFisica,claveExclusionFisica}=require(path.join(process.env.BBTI_ARCHIVE_COMPILED,'archivado-exclusion.js'));
+test('physical exclusion is held throughout writer work then released',async()=>{const events=[],c={unsafe:async(q,v)=>{events.push(q.includes('try')?'lock':'unlock');return[{locked:true}]}};assert.equal(await conExclusionFisica(c,'dev','bucket','key',async()=>{events.push('write');return 1}),1);assert.deepEqual(events,['lock','write','unlock'])});
+test('busy key never starts external work',async()=>{const c={unsafe:async()=>[{locked:false}]};await assert.rejects(()=>conExclusionFisica(c,'dev','bucket','key',async()=>assert.fail('must not write')),/OBJETO_OCUPADO/)});
+test('failure releases exactly owned lock',async()=>{const events=[],c={unsafe:async(q,v)=>{events.push({q,v});return[{locked:true}]}};await assert.rejects(()=>conExclusionFisica(c,'dev','bucket','key',async()=>{throw Error('STOP')}),/STOP/);assert.equal(events.length,2);assert.deepEqual(events[0].v,events[1].v)});
+test('account bucket key partition is unambiguous',()=>assert.notEqual(claveExclusionFisica('a/b','c','d'),claveExclusionFisica('a','b/c','d')));
+test('different R2 accounts never share logical identity',()=>assert.notEqual(claveExclusionFisica('dev','bucket','key'),claveExclusionFisica('prod','bucket','key')));
+test('nested same-key operation reuses held lock without reentrant connection acquisition',async()=>{let calls=0;const c={unsafe:async()=>{calls++;return[{locked:true}]}};await conExclusionFisica(c,'dev','bucket','key',()=>conExclusionFisica(c,'dev','bucket','key',async()=>1));assert.equal(calls,2)});

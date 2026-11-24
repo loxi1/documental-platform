@@ -742,6 +742,7 @@ export class DocumentosGatewayController {
       contexto,
       requestId,
     );
+    const secureContext = this.assertSecureUploadContext(contexto);
     const empresaContexto = this.getEmpresaFromContext(contexto);
 
     if (!empresaContexto) {
@@ -790,6 +791,8 @@ export class DocumentosGatewayController {
         data: form,
         headers: {
           ...this.buildForwardHeaders(authorization, requestId),
+          'x-workspace-id':String(secureContext.workspaceId),'x-empresa-codigo':secureContext.empresaCodigo,
+          'x-cliente-destino-id':String(secureContext.clienteDestinoId),'x-actor-id':secureContext.actorId,
           ...form.getHeaders(),
         },
         maxBodyLength: Infinity,
@@ -1941,6 +1944,53 @@ export class DocumentosGatewayController {
       requestId,
       body,
     });
+  }
+
+  @Get('archivado/expedientes/:expedienteId')
+  async resumenArchivado(@Param('expedienteId') id: string, @Headers('authorization') auth?: string,
+    @Headers(REQUEST_ID_HEADER) requestId?: string) {
+    const contexto = await this.validateAuthorization(auth);
+    await this.assertSecureUploadExpedienteScope(Number(id), contexto, requestId);
+    return this.proxy({method:'GET',path:`/documentos/archivado/expedientes/${Number(id)}`,authorization:auth,requestId});
+  }
+
+  @Post('archivado/expedientes/:expedienteId/regularizar')
+  async regularizarArchivado(@Param('expedienteId') id: string, @Headers('authorization') auth?: string,
+    @Headers(REQUEST_ID_HEADER) requestId?: string) {
+    const contexto = await this.validateAuthorization(auth);
+    this.assertAnyActionPermitida(contexto, ['documentos.confirmar_ocr', 'ocr.confirmar'], 'regularizar archivado');
+    await this.assertSecureUploadExpedienteScope(Number(id), contexto, requestId);
+    return this.proxy({method:'POST',path:`/documentos/archivado/expedientes/${Number(id)}/regularizar`,authorization:auth,requestId});
+  }
+
+  // A short-lived purpose-bound capability is validated by MS Documentos, as with signed R2 previews.
+  @Get('archivado/preview/:archivoId')
+  async previewArchivado(@Param('archivoId') id: string, @Query('ticket') ticket: string, @Res() response: Response) {
+    if (!/^[1-9]\d*$/.test(id) || typeof ticket !== 'string' || ticket.length > 2048) throw new UnauthorizedException('ARCHIVADO_PREVIEW_INVALID');
+    try {
+      const upstream = await axios.get(`${this.getBaseUrl()}/documentos/archivado/preview/${id}`,
+        {params:{ticket},responseType:'arraybuffer',timeout:30000,maxRedirects:0,maxContentLength:52428800});
+      // Permit the native DEV Web Admin to embed only this NAS PDF response.
+      // Production retains the default Helmet framing restrictions.
+      if (process.env.NODE_ENV === 'development') {
+        const csp = response.getHeader('Content-Security-Policy');
+        if (typeof csp === 'string' && /(?:^|;)\s*frame-ancestors\s+[^;]+/.test(csp)) {
+          response.setHeader(
+            'Content-Security-Policy',
+            csp.replace(
+              /(^|;)\s*frame-ancestors\s+[^;]+/,
+              "$1frame-ancestors 'self' http://localhost:3005",
+            ),
+          );
+          response.removeHeader('X-Frame-Options');
+        }
+      }
+      const mime=String(upstream.headers['content-type']??'').split(';')[0].trim().toLowerCase();
+      const extension=new Map([['application/pdf','pdf'],['image/png','png'],['image/jpeg','jpg']]).get(mime);
+      if(!extension)throw new Error('ARCHIVADO_FORMATO_NO_ADMITIDO');
+      response.set({'Content-Type':mime,'Cache-Control':'private, no-store','Referrer-Policy':'no-referrer',
+        'X-Content-Type-Options':'nosniff','Content-Disposition':`inline; filename="documento.${extension}"`}).send(upstream.data);
+    } catch { throw new HttpException('ARCHIVADO_PREVIEW_NO_DISPONIBLE',503); }
   }
 
   @Get('archivos/:archivoId/preview-url')

@@ -1,6 +1,9 @@
+import { ejecutarConfirmacion } from '../../documentos/archivado/archivado-postcommit';
+import { ArchivadoDocumentalService } from '../../documentos/archivado/archivado-documental.service';
 import {
   ConflictException,
   Injectable,
+  Optional,
   NotFoundException,
 } from '@nestjs/common';
 import { sql } from '@documental/database';
@@ -33,10 +36,11 @@ export class RegularizarObligacionOpFacturaUseCase {
     private readonly relaciones: GrupoFacturaDocumentoRepository,
     private readonly asociarDocumentoGrupo: AsociarDocumentoGrupoFacturaV2UseCase,
     private readonly auditoria: AuditoriaOperativaV2Repository,
+    @Optional() private readonly archivado?: ArchivadoDocumentalService,
   ) {}
 
   execute(input: RegularizarObligacionOpFacturaInput) {
-    return sql.begin(async (tx) => {
+    return ejecutarConfirmacion(this.archivado,()=>sql.begin(async (tx) => {
       const grupoFacturaId = Number(input.grupoFacturaId);
       const documentoId = Number(input.documentoId);
 
@@ -185,6 +189,7 @@ export class RegularizarObligacionOpFacturaUseCase {
         tx,
       );
 
+      await this.archivado?.registrarDocumentoConfirmado(tx,documentoId,input.usuario?.id??null,'REGULARIZACION_OP');
       return {
         grupoFacturaId,
         documentoId,
@@ -192,6 +197,6 @@ export class RegularizarObligacionOpFacturaUseCase {
         estadoRegularizacion: 'REGULARIZADO' as const,
         idempotente: asociacion.idempotente,
       };
-    });
+    }));
   }
 }

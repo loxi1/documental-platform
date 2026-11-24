@@ -1,3 +1,7 @@
+import { extensionArchivadoDesdeMime } from '../archivado/archivado-nomenclatura';
+import { ejecutarConfirmacion } from '../archivado/archivado-postcommit';
+import { ArchivadoRuntimeService } from '../archivado/archivado-runtime.service';
+import { ArchivadoDocumentalService } from '../archivado/archivado-documental.service';
 import { createHash, randomUUID } from 'node:crypto';
 import { BadRequestException, ForbiddenException, UnauthorizedException, ConflictException, Inject, Injectable, Optional, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -27,6 +31,8 @@ export class TmpService {
     private readonly preview: DocumentosPreviewService,
     @Optional() private readonly documentos?: DocumentosRepository,
     @Optional() private readonly documentalV2?: OrquestarConfirmacionDocumentalV2UseCase,
+    @Optional() private readonly archivado?: ArchivadoDocumentalService,
+    @Optional() private readonly archivadoRuntime?: ArchivadoRuntimeService,
 ) {}
 
   async comprasActor(actor: Identity, authorization: string | undefined, expedienteId: unknown, documentoBaseId: unknown, confirm = false): Promise<TmpActor> {
@@ -475,7 +481,10 @@ export class TmpService {
     if (row.estado !== 'almacenada' || !row.expira_en || !Number.isFinite(new Date(row.expira_en).getTime()) || new Date(row.expira_en).getTime() <= Date.now())
       throw new ConflictException('TMP_DOCUMENTAL_EXPIRED_OR_NOT_STAGED');
   }
-  async documental(id: number, actor: TmpActor, raw: unknown, draft = false) {
+  documental(id:number,actor:TmpActor,raw:unknown,draft=false){
+    return ejecutarConfirmacion(this.archivado,()=>this.documentalConfirmar(id,actor,raw,draft));
+  }
+  private async documentalConfirmar(id: number, actor: TmpActor, raw: unknown, draft = false) {
     this.id(id);
     const input = this.documentalInput(raw, !draft);
     if (!draft && (!this.documentos || !this.documentalV2))
@@ -511,9 +520,14 @@ export class TmpService {
         return null;
       }
       await this.documentos!.validarTemporalAntesDeReserva(c, row, input);
-      const destination = buildCargaSeguraStorageKey({ operacionId: id, empresaCodigo: row.empresa_codigo,
+      const technicalDestination = buildCargaSeguraStorageKey({ operacionId: id, empresaCodigo: row.empresa_codigo,
         nombreArchivo: row.nombre_archivo_original, fecha: new Date(`${input.metadata.fechaEmision}T00:00:00.000Z`) });
+      const archive = this.archivado
+        ? await this.archivado.prepararCompras(c, row, input, technicalDestination, actor, fingerprint)
+        : { destination: technicalDestination, reserva: null, bloqueo: undefined };
+      const destination = archive.destination;
       await this.repository.saveDocumentalMetadata(c, id, { ...row.metadata, borradorDocumental: input,
+        ...(archive.reserva || archive.bloqueo ? { archivadoReserva: archive.reserva, archivadoBloqueo: archive.bloqueo ?? null } : {}),
         documentalFingerprint: fingerprint, destinoReservado: destination, promocionIdentity: actor.idempotencyKey,
         integration: { consumer, identity: actor.idempotencyKey, completed: false } });
       return destination;
@@ -526,6 +540,7 @@ export class TmpService {
         const created = await this.documentos!.materializarTemporalConExecutor(tx, row, destination, input, actor);
         const confirmed = await this.documentalV2!.integrarTemporalConExecutor(tx, created.confirmed, input,
           { usuarioId: actor.actorId, requestId: actor.requestId, correlationId: actor.correlationId });
+        await this.archivado?.confirmar(tx, row, created.archivoId, created.documentoId);
         await tx`UPDATE documentos.carga_operaciones SET documento_id=${created.documentoId}, archivo_id=${created.archivoId},
           metadata=jsonb_set(metadata,'{documentalResult}',${JSON.stringify({ ...confirmed, archivoId: created.archivoId,
             documentoId: created.documentoId, tempId: id })}::jsonb) WHERE id=${id}`;
@@ -541,7 +556,13 @@ export class TmpService {
     return this.repository.locked(String(id), async c => {
       let row = await this.repository.own(c, id, actor);
       assertTmpIntegration(row, integration);
-      this.destination(row, destination, actor.idempotencyKey);
+      const ejecutar = async () => {
+      // A completed domain retry must not HEAD or recreate the deleted definitive object.
+      if(this.archivado?.confirmacionArchivada && row.metadata?.promocionIdentity===actor.idempotencyKey
+        && await this.archivado.confirmacionArchivada(c,row,String(destination)))return this.result(row);
+      const semanticReserved = this.archivado
+        ? await this.archivado.acreditarDestino(c, row, String(destination)) : false;
+      this.destination(row, destination, actor.idempotencyKey, semanticReserved);
       const key = destination as string;
       if (row.metadata.destinoReservado && (row.metadata.destinoReservado !== key || row.metadata.promocionIdentity !== actor.idempotencyKey)) {
         throw new ConflictException('TMP_DESTINATION_CONFLICT');
@@ -571,10 +592,22 @@ export class TmpService {
       catch { return this.result(row); }
       await this.repository.cleaned(c, id);
       return this.result(await this.repository.own(c, id, actor));
+      };
+      return this.archivado
+        ? this.archivado.conExclusion(c,row,String(destination),ejecutar) : ejecutar();
     });
   }
   private id(id: number) { if (!Number.isSafeInteger(id) || id <= 0) throw new BadRequestException('tempId inválido'); }
-  private destination(row: TmpRow, key: unknown, identity: string) {
+  private destination(row: TmpRow, key: unknown, identity: string, semanticReserved = false) {
+    if (semanticReserved) {
+      const extension=extensionArchivadoDesdeMime(row.content_type);
+      const match=typeof key==='string'?/^documentos\/\d{4}\/(0[1-9]|1[0-2])\/([A-Z0-9_-]+)\/[A-Z0-9_,-]+\.(pdf|png|jpg)$/.exec(key):null;
+      if (!match||extension==='SIN_REGLA'||!String(key).endsWith('.'+extension)||match[2]!==row.empresa_codigo
+          || typeof identity!=='string'||!identity.trim()
+          || row.metadata?.destinoReservado !== key || row.metadata?.promocionIdentity !== identity)
+        throw new ConflictException('TMP_DESTINATION_CONFLICT');
+      return;
+    }
     // Las reservas anteriores conservan su destino literal e identidad de promoción.
     const parts = typeof key === 'string' ? key.split('/') : [];
     const historical = parts[1] === 'carga-segura';

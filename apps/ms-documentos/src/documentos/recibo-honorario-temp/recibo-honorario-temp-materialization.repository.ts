@@ -1,3 +1,4 @@
+import { obtenerExpedienteOpPersistido } from '../orden-pago/orden-pago-fecha-emision';
 import { findDuplicateDocumentOrigin } from '../tmp/duplicate-document-origin';
 import { ConflictException, Injectable } from '@nestjs/common';
 import { buildClaveDocumental } from '../identidad-documental';
@@ -569,6 +570,10 @@ export class ReciboHonorarioTempMaterializationRepository {
       );
     }
 
+    // Archive reservation already binds the institutional OP expedition. Persist the same context.
+    const expedienteId=row.metadata?.archivadoReserva
+      ? await obtenerExpedienteOpPersistido(tx,Number(row.metadata?.regularizacionOp?.ordenPagoId),actor)
+      : null;
     const [existing] = await tx`
       SELECT *
       FROM documentos.documentos_archivos
@@ -581,6 +586,7 @@ export class ReciboHonorarioTempMaterializationRepository {
     if (existing) {
       if (
         Number(existing.documento_id) !== documentoId ||
+        (row.metadata?.archivadoReserva && (existing.expediente_id==null?null:Number(existing.expediente_id))!==expedienteId) ||
         existing.storage_key !== destination ||
         existing.hash_sha256 !== row.hash_sha256 ||
         existing.storage_bucket !== row.storage_bucket ||
@@ -595,6 +601,7 @@ export class ReciboHonorarioTempMaterializationRepository {
       archivoId = Number(existing.id);
     } else {
       const metadata = {
+        ...(row.metadata?.archivadoReserva?{archivadoNuevo:true,archivadoReserva:row.metadata.archivadoReserva}:{}),
         rol: 'REGULARIZADOR_RECIBO_HONORARIO',
         tipoDocumental: 'RECIBO_HONORARIO',
         tempId: Number(row.id),
@@ -639,7 +646,7 @@ export class ReciboHonorarioTempMaterializationRepository {
           ${actor.workspaceId},
           ${actor.empresaCodigo},
           ${actor.clienteDestinoId},
-          NULL,
+          ${expedienteId},
           'original',
           1,
           true,

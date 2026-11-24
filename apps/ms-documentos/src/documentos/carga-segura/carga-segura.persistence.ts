@@ -1,4 +1,5 @@
-import { Injectable } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { Injectable, Optional } from '@nestjs/common';
 import { sql } from '@documental/database';
 import { TmpRepository, type TmpConnection } from '../tmp/tmp.repository';
 
@@ -12,7 +13,7 @@ type QueryRow = Record<string, unknown>;
 
 @Injectable()
 export class CargaSeguraPersistence {
-  constructor(private readonly tmpRepository: TmpRepository) {}
+  constructor(private readonly tmpRepository: TmpRepository, @Optional() private readonly config?: ConfigService) {}
 
   /** P3 only: documentary writes and completion share one fenced transaction. */
   async persistirProtegidaR2(
@@ -253,6 +254,7 @@ export class CargaSeguraPersistence {
           'pendiente_ocr',
           ${JSON.stringify({
             origen: 'DOCUMENTOS_CARGA_SEGURA_2_1C',
+            ...(this.config?.get<string>('R2_NAS_ARCHIVE_ENABLED')==='true'?{archivadoNuevo:true}:{}),
             workspaceId: input.command.workspaceId,
             empresaCodigo: input.command.empresaCodigo,
             clienteDestinoId: input.command.clienteDestinoId,
@@ -318,6 +320,7 @@ export class CargaSeguraPersistence {
           ${input.command.canalIngreso}::text,
           ${JSON.stringify({
             origen: 'DOCUMENTOS_CARGA_SEGURA_2_1C',
+            ...(this.config?.get<string>('R2_NAS_ARCHIVE_ENABLED')==='true'?{archivadoNuevo:true}:{}),
             contentType: input.command.contentType,
             tamanoBytes: input.command.tamanoBytes,
             tipoDocumental: input.command.tipoDocumental,

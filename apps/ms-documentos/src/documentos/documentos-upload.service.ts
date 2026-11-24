@@ -1,3 +1,4 @@
+import { conExclusionFisica } from './archivado/archivado-exclusion';
 import { PeriodoDocumentalR2Repository } from './periodo-documental-r2.repository';
 import { resolverIdentidadVersionDocumental, type VersionDocumentalActor } from './carga-segura/http/carga-segura-http.validation';
 import { BadRequestException, ConflictException, Injectable,
@@ -314,6 +315,7 @@ export class DocumentosUploadService {
 
     const metadata = {
       origen: 'UPLOAD_VERSION_CANDIDATA',
+      ...(this.config.get<string>('R2_NAS_ARCHIVE_ENABLED')==='true'?{archivadoNuevo:true,contentType,tamanoBytes:file.buffer.length}:{}),
       documentoIdDestino: documentoId,
       empresaCodigo: empresaDocumento,
     };
@@ -335,7 +337,7 @@ export class DocumentosUploadService {
         storage_key,
         public_url,
         version,
-        es_version_actual
+        es_version_actual,workspace_id,empresa_codigo,cliente_destino_id,creado_por
       )
       VALUES (
         ${documentoId},
@@ -353,7 +355,7 @@ export class DocumentosUploadService {
         ${storageKey},
         NULL,
         1,
-        false
+        false,${identity.workspaceId},${identity.empresaCodigo},${identity.clienteDestinoId},${identity.actorId}
       )
       RETURNING id
     `;
@@ -374,12 +376,14 @@ export class DocumentosUploadService {
   }
 
 
-  async cargaGuiada(file: UploadedFileLike | undefined, body: CargaGuiadaBody) {
+  async cargaGuiada(file: UploadedFileLike | undefined, body: CargaGuiadaBody, actor?:VersionDocumentalActor) {
     if (!file?.buffer?.length) {
       throw new BadRequestException('Archivo requerido en el campo file o archivo');
     }
 
+    if(this.config.get<string>('R2_NAS_ARCHIVE_ENABLED')==='true' && !actor)throw new ForbiddenException('CARGA_GUIADA_CONTEXTO_REQUERIDO');
     const clienteAbreviatura = normalizeUpper(body.clienteAbreviatura, '');
+    if(actor && actor.empresaCodigo!==clienteAbreviatura)throw new ForbiddenException('CARGA_GUIADA_TENANT_INVALIDO');
     if (!clienteAbreviatura) {
       throw new BadRequestException('clienteAbreviatura es obligatorio');
     }
@@ -411,6 +415,8 @@ export class DocumentosUploadService {
     const expedienteTenantInfoCarga = expedienteId
       ? await this.obtenerResumenExpediente(expedienteId)
       : null;
+    if(actor && (!expedienteTenantInfoCarga || expedienteTenantInfoCarga.empresaCodigo!==actor.empresaCodigo
+      || expedienteTenantInfoCarga.clienteDestinoId!==actor.clienteDestinoId))throw new ForbiddenException('CARGA_GUIADA_TENANT_INVALIDO');
     const tenantEmpresaCodigoCarga = expedienteTenantInfoCarga?.empresaCodigo
       ? normalizeUpper(expedienteTenantInfoCarga.empresaCodigo, '')
       : null;
@@ -515,7 +521,7 @@ export class DocumentosUploadService {
         storage_key,
         public_url,
         version,
-        es_version_actual
+        es_version_actual,workspace_id,empresa_codigo,cliente_destino_id,expediente_id,creado_por
       ) VALUES (
         ${documentoId},
         ${originalFilename},
@@ -536,6 +542,7 @@ export class DocumentosUploadService {
           tipoRelacionSugerida,
           canalIngreso,
           uploadOrigen: 'carga-guiada',
+          ...(this.config.get<string>('R2_NAS_ARCHIVE_ENABLED')==='true'?{archivadoNuevo:true}:{}),
           duplicadoAdvertencia: duplicados.length > 0,
           duplicados: duplicados.map((item) => ({
             archivoId: item.id,
@@ -547,7 +554,7 @@ export class DocumentosUploadService {
         ${storageKey},
         NULL,
         1,
-        true
+        true,${actor?.workspaceId??null},${actor?.empresaCodigo??null},${actor?.clienteDestinoId??null},${expedienteId},${actor?.actorId??null}
       )
       RETURNING id
     `;
@@ -922,13 +929,19 @@ export class DocumentosUploadService {
   }) {
     const client = this.resolveS3Client();
 
-    await client.send(
+    const write=()=>client.send(
       new PutObjectCommand({
         Bucket: params.bucket,
         Key: params.storageKey,
         Body: params.body,
         ContentType: params.contentType,
+        ...(this.config.get<string>('R2_NAS_ARCHIVE_ENABLED')==='true'
+          ?{IfNoneMatch:'*',Metadata:{sha256:createHash('sha256').update(params.body).digest('hex')}}:{}),
       }),
     );
+    if(this.config.get<string>('R2_NAS_ARCHIVE_ENABLED')!=='true'){await write();return;}
+    const account=this.config.get<string>('R2_ACCOUNT_ID')||this.config.get<string>('CLOUDFLARE_ACCOUNT_ID');
+    if(!account)throw new Error('ARCHIVADO_CUENTA_R2_REQUERIDA');
+    const c=await sql.reserve();try{await conExclusionFisica(c,account,params.bucket,params.storageKey,write);}finally{c.release();}
   }
 }

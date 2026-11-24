@@ -1,6 +1,7 @@
 "use client";
 import { cargarTemporalCompras, recuperarTemporalCompras, validarTemporalCompras, listarFacturasTempCompras, type ComprasTempResult } from "@/services/carga-segura";
 
+import { ArchivadoResumen } from "@/components/documentos/ArchivadoResumen";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { type ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
@@ -3088,6 +3089,7 @@ export function CompraExpedienteEditor({
               <CardTitle className="text-base uppercase tracking-wide">
                 Documentos de compra
               </CardTitle>
+              <ArchivadoResumen key={String(id)} expedienteId={Number(id)} readOnly={modoSoloLectura} />
 
               {!modoSoloLectura && facturaOption ? (
                 <Button

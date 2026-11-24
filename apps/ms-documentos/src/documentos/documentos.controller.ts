@@ -137,9 +137,15 @@ export class DocumentosController {
   cargaGuiada(
     @UploadedFiles() files: Record<string, any[]>,
     @Body() body: any,
+    @Headers() headers?:Record<string,string|string[]|undefined>,
   ) {
     const file = files?.file?.[0] ?? files?.archivo?.[0];
-    return this.upload.cargaGuiada(file, body);
+    const actor=headers?.['x-workspace-id']?resolverIdentidadVersionDocumental({
+      workspaceId:headers['x-workspace-id'],empresaCodigo:headers['x-empresa-codigo'],
+      clienteDestinoId:headers['x-cliente-destino-id'],actorId:headers['x-actor-id'],userId:headers['x-user-id'],
+      requestId:headers['x-request-id'],correlationId:headers['x-correlation-id'],
+    }):undefined;
+    return this.upload.cargaGuiada(file, body,actor);
   }
 
   @ApiOperation({ summary: 'Scope de archivo para validación por workspace' })
@@ -150,8 +156,8 @@ export class DocumentosController {
 
   @ApiOperation({ summary: 'Generar URL temporal de preview para archivo privado R2' })
   @Get('archivos/:archivoId/preview-url')
-  getArchivoPreviewUrl(@Param('archivoId', ParseIntPipe) archivoId: number) {
-    return this.preview.getArchivoPreviewUrl(archivoId);
+  getArchivoPreviewUrl(@Param('archivoId', ParseIntPipe) archivoId: number, @Headers('authorization') authorization?: string) {
+    return this.preview.getArchivoPreviewUrl(archivoId, authorization);
   }
 
   @Post('archivos/:archivoId/procesar-ocr')
