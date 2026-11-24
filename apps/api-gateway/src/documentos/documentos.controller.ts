@@ -1970,24 +1970,22 @@ export class DocumentosGatewayController {
     try {
       const upstream = await axios.get(`${this.getBaseUrl()}/documentos/archivado/preview/${id}`,
         {params:{ticket},responseType:'arraybuffer',timeout:30000,maxRedirects:0,maxContentLength:52428800});
-      // Permit the native DEV Web Admin to embed only this NAS PDF response.
-      // Production retains the default Helmet framing restrictions.
-      if (process.env.NODE_ENV === 'development') {
-        const csp = response.getHeader('Content-Security-Policy');
-        if (typeof csp === 'string' && /(?:^|;)\s*frame-ancestors\s+[^;]+/.test(csp)) {
-          response.setHeader(
-            'Content-Security-Policy',
-            csp.replace(
-              /(^|;)\s*frame-ancestors\s+[^;]+/,
-              "$1frame-ancestors 'self' http://localhost:3005",
-            ),
-          );
-          response.removeHeader('X-Frame-Options');
-        }
-      }
       const mime=String(upstream.headers['content-type']??'').split(';')[0].trim().toLowerCase();
       const extension=new Map([['application/pdf','pdf'],['image/png','png'],['image/jpeg','jpg']]).get(mime);
       if(!extension)throw new Error('ARCHIVADO_FORMATO_NO_ADMITIDO');
+      // Endpoint-only embedding allowlist approved by PO; never derive it from Origin/Referer
+      // or R2_NAS_PUBLIC_GATEWAY_ALLOWED_ORIGINS (which validates generated API URLs).
+      const frameAncestors=process.env.NODE_ENV==='production'
+        ? 'https://bbtecnologia.com'
+        : process.env.NODE_ENV==='development'?"'self' http://localhost:3005":undefined;
+      if(frameAncestors){
+        const csp=response.getHeader('Content-Security-Policy');
+        if(typeof csp==='string'&&/(?:^|;)\s*frame-ancestors\s+[^;]+/i.test(csp)){
+          response.setHeader('Content-Security-Policy',csp.replace(
+            /(^|;)\s*frame-ancestors\s+[^;]+/i,(_match,prefix)=>`${prefix}frame-ancestors ${frameAncestors}`));
+          response.removeHeader('X-Frame-Options');
+        }
+      }
       response.set({'Content-Type':mime,'Cache-Control':'private, no-store','Referrer-Policy':'no-referrer',
         'X-Content-Type-Options':'nosniff','Content-Disposition':`inline; filename="documento.${extension}"`}).send(upstream.data);
     } catch { throw new HttpException('ARCHIVADO_PREVIEW_NO_DISPONIBLE',503); }
