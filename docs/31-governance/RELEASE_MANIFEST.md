@@ -2672,3 +2672,25 @@ Inicio DELETE `2026-11-25T20:00:00Z`, cutoffNAS `2026-11-24T22:48:35.970Z`, pare
 Release anterior GHCR45661825703, constructor5ab0decd3499f220b9784558c80d2b4fb10db640 y checkout productivo7f10e4402c13e2f34f820103b356a71fc06a0062 preservados. Despliegue4/4 y aceptaciónNAS/descargaPASS_PO acreditados por continuidadMSE3.1; política temporal efectiva no modificada por esta corrección. HyperBackup CLOSED_PASS_PO; recuperaciónSHA256 PASS; riesgo mismo volumen e intervalo diario aceptados, sin atribuir backup previo a cada documento futuro.
 
 Publicación autorizada SOURCE→Enterprise→GHCR main/all; las nuevas identidades efectivas se incorporarán incrementalmente cuando existan. EC2_DEPLOYMENT=HOLD, PERMANENT_DELETE_ACTIVATION=HOLD. G1/G2/G3 cerrados, G4=IN_PROGRESS. Ningún DELETE físico, intervenciónRDS/EC2 ni cambio de configuración productiva en esta corrección. Cierre definitivo R3/Bibliotecario/legado posterior a aceptación física. Evidencia `/home/loxi1/bbti-evidence/nas-production-safe-delete-20261125-r1/permanent-policy-r1`.
+
+
+---
+
+## 2026-11-25 — GHCR integral de permanencia explícita: identidades canónicas
+
+Run[45698872132](https://github.com/BBTI-SAC/documental-platform-bbti-prod/actions/runs/45698872132), workflow institucional build-images.yml, main/components=all, primer intento, SUCCESS. Constructor Enterprise `1e1377a83fea4811f93b19628aed4b2d0dcd7279`. Cuatro pasos build/push y verificación Docker del descriptor OCI, índice y manifiesto runnable linux/amd64 PASS4/4; attestations excluidas de la selección ejecutable. Namespace `ghcr.io/bbti-sac/documental-platform-bbti-prod/`, tag exacto del constructor; no utilizar latest para despliegue.
+
+| Servicio | Digest OCI | Digest linux/amd64 para despliegue |
+| --- | --- | --- |
+| api-gateway | `sha256:d1b8bcbaa23d3cfa6648f8187face1478798ab3d555fba85f9a5cdb3e5fb90a2` | `sha256:55b04235af79c484fe2bc2c6ec9a2a1ecf2d09b373a89b7533c36b9b4ee60e34` |
+| ms-auth | `sha256:ed87e9d539be68e3e366cb045069cf12b3b3b53b9c2c65796769915dfc14723f` | `sha256:2bf72bdff09ed42508c739cbb0c4f09b9f192500d85c588885c21e72a507f80f` |
+| ms-documentos | `sha256:2d1d9952feeaf8887f7f3211e003f774acb13a3c1f09e5a357e650efcb031759` | `sha256:e830168139d3a550a871f48f72b7f628d3eccaf6696a26df433530c7368c81ea` |
+| web-admin | `sha256:6337372d95c7f2ba300e0c2b3e2bf3a54de4177cbee2acd3f125dd72b7b18a64` | `sha256:bba959ab197ec890d2fed429a4857feff800a1d197ee94232589a362d0a4e75c` |
+
+Procedencia funcional: SOURCE `00cb4827a8f5bee79b124cda2890c31a07e0ab17` → Enterprise `25caa8218fc01da868fb913b26598189d06e5754`, tres blobs y modos idénticos. SOURCE documental previo al build `0f9403faa26f8ad373689d8e9fdfa2351acf01f8`; Enterprise constructor `1e1377a83fea4811f93b19628aed4b2d0dcd7279` contiene sus adendas propias. Los commits de esta reconciliación son exclusivamente documentales y no cambian ese constructor ni requieren otro build. Identidades de los commits documentales resultantes en recibos externos, sin autorreferencia.
+
+Validación focal:46Jest y35NodeMOVE PASS, typecheck estrictoPASS, buildDocumentosPASS, diff-checkPASS. Permanencia explícita NUEVOS/permanente:true/sin hasta; temporal compatible, omisión accidental de vencimiento rechazada, flag productivo revocable. Inicio DELETE `2026-11-25T20:00:00Z`, cutoff NAS `2026-11-24T22:48:35.970Z`. Pares BBTEC/cliente1 y BBTI/cliente2. OC003211 anterior al inicio sigue excluida, sin intervención.
+
+Esta publicación NO es un despliegue. Release productiva previa run45661825703/constructor5ab0decd3499f220b9784558c80d2b4fb10db640 y política temporal ya autorizada permanecen sin intervención en este alcance. No EC2, RDS, migración ni DELETE físico. HyperBackup CLOSED_PASS_PO; mismo volumen y ventana entre backups diarios aceptados; sin afirmar cobertura de cada documento futuro. G1/G2/G3=CLOSED_PASS; G4=IN_PROGRESS; EC2_DEPLOYMENT=HOLD; PERMANENT_DELETE_ACTIVATION=HOLD.
+
+RESULT=FOCAL_PERMANENT_DELETE_RELEASE_READY. NEXT_ACTION=MSE_ACTUAL_CONTROLLED_EC2_DEPLOYMENT_AUTHORIZATION. Cierre institucional definitivo, manualesR3/Bibliotecario/legado y aceptación física posteriores, no anticipados. Evidencia `/home/loxi1/bbti-evidence/nas-production-safe-delete-20261125-r1/permanent-policy-r1/ghcr/45698872132/ghcr-canonical-digests.json` y `manifest-publication-result.json`.
