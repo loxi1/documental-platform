@@ -132,3 +132,70 @@ describe('Permanent reservation fences all generic R2 mutations',()=>{
     expect(send).not.toHaveBeenCalled();expect(release).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('Explicit permanent NUEVOS decision preserves the published safety boundary',()=>{
+  const start='2026-11-25T20:00:00Z',active=Date.parse('2026-11-25T20:01:00Z');
+  function permanent(){
+    const f=fixture();f.policy.modo='NUEVOS';delete f.policy.archivos;delete f.policy.hasta;
+    f.policy.permanente=true;f.policy.desde=start;
+    f.policy.contextos=[{empresa:'BBTEC',clienteId:1},{empresa:'BBTI',clienteId:2}];return f;
+  }
+  it('requires explicit permanence and works beyond the former expiry without renewal',()=>{
+    const f=permanent();expect(politicaDeleteProduccion(f.config,active)).not.toBeNull();
+    expect(politicaDeleteProduccion(f.config,Date.parse('2030-01-01T00:00:00Z'))).not.toBeNull();
+    delete f.policy.permanente;expect(politicaDeleteProduccion(f.config,active)).toBeNull();
+  });
+  it.each([null,false,'true',1,{}])('rejects invalid permanence %p',value=>{
+    const f=permanent();(f.policy as any).permanente=value;expect(politicaDeleteProduccion(f.config,active)).toBeNull();
+  });
+  it.each([null,'','invalid','2026-12-02T20:00:00Z'])('rejects contradictory expiry %p',value=>{
+    const f=permanent();(f.policy as any).hasta=value;expect(politicaDeleteProduccion(f.config,active)).toBeNull();
+  });
+  it('cannot grant permanent EXACTO or accept incomplete decisions',()=>{
+    const f=permanent();f.policy.modo='EXACTO';f.policy.archivos=[identity];
+    expect(politicaDeleteProduccion(f.config,active)).toBeNull();
+    for(const key of ['desde','decisionId','proteccion','contextos']){
+      const missing=permanent();delete (missing.policy as any)[key];expect(politicaDeleteProduccion(missing.config,active)).toBeNull();
+    }
+  });
+  it('preserves temporary NUEVOS and EXACTO validity and expiry',()=>{
+    for(const mode of ['NUEVOS','EXACTO'] as const){const f=fixture();f.policy.modo=mode;if(mode==='NUEVOS')delete f.policy.archivos;
+      expect(politicaDeleteProduccion(f.config,now)).not.toBeNull();
+      expect(politicaDeleteProduccion(f.config,Date.parse(f.policy.hasta!))).toBeNull();
+      delete f.policy.hasta;expect(politicaDeleteProduccion(f.config,now)).toBeNull();
+    }
+  });
+  it('blocks future start, altered cutoff, flag revocation and DEV/PROD crossing',()=>{
+    const f=permanent();expect(politicaDeleteProduccion(f.config,Date.parse(start)-1)).toBeNull();
+    for(const [key,value] of [['R2_NAS_PRODUCTION_DELETE_ENABLED','false'],['NODE_ENV','development'],
+      ['R2_NAS_DEV_DELETE_ENABLED','true'],['R2_NAS_VIEWER_ACCEPTED','false'],['R2_NAS_DESTINATION','SYNOLOGY_DEV'],
+      ['R2_NAS_ACTIVATION_FROM','2026-11-26T00:00:00Z']]){
+      const revoked=permanent();revoked.values[key]=value;expect(politicaDeleteProduccion(revoked.config,active)).toBeNull();
+    }
+  });
+  it('allows only paired contexts, never adopts OC003211 or earlier confirmations',()=>{
+    const f=permanent(),p=politicaDeleteProduccion(f.config,active)!;
+    expect(identidadDeletePermitida(p,identity,start)).toBe(true);
+    expect(identidadDeletePermitida(p,{...identity,empresa:'BBTI',clienteId:2},start)).toBe(true);
+    for(const delta of [{empresa:'BBTI'},{clienteId:2},{empresa:'OTHER'}])
+      expect(identidadDeletePermitida(p,{...identity,...delta},start)).toBe(false);
+    expect(identidadDeletePermitida(p,{reservaId:6,archivoId:503,documentoId:511,version:1,
+      empresa:'BBTEC',clienteId:1,expedienteId:3},'2026-11-25T19:28:36.199Z')).toBe(false);
+    expect(identidadDeletePermitida(p,identity,'2026-11-25T19:59:59.999Z')).toBe(false);
+    expect(f.values.R2_NAS_ACTIVATION_FROM).toBe('2026-11-24T22:48:35.970Z');
+  });
+  it('records explicit permanence in the runtime durable decision without an invented expiry',async()=>{
+    jest.useFakeTimers().setSystemTime(active);
+    try{const f=permanent(),db=sql as unknown as jest.Mock;db.mockReset();
+      db.mockResolvedValueOnce([{id:30,archivo_id:700,documento_id:690,version:1,empresa_codigo:'BBTEC',
+        cliente_destino_id:1,expediente_id:6,confirmado_en:start,contexto:{modo:'NUEVO'}}]).mockResolvedValueOnce([{id:700}]);
+      const s=new ArchivadoRuntimeService(f.config as any,{} as any,{} as any);
+      const decision=await (s as any).eliminacionProduccionAutorizada({empresa:'BBTEC',clienteId:1,expedienteId:6},
+        {id:30,archivoId:700,documentoId:690,version:1,autorizado:true});
+      expect(decision).toMatchObject({permanente:true,desde:start,identidad:identity});expect(decision).not.toHaveProperty('hasta');
+      f.values.R2_NAS_PRODUCTION_DELETE_ENABLED='false';db.mockReset();
+      expect(await (s as any).eliminacionProduccionAutorizada({empresa:'BBTEC',clienteId:1,expedienteId:6},
+        {id:30,archivoId:700,documentoId:690,version:1,autorizado:true})).toBeNull();expect(db).not.toHaveBeenCalled();
+    }finally{jest.useRealTimers();}
+  });
+});

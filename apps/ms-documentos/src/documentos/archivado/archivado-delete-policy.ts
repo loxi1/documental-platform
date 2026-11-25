@@ -7,7 +7,7 @@ export type IdentidadDeleteProduccion = {
 export type PoliticaDeleteProduccion = {
   version: 1; decisionId: string;
   proteccion: { tipo: 'BACKUP_RECUPERABLE' | 'RIESGO_COPIA_UNICA_ACEPTADO_PO'; referencia: string };
-  modo: 'EXACTO' | 'NUEVOS'; desde: string; hasta: string;
+  modo: 'EXACTO' | 'NUEVOS'; desde: string; hasta?: string; permanente?: true;
   contextos: Array<{ empresa: string; clienteId: number }>;
   archivos?: IdentidadDeleteProduccion[];
 };
@@ -34,8 +34,16 @@ export function politicaDeleteProduccion(config:ConfigArchivado,now=Date.now()):
     if(!p||p.version!==1||!label(p.decisionId)||!p.proteccion
       ||!['BACKUP_RECUPERABLE','RIESGO_COPIA_UNICA_ACEPTADO_PO'].includes(p.proteccion.tipo)
       ||!label(p.proteccion.referencia)||!['EXACTO','NUEVOS'].includes(p.modo))return null;
-    const from=instanteDelete(p.desde),until=instanteDelete(p.hasta),cutoff=instanteDelete(config.get('R2_NAS_ACTIVATION_FROM'));
-    if(![now,from,until,cutoff].every(Number.isFinite)||from<cutoff||until<=from||now<from||now>=until)return null;
+    const from=instanteDelete(p.desde),cutoff=instanteDelete(config.get('R2_NAS_ACTIVATION_FROM'));
+    if(![now,from,cutoff].every(Number.isFinite)||from<cutoff||now<from)return null;
+    // Permanence is an explicit NEW-document decision, never a missing expiry.
+    if(p.permanente===true){
+      if(p.modo!=='NUEVOS'||Object.prototype.hasOwnProperty.call(p,'hasta'))return null;
+    }else{
+      if(Object.prototype.hasOwnProperty.call(p,'permanente'))return null;
+      const until=instanteDelete(p.hasta);
+      if(!Number.isFinite(until)||until<=from||now>=until)return null;
+    }
     if(!Array.isArray(p.contextos)||!p.contextos.length||p.contextos.length>20
       ||p.contextos.some(c=>!c||!label(c.empresa)||!/^[A-Z0-9_-]+$/.test(c.empresa)||!id(c.clienteId))
       ||new Set(p.contextos.map(c=>`${c.empresa}:${c.clienteId}`)).size!==p.contextos.length)return null;

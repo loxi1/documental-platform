@@ -293,7 +293,7 @@ export class ArchivadoRuntimeService {
     // Confirm all institutional relationships, including operational OP without expediente.
     if(!await this.permitido(row))return null;
     return {decisionId:policy.decisionId,proteccion:policy.proteccion,modo:policy.modo,
-      desde:policy.desde,hasta:policy.hasta,identidad:identity};
+      desde:policy.desde,...(policy.permanente===true?{permanente:true}:{hasta:policy.hasta}),identidad:identity};
   }
 
   private async procesarContexto(s:Scope,exacta?:Exacta):Promise<{resultados:ResultadoMove[];expedienteId:number|null;estados:any[];bloqueosNomenclatura:any[]}>{
