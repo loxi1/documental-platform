@@ -93,3 +93,41 @@ Representación preparada para autorización posterior de activación (NO aplica
 Inicio DELETE inalterable20:00Z (15:00PET); cutoff NAS independiente `2026-11-24T22:48:35.970Z`. OC003211/archivo503/reserva6/documento511, confirmada19:28:36.199Z, permanece excluida sin intervención ni adopción retroactiva. Hyper Backup CLOSED_PASS_PO; recuperación SHA256 acreditada, riesgo mismo volumen aceptado y ventana entre copias diarias documentada; no se afirma respaldo previo de cada documento nuevo.
 
 La política temporal efectiva en EC2 se preserva intacta; esta ingeniería no modifica configuración ni runtime productivos. EC2_DEPLOYMENT=HOLD; PERMANENT_DELETE_ACTIVATION=HOLD. Publicación integral SOURCE→Enterprise→GHCR all autorizada por mandato ejecutivo; aceptación física y cierre G4 posteriores, no anticipados.
+
+
+---
+
+## 2026-11-25 — Cierre físico productivo DELETE permanente y continuidad institucional
+
+ACTION=BBTI_PRODUCTION_R2_SAFE_DELETE_AND_FINAL_CLOSURE_R1; NORMAL/R1, colecciónR3, ONE_INTEGRATED_RELEASE. G1/G2/G3 cerrados. PO autoriza activación permanente y recuperación institucional exclusivamente reserva7/archivo504, más automatismo ordinario NUEVOS en BBTEC/cliente1 y BBTI/cliente2. Mandatos y declaracionesPO preservados en `/home/loxi1/bbti-evidence/nas-production-safe-delete-20261125-r1/final-physical-documentary-closure-r1`. No nueva ingeniería, build, migración ni publicaciónGHCR.
+
+### Identidad de release y configuración efectiva
+
+GHCRrun45698872132 SUCCESS4/4, constructorEnterprise `1e1377a83fea4811f93b19628aed4b2d0dcd7279`, checkout previoEC2 `0d8f4cb139ce13fe4f37c88f03ab3e973b363d9f`. Deploy integral y validación técnica PASS acreditados por MSE3.1, sin repetición. Releaseactiva `/home/ubuntu/releases/documental-platform-bbti/integrated-45698872132-1e1377a8-r1`. Cuatro digests linux/amd64 preservados:
+
+- api-gateway:`sha256:55b04235af79c484fe2bc2c6ec9a2a1ecf2d09b373a89b7533c36b9b4ee60e34`
+- ms-auth:`sha256:2bf72bdff09ed42508c739cbb0c4f09b9f192500d85c588885c21e72a507f80f`
+- ms-documentos:`sha256:e830168139d3a550a871f48f72b7f628d3eccaf6696a26df433530c7368c81ea`
+- web-admin:`sha256:bba959ab197ec890d2fed429a4857feff800a1d197ee94232589a362d0a4e75c`
+
+Configuración aplicada por autorizaciónPO:versión1,modoNUEVOS,permanente:true,sin propiedad hasta. DELETE_FROM=`2026-11-25T20:00:00Z`; cutoffNASindependiente=`2026-11-24T22:48:35.970Z`;contextosBBTEC:1 yBBTI:2. DELETEPROD=true,DELETEDEV=false,visoraceptado=true. SoloDocumentos recreado porconfiguración con mismo digest; demáscontenedores preservados,health/ready200 PostgreSQL/NATS UP. No renovación ni fecha artificial. Revocación:deshabilitar flag productivo en últimooverride efectivo,validarCompose yrecrear soloDocumentos mismo digest; editar archivo no cambia el proceso yaejecutado. Preservar evidencia yno rollbackautomático.
+
+### Recuperación institucional504 y aceptaciónPO
+
+Archivo504/documento512/reserva7 UUID8618824d-9781-825a-a45b-6e0a06f7234b,v1,expediente3,BBTEC/cliente1. Ruta `documentos/2026/04/BBTEC/OC_003211__FACTURA_F001-7164_20600211618.pdf`. Única invocación de recuperarPendientesExactosProduccion bajoNUEVOS,sin ampliarEXACTO ni repetirconfirmación. NAS522007bytes/SHA256`d18207ca73ce7c8ff92d2b202d399f1538ac7298b9e40ec46c6781b89789f8b7`. DELETE204yHEAD404,autorización durable ymismaintención/respuesta/ausencia `4c304057-2005-4c98-b231-b2b8481bbbd5`,estadoELIMINADO_ACREDITADO/COMPLETADO,documentoconfirmado yrelaciónpreservada. PO confirmó explícitamentevisualizaciónPASS,descargaPASS ycontenidocorrecto;previewPOproveedorNAS, sin persistir ni reutilizar ticket compartido.
+
+### Testigo nuevo automático505:GuíaTEO1-329
+
+Archivo505/documento513/reserva8 UUID587e84b2-b2e6-8b76-a135-381fe52402a1,v1,BBTEC/cliente1/expediente3,adjunto_guia. Confirmación25/11 21:57:33.768334Z (16:57:33PET),CLAIM21:57:33.805812Z. PO confirmóflujoordinario yvisualización/descargaPASS. No recuperaciónmanual505 porCodex ni nueva confirmación provocada por la verificación. Cadena postcommitexistente:confirmación→NASverificado/lecturavisor→autorizaciónpermanente→DELETEcondicional204→ausencia acreditada yHEAD404. Mismointento `722ddaae-2ebb-40d0-8d33-6f79abfc5250`. If-Match exigido poradaptadorpublicado yETagopaco registrado; sin afirmar captura independiente de paquetes.
+
+RutaR2/NASidéntica `documentos/2026/04/BBTEC/OC_003211__GUIA_TEO1-329_20600211618.pdf`;NASindependiente452079bytes/SHA256`a34797c1ff772c9fdded951528f448bcca24ec9a3ae70546f0b63934b9c1962d`,estadoCOMPLETADO/ELIMINADO_ACREDITADO,documentoconfirmado. DescargaHTTPindependiente desde endpointpúblicoautorizadoHTTP200(application/pdf) coincideexactamente en452079bytes ySHA256 conNAS/RDS. Ticket generado mediante lógica existente permaneció solo enmemoria, sin exposición nipersistencia.
+
+### Conciliación de copias locales y exclusiones
+
+507.pdf local1819732bytes/hash2ef7cd7b5d6e1f0cc05e1fd53bd8ce2eed0270dc550a51103428d945c3b88b93 no corresponde aarchivo507 enRDS;POidentificóelpreview504. Copiaslocales505.pdf y505-original.pdf también sonPDFgeneradosporvisor/navegador(CreatorFirefox,ProducerSkia/PDFm149),conbytes/hashesdistintos. No se declaran idénticas aNAS ni se usan comoprueba deidentidadalmacenada. La igualdadacreditada corresponde aloriginal recibido porHTTPpúblico yNAS, separada dePASS_PO. No fallodeintegridadservidoracreditado.
+
+Reservas1–6/archivos498–503 quedanexcluidos porconfirmaciónanteriora20Z. Filascompletas conservanSHA256idénticos antes/después;ningunaintervención físicaenobjetosexcluidos. OC003211principal503/documento511 sigue enR2;su exclusión no afecta nuevosadjuntoselegibles. Losobjetosanterioresno se adoptanretroactivamente.
+
+HyperBackupCLOSED_PASS_PO;recuperaciónhashPASS;riesgomismovolumenBASIC eintervaloentrebackupsdiarios aceptados. No se atribuyebackup previoacadanuevodocumento. Sinreaperturabackup,OCR/R2/NAS/periodos/migraciones/infraestructura, sinDELETEdirecto,cron,timersni nuevosservicios.
+
+Cierre técnico/funcional físico acreditado; este incremento esexclusivamentedocumental. Commit/pushSOURCE→adendaspropiasEnterprise→sincronizaciónEC2 documental, sinrebuild nirecreate. SHAfinales ypreservaciónruntime se registran enrecibosexternos tras ejecución, evitandoautorreferencia. EntregaMSEActual paraactualizaciónincrementalR3,Bibliotecario,legadosucesoryresolucióndefinitivaG4;noafirmar indexaciónoaprobaciónexternanorecibida.
