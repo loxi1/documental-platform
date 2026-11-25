@@ -141,3 +141,17 @@ Si el release no contiene migración:
 `DB_MIGRATION=NOT_APPLICABLE`
 
 No se ejecutan migraciones pendientes por efecto automático del deploy.
+
+
+---
+
+## 2026-11-25 — Cierre institucional documental NAS R1
+
+Repository=SOURCE. Esta adenda prevalece únicamente sobre estados históricos incompatibles de NAS; no reescribe antecedentes ni autoriza acciones por su lectura.
+
+SOURCE conserva excluidos los scripts locales de recuperación no rastreados.
+
+### Migraciones cerradas y regla vigente de ejecución
+
+0025 auth_version aplicada y preservada. 0026 `infra/postgres/migrations/0026_archivados_documentales.sql`, SHA256 `609bb06532b8bcc745a0caff695bd60e20eb98079e33436b542c9aae0343aae6`, aplicada DEV/PROD. RDS 24/11: ejecución ENTERPRISE_LOCAL, ledger 0→1, tabla documentos.archivados_documentales, owner document_platform, cuatro índices y dos triggers acreditados; CREATE temporal revocado. `RDS_MIGRATION_0026=CLOSED_PASS`, esquema PASS y seguridad restaurada PASS (evidencia heredada, no SQL nuevo).
+Precedencia sobre recetas históricas que mandan ejecutar desde EC2: runner institucional `@documental/database`, DEV exclusivamente desde SOURCE local y PROD exclusivamente desde Enterprise local, con autorización DB_WRITE específica, checksum, transacción, advisory lock y ledger. EC2 no es origen de ejecución de migraciones. No repetir 0025/0026 ni editar SQL aplicado/manifest.sha256/ledger. GIS/gis_db excluidos. La publicación documental no ejecuta migraciones.

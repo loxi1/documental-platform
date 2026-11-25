@@ -1422,3 +1422,88 @@ EC2=HOLD
 Las identidades de los commits resultantes se registraran
 despues de su ejecucion y publicacion efectivas, bajo
 autorizacion de MSE Actual.
+
+
+---
+
+## 2026-11-25 — Cierre institucional documental NAS R1
+
+Repository=SOURCE. Esta adenda prevalece únicamente sobre estados históricos incompatibles de NAS; no reescribe antecedentes ni autoriza acciones por su lectura.
+
+SOURCE conserva excluidos los scripts locales de recuperación no rastreados.
+
+### Identidad del release y procedencia
+
+| Plano | Identidad acreditada |
+| --- | --- |
+| SOURCE funcional NAS previo | `8db6fb57590e1f1715208ef8744d77fc248d37b1` |
+| SOURCE corrección CSP publicada / HEAD anterior a esta revisión | `4776f2e907e64e3eaaacf5d6cff2874a907a3785` |
+| Enterprise anterior | `4e9fb65feeeac1441508dd4d1aff10074bc6d0cc` |
+| Enterprise constructor GHCR | `8cbdbc176158b69f676f5bbf8acef483af659ae1` |
+| Enterprise documental publicado anterior a esta revisión | `33b646a7b73fb8ae549727d5cd3ac09b1bf08203` |
+| EC2 checkout acreditado, no observado nuevamente | `33b646a7b73fb8ae549727d5cd3ac09b1bf08203` |
+| GHCR | run **45508868647**, main / components=all, SUCCESS, 4/4, linux/amd64, 3m30s |
+
+Workflow existente: `.github/workflows/build-images.yml`.
+[Run acreditado](https://github.com/BBTI-SAC/documental-platform-bbti-prod/actions/runs/45508868647).
+Los nuevos commits documentales de esta revisión no existen todavía: publicación SOURCE/Enterprise pendiente de autorización específica PO. No anticipar sus SHA ni confundirlos con el constructor.
+### Imágenes inmutables vigentes
+
+Namespace: `ghcr.io/bbti-sac/documental-platform-bbti-prod/<servicio>`.
+
+| Servicio | OCI index | Ejecutable linux/amd64 |
+| --- | --- | --- |
+| api-gateway | `sha256:81579a4ce6157cddd67f6dcd5811dd7ffc214e530764e72f76bdeaa64b04dbe9` | `sha256:1dcc1810f61d78318dd9a92b3f4083c2b26ddb7a1da319a93f1ef49dfa984187` |
+| ms-auth | `sha256:19529fa7433e81b72c1ddabfb082fc9e26d14a00dce768e00d8ed7bfd120b6f5` | `sha256:0848bd43ccdeabe31866ffa77ae1928d9526cf09ed7f3f62750733535137a829` |
+| ms-documentos | `sha256:1eb95530bdfe60961984d0c2add522ac76c05cb49c398a249cf9be460340747b` | `sha256:b72845bd70422941b5e6d65bcb8fb4e9424b950bc2d340b5238ecee210d4c457` |
+| web-admin | `sha256:81d22949bd6180fab92a08165936f4f10557cd28cb4cc307405dd38591c869f7` | `sha256:7a4950ca6c1a263a70246db23cfa76d41ae11f17c64ff356669e5a7b91faaf49` |
+
+Evidencias locales existentes: `/home/loxi1/bbti-evidence/nas-preview-csp-r1-45508868647/ghcr-canonical-digests.json` y `final-release-readiness.txt`. Se reutilizan; no consulta GHCR nueva ni reconstrucción.
+### Custodia focal
+
+La composición NAS ya publicada y la corrección CSP no son trabajo pendiente de ramas históricas. SOURCE conserva `apps/ms-documentos/scripts/` no rastreado: excluido de staging/publicación, sin ejecutar ni modificar. No se modifica ninguna rama/worktree/backup ni se reabre inventario histórico. Enterprise conserva historia independiente y sus 166 líneas previas de33b646a7 íntegramente; esta revisión solo añade cierre PO. La sincronización remota de esta nueva revisión no está ejecutada.
+### Continuidad institucional y siguiente acción legítima
+
+PO conserva autorización y aceptación. MSE Actual/MSE 2.0: arquitectura, gobierno de release/manuales/Bibliotecario; MSE 3.0: dirección técnica; MSE 3.1: operación DEV y ejecución delegada; Codex ejecutor. Máximo cuatro gates: G1/G2/G3 cerrados; esta actualización pertenece a G4 y no crea G5.
+Documentos versionados gobiernan; colección externa permanente `BBTI_MANUALES_2026-11-18_R3`, revisión 25/11/2026, subordinada. Antecedentes19/11/24/11 no son tareas actuales. No reabrir Factura TEMP, custodias de los 48 archivos, SMB/VPN, migración 0026, ingeniería NAS ni aceptación transversal. No extender PASS_PO a otros requerimientos independientes.
+
+Esta revisión es documental local: commit/push SOURCE y Enterprise pendientes de autorización específica. Historial Enterprise propio preservado; no copiar manifest/inventario completo desde SOURCE. Procedencia funcional SOURCE `4776f2e907e64e3eaaacf5d6cff2874a907a3785`; el futuro SHA documental SOURCE se registrará externamente al publicarlo, sin autorreferencias imposibles. EC2 sync=PENDING hasta autorización/acceso y ejecución docs-only fast-forward; sin pull de imágenes ni recreate.
+Paquete Bibliotecario y legado en `/home/loxi1/bbti-evidence/nas-institutional-closure-20261125-r1/`; transferencia/indexación=PENDING_MSE_ACTUAL_VALIDATION. No crear R4. Próximo paso: revisión MSE Actual/PO del diff y autorización focal publicación SOURCE→Enterprise→sync documentalEC2. Futuro DELETE productivo y respaldo NAS son decisiones separadas, no ejecutar en este cierre.
+
+
+---
+
+## 2026-11-25 — Ampliación focal DELETE productivo, ingeniería local R1
+
+### Estado vigente de la ampliación DELETE — 25/11/2026
+
+ACTION=BBTI_PRODUCTION_R2_SAFE_DELETE_AND_FINAL_CLOSURE_R1. El mandato rector sustituye las recetas documentales pendientes anteriores, conserva el cierre NAS/CSP y añade ingeniería focal de eliminación productiva segura. NORMAL/R1, máximo cuatro gates, ONE_INTEGRATED_RELEASE.
+
+- G1 focal: contrato y revisión directa Codex de los entregables previos completados; no validación externa MSE Actual.
+- G2: implementación local y pruebas técnicas PASS; aceptación física DEV del flujo ordinario acreditada abajo. G3 pendiente de aceptación explícita PO y autorización de integración/publicación.
+- SOURCE HEAD sigue `4776f2e907e64e3eaaacf5d6cff2874a907a3785`; el nuevo delta es local, sin commit/push. No hay SHA funcional nuevo ni constructor nuevo.
+- Enterprise sigue `33b646a7b73fb8ae549727d5cd3ac09b1bf08203`, constructor `8cbdbc176158b69f676f5bbf8acef483af659ae1`. Sus14adendas documentales están preservadas; la extensión funcional NO está promovida.
+- Producción continúa en release 45508868647, ya aceptada para NAS/visor/CSP. No hay nuevo GHCR, deploy, cambio de flags ni DELETE productivo en esta intervención.
+- El bloqueo DEV-only describe esa release desplegada. El código SOURCE local ahora contempla autorización productiva separada, deshabilitada por defecto; no confundir ingeniería con activación.
+### Fronteras reales y continuidad
+
+Backup/restore NAS sigue NO_ACREDITADO. No equiparar BTRFS/SHA256/backup RDS con respaldo recuperable. Antes de DELETE productivo se requiere protección acreditada o una aceptación PO explícita, informada y acotada del riesgo de copia única. Ingeniería y prueba DEV no aceptan ese riesgo por el PO.
+
+Publicación/commit SOURCE, promoción/commit/push Enterprise, GHCR integral y deploy EC2 requieren autorización específica ligada al delta revisado; se solicitarán juntas, separando decisiones irreversibles. Despliegue inicial con DELETE productivo false, sin ampliar candidatos B ni modificar cutoff/secretos/flagsNAS existentes. G4 no está cerrado.
+
+Tras autorización:SOURCE→Enterprise preservando historias/adaptaciones→un workflow build-images.yml main/all→cuatro imágenes OCI/runnable linux/amd64→EC2 por digests; luego activación piloto exacta únicamente con protección/decisión y autorización de DELETE. No latest, gh CLI, build EC2, migración automática ni rollback ciego. Recuperación tras borrar debe conservar lectura NAS y estados 0026; no volver a un runtime dependiente del objeto R2 eliminado.
+
+Los procedimientos docs-only anteriores eran válidos para el cierre pendiente previo. No ejecutarlos sobre este incremento funcional ni usar sus inventarios/baselines como autorización actual. No publicar Enterprise antes de acreditar el nuevo SOURCE publicado. No inventar SHA/RunID/digests futuros. Reutilizar manuales R3, preservar 08 y transferir paquete tras validación MSE Actual; no indexación Bibliotecario supuesta.
+
+
+---
+
+## 2026-11-25 — Aceptación G3 PO y autorización incremental de publicación
+
+La aceptación G3 pendiente de las entradas anteriores queda acreditada por PO. Archivo592 / reserva36 / OC_002896: visualizaciónPASS_PO y descargaPASS_PO desde interfaz DEV, renombrada localmente592.pdf. Codex contrastó directamente357458bytes y SHA256 `3add252e5ebc057a20656d97404a60590d6af7beae3249c98ba4745a38920904`, idénticos a la lecturaNAS independiente ya acreditada. No se repitió upload, OCR, confirmación, DELETE ni pruebas anteriores.
+
+Commit funcional SOURCE local: `b90eca0dd7fd3c1b7432b4266a7c64708e29cf6f` (15rutas exactas; parent4776f2e9). G3=ACCEPTED_BY_PO. El PO autoriza integración/publicación SOURCE, promoción selectiva Enterprise, GHCR integral y despliegue controlado conforme a R1/ONE_INTEGRATED_RELEASE. La publicación se ejecuta después de esta entrada; sus SHA/recibos efectivos se registran externamente y en las siguientes adendas sin autorreferencia.
+
+DELETE productivo debe seguir deshabilitado hasta resolver la política de protecciónNAS. No existe autorización para borrar objetos productivos ni candidatosB. El flagDEV continúa false en producción. No nuevas migraciones. La aceptaciónPO no se presenta como validación independiente MSEActual ni como indexaciónBibliotecario; sus estados se acreditarán separadamente.
+
+Evidencia: `/home/loxi1/bbti-evidence/nas-production-safe-delete-20261125-r1/PO_G3_AND_INCREMENTAL_AUTHORIZATION.json`, `dev-physical-592/result.json`, `source-functional-commit.json` y recibos de publicación posteriores. Los scripts locales SOURCE permanecen excluidos.

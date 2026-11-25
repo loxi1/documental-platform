@@ -180,3 +180,59 @@ ausencia.
 ## Precisión operativa incorporada en R2 (23/10/2026)
 
 La secuencia genérica anterior requiere la composición efectiva aprobada, incluidos proyecto, env-file y override por digest. No usar comandos bare de pull/up como receta R2. Véase [procedimiento R2](DEPLOYMENT_RUNBOOK.md) y [verificación](DEPLOYMENT_VERIFICATION.md): imágenes ya disponibles, no-build/pull never, servicios explícitos y Config.Image exacto. Force-recreate requiere necesidad y autorización de interrupción. Started y HTTP 200 no certifican promoción ni aceptación funcional integral.
+
+
+---
+
+## 2026-11-25 — Cierre institucional documental NAS R1
+
+Repository=SOURCE. Esta adenda prevalece únicamente sobre estados históricos incompatibles de NAS; no reescribe antecedentes ni autoriza acciones por su lectura.
+
+SOURCE conserva excluidos los scripts locales de recuperación no rastreados.
+
+### Identidad del release y procedencia
+
+| Plano | Identidad acreditada |
+| --- | --- |
+| SOURCE funcional NAS previo | `8db6fb57590e1f1715208ef8744d77fc248d37b1` |
+| SOURCE corrección CSP publicada / HEAD anterior a esta revisión | `4776f2e907e64e3eaaacf5d6cff2874a907a3785` |
+| Enterprise anterior | `4e9fb65feeeac1441508dd4d1aff10074bc6d0cc` |
+| Enterprise constructor GHCR | `8cbdbc176158b69f676f5bbf8acef483af659ae1` |
+| Enterprise documental publicado anterior a esta revisión | `33b646a7b73fb8ae549727d5cd3ac09b1bf08203` |
+| EC2 checkout acreditado, no observado nuevamente | `33b646a7b73fb8ae549727d5cd3ac09b1bf08203` |
+| GHCR | run **45508868647**, main / components=all, SUCCESS, 4/4, linux/amd64, 3m30s |
+
+Workflow existente: `.github/workflows/build-images.yml`.
+[Run acreditado](https://github.com/BBTI-SAC/documental-platform-bbti-prod/actions/runs/45508868647).
+Los nuevos commits documentales de esta revisión no existen todavía: publicación SOURCE/Enterprise pendiente de autorización específica PO. No anticipar sus SHA ni confundirlos con el constructor.
+### Solo sincronización documental posterior
+
+Este cierre no autoriza ejecutar las recetas anteriores de pull/up. Imágenes/runtime vigentes ya acreditados; docs-only exige revisar delta exclusivo docs/*, baseline y destino exactos, fast-forward, preservar configuración y comparar identidad runtime antes/después. Script preparado fuera del repositorio, sin ejecuciónEC2: `ec2-documentary-sync.py` en evidencia de cierre. Commit/push y sync requieren autorización específica; nunca latest, rebuild, recreate, migración ni rollbackautomático como consecuencia de documentación.
+### Producción acreditada y aceptación PO
+
+Release activa acreditada: `/home/ubuntu/releases/documental-platform-bbti/integrated-45508868647-8cbdbc17-r1`.
+Checkout: `/home/ubuntu/apps/documental-platform-bbti-prod`.
+Validación técnica heredada del **25/11/2026 08:06:03 PET**: cuatro servicios RUNNING_PASS; API PASS; Web HTTP200; NATS HEALTH PASS; configuración NAS PASS; smbclient 4.23.8; raíz SMB READ_ONLY PASS; APISPERU preservado. No es una nueva inspección de esta edición.
+
+Evidencias en `evidence/` de la release: `preparation-result.txt`, `deployment-execution.txt`, `runtime-validation.txt`, `runtime.before.json`, `runtime.after.json`, `images-pulled.json`, `release-overrides.sha256`.
+Preservar `release.images.yml`, `rollback.images.yml`, `nas.production.override.yml`, `/etc/documental-platform/ms-documentos.apisperu.override.yml` y `.env.production`; no copiar secretos a Git.
+
+PO, 25/11: «OC -> ok», «Factura -> ok», «Guia -> ok», «NI -> ok», «Tambien fui a contabilidad y la visualizacon es de nas», «yo hice la aceptacion transversal».
+`PRODUCTION_TRANSVERSAL_ACCEPTANCE=PASS_PO`, `PRODUCTION_NAS_ARCHIVER=PASS_PO`, `PRODUCTION_NAS_VIEWER=PASS_PO`, `PRODUCTION_CSP_FUNCTIONAL_CORRECTION=PASS_PO`.
+Es aceptación comunicada por PO; no nueva prueba automatizada ni certificación independiente de todos los casos individuales de Finanzas/OP/RH/sustentos.
+
+Testigos PO bajo `/volume1/GESTION-DOCUMENTARIA/PLATAFORMA_DOCUMENTAL/`:
+
+- `documentos/2026/04/BBTEC/OC_003214.pdf`
+- `documentos/2026/04/BBTEC/OC_003214__FACTURA_F001-13640_20522718786.pdf`
+- `documentos/2026/04/BBTEC/OC_003214__GUIA_T001-8018_20522718786.pdf`
+- `documentos/2026/04/BBTEC/OC_003214__NOTA_INGRESO_0000003344.pdf`
+
+Contabilidad: visualización NAS aceptada por PO. Archivo498 fue testigo anterior de CSP (`documentos/2026/04/BBTEC/OS_000262__FACTURA_F001-00001680_20610013822.pdf`); no se acredita una nueva prueba individual de 498.
+### Continuidad institucional y siguiente acción legítima
+
+PO conserva autorización y aceptación. MSE Actual/MSE 2.0: arquitectura, gobierno de release/manuales/Bibliotecario; MSE 3.0: dirección técnica; MSE 3.1: operación DEV y ejecución delegada; Codex ejecutor. Máximo cuatro gates: G1/G2/G3 cerrados; esta actualización pertenece a G4 y no crea G5.
+Documentos versionados gobiernan; colección externa permanente `BBTI_MANUALES_2026-11-18_R3`, revisión 25/11/2026, subordinada. Antecedentes19/11/24/11 no son tareas actuales. No reabrir Factura TEMP, custodias de los 48 archivos, SMB/VPN, migración 0026, ingeniería NAS ni aceptación transversal. No extender PASS_PO a otros requerimientos independientes.
+
+Esta revisión es documental local: commit/push SOURCE y Enterprise pendientes de autorización específica. Historial Enterprise propio preservado; no copiar manifest/inventario completo desde SOURCE. Procedencia funcional SOURCE `4776f2e907e64e3eaaacf5d6cff2874a907a3785`; el futuro SHA documental SOURCE se registrará externamente al publicarlo, sin autorreferencias imposibles. EC2 sync=PENDING hasta autorización/acceso y ejecución docs-only fast-forward; sin pull de imágenes ni recreate.
+Paquete Bibliotecario y legado en `/home/loxi1/bbti-evidence/nas-institutional-closure-20261125-r1/`; transferencia/indexación=PENDING_MSE_ACTUAL_VALIDATION. No crear R4. Próximo paso: revisión MSE Actual/PO del diff y autorización focal publicación SOURCE→Enterprise→sync documentalEC2. Futuro DELETE productivo y respaldo NAS son decisiones separadas, no ejecutar en este cierre.
