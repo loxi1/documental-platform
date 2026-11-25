@@ -77,3 +77,19 @@ El adaptador vuelve a hashear los bytes R2 y comprueba la cuenta contra el endpo
 Los escritores genéricos y directos no pueden recrear o eliminar por fuera del archivador una clave reservada confirmada o incierta. Se conservan publicación NAS sin reemplazo, lease/CAS, protección del origen previo y reconciliación. Respuesta perdida+HEAD404 no acredita autoría; respuesta previa exitosa y ausencia posterior solo se acreditan para el mismo intento. Un intento incierto todavía presente tampoco se repite automáticamente. Fallos de NAS/DELETE no revierten la confirmación de negocio.
 
 Las exclusiones numéricas 546/552/553 y autorizaciones 554/555 pertenecen a DEV y no se trasladan a identidades PROD por coincidencia de número. No se intervinieron esos objetos. Sin renombrar, recalcular periodo, modificar TEMP/OCR, esquemas, SQL 0025/0026 ni credenciales.
+
+
+## 2026-11-25 — Política NUEVOS permanente explícita (G4, despliegue HOLD)
+
+Extensión compatible de política versión1: `modo:"NUEVOS"` con `permanente:true` y sin propiedad `hasta`. Solo esta combinación expresa permanencia; omitir `hasta` sin `permanente:true`, indicar false/null/string, combinar permanencia con `hasta` o usarla con EXACTO falla cerrado. Las políticas temporales anteriores siguen exigiendo `hasta` UTC válido y vigente. No se usan fechas lejanas ni renovaciones para la modalidad permanente.
+
+Se conservan `decisionId`, protección/aceptación PO, pares empresa/clienteId y `desde` UTC; la autorización se revoca mediante `R2_NAS_PRODUCTION_DELETE_ENABLED=false`. El runtime registra `permanente:true` en su evidencia de autorización, sin inventar vencimiento. No cambian NAS, integridad, exclusión, reserva durable, referencias, If-Match, maxAttempts1 ni acreditación DELETE+HEAD404 del mismo intento.
+
+Representación preparada para autorización posterior de activación (NO aplicada por esta corrección):
+```json
+{"version":1,"decisionId":"PO-NAS-PROD-NUEVOS-PERMANENTE-20261125-R1","proteccion":{"tipo":"RIESGO_COPIA_UNICA_ACEPTADO_PO","referencia":"HYPER_BACKUP_BBTI_DOCUMENTAL_PROD_BACKUP_INTERVALO_DIARIO_PO_20261125"},"modo":"NUEVOS","permanente":true,"desde":"2026-11-25T20:00:00Z","contextos":[{"empresa":"BBTEC","clienteId":1},{"empresa":"BBTI","clienteId":2}]}
+```
+
+Inicio DELETE inalterable20:00Z (15:00PET); cutoff NAS independiente `2026-11-24T22:48:35.970Z`. OC003211/archivo503/reserva6/documento511, confirmada19:28:36.199Z, permanece excluida sin intervención ni adopción retroactiva. Hyper Backup CLOSED_PASS_PO; recuperación SHA256 acreditada, riesgo mismo volumen aceptado y ventana entre copias diarias documentada; no se afirma respaldo previo de cada documento nuevo.
+
+La política temporal efectiva en EC2 se preserva intacta; esta ingeniería no modifica configuración ni runtime productivos. EC2_DEPLOYMENT=HOLD; PERMANENT_DELETE_ACTIVATION=HOLD. Publicación integral SOURCE→Enterprise→GHCR all autorizada por mandato ejecutivo; aceptación física y cierre G4 posteriores, no anticipados.

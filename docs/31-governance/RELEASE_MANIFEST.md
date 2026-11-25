@@ -2657,3 +2657,18 @@ Commit funcional SOURCE local: `b90eca0dd7fd3c1b7432b4266a7c64708e29cf6f` (15rut
 DELETE productivo debe seguir deshabilitado hasta resolver la política de protecciónNAS. No existe autorización para borrar objetos productivos ni candidatosB. El flagDEV continúa false en producción. No nuevas migraciones. La aceptaciónPO no se presenta como validación independiente MSEActual ni como indexaciónBibliotecario; sus estados se acreditarán separadamente.
 
 Evidencia: `/home/loxi1/bbti-evidence/nas-production-safe-delete-20261125-r1/PO_G3_AND_INCREMENTAL_AUTHORIZATION.json`, `dev-physical-592/result.json`, `source-functional-commit.json` y recibos de publicación posteriores. Los scripts locales SOURCE permanecen excluidos.
+
+
+---
+
+## 2026-11-25 — Corrección focal de permanencia explícita DELETE, G4 en progreso
+
+Mandato PO/MSEActual/MSE3.0 aprobado: alcance exclusivo FOCAL_PERMANENT_DELETE_POLICY, ONE_INTEGRATED_RELEASE. SOURCE funcional `00cb4827a8f5bee79b124cda2890c31a07e0ab17`, parent `f3da619efb61010b4e9dd644d255bbaa5bdcee45`. Tres rutas: archivado-delete-policy.ts, archivado-production-delete.spec.ts y archivado-runtime.service.ts. Extensión versión1: solo NUEVOS admite `permanente:true` sin propiedad hasta; falta de hasta sin esta decisión, valores inválidos, EXACTO permanente y configuraciones contradictorias fallan cerrado. Temporal compatible, flag revocable y decisión durable con permanencia explícita.
+
+Validación ejecutada:46Jest PASS/0FAIL,35Node MOVE PASS/0FAIL, typecheck estrictoPASS y buildNestDocumentosPASS en salida aislada. No pruebas físicas repetidas ni migraciones. Preservados controles DELETE If-Match/maxAttempts1, SHA256/tamaño/lecturaNAS, reserva, referencias, concurrencia, auditoría y HEAD404 del mismo intento; código MOVE/adaptadores sin cambios.
+
+Inicio DELETE `2026-11-25T20:00:00Z`, cutoffNAS `2026-11-24T22:48:35.970Z`, pares BBTEC/cliente1 y BBTI/cliente2 inalterados. OC003211/archivo503/reserva6/documento511 confirmada19:28:36.199Z sigue excluida; no intervención ni extensión retroactiva. Scripts locales SOURCE excluidos y preservados íntegros.
+
+Release anterior GHCR45661825703, constructor5ab0decd3499f220b9784558c80d2b4fb10db640 y checkout productivo7f10e4402c13e2f34f820103b356a71fc06a0062 preservados. Despliegue4/4 y aceptaciónNAS/descargaPASS_PO acreditados por continuidadMSE3.1; política temporal efectiva no modificada por esta corrección. HyperBackup CLOSED_PASS_PO; recuperaciónSHA256 PASS; riesgo mismo volumen e intervalo diario aceptados, sin atribuir backup previo a cada documento futuro.
+
+Publicación autorizada SOURCE→Enterprise→GHCR main/all; las nuevas identidades efectivas se incorporarán incrementalmente cuando existan. EC2_DEPLOYMENT=HOLD, PERMANENT_DELETE_ACTIVATION=HOLD. G1/G2/G3 cerrados, G4=IN_PROGRESS. Ningún DELETE físico, intervenciónRDS/EC2 ni cambio de configuración productiva en esta corrección. Cierre definitivo R3/Bibliotecario/legado posterior a aceptación física. Evidencia `/home/loxi1/bbti-evidence/nas-production-safe-delete-20261125-r1/permanent-policy-r1`.
