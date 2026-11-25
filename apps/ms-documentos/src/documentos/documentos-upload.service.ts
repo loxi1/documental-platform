@@ -1,4 +1,4 @@
-import { conExclusionFisica } from './archivado/archivado-exclusion';
+import { conExclusionFisica, protegerReservaConfirmadaFisica } from './archivado/archivado-exclusion';
 import { PeriodoDocumentalR2Repository } from './periodo-documental-r2.repository';
 import { resolverIdentidadVersionDocumental, type VersionDocumentalActor } from './carga-segura/http/carga-segura-http.validation';
 import { BadRequestException, ConflictException, Injectable,
@@ -942,6 +942,8 @@ export class DocumentosUploadService {
     if(this.config.get<string>('R2_NAS_ARCHIVE_ENABLED')!=='true'){await write();return;}
     const account=this.config.get<string>('R2_ACCOUNT_ID')||this.config.get<string>('CLOUDFLARE_ACCOUNT_ID');
     if(!account)throw new Error('ARCHIVADO_CUENTA_R2_REQUERIDA');
-    const c=await sql.reserve();try{await conExclusionFisica(c,account,params.bucket,params.storageKey,write);}finally{c.release();}
+    const c=await sql.reserve();try{await conExclusionFisica(c,account,params.bucket,params.storageKey,async()=>{
+      await protegerReservaConfirmadaFisica(c,account,params.bucket,params.storageKey);await write();
+    });}finally{c.release();}
   }
 }

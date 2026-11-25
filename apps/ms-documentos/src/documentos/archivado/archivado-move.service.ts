@@ -12,6 +12,7 @@ export interface ArchivadoR2 {
   materializar?(row: ArchivadoRow): Promise<void>;
   leer(row: ArchivadoRow): Promise<AsyncIterable<Uint8Array>>;
   comprobar(row: ArchivadoRow): Promise<'PRESENTE' | 'AUSENTE'>;
+  verificarParaEliminar?(row:ArchivadoRow):Promise<{etag:string;sha256:string;bytes:number}>;
   eliminarExacto(row: ArchivadoRow): Promise<{ http: number; requestId: string | null }>;
 }
 export interface ArchivadoNas {
@@ -27,6 +28,7 @@ export interface DisponibilidadArchivado {
   /** Includes domain references and exclusion shared with every participating writer. */
   verificarReferenciasYExclusion(row: ArchivadoRow): Promise<boolean>;
   verificarOrigenMaterializacion?(row:ArchivadoRow):Promise<boolean>;
+  autorizarEliminacion?(row:ArchivadoRow):Promise<Record<string,unknown>|null>;
 }
 export type ResultadoMove = 'SIN_TRABAJO' | 'NAS_VERIFICADO_DELETE_DESHABILITADO'
   | 'NAS_VERIFICADO_VISOR_PENDIENTE' | 'COMPLETADO' | 'ELIMINACION_INCIERTA';
@@ -36,7 +38,7 @@ export type ResultadoMove = 'SIN_TRABAJO' | 'NAS_VERIFICADO_DELETE_DESHABILITADO
 export class ArchivadoMoveService {
   constructor(private readonly repo: ArchivadoRepository, private readonly r2: ArchivadoR2,
     private readonly nas: ArchivadoNas, private readonly disponibilidad: DisponibilidadArchivado,
-    private readonly politica: { eliminacionRealHabilitada: boolean } = { eliminacionRealHabilitada: false }) {}
+    private readonly politica: { eliminacionRealHabilitada: boolean; autorizacionDurableRequerida?:boolean } = { eliminacionRealHabilitada: false }) {}
 
   async procesarUno(empresa: string, clienteId: number, expedienteId?: number | null): Promise<ResultadoMove> {
     const row = await this.repo.reclamar(empresa, clienteId, expedienteId);
@@ -80,6 +82,7 @@ export class ArchivadoMoveService {
         ||!(Date.parse(respuesta.fecha)>=Date.parse(previo.fecha)))throw new Error('ARCHIVADO_ORIGEN_ELIMINACION_INCIERTA');
       await this.repo.evidenciaOrigen(lease,'ORIGEN_AUSENCIA',{key:o.key,intento:previo.datos.intento});return;
     }
+    if(previo)throw new Error('ARCHIVADO_ORIGEN_ELIMINACION_INCIERTA');
     await this.r2.verificarOrigen(row);
     await this.repo.renovar(lease);
     const intento=randomUUID();
@@ -144,13 +147,29 @@ export class ArchivadoMoveService {
         await this.repo.liberar(lease,'ARCHIVADO_DELETE_DESHABILITADO',intentoIniciado);
         return 'NAS_VERIFICADO_DELETE_DESHABILITADO';
       }
+      // An unknown previous request may still be in flight. Never issue another DELETE,
+      // even when a later HEAD currently observes the object present.
+      if(intentoIniciado){
+        await this.repo.liberar(lease,'ARCHIVADO_DELETE_AUTORIA_INCIERTA',true);
+        return 'ELIMINACION_INCIERTA';
+      }
       if(row.contexto?.origenFisico && row.contexto.origenFisico.key!==row.r2_key)
         throw new Error('ARCHIVADO_ORIGEN_PREVIO_REQUIERE_REGULARIZACION');
-      await this.limpiarOrigenMaterializacion(row,lease);
       if (!await this.disponibilidad.verificarReferenciasYExclusion(row)) throw new Error('ARCHIVADO_REFERENCIAS_O_EXCLUSION_PENDIENTES');
       // Recheck NAS and application availability immediately before destructive work.
       comprobarPrueba(await this.nas.verificar(row));
       if (!await this.disponibilidad.verificarLectura(row)) throw new Error('ARCHIVADO_VISOR_NO_DISPONIBLE');
+      if(this.politica.autorizacionDurableRequerida){
+        const decision=await this.disponibilidad.autorizarEliminacion?.(row);
+        if(!decision)throw new Error('ARCHIVADO_DELETE_PRODUCCION_NO_AUTORIZADO');
+        if(!this.r2.verificarParaEliminar)throw new Error('ARCHIVADO_DELETE_IDENTIDAD_NO_ACREDITADA');
+        const proof=await this.r2.verificarParaEliminar(row);
+        if(!proof?.etag)throw new Error('ARCHIVADO_DELETE_IDENTIDAD_NO_ACREDITADA');
+        comprobarPrueba(proof);
+        await this.repo.autorizarEliminacion(lease,{...decision,r2:{cuenta:row.r2_cuenta,bucket:row.r2_bucket,
+          key:row.r2_key,etag:proof.etag,sha256:proof.sha256,bytes:proof.bytes}});
+      }
+      await this.limpiarOrigenMaterializacion(row,lease);
       await renovacion();
       intentoId = randomUUID();
       await this.repo.iniciarEliminacion(lease,intentoId); intentoIniciado = true;

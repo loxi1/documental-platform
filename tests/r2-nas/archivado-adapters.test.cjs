@@ -32,3 +32,72 @@ test('historical or foreign origin is rejected before any SDK operation',async()
  const adapter=new ArchivadoR2Adapter({send:async()=>assert.fail('no SDK')},'dev','bucket');
  await assert.rejects(()=>adapter.comprobarOrigen({...row,contexto:{modo:'HISTORICO',origenMaterializacion:{bucket:'bucket',key:'documentos/technical.pdf'}}}),/ORIGEN_MATERIALIZACION_INVALIDO/);
 });
+
+const {conExclusionFisica}=require(path.join(process.env.BBTI_ARCHIVE_COMPILED,'archivado-exclusion.js'));
+const lock={unsafe:async()=>[{locked:true}]};
+test('production deletion requires exclusion and reverified actual SHA, not ETag as a hash',async()=>{
+ const body=Buffer.from('pdf'),digest=require('node:crypto').createHash('sha256').update(body).digest('hex');
+ const r={...row,sha256:digest},date=new Date('2026-11-25T00:00:00Z'),calls=[];
+ let etag='"identity-a"';
+ const a=new ArchivadoR2Adapter({send:async cmd=>{
+  calls.push(cmd.constructor.name);
+  if(cmd.constructor.name==='GetObjectCommand')return {ContentLength:3,ETag:etag,LastModified:date,Body:require('node:stream').Readable.from([body])};
+  if(cmd.constructor.name==='HeadObjectCommand')return {ContentLength:3,ETag:etag,LastModified:date};
+  return {$metadata:{httpStatusCode:204,requestId:'single-request'}};
+ }},'dev','bucket',undefined,{exclusionRequerida:true});
+ a.client.config={endpoint:async()=>({protocol:'https:',hostname:'dev.r2.cloudflarestorage.com',path:'/'})};
+ await assert.rejects(()=>a.verificarParaEliminar(r),/SIN_EXCLUSION/);
+ await conExclusionFisica(lock,'dev','bucket',r.r2_key,async()=>{
+  await a.verificarParaEliminar(r);etag='"identity-b"';
+  await assert.rejects(()=>a.eliminarExacto(r),/OBJETO_SUSTITUIDO/);
+ });
+ assert(!calls.includes('DeleteObjectCommand'));
+});
+test('real SDK makes only one DELETE transport attempt even with a retryable server failure',async()=>{
+ const {createRequire}=require('node:module');
+ const req=createRequire(path.join(process.env.BBTI_ARCHIVE_COMPILED,'../package.json'));
+ const {S3Client}=req('@aws-sdk/client-s3');let attempts=0;
+ const client=new S3Client({region:'auto',endpoint:'https://synthetic.invalid',
+  credentials:{accessKeyId:'synthetic',secretAccessKey:'synthetic'},maxAttempts:4,
+  requestHandler:{handle:async()=>{attempts++;return {response:{statusCode:503,headers:{},body:Buffer.from('')}}}}});
+ const a=new ArchivadoR2Adapter(client,'dev','bucket');
+ await assert.rejects(()=>a.eliminarExacto(row));assert.equal(attempts,1);
+});
+test('production source SHA mismatch never authorizes a later DELETE',async()=>{
+ const calls=[],a=new ArchivadoR2Adapter({send:async cmd=>{
+  calls.push(cmd.constructor.name);return {ContentLength:3,ETag:'"not-a-sha"',LastModified:new Date(),
+    Body:require('node:stream').Readable.from([Buffer.from('pdf')])};
+ }},'dev','bucket',undefined,{exclusionRequerida:true});
+ a.client.config={endpoint:async()=>({protocol:'https:',hostname:'dev.r2.cloudflarestorage.com',path:'/'})};
+ await conExclusionFisica(lock,'dev','bucket',row.r2_key,async()=>{
+  await assert.rejects(()=>a.verificarParaEliminar(row),/R2_INTEGRIDAD/);
+  await assert.rejects(()=>a.eliminarExacto(row),/IDENTIDAD_NO_ACREDITADA/);
+ });assert(!calls.includes('DeleteObjectCommand'));
+});
+test('production SDK sends If-Match for the independently hashed object with no unconditional fallback',async()=>{
+ const {createRequire}=require('node:module'),req=createRequire(path.join(process.env.BBTI_ARCHIVE_COMPILED,'../package.json'));
+ const {S3Client}=req('@aws-sdk/client-s3'),body=Buffer.from('pdf');
+ const hash=require('node:crypto').createHash('sha256').update(body).digest('hex'),etag='"opaque-identity"',calls=[];
+ const client=new S3Client({region:'auto',endpoint:'https://dev.r2.cloudflarestorage.com',credentials:{accessKeyId:'synthetic',secretAccessKey:'synthetic'},
+  requestHandler:{handle:async request=>{
+   calls.push(request.method);
+   if(request.method==='DELETE'){
+    assert.equal(request.headers['if-match'],etag);
+    return{response:{statusCode:204,headers:{},body:Buffer.from('')}};
+   }
+   return{response:{statusCode:200,headers:{'content-length':'3',etag,'last-modified':'Wed, 25 Nov 2026 00:00:00 GMT'},
+    body:require('node:stream').Readable.from(request.method==='GET'?[body]:[])}};
+  }}});
+ const adapter=new ArchivadoR2Adapter(client,'dev','bucket',undefined,{exclusionRequerida:true}),r={...row,sha256:hash};
+ await conExclusionFisica(lock,'dev','bucket',r.r2_key,async()=>{
+  assert.equal((await adapter.verificarParaEliminar(r)).sha256,hash);
+  assert.equal((await adapter.eliminarExacto(r)).http,204);
+ });assert.deepEqual(calls,['GET','HEAD','DELETE']);
+});
+test('production account must match the actual SDK endpoint, not just a configured label',async()=>{
+ const a=new ArchivadoR2Adapter({send:async()=>assert.fail('SDK must not run')},'dev','bucket',undefined,{exclusionRequerida:true});
+ a.client.config={endpoint:async()=>({protocol:'https:',hostname:'other-account.r2.cloudflarestorage.com',path:'/'})};
+ await conExclusionFisica(lock,'dev','bucket',row.r2_key,async()=>{
+  await assert.rejects(()=>a.verificarParaEliminar(row),/ENDPOINT_NO_ACREDITADO/);
+ });
+});

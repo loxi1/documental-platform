@@ -16,3 +16,13 @@ export async function conExclusionFisica<T>(connection: {
   try{return await held.run(new Set([...(held.getStore()??[]),identity]),work);}
   finally{await connection.unsafe('SELECT pg_advisory_unlock(hashtextextended($1,0))',[identity]);}
 }
+
+/** Shared immutable-key fence for every institutional writer, including direct uploads. */
+export async function protegerReservaConfirmadaFisica(connection:{unsafe(query:string,values:any[]):PromiseLike<any[]>},
+  cuenta:string,bucket:string,key:string):Promise<void>{
+  if(!poseeExclusionFisica(cuenta,bucket,key))throw new Error('ARCHIVADO_DELETE_SIN_EXCLUSION');
+  const rows=await connection.unsafe(`SELECT confirmado_en,r2_estado FROM documentos.archivados_documentales
+    WHERE r2_cuenta=$1 AND r2_bucket=$2 AND r2_key=$3`,[cuenta,bucket,key]);
+  if(rows.some(r=>r.confirmado_en||['ELIMINACION_INICIADA','ELIMINACION_INCIERTA','ELIMINADO_ACREDITADO','AUSENTE_OBSERVADO'].includes(r.r2_estado)))
+    throw new Error('ARCHIVADO_RESERVA_CONFIRMADA_INMUTABLE');
+}

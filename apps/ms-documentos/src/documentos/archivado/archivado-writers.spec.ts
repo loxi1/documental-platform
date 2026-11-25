@@ -1,6 +1,7 @@
 const mockReserve = jest.fn();
-jest.unstable_mockModule('@documental/database', () => ({
-  sql: { reserve: mockReserve },
+const mockUnsafe = jest.fn();
+jest.mock('@documental/database', () => ({
+  sql: { reserve: mockReserve, unsafe: mockUnsafe },
 }));
 
 import { createHash } from 'node:crypto';
@@ -16,6 +17,7 @@ describe('Todos los escritores R2 institucionales usan exclusión con feature ha
   config={get:(k:string)=>({R2_NAS_ARCHIVE_ENABLED:'true',R2_ACCOUNT_ID:'dev'} as any)[k]};
   connection={unsafe:jest.fn(async()=>[{locked:true}]),release:jest.fn()};
   mockReserve.mockReset().mockResolvedValue(connection);
+  mockUnsafe.mockReset().mockResolvedValue([]);
   send=jest.fn(async()=>({}));storage=new R2CargaSeguraStorage(config);(storage as any).client={send};
  });
  it('PUT condicional sostiene lock durante S3 y lo libera',async()=>{

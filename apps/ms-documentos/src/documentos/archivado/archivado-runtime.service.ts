@@ -18,6 +18,7 @@ import { ArchivadoMoveService, type ResultadoMove } from './archivado-move.servi
 import { ArchivadoR2Adapter } from './archivado-r2.adapter';
 import { ArchivadoSmbAdapter } from './archivado-smb.adapter';
 import { ArchivadoPreviewToken } from './archivado-preview-token';
+import { politicaDeleteProduccion, identidadDeletePermitida } from './archivado-delete-policy';
 type Exacta={id:number;archivoId:number;documentoId:number;version:number;autorizado?:boolean};
 export type ReservaPendienteExacta={reservaId:number;archivoId:number;documentoId:number;empresa:string;clienteId:number;expedienteId:number|null};
 // Current PO storage-deletion authorization; not the ordinary archive eligibility rule.
@@ -91,22 +92,30 @@ export class ArchivadoRuntimeService {
     return matches.length===1&&Number(matches[0].id)===Number(row.archivo_id);
   }
   private async permitido(row:any):Promise<boolean>{
-    if([546,552,553].includes(Number(row.archivo_id)))return false;
+    if(this.config.get<string>('NODE_ENV')!=='production'&&[546,552,553].includes(Number(row.archivo_id)))return false;
     if(this.config.get<string>('NODE_ENV')==='development'
       &&!idArchivadoDevAdmitido(row.id,this.config.get<string>('R2_NAS_DEV_ACCEPTANCE_MIN_RESERVA_ID')))return false;
     // Explicit legacy IDs never bypass age, confirmation or tenant identity.
     return this.nuevoAutorizado(row);
   }
   async recuperarPendientesExactosDev(expected:ReservaPendienteExacta[]){
+    return this.recuperarPendientesExactos(expected,false);
+  }
+  /** Internal institutional entry only: no public DELETE endpoint and no broad selector. */
+  async recuperarPendientesExactosProduccion(expected:ReservaPendienteExacta[]){
+    return this.recuperarPendientesExactos(expected,true);
+  }
+  private async recuperarPendientesExactos(expected:ReservaPendienteExacta[],production:boolean){
     this.requireEnabled();
-    if(this.config.get<string>('NODE_ENV')!=='development'||this.config.get<string>('R2_NAS_DESTINATION')!=='SYNOLOGY_DEV'
+    if((production?!politicaDeleteProduccion(this.config):
+       this.config.get<string>('NODE_ENV')!=='development'||this.config.get<string>('R2_NAS_DESTINATION')!=='SYNOLOGY_DEV')
       ||!expected.length||expected.length>20)throw new ForbiddenException('ARCHIVADO_RECUPERACION_DEV_INVALIDA');
     const ids=new Set<number>(),ready:any[]=[];
     // Validate the complete batch before any claim/storage operation.
     for(const e of expected){
       if(![e.reservaId,e.archivoId,e.documentoId,e.clienteId].every(v=>Number.isSafeInteger(v)&&v>0)
         ||(e.expedienteId!==null&&(!Number.isSafeInteger(e.expedienteId)||e.expedienteId<=0))
-        ||!/^[A-Z0-9_-]+$/.test(e.empresa)||[546,552,553].includes(e.archivoId)||ids.has(e.reservaId))
+        ||!/^[A-Z0-9_-]+$/.test(e.empresa)||(!production&&[546,552,553].includes(e.archivoId))||ids.has(e.reservaId))
         throw new ForbiddenException('ARCHIVADO_RECUPERACION_IDENTIDAD_INVALIDA');
       ids.add(e.reservaId);
       const rows=await sql.unsafe(`SELECT a.* FROM documentos.archivados_documentales a
@@ -122,9 +131,14 @@ export class ArchivadoRuntimeService {
         ||row.empresa_codigo!==e.empresa||Number(row.cliente_destino_id)!==e.clienteId
         ||(row.expediente_id==null?null:Number(row.expediente_id))!==e.expedienteId
         ||!await this.permitido(row)||row.r2_key!==row.ruta_relativa||row.contexto?.modo==='NUEVO_TARDIO'
-        ||row.contexto?.origenFisico||row.contexto?.origenMaterializacion)
+        ||row.contexto?.origenFisico||(!production&&row.contexto?.origenMaterializacion))
         throw new ForbiddenException('ARCHIVADO_RECUPERACION_NO_ACREDITADA');
       ready.push({e,row});
+    }
+    if(production)for(const {e,row} of ready){
+      if(!await this.eliminacionProduccionAutorizada({empresa:e.empresa,clienteId:e.clienteId,expedienteId:e.expedienteId},
+        {id:e.reservaId,archivoId:e.archivoId,documentoId:e.documentoId,version:Number(row.version),autorizado:true}))
+        throw new ForbiddenException('ARCHIVADO_RECUPERACION_PRODUCCION_NO_AUTORIZADA');
     }
     const results:any[]=[];
     for(const {e,row} of ready){
@@ -152,7 +166,7 @@ export class ArchivadoRuntimeService {
       JOIN documentos.documentos d ON d.id=a.documento_id
       WHERE a.documento_id=ANY($1::integer[]) AND a.archivo_id=ANY($2::integer[]) AND a.confirmado_en IS NOT NULL
         AND d.estado='confirmado' AND f.metadata->>'archivadoNuevo'='true'
-        AND a.archivo_id NOT IN(546,552,553) AND a.r2_estado<>'ELIMINADO_ACREDITADO'
+        AND (${this.config.get<string>('NODE_ENV')==='production'}::boolean OR a.archivo_id NOT IN(546,552,553)) AND a.r2_estado<>'ELIMINADO_ACREDITADO'
         AND f.empresa_codigo=a.empresa_codigo AND f.cliente_destino_id=a.cliente_destino_id`,[documentos,archivos]);
     for(const row of rows){
       if(!await this.permitido(row))continue;
@@ -220,7 +234,8 @@ export class ArchivadoRuntimeService {
       const docs=await tx<{id:number}[]>`SELECT d.id FROM documentos.documentos d JOIN documentos.documentos_archivos f ON f.documento_id=d.id
         WHERE d.estado='confirmado' AND f.empresa_codigo=${s.empresa} AND f.cliente_destino_id=${s.clienteId}
           AND f.expediente_id IS NOT DISTINCT FROM ${s.expedienteId}::bigint AND f.storage_provider='r2'
-          AND f.metadata->>'archivadoNuevo'='true' AND f.id NOT IN(546,552,553)
+          AND f.metadata->>'archivadoNuevo'='true'
+          AND (${this.config.get<string>('NODE_ENV')==='production'}::boolean OR f.id NOT IN(546,552,553))
           AND NOT EXISTS(SELECT 1 FROM documentos.archivados_documentales a WHERE a.archivo_id=f.id)
         GROUP BY d.id ORDER BY min(f.metadata->>'archivadoIntentadoEn') NULLS FIRST,d.id LIMIT 20`;
       for(const d of docs)await this.documental!.registrarDocumentoConfirmado(tx,Number(d.id),null,'REGULARIZACION_MANUAL');
@@ -252,13 +267,44 @@ export class ArchivadoRuntimeService {
       &&this.config.get<string>('R2_NAS_DEV_DELETE_ENABLED')==='true';
   }
 
+  private async eliminacionProduccionAutorizada(s:Scope,exacta?:Exacta){
+    const policy=politicaDeleteProduccion(this.config);
+    if(!policy||!exacta?.autorizado)return null;
+    const identity={reservaId:exacta.id,archivoId:exacta.archivoId,documentoId:exacta.documentoId,
+      version:exacta.version,empresa:s.empresa,clienteId:s.clienteId,expedienteId:s.expedienteId};
+    // The immutable policy context is checked before querying or claiming any candidate.
+    if(!policy.contextos.some(c=>c.empresa===s.empresa&&c.clienteId===s.clienteId))return null;
+    if(policy.modo==='EXACTO'&&!identidadDeletePermitida(policy,identity,null))return null;
+    const rows=await sql`SELECT a.*,f.creado_en AS archivo_creado_en FROM documentos.archivados_documentales a
+      JOIN documentos.documentos_archivos f ON f.id=a.archivo_id AND f.documento_id=a.documento_id AND f.version=a.version
+      JOIN documentos.documentos d ON d.id=a.documento_id
+      WHERE a.id=${exacta.id} AND a.archivo_id=${exacta.archivoId} AND a.documento_id=${exacta.documentoId}
+        AND a.version=${exacta.version} AND a.empresa_codigo=${s.empresa} AND a.cliente_destino_id=${s.clienteId}
+        AND a.expediente_id IS NOT DISTINCT FROM ${s.expedienteId}::bigint
+        AND a.confirmado_en IS NOT NULL AND d.estado='confirmado'
+        AND a.confirmado_en>=${this.config.get<string>('R2_NAS_ACTIVATION_FROM')??''}::timestamptz
+        AND f.metadata->>'archivadoNuevo'='true' AND f.creado_en>=${this.config.get<string>('R2_NAS_ACTIVATION_FROM')??''}::timestamptz
+        AND f.empresa_codigo=a.empresa_codigo AND f.cliente_destino_id=a.cliente_destino_id
+        AND f.storage_provider='r2' AND f.storage_bucket=a.r2_bucket AND f.storage_key=a.r2_key
+        AND f.hash_sha256=a.sha256 AND a.r2_key=a.ruta_relativa AND a.nas_destino='SYNOLOGY_PROD'`;
+    const row=rows[0];
+    if(rows.length!==1||!identidadDeletePermitida(policy,identity,row.confirmado_en)
+      ||row.contexto?.origenFisico||row.contexto?.modo==='NUEVO_TARDIO')return null;
+    // Confirm all institutional relationships, including operational OP without expediente.
+    if(!await this.permitido(row))return null;
+    return {decisionId:policy.decisionId,proteccion:policy.proteccion,modo:policy.modo,
+      desde:policy.desde,hasta:policy.hasta,identidad:identity};
+  }
+
   private async procesarContexto(s:Scope,exacta?:Exacta):Promise<{resultados:ResultadoMove[];expedienteId:number|null;estados:any[];bloqueosNomenclatura:any[]}>{
     this.requireEnabled();const nas=this.nas(),repo=new ArchivadoRepository(this.db());
     const cuenta=this.config.get<string>('R2_ACCOUNT_ID')||this.config.get<string>('CLOUDFLARE_ACCOUNT_ID');
     const bucket=this.config.get<string>('R2_BUCKET')||this.config.get<string>('R2_BUCKET_NAME')||this.config.get<string>('STORAGE_R2_BUCKET');
     if(!cuenta||!bucket)throw new ServiceUnavailableException('ARCHIVADO_R2_IDENTIDAD_NO_CONFIGURADA');
-    const r2=new ArchivadoR2Adapter(this.storage.getArchivadoClient(),cuenta,bucket,this.storage);
-    const deleteRequested=this.eliminacionDevAutorizada(s,exacta);
+    const production=this.config.get<string>('NODE_ENV')==='production';
+    const r2=new ArchivadoR2Adapter(this.storage.getArchivadoClient(),cuenta,bucket,this.storage,{exclusionRequerida:production});
+    const productionApproval=production?await this.eliminacionProduccionAutorizada(s,exacta):null;
+    const deleteRequested=production?!!productionApproval:this.eliminacionDevAutorizada(s,exacta);
     const deleteEligible=deleteRequested&&await this.permitido({id:exacta!.id,archivo_id:exacta!.archivoId,documento_id:exacta!.documentoId,
       version:exacta!.version,empresa_codigo:s.empresa,cliente_destino_id:s.clienteId});
     const service=new ArchivadoMoveService(repo,r2,nas,{
@@ -273,6 +319,7 @@ export class ArchivadoRuntimeService {
         const ticket=this.tokens().emitir({archivoId:row.archivo_id,reservaId:row.reserva_id,empresa:row.empresa_codigo,clienteId:row.cliente_destino_id,sha256:row.sha256},Date.now());
         await this.leerPreview(row.archivo_id,ticket);return true;
       },
+      autorizarEliminacion:production?async()=>this.eliminacionProduccionAutorizada(s,exacta):undefined,
       verificarOrigenMaterializacion:async row=>{
         const origin=row.contexto?.origenMaterializacion;if(!origin)return true;
         const [r]=await sql`SELECT
@@ -310,7 +357,7 @@ export class ArchivadoRuntimeService {
                 AND o.estado IN('confirmado','confirmado_como_version')) IS TRUE)) AS safe`;
         return r?.safe===true;
       },
-    },{eliminacionRealHabilitada:deleteEligible});
+    },{eliminacionRealHabilitada:deleteEligible,autorizacionDurableRequerida:production});
     const resultados:ResultadoMove[]=[];
     if(exacta){
       resultados.push(await service.procesarReservaExacta(exacta.id,exacta.archivoId,exacta.documentoId,
@@ -322,7 +369,8 @@ export class ArchivadoRuntimeService {
         WHERE a.empresa_codigo=${s.empresa} AND a.cliente_destino_id=${s.clienteId}
           AND a.expediente_id IS NOT DISTINCT FROM ${s.expedienteId}::bigint
           AND a.confirmado_en IS NOT NULL AND a.r2_estado<>'ELIMINADO_ACREDITADO'
-          AND f.metadata->>'archivadoNuevo'='true' AND a.archivo_id NOT IN(546,552,553)
+          AND f.metadata->>'archivadoNuevo'='true'
+          AND (${production}::boolean OR a.archivo_id NOT IN(546,552,553))
         ORDER BY a.id LIMIT 20`;
       for(const row of rows)if(await this.permitido(row)){
         const r=await this.procesarContexto(s,{id:Number(row.id),archivoId:Number(row.archivo_id),

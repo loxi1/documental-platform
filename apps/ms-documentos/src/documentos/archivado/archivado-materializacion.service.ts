@@ -58,7 +58,7 @@ export class ArchivadoMaterializacionService {
   }
  }
  async ejecutar(tx:Tx,f:any,n:{rutaRelativa:string;regla:string},periodo:{anio:number;mes:number},ordenPagoId?:number):Promise<void>{
-  if([546,552,553].includes(Number(f.id)))throw new Error('ARCHIVADO_ARCHIVO_PROTEGIDO');
+  if(this.config.get<string>('NODE_ENV')!=='production'&&[546,552,553].includes(Number(f.id)))throw new Error('ARCHIVADO_ARCHIVO_PROTEGIDO');
   const contentType=f.documento_mime??f.metadata?.contentType;
   const ext=extensionArchivadoDesdeMime(contentType);
   if(ext==='SIN_REGLA'||!n.rutaRelativa.endsWith('.'+ext))throw new Error('ARCHIVADO_FORMATO_NO_COINCIDE');

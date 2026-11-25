@@ -49,6 +49,8 @@ export class ArchivadoRepository {
       i.sha256,i.bytes,i.nasDestino,i.ruta,i.actorId]);
     if (!matches.length) throw new Error('ARCHIVADO_COLISION_RESERVA_PERMANENTE');
     if (matches[0].r2_estado === 'ELIMINADO_ACREDITADO') throw new Error('ARCHIVADO_IDENTIDAD_YA_ARCHIVADA');
+    if (['ELIMINACION_INICIADA','ELIMINACION_INCIERTA','AUSENTE_OBSERVADO'].includes(matches[0].r2_estado))
+      throw new Error('ARCHIVADO_IDENTIDAD_EN_CONCILIACION');
     return 'REPLAY';
   }
 
@@ -215,6 +217,14 @@ export class ArchivadoRepository {
       eliminacion_intento_id=$4,eliminacion_iniciada_en=clock_timestamp(),delete_respuesta_http=NULL,
       delete_respuesta_en=NULL,delete_request_id=NULL,delete_respuesta_intento_id=NULL,
       ausencia_intento_id=NULL,r2_ausencia_comprobada_en=NULL`, 'DELETE_INTENT', [intento]);
+  }
+  async autorizarEliminacion(l:LeaseArchivado,decision:Record<string,unknown>):Promise<void>{
+    const rows=await this.db.query(`UPDATE ${TABLE} SET actualizado_en=clock_timestamp(),
+      evidencia=evidencia||jsonb_build_array(jsonb_build_object('evento','DELETE_PRODUCCION_AUTORIZADO',
+        'datos',$4::jsonb,'fecha',clock_timestamp()))
+      WHERE id=$1 AND lease_token=$2 AND generacion=$3 AND trabajo_estado='PROCESANDO'
+        AND lease_hasta>clock_timestamp() RETURNING id`,[l.id,l.token,l.generacion,JSON.stringify(decision)]);
+    if(rows.length!==1)throw new Error('ARCHIVADO_LEASE_PERDIDO');
   }
   async respuestaDelete(l: LeaseArchivado, intento: string, http: number, requestId: string | null): Promise<void> {
     if (http < 200 || http >= 300) throw new Error('ARCHIVADO_DELETE_NO_EXITOSO');

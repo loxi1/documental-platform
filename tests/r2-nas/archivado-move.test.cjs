@@ -154,3 +154,27 @@ test('shared reservation INSERT and replay send JSON text without mutating conte
  for(const {v} of calls){assert.equal(typeof v[5],'string');assert(Buffer.byteLength(v[5])>0);assert.deepEqual(JSON.parse(v[5]),original)}
  assert.equal(calls[0].v[5],calls[1].v[5]);assert.equal(original.nested.values[2],'á');
 });
+test('uncertain earlier DELETE still present is never automatically repeated',async()=>{
+ const f=fixture({enabled:true,row:{r2_estado:'ELIMINACION_INCIERTA',nas_estado:'VERIFICADO'}});
+ assert.equal(await f.service().procesarUno('BBTI',1),'ELIMINACION_INCIERTA');
+ assert(!f.events.includes('delete'));assert(!f.events.includes('complete'));
+});
+test('production authorization and source verification must be durable before DELETE intent',async()=>{
+ const f=fixture({enabled:true});
+ f.disponibilidad.autorizarEliminacion=async()=>({decisionId:'PO-TEST',proteccion:'SYNTHETIC'});
+ f.repo.autorizarEliminacion=async()=>f.events.push('production-decision-durable');
+ f.r2.verificarParaEliminar=async()=>{f.events.push('source-bytes-reverified');return {etag:'"identity"',sha256:f.row.sha256,bytes:3}};
+ const s=new ArchivadoMoveService(f.repo,f.r2,f.nas,f.disponibilidad,{eliminacionRealHabilitada:true,autorizacionDurableRequerida:true});
+ assert.equal(await s.procesarUno('BBTI',1),'COMPLETADO');
+ assert(f.events.indexOf('production-decision-durable')<f.events.indexOf('intent-durable'));
+ assert(f.events.indexOf('source-bytes-reverified')<f.events.indexOf('delete'));
+});
+test('revoked production decision or failed audit cannot issue DELETE',async()=>{
+ for(const failAudit of [false,true]){
+  const f=fixture({enabled:true});
+  f.disponibilidad.autorizarEliminacion=async()=>failAudit?{decisionId:'PO-TEST'}:null;
+  f.r2.verificarParaEliminar=async()=>({etag:'"identity"',sha256:f.row.sha256,bytes:3});f.repo.autorizarEliminacion=async()=>{throw Error('DB unavailable')};
+  const s=new ArchivadoMoveService(f.repo,f.r2,f.nas,f.disponibilidad,{eliminacionRealHabilitada:true,autorizacionDurableRequerida:true});
+  await assert.rejects(()=>s.procesarUno('BBTI',1));assert(!f.events.includes('delete'));
+ }
+});

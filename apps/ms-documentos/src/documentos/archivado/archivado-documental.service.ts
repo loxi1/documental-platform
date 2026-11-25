@@ -127,11 +127,12 @@ export class ArchivadoDocumentalService {
         coalesce(co.content_type,f.metadata->>'contentType') AS documento_mime
       FROM documentos.documentos_archivos f JOIN documentos.documentos d ON d.id=f.documento_id
       LEFT JOIN documentos.carga_operaciones co ON co.id=f.carga_operacion_id
-      WHERE d.id=$1 AND d.estado='confirmado' AND f.storage_provider='r2' AND f.id NOT IN(546,552,553)
+      WHERE d.id=$1 AND d.estado='confirmado' AND f.storage_provider='r2'
+        AND (${this.config.get<string>('NODE_ENV')==='production'}::boolean OR f.id NOT IN(546,552,553))
         AND (($2::integer IS NOT NULL AND f.id=$2) OR ($2::integer IS NULL AND f.es_version_actual=true))
       ORDER BY f.id FOR UPDATE OF f,d`,[documentoId,archivoId??null]);
     for (const f of files) {
-      if([546,552,553].includes(Number(f.id)))continue;
+      if(this.config.get<string>('NODE_ENV')!=='production'&&[546,552,553].includes(Number(f.id)))continue;
       if(this.config.get<string>('NODE_ENV')==='development'
         &&(!idArchivadoDevAdmitido(f.id,this.config.get<string>('R2_NAS_DEV_ACCEPTANCE_MIN_FILE_ID'))
         ||!idArchivadoDevAdmitido(f.carga_operacion_id,this.config.get<string>('R2_NAS_DEV_ACCEPTANCE_MIN_CARGA_ID'),true)))continue;

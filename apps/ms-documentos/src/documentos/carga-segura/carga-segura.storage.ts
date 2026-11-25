@@ -1,4 +1,4 @@
-import { conExclusionFisica, poseeExclusionFisica } from '../archivado/archivado-exclusion';
+import { conExclusionFisica, poseeExclusionFisica, protegerReservaConfirmadaFisica } from '../archivado/archivado-exclusion';
 import {
   DeleteObjectCommand,
   HeadObjectCommand,
@@ -285,13 +285,26 @@ export class R2CargaSeguraStorage implements CargaSeguraStorage {
   }
 
   async copyObject(input:CargaSeguraStorageCopyInput):Promise<CargaSeguraStorageCopyResult>{
-    return this.conExclusion(input.bucket,[input.sourceKey,input.destinationKey],()=>this.copiar(input));
+    return this.conExclusion(input.bucket,[input.sourceKey,input.destinationKey],async()=>{
+      await this.protegerReservaConfirmada(input.bucket,input.destinationKey);return this.copiar(input);
+    });
   }
   async putObject(input:CargaSeguraStoragePutInput):Promise<CargaSeguraStoragePutResult>{
-    return this.conExclusion(input.bucket,[input.key],()=>this.poner(input));
+    return this.conExclusion(input.bucket,[input.key],async()=>{
+      await this.protegerReservaConfirmada(input.bucket,input.key);return this.poner(input);
+    });
   }
   async deleteObject(input:CargaSeguraStorageDeleteInput):Promise<void>{
-    return this.conExclusion(input.bucket,[input.key],()=>this.borrar(input));
+    return this.conExclusion(input.bucket,[input.key],async()=>{
+      await this.protegerReservaConfirmada(input.bucket,input.key);return this.borrar(input);
+    });
+  }
+  private async protegerReservaConfirmada(bucket:string,key:string):Promise<void>{
+    if(this.config.get<string>('R2_NAS_ARCHIVE_ENABLED')!=='true'||key.startsWith('documentos/tmp/'))return;
+    const account=this.config.get<string>('R2_ACCOUNT_ID')||this.config.get<string>('CLOUDFLARE_ACCOUNT_ID');
+    if(!account||!poseeExclusionFisica(account,bucket,key))throw new Error('ARCHIVADO_DELETE_SIN_EXCLUSION');
+    const {sql}=await import('@documental/database');
+    await protegerReservaConfirmadaFisica(sql,account,bucket,key);
   }
   private async conExclusion<T>(bucket:string,keys:string[],work:()=>Promise<T>):Promise<T>{
     if(this.config.get<string>('R2_NAS_ARCHIVE_ENABLED')!=='true')return work();
