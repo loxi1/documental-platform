@@ -1646,3 +1646,115 @@ de acreditación por MSE Actual.
 Se preservan todas las referencias históricas.
 La custodia no constituye una tarea operativa pendiente
 ni autoriza volver a ejecutar el script.
+
+
+---
+
+## 2026-11-26 — Conciliación final del inventario CSV productivo
+
+ACTION=BBTI_EXPEDIENTES_CSV_INCREMENTAL_IMPORT_R1.
+
+SOURCE baseline:
+`b37ed88720115f12b6078cc0fae0dc4119f1f89e`.
+
+SOURCE funcional integrado y publicado:
+`d5cdbf3fb0a7e9ecf476cde27c94137c3b22a3d8`.
+
+Enterprise parent:
+`56d3bb882f22e860fb39d11ecf157252b95837b4`.
+
+Enterprise constructor publicado:
+`a9ad9d401c5907ff3576cec9b1905c9a556300f4`.
+
+Inventario focal técnico precedente preservado:
+12 archivos modificados, 17 nuevos, total 29.
+Identidad blobs/modos SOURCE -> Enterprise 29/29.
+Adaptaciones técnicas: 0.
+Dos adendas documentales propias.
+Total promoción funcional: 31 rutas.
+
+G3_SOURCE_INTEGRATION=PASS.
+ENTERPRISE_PROMOTION=PASS.
+GHCR_RUN_ID=45901981158.
+GHCR_IMAGES=4/4_PASS.
+MIGRATION_0027_PROD=PASS.
+MIGRATION_0028_PROD=PASS.
+EC2_DEPLOYMENT=PASS.
+RUNNING_IMAGE_IDENTITIES=4/4_MATCH.
+RUNTIME_READINESS=PASS.
+PRODUCTION_FUNCTIONAL_ACCEPTANCE_PO=PASS.
+
+Las referencias G4=NOT_AUTHORIZED anteriores son históricas.
+G4 autorizado y ejecutado hasta aceptación productiva.
+G4_6=IN_PROGRESS.
+
+Importación productiva 1, BBTI/cliente2/workspace4.
+Cuatro registros, cero inserciones, una modificación,
+tres existentes, cero duplicados CSV.
+Auditoría 22, expediente 119, código 030104.
+Código, estado y metadata preservados.
+Inventario total 668 expedientes antes/después.
+
+CSV_NAS_INTEGRITY=PASS.
+CSV_R2_DELETE_AUDIT=PASS.
+CSV_BUSINESS_AUDIT_DETAIL=PASS.
+CSV_STORAGE_AUDIT_EVENTS=6/6.
+
+CSV_DELETE_EFFECTIVE=true.
+ACCOUNTING_DELETE_POLICY_PRESERVED=PASS.
+
+Las referencias completas de imágenes, migraciones,
+respaldo, aceptación y observaciones se encuentran
+en la adenda contemporánea de RELEASE_MANIFEST.md.
+
+### Delta documental de cierre
+
+Únicas rutas autorizadas:
+
+- docs/31-governance/RELEASE_MANIFEST.md
+- docs/31-governance/BRANCH_INVENTORY.md
+
+Adendas exclusivamente aditivas.
+Sin modificación de código, SQL, manifest de migraciones,
+workflows, Compose, variables ni dependencias.
+
+No incorporar CSV, respaldos, secretos, evidencias externas
+ni archivos históricos custodiados.
+
+No git add . ni git add -A.
+Stage explícito de las dos rutas.
+Preservar historias independientes SOURCE y Enterprise.
+Sin copia integral de repositorios.
+
+### Conciliación histórica
+
+recuperar-nas-554-555.cjs ausente de ambos repositorios
+en preflight documental final.
+Custodia externa acreditada previamente.
+SHA256:
+`34eddbcf018428a14f39bcfa162de2a65d4528da35469310006527d974250adf`.
+
+No recrear ni ejecutar el script.
+Referencias históricas preservadas y contextualizadas.
+
+HISTORICAL_SCRIPT_CUSTODY=PASS.
+HISTORICAL_SCRIPT_EXECUTED=NO.
+
+### Continuidad institucional
+
+Publicación documental SOURCE, adendas Enterprise propias
+y sincronización EC2 exclusivamente documental.
+No rebuild GHCR ni recreate de servicios.
+
+SHA finales documentales y comprobación de runtime
+preservado se acreditarán en recibos posteriores.
+
+Entrega MSE Actual para actualización incremental R3,
+Bibliotecario y continuidad sucesora.
+No afirmar indexación ni aceptación institucional pendiente.
+
+CODEX_REQUIRED=NO.
+NEW_GATE=NO.
+NEW_LAB=NO.
+NEW_R4=NO.
+ONE_INTEGRATED_RELEASE=PRESERVED.

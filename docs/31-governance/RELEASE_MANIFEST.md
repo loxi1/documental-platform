@@ -2932,3 +2932,331 @@ de acreditación por MSE Actual.
 Se preservan todas las referencias históricas.
 La custodia no constituye una tarea operativa pendiente
 ni autoriza volver a ejecutar el script.
+
+
+---
+
+## 2026-11-26 — Cierre productivo CSV de centros de costo
+
+ACTION=BBTI_EXPEDIENTES_CSV_INCREMENTAL_IMPORT_R1.
+
+### Precedencia institucional
+
+Esta entrada acredita el despliegue y la aceptación
+productiva posteriores a la consolidación G3.
+
+Las referencias anteriores G4=NOT_AUTHORIZED y los estados
+productivos pendientes corresponden a antecedentes históricos.
+
+INSTITUTIONAL_AUTHORIZATION=APPROVED.
+PO_PRODUCTION_AUTHORIZATION=APPROVED.
+MSE30_TECHNICAL_DIRECTION=PROCEED.
+
+G1=CLOSED_PASS.
+G2=CLOSED_PASS_WITH_OBSERVATIONS.
+G3=CLOSED_PASS.
+G4_1=CLOSED_PASS.
+G4_2=CLOSED_PASS.
+G4_3=CLOSED_PASS.
+G4_4=CLOSED_PASS.
+G4_5=CLOSED_PASS.
+G4_6=IN_PROGRESS.
+
+PRODUCTION_FUNCTIONAL_ACCEPTANCE_PO=PASS.
+
+El cierre documental, la sincronización EC2 y la entrega
+institucional se acreditarán mediante recibos posteriores.
+No anticipar SHA documentales ni aceptación de MSE Actual.
+
+### Identidades funcionales y promoción
+
+SOURCE baseline anterior:
+`b37ed88720115f12b6078cc0fae0dc4119f1f89e`.
+
+SOURCE funcional publicado:
+`d5cdbf3fb0a7e9ecf476cde27c94137c3b22a3d8`.
+
+Enterprise parent:
+`56d3bb882f22e860fb39d11ecf157252b95837b4`.
+
+Enterprise constructor publicado:
+`a9ad9d401c5907ff3576cec9b1905c9a556300f4`.
+
+Promoción de 29 archivos técnicos, 12 modificados y 17
+nuevos, con identidad de blobs y modos 29/29.
+Dos adendas documentales propias.
+Total: 31 rutas. Adaptaciones técnicas: 0.
+
+Historiales SOURCE y Enterprise independientes preservados.
+
+### GHCR integral
+
+GHCR_RUN_ID=45901981158.
+GHCR_IMAGES=4/4_PASS.
+PLATFORM=linux/amd64.
+
+Workflow:
+https://github.com/BBTI-SAC/documental-platform-bbti-prod/actions/runs/45901981158
+
+Referencias ejecutables inmutables:
+
+ms-auth:
+`ghcr.io/bbti-sac/documental-platform-bbti-prod/ms-auth@sha256:9b3571c233cf27afd27ddf3564bb9101b41925131d33c61b8cdfa328ea259112`
+
+ms-documentos:
+`ghcr.io/bbti-sac/documental-platform-bbti-prod/ms-documentos@sha256:d7d586253efe04dd50381035df012b77f6fefa3c090c8b049d1b8bbe049402a8`
+
+api-gateway:
+`ghcr.io/bbti-sac/documental-platform-bbti-prod/api-gateway@sha256:f2524c08e62b4be8b2ed84bd68067affca59184f96f4ad02b47ac0eb68388c65`
+
+web-admin:
+`ghcr.io/bbti-sac/documental-platform-bbti-prod/web-admin@sha256:52c77638df0cb5c78cd8e5b79a2e89d75560be8d6cecdf0d7e4fca163f3a2099`
+
+La procedencia se acredita por constructor, run, referencias
+publicadas e inspección de manifiestos de plataforma.
+No se acreditaron labels OCI de revisión.
+
+Evidencia local GHCR:
+`/home/loxi1/bbti-evidence/expedientes-csv-import-r1/g4/ghcr-45901981158/`.
+
+La release 45698872132 queda como antecedente y referencia
+de recuperación, no como identidad productiva vigente.
+
+### Migraciones PostgreSQL PROD
+
+Base: gestion_documental.
+Runner institucional desde Enterprise local.
+No ejecución de migraciones desde SOURCE ni EC2.
+
+0027_expedientes_importaciones_csv.sql:
+`cbf488821a0460b51d51f9cc817798bfaf4298c39d35fb5c88191e18a98819b4`.
+
+0028_expedientes_importaciones_modificados.sql:
+`54e2b61b5615a9bc5890631f363b0e7a51cf1a15260c91bee6e96a77a22d648b`.
+
+MIGRATION_0027_PROD=PASS.
+MIGRATION_0028_PROD=PASS.
+MIGRATION_MANIFEST=16/16_PASS.
+MIGRATION_LEDGER=16/16_PASS.
+
+Migraciones 0025 y 0026 preservadas, no reejecutadas.
+
+Respaldo previo a 0027 y 0028:
+gestion_documental_pre0027_20261126T222244Z.dump.
+Tamano: 1217051 bytes.
+SHA256:
+`fcbd0819a0f34d30150486249da803f8c5208bbb14ca1c720f5cf50299d88c99`.
+
+Cliente PostgreSQL 18.6 mediante imagen Docker.
+TOC y lectura completa pg_restore acreditados.
+No se ejecutó restauración real de base de datos.
+Un respaldo previo al conjunto de ambas migraciones.
+
+Privilegios temporales SELECT sobre tmp_expedientes
+y CREATE sobre esquema documentos revocados.
+Permisos originales restituidos.
+
+Rol efectivo de aplicación: document_platform.
+Permisos requeridos sobre tabla y secuencia acreditados.
+El modelo propietario productivo conserva privilegios
+adicionales DELETE y TRUNCATE.
+PRODUCTION_APP_PRIVILEGES=PASS_WITH_OBSERVATIONS.
+
+Evidencia:
+`/home/loxi1/bbti-evidence/expedientes-csv-import-r1/g4/migrations-prod/`.
+
+### Despliegue EC2
+
+Release:
+`/home/ubuntu/releases/documental-platform-bbti/integrated-45901981158-a9ad9d40-r1`.
+
+EC2 funcional sincronizado al constructor Enterprise.
+Custodia previa de configuración y runtime acreditada.
+Cuatro imágenes descargadas por digest linux/amd64.
+Cuatro contenedores de aplicación recreados.
+Identidades efectivas 4/4 coincidentes.
+
+Readiness ms-auth, ms-documentos y api-gateway HTTP200.
+API pública HTTP200 y web pública login HTTP200.
+
+NATS y Traefik preservados sin recreación.
+OCR systemd activo.
+VPN y conectividad NAS TCP445 acreditadas en preflight.
+smbclient 4.23.8 acreditado en nueva imagen ms-documentos.
+
+Delta Compose efectivo: cuatro imágenes y una variable CSV.
+No otros cambios efectivos de configuración.
+
+EC2_DEPLOYMENT=PASS.
+RUNNING_IMAGE_IDENTITIES=4/4_MATCH.
+RUNTIME_READINESS=PASS.
+
+Evidencia EC2:
+`/home/ubuntu/bbti-evidence/expedientes-csv-import-r1/g4/ec2/`.
+
+### Políticas de almacenamiento productivas
+
+R2_NAS_ARCHIVE_ENABLED=true.
+R2_NAS_AUTO_ENABLED=true.
+R2_NAS_VIEWER_ENABLED=true.
+R2_NAS_VIEWER_ACCEPTED=true.
+R2_NAS_DESTINATION=SYNOLOGY_PROD.
+R2_NAS_SMB_ROOT=PLATAFORMA_DOCUMENTAL.
+
+R2_NAS_EXPEDIENTES_CSV_DELETE_ENABLED=true.
+R2_NAS_PRODUCTION_DELETE_ENABLED=true.
+
+Política contable preservada exactamente:
+decisionId PO-NAS-PROD-NUEVOS-PERMANENTE-20261125-R1.
+Modo NUEVOS, permanente:true, sin vencimiento.
+Inicio 2026-11-25T20:00:00Z.
+Contextos BBTEC:1 y BBTI:2.
+Cutoff NAS independiente 2026-11-24T22:48:35.970Z.
+
+El DELETE CSV es independiente de la política contable.
+No ampliación retroactiva.
+Override histórico delete.disabled.override.yml preservado
+byte por byte; su nombre no determina el estado efectivo.
+
+Montaje de credencial NAS read-only preservado.
+Sin cambios de secretos, APISPERU ni infraestructura.
+
+### Aceptación productiva PO
+
+Fecha: 26/11/2026.
+Importación ID 1, workspace 4, BBTI, cliente destino 2.
+Usuario ID 4, perfil compras.
+
+Solicitud:
+`6f7fd2a6-2f95-4adc-b952-e9fe743b1a68`.
+
+Request:
+`ed234182-4b66-4999-a0c7-2d81df8fa1cc`.
+
+CSV original: bbti_smoke_nada.csv.
+Total 4, insertados 0, modificados 1, existentes 3,
+duplicados CSV 0.
+
+Importación confirmada, storage provider NAS,
+NAS verificado, R2 eliminado, último error NULL.
+
+Expedientes 010101, 030101, 030104 y 040101:
+descripciones persistidas coincidentes con CSV.
+
+Inventario productivo antes/después:
+BBTEC 7, BBTI 661, total 668.
+
+PRODUCTION_FUNCTIONAL_ACCEPTANCE_PO=PASS.
+
+### Auditoría de negocio productiva
+
+Tabla documentos.expediente_auditoria.
+Auditoría ID 22, expediente ID 119.
+Acción expediente.actualizado.
+Código 030104 preservado.
+Descripción anterior: UNACEM LIMA CHANCADORA.
+Descripción nueva: UNACEM TARMA (SERVICIOS).
+Estado abierto preservado.
+Metadata mantenimiento_contable preservada.
+
+Origen EXPEDIENTES_IMPORTACION.
+Importación y solicitud coincidentes.
+Actor, contexto empresarial y request coincidentes.
+Fecha 2026-11-26T17:49:40.895245-05:00.
+
+Una modificación y una auditoría acreditadas.
+CSV_BUSINESS_AUDIT_DETAIL=PASS.
+
+### Integridad NAS y eliminación R2
+
+Storage key definitiva:
+`documentos/2026/11/BBTI/CENTROS_COSTO/CENTROS_COSTO_20261126_224940415.csv`.
+
+Ruta física NAS:
+`/volume1/GESTION-DOCUMENTARIA/PLATAFORMA_DOCUMENTAL/documentos/2026/11/BBTI/CENTROS_COSTO/CENTROS_COSTO_20261126_224940415.csv`.
+
+Bucket R2: data-prod.
+Identidad original local, R2 y NAS: 131 bytes.
+
+SHA256 coincidente:
+`b2000ce99e57c313faef650f5dd5b24a697f3921b913ef96d813eaa8269cea53`.
+
+Secuencia durable, hora Perú 26/11/2026:
+
+- R2_VERIFICADO: 17:49:40.890.
+- CONFIRMACION: 17:49:40.904.
+- NAS_VERIFICADO: 17:49:55.294.
+- DELETE_INTENT: 17:49:55.415.
+- DELETE_RESPUESTA: 17:49:55.568, HTTP204.
+- DELETE_AUSENCIA: 17:49:55.615.
+
+Intento DELETE:
+`6ec642ea-24dc-4a2a-a155-26cbdadfffd5`.
+
+ETag original e intento DELETE coincidentes.
+Autorización durable por flag CSV productivo independiente.
+No afirmar captura independiente de tráfico HTTP.
+
+PO confirmó existencia del CSV en NAS y ausencia en R2.
+Integridad acreditada por verificación de aplicación y
+conciliación con CSV original; no segunda lectura SMB
+independiente durante esta aceptación productiva.
+
+CSV_NAS_INTEGRITY=PASS.
+CSV_R2_DELETE_AUDIT=PASS.
+CSV_STORAGE_AUDIT_EVENTS=6/6.
+CSV_BUSINESS_AUDIT_DETAIL=PASS.
+
+### Observaciones y límites de evidencia
+
+Se conservan las observaciones DEV aceptadas en G2:
+replay real del mismo UUID no ejecutado; cobertura
+automatizada disponible. Concurrencia, rollback real
+y anulados no ejercitados en runtime real.
+Errores de typecheck global no focal sin acreditar
+que todos fueran preexistentes.
+
+La aceptación productiva ejercitó modificación y registros
+existentes, no nuevas inserciones. Inserciones acreditadas
+previamente en DEV. No nueva campaña productiva.
+
+DATABASE_PASSWORD presentó discrepancia entre Compose
+efectivo y Docker inspect. Compose anterior y nuevo
+coincidentes, DATABASE_URL exacta y contraseña efectiva
+coincidente con DATABASE_URL. Readiness PASS.
+Causa específica no determinada; observación no bloqueante.
+No modificación de credenciales ni nueva recreación.
+
+Identificador de respuesta del proveedor R2 NULL.
+Intento interno, HTTP204 y ausencia acreditados.
+
+Respaldo previo validado por lectura, sin restore real.
+No se ejecutó rollback destructivo.
+
+### Conciliación histórica y continuidad
+
+Custodia externa de recuperar-nas-554-555.cjs preservada.
+SHA256:
+`34eddbcf018428a14f39bcfa162de2a65d4528da35469310006527d974250adf`.
+
+HISTORICAL_SCRIPT_CUSTODY=PASS.
+HISTORICAL_SCRIPT_EXECUTED=NO.
+Script ausente de ambos repositorios en preflight final.
+No recrearlo ni ejecutarlo.
+
+La revisión R3 de custodia del 26/11/2026 permanece como
+antecedente acreditado. Actualización incremental posterior
+y entrega Bibliotecario corresponden a MSE Actual.
+
+Cierre exclusivamente documental SOURCE -> Enterprise ->
+sincronización EC2. Sin rebuild GHCR ni recreate.
+Identidades documentales finales mediante recibos externos.
+
+CODEX_REQUIRED=NO.
+NEW_GATE=NO.
+NEW_LAB=NO.
+NEW_R4=NO.
+ONE_INTEGRATED_RELEASE=PRESERVED.
+
+G4 funcional productivo aceptado.
+Cierre documental y entrega institucional en curso.
