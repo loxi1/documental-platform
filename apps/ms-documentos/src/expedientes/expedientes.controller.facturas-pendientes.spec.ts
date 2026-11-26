@@ -5,7 +5,7 @@ import { ExpedientesController } from './expedientes.controller';
 
 const service = { findFacturasPendientes: jest.fn() };
 const nats = { send: jest.fn() };
-const controller = new ExpedientesController(service as any, nats as any);
+const controller = new ExpedientesController(service as any, {} as any, {} as any, nats as any);
 
 describe('Autorización de facturas pendientes', () => {
   beforeEach(() => jest.clearAllMocks());

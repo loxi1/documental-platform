@@ -1,4 +1,6 @@
 import { api } from "./api";
+import { getAuthSession } from "@/lib/auth-storage";
+import type { AuthSession } from "@/types/auth";
 
 type ApiEnvelope<T> = {
   success?: boolean;
@@ -187,4 +189,75 @@ export async function updateExpedienteMantenimientoEstado(
   );
 
   return unwrap<ExpedienteMantenimiento>(data);
+}
+
+
+export type ExpedientesImportacionResultado = {
+  importacionId: string;
+  solicitudId: string;
+  empresaCodigo: string;
+  clienteDestinoId: number;
+  totalRegistros: number;
+  registrosInsertados: number;
+  registrosExistentes: number;
+  registrosDuplicadosCsv: number;
+  registrosModificados: number;
+  estado: string;
+  storageProvider: "R2" | "NAS" | null;
+  nasEstado: string;
+};
+
+export function mismaSesionImportacion(
+  original: AuthSession,
+  actual: AuthSession | null,
+): boolean {
+  if (!actual) return false;
+
+  const a = original.contexto;
+  const b = actual.contexto;
+
+  return (
+    original.accessToken === actual.accessToken &&
+    a.sub === b.sub &&
+    a.workspaceId === b.workspaceId &&
+    a.empresa === b.empresa &&
+    Number(a.clienteDestinoId) === Number(b.clienteDestinoId) &&
+    a.sessionContextId === b.sessionContextId &&
+    a.perfil === b.perfil
+  );
+}
+
+export async function importarExpedientesCsv(
+  archivo: File,
+  solicitudId: string,
+  sesionOriginal: AuthSession,
+): Promise<ExpedientesImportacionResultado> {
+  const actual = getAuthSession();
+
+  if (!mismaSesionImportacion(sesionOriginal, actual)) {
+    throw new Error(
+      "El contexto de sesión cambió. Cierre el modal y vuelva a seleccionar el CSV.",
+    );
+  }
+
+  const formData = new FormData();
+
+  formData.append("archivo", archivo);
+  formData.append("solicitudId", solicitudId);
+
+  const { data } = await api.post<
+    ApiEnvelope<ExpedientesImportacionResultado> |
+    ExpedientesImportacionResultado
+  >(
+    "/expedientes/mantenimiento/importar-csv",
+    formData,
+    {
+      headers: {
+        Authorization: `Bearer ${sesionOriginal.accessToken}`,
+        "Content-Type": "multipart/form-data",
+      },
+    },
+  );
+
+  return unwrap<ExpedientesImportacionResultado>(data);
 }

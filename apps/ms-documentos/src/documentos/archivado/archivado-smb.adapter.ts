@@ -6,8 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import { Transform } from 'node:stream';
-import type { ArchivadoNas, PruebaContenido } from './archivado-move.service';
-import type { ArchivadoRow } from './archivado.repository';
+import type { ArchivadoNas, PruebaContenido, ContenidoArchivado } from './archivado-move.service';
 
 type SmbConfig = { host: string; share: string; raiz: string; usuario: string; authFile: string; destino: string; production?: boolean };
 /** DEV adapter only. Credentials are read by smbclient from a protected DEV auth file. */
@@ -22,9 +21,16 @@ export class ArchivadoSmbAdapter implements ArchivadoNas {
       throw new Error('ARCHIVADO_SMB_DESTINO_NO_AUTORIZADO');
     }
   }
-  private ruta(row: ArchivadoRow): string {
+  private ruta(row: ContenidoArchivado): string {
+    const csv=/^documentos\/((?!0000)\d{4})\/(0[1-9]|1[0-2])\/([A-Z0-9_-]{1,20})\/CENTROS_COSTO\/CENTROS_COSTO_\1\2(0[1-9]|[12]\d|3[01])_\d{9}\.csv$/.exec(row.ruta_relativa);
+    const rutaValida=row.origen==='EXPEDIENTES_IMPORTACION'
+      ?!!csv&&csv[3]===row.empresa_codigo&&/^[1-9]\d*$/.test(row.importacion_id??'')
+        &&/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(row.solicitud_id??'')
+        &&Number.isFinite(Date.parse(`${csv[1]}-${csv[2]}-${csv[4]}T00:00:00Z`))
+        &&new Date(`${csv[1]}-${csv[2]}-${csv[4]}T00:00:00Z`).toISOString().slice(0,10)===`${csv[1]}-${csv[2]}-${csv[4]}`
+      :/^documentos\/\d{4}\/(0[1-9]|1[0-2])\/[A-Z0-9]+(?:[-_][A-Z0-9]+)*\/[A-Z0-9_,-]+\.(pdf|png|jpg)$/.test(row.ruta_relativa);
     if (row.nas_destino !== this.config.destino
-      || !/^documentos\/\d{4}\/(0[1-9]|1[0-2])\/[A-Z0-9]+(?:[-_][A-Z0-9]+)*\/[A-Z0-9_,-]+\.(pdf|png|jpg)$/.test(row.ruta_relativa)
+      || !rutaValida
       || row.ruta_relativa.length > 220) throw new Error('ARCHIVADO_SMB_RUTA_INVALIDA');
     return [this.config.raiz,row.ruta_relativa].filter(Boolean).join('/');
   }
@@ -52,7 +58,7 @@ export class ArchivadoSmbAdapter implements ArchivadoNas {
     for await (const chunk of createReadStream(file)) { bytes+=chunk.length;h.update(chunk); }
     return {sha256:h.digest('hex'),bytes};
   }
-  async leerParaVisor(row: ArchivadoRow): Promise<Buffer> {
+  async leerParaVisor(row: ContenidoArchivado): Promise<Buffer> {
     const remote=this.ruta(row),dir=await mkdtemp(join(tmpdir(),'bbti-archive-view-'));
     try {
       const target=join(dir,'read.bin');await this.comando(`get ${remote} ${target}`);
@@ -61,14 +67,14 @@ export class ArchivadoSmbAdapter implements ArchivadoNas {
       return await readFile(target);
     } finally {await rm(dir,{recursive:true,force:true});}
   }
-  async verificar(row: ArchivadoRow): Promise<PruebaContenido> {
+  async verificar(row: ContenidoArchivado): Promise<PruebaContenido> {
     const remote=this.ruta(row),dir=await mkdtemp(join(tmpdir(),'bbti-archive-read-'));
     try {const target=join(dir,'read.bin');await this.comando(`get ${remote} ${target}`);
       const p=await this.hash(target);
       if (p.bytes!==Number(row.tamano_bytes)||p.sha256!==row.sha256) throw new Error('ARCHIVADO_NAS_INTEGRIDAD');return p;
     } finally {await rm(dir,{recursive:true,force:true});}
   }
-  async publicarSinReemplazo(row: ArchivadoRow, source: AsyncIterable<Uint8Array>, renovar: () => Promise<void>, registrarStaging: (ruta: string) => Promise<void>): Promise<PruebaContenido> {
+  async publicarSinReemplazo(row: ContenidoArchivado, source: AsyncIterable<Uint8Array>, renovar: () => Promise<void>, registrarStaging: (ruta: string) => Promise<void>): Promise<PruebaContenido> {
     const remote=this.ruta(row),dir=await mkdtemp(join(tmpdir(),'bbti-archive-copy-'));
     try {
       const local=join(dir,'payload.bin'),expected=Number(row.tamano_bytes);
@@ -83,8 +89,9 @@ export class ArchivadoSmbAdapter implements ArchivadoNas {
       await renovar();
       const parts=remote.split('/');let parent='';
       for(const segment of parts.slice(0,-1)){parent=parent?`${parent}/${segment}`:segment;await this.comando(`mkdir ${parent}`,true);}
-      if (!/^[0-9a-f-]{36}$/.test(row.reserva_id)) throw new Error('ARCHIVADO_RESERVA_INVALIDA');
-      const relativa=`${row.ruta_relativa.slice(0,row.ruta_relativa.lastIndexOf('/'))}/staging-${row.reserva_id}`;
+      const stagingId=row.origen==='EXPEDIENTES_IMPORTACION'?row.solicitud_id:row.reserva_id;
+      if (!/^[0-9a-f-]{36}$/.test(stagingId??'')) throw new Error('ARCHIVADO_RESERVA_INVALIDA');
+      const relativa=`${row.ruta_relativa.slice(0,row.ruta_relativa.lastIndexOf('/'))}/staging-${stagingId}`;
       if (row.staging_relativa && row.staging_relativa!==relativa) throw new Error('ARCHIVADO_STAGING_NO_COINCIDE');
       await registrarStaging(relativa);
       const staging=[this.config.raiz,relativa].filter(Boolean).join('/');

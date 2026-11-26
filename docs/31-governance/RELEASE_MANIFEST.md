@@ -2732,3 +2732,203 @@ Reservas1–6/archivos498–503 quedanexcluidos porconfirmaciónanteriora20Z. Fi
 HyperBackupCLOSED_PASS_PO;recuperaciónhashPASS;riesgomismovolumenBASIC eintervaloentrebackupsdiarios aceptados. No se atribuyebackup previoacadanuevodocumento. Sinreaperturabackup,OCR/R2/NAS/periodos/migraciones/infraestructura, sinDELETEdirecto,cron,timersni nuevosservicios.
 
 Cierre técnico/funcional físico acreditado; este incremento esexclusivamentedocumental. Commit/pushSOURCE→adendaspropiasEnterprise→sincronizaciónEC2 documental, sinrebuild nirecreate. SHAfinales ypreservaciónruntime se registran enrecibosexternos tras ejecución, evitandoautorreferencia. EntregaMSEActual paraactualizaciónincrementalR3,Bibliotecario,legadosucesoryresolucióndefinitivaG4;noafirmar indexaciónoaprobaciónexternanorecibida.
+
+---
+
+## 2026-11-26 — Importación incremental CSV de expedientes: aceptación G3 PO
+
+ACTION=BBTI_EXPEDIENTES_CSV_INCREMENTAL_IMPORT_R1.
+NORMAL/R1, manuales R3 revisión 26/11/2026.
+ONE_INTEGRATED_RELEASE.
+
+### Identidad y alcance
+
+SOURCE base:
+`b37ed88720115f12b6078cc0fae0dc4119f1f89e`.
+
+Rama focal: `feat/expedientes-csv-import-r1`.
+
+G1=CLOSED_PASS.
+G2=CLOSED_PASS_WITH_OBSERVATIONS.
+G3_FUNCTIONAL_ACCEPTANCE_PO=PASS.
+G3_SOURCE_INTEGRATION=AUTHORIZED.
+G4=NOT_AUTHORIZED.
+
+El PO acepta expresamente la funcionalidad acreditada en DEV
+y autoriza consolidación, commit, integración y publicación
+de SOURCE main conforme al manual R3.
+
+Importación CSV desde Revisión Contable — Expedientes:
+vista previa local sin escritura, confirmación explícita,
+validación backend y contexto empresarial autenticado.
+
+Se insertan códigos nuevos y se actualiza exclusivamente
+la descripción de expedientes activos cuando difiere.
+Se preservan IDs, relaciones, registros sin cambios y
+expedientes anulados. Ambos contratos ratificados por PO.
+
+Se permiten cargas independientes de archivos iguales o
+similares. No existe deduplicación documental por SHA256.
+La identidad de solicitud protege la repetición de una misma
+operación; SHA256 se utiliza para integridad del contenido
+y verificación de identidad de esa solicitud.
+
+### Persistencia y migraciones
+
+0027_expedientes_importaciones_csv.sql:
+`cbf488821a0460b51d51f9cc817798bfaf4298c39d35fb5c88191e18a98819b4`.
+
+0028_expedientes_importaciones_modificados.sql:
+`54e2b61b5615a9bc5890631f363b0e7a51cf1a15260c91bee6e96a77a22d648b`.
+
+Ambas aplicadas y verificadas mediante runner institucional
+en DEV `gestion_documental_g2_prodclone_20261028`.
+Manifest de migraciones 16/16 PASS.
+Backups previos y privilegios aplicativos DEV acreditados.
+
+Inserciones, modificaciones, auditoría y resultado de negocio
+se consolidan transaccionalmente. Unicidad por empresa,
+cliente destino y código de expediente.
+
+Migraciones PROD pendientes de autorización específica.
+Ejecutar exclusivamente desde Enterprise local mediante
+runner institucional, nunca desde EC2.
+Verificar privilegios efectivos del usuario aplicativo PROD.
+No modificar ni reaplicar migraciones DEV ya acreditadas.
+0025 y 0026 permanecen cerradas e inalteradas.
+
+### Almacenamiento CSV
+
+Conservar el CSV original confirmado.
+Ruta definitiva:
+
+`documentos/YYYY/MM/EMPRESA/CENTROS_COSTO/CENTROS_COSTO_YYYYMMDD_HHMMSSmmm.csv`
+
+Fecha UTC de confirmación/reserva del CSV, no periodo
+contable de los documentos OC/OS/OP.
+La ruta persistida se conserva exactamente en NAS.
+
+R2 verificado antes de confirmar negocio; transferencia
+NAS postcommit con verificación de tamaño y SHA256.
+DELETE R2 condicional al ETag verificado, con intención,
+respuesta y ausencia registradas durablemente.
+Sin deduplicación por contenido ni reemplazo de archivos.
+Sin repetir automáticamente DELETE de resultado incierto.
+
+Si NAS o DELETE falla, no revertir negocio confirmado.
+Preservar el origen R2 cuando corresponda y su auditoría.
+Sin nuevos workers, cron, timers ni infraestructura.
+
+### Evidencia técnica y funcional DEV
+
+Seis importaciones confirmadas:
+704 registros procesados, 534 insertados, 5 modificaciones
+y 165 sin cambios; duplicados CSV 0.
+539 auditorías de negocio, 36 eventos de almacenamiento.
+NAS verificado 6/6, DELETE HTTP204 y ausencia 6/6.
+Hash y tamaño registrados coincidentes 6/6.
+Lectura SMB independiente acreditada para importación 1.
+Grupos duplicados en PostgreSQL: 0.
+
+Pruebas focales reportadas PASS: parser 23/23,
+integración final de archivado 213/213,
+multipart HTTP 36/36 y actualización 87/87.
+No sumar estas ejecuciones como casos únicos.
+Build Nest Gateway y Documentos PASS.
+Typecheck de aplicación y Web PASS.
+
+Configuración NAS DEV consolidada en .env raíz.
+Arranque ordinario SOURCE nativo T2 acreditado,
+sin dependencia del checkpoint histórico.
+Protecciones DEV y límites 578/410/21 preservados.
+.env privado, ignorado por Git y excluido de publicación.
+
+Evidencias:
+`/home/loxi1/bbti-evidence/expedientes-csv-import-r1/`,
+especialmente step07-final-delta, step08 y step09.
+
+### Observaciones aceptadas para continuidad
+
+Replay real del mismo UUID no ejecutado; existe cobertura
+automatizada de replay a nivel de servicio.
+Concurrencia, rollback real y expedientes anulados no
+ejercitados en runtime real.
+Typecheck global de pruebas no focales reportó errores;
+no se acredita que todos sean preexistentes.
+Datos sintéticos permanecen exclusivamente en DEV.
+
+G2 aceptado por MSE 3.0 con observaciones.
+G3 funcional aceptado por PO.
+No se requieren nuevas campañas de pruebas por este mandato.
+
+### Continuidad productiva y frontera G4
+
+Se preserva el cierre productivo anterior del 25/11/2026:
+GHCR run 45698872132, constructor Enterprise
+`1e1377a83fea4811f93b19628aed4b2d0dcd7279`,
+Enterprise/EC2 documental final de referencia
+`56d3bb882f22e860fb39d11ecf157252b95837b4`.
+
+No reutilizar digests históricos como imágenes del candidato CSV.
+
+Preservar política DELETE contable vigente:
+NUEVOS, permanente:true, sin vencimiento,
+inicio 2026-11-25T20:00:00Z,
+contextos BBTEC:1 y BBTI:2.
+Cutoff NAS independiente 2026-11-24T22:48:35.970Z.
+DELETE DEV=false en producción.
+Visor NAS aceptado y CSP productiva preservados.
+
+Configuración CSV requerida para G4:
+`R2_NAS_EXPEDIENTES_CSV_DELETE_ENABLED=true`,
+flag independiente, deshabilitado por defecto,
+pendiente de autorización productiva.
+
+Incorporar al override NAS de la nueva release,
+sin alterar la política contable del último override.
+Verificar precedencia Compose y configuración efectiva.
+
+Preservar identidad R2, credencial SMB protegida,
+montaje read-only y raíz productiva PLATAFORMA_DOCUMENTAL.
+
+G4 deberá seguir SOURCE -> Enterprise -> GHCR integral 4/4
+-> EC2, con migraciones PROD autorizadas y verificadas
+antes de habilitar el runtime que las requiere.
+
+No hay autorización G4 en esta entrada.
+No promoción Enterprise, build GHCR, SQL PROD,
+intervención EC2 ni activación CSV productiva.
+
+Las identidades efectivas del commit SOURCE y su publicación
+se acreditarán mediante recibos posteriores, sin
+autorreferencias ni SHA futuros inventados.
+
+### Conciliación Git histórica — 26/11/2026
+
+La referencia histórica a
+`apps/ms-documentos/scripts/recuperar-nas-554-555.cjs`
+como archivo local no rastreado queda superada por la
+custodia externa acreditada.
+
+SHA256 del script:
+`34eddbcf018428a14f39bcfa162de2a65d4528da35469310006527d974250adf`.
+
+Baseline SOURCE main anterior al requerimiento:
+`b37ed88720115f12b6078cc0fae0dc4119f1f89e`,
+árbol limpio según informe de custodia.
+
+HISTORICAL_SCRIPT_CUSTODY=PASS.
+HISTORICAL_SCRIPT_EXECUTED=NO.
+
+Evidencia:
+`/home/loxi1/bbti-evidence/source-baseline-custody-documentary-20261126-r1/REPORT.txt`
+y `GIT_DOCUMENTARY_REFERENCES.md`.
+
+Colección R3, revisión 26/11/2026: manual 03 actualizado,
+restantes nueve manuales preservados, checksums 10/10 PASS.
+No nueva colección R4. Transferencia Bibliotecario pendiente
+de acreditación por MSE Actual.
+
+Se preservan todas las referencias históricas.
+La custodia no constituye una tarea operativa pendiente
+ni autoriza volver a ejecutar el script.

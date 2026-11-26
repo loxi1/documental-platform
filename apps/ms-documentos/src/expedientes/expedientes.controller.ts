@@ -13,7 +13,15 @@ import {
   Post,
   Query,
 } from '@nestjs/common';
-import { ApiTags } from '@nestjs/swagger';
+import { ApiTags, ApiConsumes } from '@nestjs/swagger';
+import {
+  UploadedFile,
+  UseInterceptors,
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import {
+  ExpedientesImportacionService,
+} from './expedientes-importacion.service';
 import { ClientProxy } from '@nestjs/microservices';
 import { firstValueFrom, timeout } from 'rxjs';
 import { NatsSubjects } from '@documental/shared';
@@ -27,6 +35,7 @@ import type { OrdenPagoActor } from '../documental-v2/finanzas/orden-pago.dto';
 export class ExpedientesController {
   constructor(
     private readonly service: ExpedientesService,
+    private readonly importacion: ExpedientesImportacionService,
     private readonly ordenPago: OrdenPagoService,
     @Inject(NATS_CLIENT) private readonly nats: ClientProxy,
   ) {}
@@ -95,6 +104,137 @@ export class ExpedientesController {
   @Get('mantenimiento/:id')
   findMantenimientoById(@Param('id', ParseIntPipe) id: number) {
     return this.service.findMantenimientoById(id);
+  }
+
+
+  @ApiConsumes('multipart/form-data')
+  @Post('mantenimiento/importar-csv')
+  @UseInterceptors(FileInterceptor('archivo', {
+    limits: {
+      fileSize: 2 * 1024 * 1024,
+      files: 1,
+      fields: 1,
+      fieldSize: 128,
+      parts: 3,
+    },
+  }))
+  async importarCsv(
+    @Headers('authorization') authorization: string | undefined,
+    @Headers('x-request-id') requestId: string | undefined,
+    @Headers('x-workspace-id') workspaceHeader: string | undefined,
+    @Headers('x-empresa-codigo') empresaHeader: string | undefined,
+    @Headers('x-cliente-destino-id') clienteHeader: string | undefined,
+    @Headers('x-actor-id') actorHeader: string | undefined,
+    @UploadedFile() file: {
+      buffer: Buffer;
+      originalname: string;
+      size: number;
+    },
+    @Body() body: Record<string, unknown>,
+  ) {
+    if (!authorization?.startsWith('Bearer ')) {
+      throw new UnauthorizedException('Token requerido');
+    }
+
+    let auth: any;
+
+    try {
+      auth = await firstValueFrom(
+        this.nats.send(NatsSubjects.AuthValidateToken, {
+          token: authorization.slice(7).trim(),
+        }).pipe(timeout(10000)),
+      );
+    } catch {
+      throw new UnauthorizedException(
+        'No se pudo validar el token',
+      );
+    }
+
+    if (!auth?.valid || !auth.payload) {
+      throw new UnauthorizedException(
+        'Token invalido o expirado',
+      );
+    }
+
+    const payload = auth.payload;
+
+    const perfil = String(
+      payload.perfil ?? payload.perfilCodigo ?? '',
+    ).trim().toLowerCase();
+
+    if (!['admin', 'compras', 'contabilidad'].includes(perfil)) {
+      throw new ForbiddenException(
+        'IMPORTACION_PERFIL_NO_AUTORIZADO',
+      );
+    }
+
+    const workspaceId = Number(payload.workspaceId);
+
+    const empresaCodigo = String(
+      payload.empresa ?? payload.empresaCodigo ?? '',
+    ).trim().toUpperCase();
+
+    const clienteDestinoId = Number(payload.clienteDestinoId);
+
+    const usuarioId = Number(payload.sub ?? payload.usuarioId);
+
+    if (
+      !Number.isSafeInteger(workspaceId) ||
+      workspaceId <= 0 ||
+      !Number.isSafeInteger(clienteDestinoId) ||
+      clienteDestinoId <= 0 ||
+      !Number.isSafeInteger(usuarioId) ||
+      usuarioId <= 0 ||
+      !/^[A-Z0-9_-]{1,20}$/.test(empresaCodigo)
+    ) {
+      throw new ForbiddenException(
+        'IMPORTACION_CONTEXTO_INVALIDO',
+      );
+    }
+
+    if (
+      workspaceHeader !== String(workspaceId) ||
+      empresaHeader !== empresaCodigo ||
+      clienteHeader !== String(clienteDestinoId) ||
+      actorHeader !== String(usuarioId)
+    ) {
+      throw new ForbiddenException(
+        'IMPORTACION_CONTEXTO_NO_COINCIDE',
+      );
+    }
+
+    if (
+      !body ||
+      Object.keys(body).some(key => key !== 'solicitudId') ||
+      typeof body.solicitudId !== 'string' ||
+      !file?.buffer
+    ) {
+      throw new BadRequestException(
+        'IMPORTACION_SOLICITUD_INVALIDA',
+      );
+    }
+
+    return this.importacion.importar({
+      solicitudId: body.solicitudId,
+      nombreOriginal: file.originalname,
+      contenido: file.buffer,
+      contexto: {
+        workspaceId,
+        empresaCodigo,
+        clienteDestinoId,
+        usuarioId,
+        usuarioEmail:
+          typeof payload.email === 'string'
+            ? payload.email
+            : null,
+        perfil,
+        requestId: requestId ?? null,
+        sessionContextId:
+          typeof payload.sessionContextId === 'string'
+            ? payload.sessionContextId
+            : null,
+      },
+    });
   }
 
   @Post('mantenimiento')

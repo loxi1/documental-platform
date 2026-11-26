@@ -14,7 +14,7 @@ import { NATS_CLIENT } from '../../nats/nats-client.provider';
 import { lstatSync, readFileSync } from 'node:fs';
 import { R2CargaSeguraStorage } from '../carga-segura/carga-segura.storage';
 import { ArchivadoRepository, type ArchivadoRow, type ArchivadoSql } from './archivado.repository';
-import { ArchivadoMoveService, type ResultadoMove } from './archivado-move.service';
+import { ArchivadoMoveService, transferirContenidoNas, type ContenidoArchivado, type ResultadoMove } from './archivado-move.service';
 import { ArchivadoR2Adapter } from './archivado-r2.adapter';
 import { ArchivadoSmbAdapter } from './archivado-smb.adapter';
 import { ArchivadoPreviewToken } from './archivado-preview-token';
@@ -33,6 +33,84 @@ export class ArchivadoRuntimeService {
     @Inject(NATS_CLIENT) private readonly nats:ClientProxy, @Optional() private readonly documental?:ArchivadoDocumentalService,
     @Optional() private readonly postcommit?:ArchivadoPostcommit) {}
   onModuleInit(){ this.postcommit?.conectar((ids,archivos)=>this.procesarDocumentosConfirmados(ids,archivos)); }
+  /** CSV identity is its import row; no fictional accounting associations. */
+  async archivarImportacionCsv(input:{origen:'EXPEDIENTES_IMPORTACION';importacionId:string;
+    solicitudId:string;empresaCodigo:string;cuenta:string;bucket:string;storageKey:string;
+    sha256:string;tamanoBytes:number;workspaceId?:number;clienteDestinoId?:number;usuarioId?:number},
+    persistir?:(evento:string,datos:Record<string,unknown>,db:ArchivadoSql)=>Promise<void>){
+    this.requireEnabled();
+    if(!this.automaticoHabilitado())throw new Error('ARCHIVADO_AUTOMATICO_NO_HABILITADO');
+    const cuenta=this.config.get<string>('R2_ACCOUNT_ID')||this.config.get<string>('CLOUDFLARE_ACCOUNT_ID');
+    const bucket=this.config.get<string>('R2_BUCKET')||this.config.get<string>('R2_BUCKET_NAME')||this.config.get<string>('STORAGE_R2_BUCKET');
+    if(input.origen!=='EXPEDIENTES_IMPORTACION'||input.cuenta!==cuenta||input.bucket!==bucket
+      ||!/^[1-9]\d*$/.test(input.importacionId)||!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(input.solicitudId)
+      ||!/^[0-9a-f]{64}$/.test(input.sha256)||!Number.isSafeInteger(input.tamanoBytes)||input.tamanoBytes<=0)
+      throw new Error('ARCHIVADO_IMPORTACION_IDENTIDAD_INVALIDA');
+    const destino=configuracionNas(this.config),nas=this.nas();
+    const row:ContenidoArchivado={origen:input.origen,importacion_id:input.importacionId,
+      solicitud_id:input.solicitudId,empresa_codigo:input.empresaCodigo,r2_cuenta:input.cuenta,
+      r2_bucket:input.bucket,r2_key:input.storageKey,ruta_relativa:input.storageKey,
+      nas_destino:destino.destino,sha256:input.sha256,tamano_bytes:String(input.tamanoBytes)};
+    // Validate CSV-only scope before any network read, even when NAS was verified earlier.
+    const route=/^documentos\/((?!0000)\d{4})\/(0[1-9]|1[0-2])\/([A-Z0-9_-]{1,20})\/CENTROS_COSTO\/CENTROS_COSTO_\1\2(0[1-9]|[12]\d|3[01])_\d{9}\.csv$/.exec(input.storageKey);
+    if(!route||route[3]!==input.empresaCodigo||!Number.isFinite(Date.parse(`${route[1]}-${route[2]}-${route[4]}T00:00:00Z`))
+      ||new Date(`${route[1]}-${route[2]}-${route[4]}T00:00:00Z`).toISOString().slice(0,10)!==`${route[1]}-${route[2]}-${route[4]}`)
+      throw new Error('ARCHIVADO_IMPORTACION_RUTA_INVALIDA');
+    const client=this.storage.getArchivadoClient();
+    if(destino.production){const endpoint=await client.config.endpoint?.();
+      if(!endpoint||endpoint.protocol!=='https:'||endpoint.hostname!==`${cuenta}.r2.cloudflarestorage.com`)throw new Error('ARCHIVADO_R2_ENDPOINT_NO_ACREDITADO');}
+    const r2=new ArchivadoR2Adapter(client,input.cuenta,input.bucket,undefined,{exclusionRequerida:true});
+    const connection=await sql.reserve();
+    try{return await conExclusionFisica(connection,input.cuenta,input.bucket,input.storageKey,async()=>{
+      const rows=await connection`SELECT * FROM documentos.expedientes_importaciones
+        WHERE id=${input.importacionId}::bigint AND solicitud_id=${input.solicitudId}::uuid
+          AND empresa_codigo=${input.empresaCodigo} AND estado_importacion='confirmada'
+          AND confirmado_en IS NOT NULL AND r2_verificado_en IS NOT NULL
+          AND r2_cuenta=${input.cuenta} AND r2_bucket=${input.bucket} AND storage_key=${input.storageKey}
+          AND sha256=${input.sha256} AND tamano_bytes=${input.tamanoBytes}::bigint`;
+      const saved=rows[0];
+      if(rows.length!==1||input.workspaceId!==undefined&&Number(saved.workspace_id)!==input.workspaceId
+        ||input.clienteDestinoId!==undefined&&Number(saved.cliente_destino_id)!==input.clienteDestinoId
+        ||input.usuarioId!==undefined&&Number(saved.usuario_id)!==input.usuarioId)
+        throw new Error('ARCHIVADO_IMPORTACION_NO_CONFIRMADA');
+      const db:ArchivadoSql={query:async<T>(q:string,v:unknown[])=>await connection.unsafe(q,v as any[]) as T[]};
+      const proofData={...input,nasDestino:destino.destino};
+      await transferirContenidoNas(row,r2,nas,async()=>{},async()=>{},saved.nas_estado==='verificado');
+      const proof=await nas.verificar(row);
+      if(proof.sha256!==row.sha256||proof.bytes!==input.tamanoBytes)throw new Error('ARCHIVADO_INTEGRIDAD_NO_COINCIDE');
+      const event=async(name:string,data:Record<string,unknown>)=>{if(!persistir)throw new Error('IMPORTACION_NAS_AUDITORIA_REQUERIDA');await persistir(name,{...proofData,...data},db);};
+      if(saved.nas_estado!=='verificado'&&persistir)await event('NAS_VERIFICADO',{nasSha256:proof.sha256,nasTamanoBytes:proof.bytes});
+      // Separate, opt-in CSV authorization. Accounting DELETE flags/policies have no effect here.
+      const enabled=()=>this.config.get<string>('R2_NAS_EXPEDIENTES_CSV_DELETE_ENABLED')==='true'
+        &&['development','production'].includes(this.config.get<string>('NODE_ENV')??'')
+        &&[input.workspaceId,input.clienteDestinoId,input.usuarioId].every(v=>typeof v==='number'&&Number.isSafeInteger(v)&&v>0);
+      if(!enabled()||!persistir||saved.r2_estado==='eliminado')return proofData;
+      const head=await r2.comprobar(row);
+      const intento=saved.r2_delete_intento_id;
+      if(intento){
+        if(head==='AUSENTE'&&saved.r2_delete_respuesta_http>=200&&saved.r2_delete_respuesta_http<300)
+          await event('DELETE_AUSENCIA',{intentoId:intento});
+        else await event('DELETE_INCIERTO',{intentoId:intento,error:'IMPORTACION_NAS_DELETE_INCIERTO'});
+        return proofData;
+      }
+      if(head==='AUSENTE'){await event('R2_AUSENCIA_OBSERVADA',{error:'IMPORTACION_NAS_AUSENCIA_SIN_AUTORIA'});return proofData;}
+      const r2Proof=await r2.verificarParaEliminar(row);
+      if(!saved.r2_etag||r2Proof.etag!==saved.r2_etag)throw new Error('ARCHIVADO_R2_OBJETO_SUSTITUIDO');
+      if(!enabled())return proofData;
+      const intentoId=(await import('node:crypto')).randomUUID();
+      await event('DELETE_INTENT',{intentoId,etag:r2Proof.etag,autorizacion:{variable:'R2_NAS_EXPEDIENTES_CSV_DELETE_ENABLED',habilitada:true,entorno:this.config.get<string>('NODE_ENV')}});
+      try{
+        const response=await r2.eliminarExacto(row);
+        await event('DELETE_RESPUESTA',{intentoId,http:response.http,requestId:response.requestId});
+        if(await r2.comprobar(row)!=='AUSENTE')throw new Error('IMPORTACION_NAS_AUSENCIA_NO_CONFIRMADA');
+        await event('DELETE_AUSENCIA',{intentoId});
+      }catch(error){
+        await event('DELETE_INCIERTO',{intentoId,error:'IMPORTACION_NAS_DELETE_INCIERTO'});
+        throw error;
+      }
+      return proofData;
+    });}finally{connection.release();}
+  }
   private automaticoHabilitado(){return this.habilitado() && this.config.get<string>('R2_NAS_AUTO_ENABLED')==='true';}
   private permitidos(key='R2_NAS_DEV_ALLOWED_FILE_IDS'):number[]{
     return String(this.config.get<string>(key)??'').split(',')

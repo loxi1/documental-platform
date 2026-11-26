@@ -3,6 +3,13 @@ import { randomUUID } from 'node:crypto';
 import { ArchivadoRepository, type ArchivadoRow, type LeaseArchivado } from './archivado.repository';
 
 export type PruebaContenido = { sha256: string; bytes: number };
+/** Physical content identity, independent of a documento/archivo association. */
+export type ContenidoArchivado = Pick<ArchivadoRow,
+  'r2_cuenta'|'r2_bucket'|'r2_key'|'sha256'|'tamano_bytes'|'nas_destino'|'ruta_relativa'> & {
+  reserva_id?: string; staging_relativa?: string | null;
+  origen?: 'EXPEDIENTES_IMPORTACION'; importacion_id?: string;
+  solicitud_id?: string; empresa_codigo?: string;
+};
 export interface ArchivadoR2 {
   /** All operations validate configured account against the immutable reservation. */
   identidad(): { cuenta: string; bucket: string };
@@ -10,16 +17,25 @@ export interface ArchivadoR2 {
   verificarOrigen?(row:ArchivadoRow):Promise<void>;
   eliminarOrigen?(row:ArchivadoRow):Promise<{http:number;requestId:string|null}>;
   materializar?(row: ArchivadoRow): Promise<void>;
-  leer(row: ArchivadoRow): Promise<AsyncIterable<Uint8Array>>;
-  comprobar(row: ArchivadoRow): Promise<'PRESENTE' | 'AUSENTE'>;
-  verificarParaEliminar?(row:ArchivadoRow):Promise<{etag:string;sha256:string;bytes:number}>;
-  eliminarExacto(row: ArchivadoRow): Promise<{ http: number; requestId: string | null }>;
+  leer(row: ContenidoArchivado): Promise<AsyncIterable<Uint8Array>>;
+  comprobar(row: ContenidoArchivado): Promise<'PRESENTE' | 'AUSENTE'>;
+  verificarParaEliminar?(row:ContenidoArchivado):Promise<{etag:string;sha256:string;bytes:number}>;
+  eliminarExacto(row: ContenidoArchivado): Promise<{ http: number; requestId: string | null }>;
 }
 export interface ArchivadoNas {
   /** Spool and verify input BEFORE no-replace publication; reread destination. */
-  publicarSinReemplazo(row: ArchivadoRow, source: AsyncIterable<Uint8Array>,
+  publicarSinReemplazo(row: ContenidoArchivado, source: AsyncIterable<Uint8Array>,
     renovarLease: () => Promise<void>, registrarStaging: (ruta: string) => Promise<void>): Promise<PruebaContenido>;
-  verificar(row: ArchivadoRow): Promise<PruebaContenido>;
+  verificar(row: ContenidoArchivado): Promise<PruebaContenido>;
+}
+/** Shared institutional staging/no-replace transfer and content verification. No DELETE. */
+export async function transferirContenidoNas(row:ContenidoArchivado,r2:Pick<ArchivadoR2,'leer'>,
+  nas:ArchivadoNas,renovar:()=>Promise<void>,registrarStaging:(ruta:string)=>Promise<void>,verificado=false):Promise<PruebaContenido>{
+  const p=verificado?await nas.verificar(row)
+    :await nas.publicarSinReemplazo(row,await r2.leer(row),renovar,registrarStaging);
+  if(p.sha256!==row.sha256||!Number.isSafeInteger(p.bytes)||p.bytes!==Number(row.tamano_bytes))
+    throw new Error('ARCHIVADO_INTEGRIDAD_NO_COINCIDE');
+  return p;
 }
 export interface DisponibilidadArchivado {
   conExclusion?<T>(row: ArchivadoRow, work: () => Promise<T>): Promise<T>;
@@ -115,11 +131,8 @@ export class ArchivadoMoveService {
       if(await this.r2.comprobar(row)==='AUSENTE')await this.repo.observarAusencia(lease,intentoIniciado);
       const renovacion = () => this.repo.renovar(lease);
       await renovacion();
-      if (row.nas_estado === 'VERIFICADO' || intentoIniciado) {
-        comprobarPrueba(await this.nas.verificar(row));
-      } else {
-        comprobarPrueba(await this.nas.publicarSinReemplazo(row, await this.r2.leer(row), renovacion, ruta => this.repo.registrarStaging(lease,ruta)));
-      }
+      await transferirContenidoNas(row,this.r2,this.nas,renovacion,
+        ruta=>this.repo.registrarStaging(lease,ruta),row.nas_estado==='VERIFICADO'||intentoIniciado);
       // Persist NAS availability before exercising the actual viewer query.
       await this.repo.nasVerificado(lease,row.sha256,Number(row.tamano_bytes),false);
       const lectura = await this.disponibilidad.verificarLectura(row);

@@ -1545,3 +1545,104 @@ Reservas1–6/archivos498–503 quedanexcluidos porconfirmaciónanteriora20Z. Fi
 HyperBackupCLOSED_PASS_PO;recuperaciónhashPASS;riesgomismovolumenBASIC eintervaloentrebackupsdiarios aceptados. No se atribuyebackup previoacadanuevodocumento. Sinreaperturabackup,OCR/R2/NAS/periodos/migraciones/infraestructura, sinDELETEdirecto,cron,timersni nuevosservicios.
 
 Cierre técnico/funcional físico acreditado; este incremento esexclusivamentedocumental. Commit/pushSOURCE→adendaspropiasEnterprise→sincronizaciónEC2 documental, sinrebuild nirecreate. SHAfinales ypreservaciónruntime se registran enrecibosexternos tras ejecución, evitandoautorreferencia. EntregaMSEActual paraactualizaciónincrementalR3,Bibliotecario,legadosucesoryresolucióndefinitivaG4;noafirmar indexaciónoaprobaciónexternanorecibida.
+
+---
+
+## 2026-11-26 — Inventario focal CSV y aceptación G3 PO
+
+ACTION=BBTI_EXPEDIENTES_CSV_INCREMENTAL_IMPORT_R1.
+
+SOURCE base:
+`b37ed88720115f12b6078cc0fae0dc4119f1f89e`.
+
+Rama: `feat/expedientes-csv-import-r1`.
+
+G1=CLOSED_PASS.
+G2=CLOSED_PASS_WITH_OBSERVATIONS.
+G3_FUNCTIONAL_ACCEPTANCE_PO=PASS.
+G3_SOURCE_INTEGRATION=AUTHORIZED.
+G4=NOT_AUTHORIZED.
+
+Inventario técnico: 12 archivos modificados y 17 nuevos.
+Dos adendas institucionales adicionales.
+Total previsto de consolidación: 31 rutas.
+
+### Rutas técnicas autorizadas
+
+- `apps/api-gateway/src/expedientes/expedientes.controller.importacion.spec.ts`
+- `apps/api-gateway/src/expedientes/expedientes.controller.ts`
+- `apps/ms-documentos/src/documentos/archivado/archivado-importacion-csv.spec.ts`
+- `apps/ms-documentos/src/documentos/archivado/archivado-importacion-delete.spec.ts`
+- `apps/ms-documentos/src/documentos/archivado/archivado-move.service.ts`
+- `apps/ms-documentos/src/documentos/archivado/archivado-r2.adapter.ts`
+- `apps/ms-documentos/src/documentos/archivado/archivado-runtime.service.ts`
+- `apps/ms-documentos/src/documentos/archivado/archivado-smb.adapter.ts`
+- `apps/ms-documentos/src/expedientes/expedientes-csv.parser.spec.ts`
+- `apps/ms-documentos/src/expedientes/expedientes-csv.parser.ts`
+- `apps/ms-documentos/src/expedientes/expedientes-importacion-nomenclatura.spec.ts`
+- `apps/ms-documentos/src/expedientes/expedientes-importacion-nomenclatura.ts`
+- `apps/ms-documentos/src/expedientes/expedientes-importacion.archivado.spec.ts`
+- `apps/ms-documentos/src/expedientes/expedientes-importacion.repository.spec.ts`
+- `apps/ms-documentos/src/expedientes/expedientes-importacion.repository.ts`
+- `apps/ms-documentos/src/expedientes/expedientes-importacion.service.spec.ts`
+- `apps/ms-documentos/src/expedientes/expedientes-importacion.service.ts`
+- `apps/ms-documentos/src/expedientes/expedientes.compras-periodo.spec.ts`
+- `apps/ms-documentos/src/expedientes/expedientes.controller.facturas-pendientes.spec.ts`
+- `apps/ms-documentos/src/expedientes/expedientes.controller.importacion.spec.ts`
+- `apps/ms-documentos/src/expedientes/expedientes.controller.ts`
+- `apps/ms-documentos/src/expedientes/expedientes.module.ts`
+- `apps/web-admin/src/app/revision-contable/expedientes/page.tsx`
+- `apps/web-admin/src/components/expedientes/ImportarCentrosCostoModal.tsx`
+- `apps/web-admin/src/lib/expedientes-csv.parser.ts`
+- `apps/web-admin/src/services/expedientes-mantenimiento.ts`
+- `infra/postgres/migrations/0027_expedientes_importaciones_csv.sql`
+- `infra/postgres/migrations/0028_expedientes_importaciones_modificados.sql`
+- `infra/postgres/migrations/manifest.sha256`
+
+### Rutas documentales autorizadas
+
+- `docs/31-governance/RELEASE_MANIFEST.md`
+- `docs/31-governance/BRANCH_INVENTORY.md`
+
+Excluir .env, credenciales, CSV de prueba, respaldos,
+evidencias externas y scripts históricos custodiados.
+
+Stage explícito por rutas; no git add . ni git add -A.
+Commit focal e integración fast-forward autorizados por PO.
+Publicación SOURCE main autorizada.
+Identidades efectivas pendientes de recibos Git.
+
+No nuevo checkout, worktree, rama, LAB ni gate.
+Enterprise conserva historia independiente.
+No promoción ni despliegue durante G3.
+ONE_INTEGRATED_RELEASE preservado.
+
+### Conciliación Git histórica — 26/11/2026
+
+La referencia histórica a
+`apps/ms-documentos/scripts/recuperar-nas-554-555.cjs`
+como archivo local no rastreado queda superada por la
+custodia externa acreditada.
+
+SHA256 del script:
+`34eddbcf018428a14f39bcfa162de2a65d4528da35469310006527d974250adf`.
+
+Baseline SOURCE main anterior al requerimiento:
+`b37ed88720115f12b6078cc0fae0dc4119f1f89e`,
+árbol limpio según informe de custodia.
+
+HISTORICAL_SCRIPT_CUSTODY=PASS.
+HISTORICAL_SCRIPT_EXECUTED=NO.
+
+Evidencia:
+`/home/loxi1/bbti-evidence/source-baseline-custody-documentary-20261126-r1/REPORT.txt`
+y `GIT_DOCUMENTARY_REFERENCES.md`.
+
+Colección R3, revisión 26/11/2026: manual 03 actualizado,
+restantes nueve manuales preservados, checksums 10/10 PASS.
+No nueva colección R4. Transferencia Bibliotecario pendiente
+de acreditación por MSE Actual.
+
+Se preservan todas las referencias históricas.
+La custodia no constituye una tarea operativa pendiente
+ni autoriza volver a ejecutar el script.

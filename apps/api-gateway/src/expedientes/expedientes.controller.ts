@@ -15,6 +15,14 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import axios from 'axios';
+import FormData from 'form-data';
+import {
+  BadRequestException,
+  UploadedFile,
+  UseInterceptors,
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { ApiConsumes } from '@nestjs/swagger';
 import { firstValueFrom } from 'rxjs';
 import { ClientProxy } from '@nestjs/microservices';
 import { Inject } from '@nestjs/common';
@@ -501,6 +509,125 @@ export class ExpedientesGatewayController {
       authorization,
       requestId,
     });
+  }
+
+
+
+  @ApiOperation({
+    summary: 'Importacion incremental de centros de costo CSV',
+  })
+  @ApiConsumes('multipart/form-data')
+  @Post('mantenimiento/importar-csv')
+  @UseInterceptors(FileInterceptor('archivo', {
+    limits: {
+      fileSize: 2 * 1024 * 1024,
+      files: 1,
+      fields: 1,
+      fieldSize: 128,
+      parts: 3,
+    },
+  }))
+  async importarCsv(
+    @Headers('authorization') authorization: string | undefined,
+    @Headers(REQUEST_ID_HEADER) requestId: string | undefined,
+    @UploadedFile() file: {
+      buffer: Buffer;
+      originalname: string;
+      size: number;
+    },
+    @Body() body: Record<string, unknown>,
+  ) {
+    const contexto = await this.validateAuthorization(authorization);
+
+    this.assertMantenimientoExpedientesAccess(contexto);
+
+    const scoped = this.buildMantenimientoExpedientesQuery(
+      {},
+      contexto,
+    );
+
+    const workspaceId = Number(contexto?.workspaceId);
+    const usuarioId = Number(contexto?.sub ?? contexto?.usuarioId);
+
+    if (
+      !Number.isSafeInteger(workspaceId) ||
+      workspaceId <= 0 ||
+      !Number.isSafeInteger(usuarioId) ||
+      usuarioId <= 0 ||
+      !Number.isSafeInteger(Number(scoped.clienteDestinoId))
+    ) {
+      throw new ForbiddenException(
+        'IMPORTACION_CONTEXTO_INVALIDO',
+      );
+    }
+
+    if (
+      !body ||
+      Object.keys(body).some(key => key !== 'solicitudId') ||
+      typeof body.solicitudId !== 'string' ||
+      !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i
+        .test(body.solicitudId)
+    ) {
+      throw new BadRequestException(
+        'IMPORTACION_SOLICITUD_INVALIDA',
+      );
+    }
+
+    if (
+      !file?.buffer ||
+      file.buffer.length === 0 ||
+      file.buffer.length > 2 * 1024 * 1024 ||
+      !/\.csv$/i.test(file.originalname)
+    ) {
+      throw new BadRequestException(
+        'IMPORTACION_ARCHIVO_INVALIDO',
+      );
+    }
+
+    const form = new FormData();
+
+    form.append('archivo', file.buffer, {
+      filename: file.originalname,
+      contentType: 'text/csv',
+      knownLength: file.buffer.length,
+    });
+
+    form.append('solicitudId', body.solicitudId);
+
+    try {
+      const response = await axios.request({
+        method: 'POST',
+        url: `${this.msDocumentosUrl}/expedientes/mantenimiento/importar-csv`,
+        headers: {
+          ...this.buildHeaders(authorization, requestId),
+          ...form.getHeaders(),
+          'x-workspace-id': String(workspaceId),
+          'x-empresa-codigo': scoped.empresa,
+          'x-cliente-destino-id': scoped.clienteDestinoId,
+          'x-actor-id': String(usuarioId),
+        },
+        data: form,
+        timeout: 120000,
+        maxBodyLength: 2 * 1024 * 1024 + 16384,
+        maxContentLength: 1024 * 1024,
+      });
+
+      return response.data?.data ?? response.data;
+    } catch (error) {
+      if (axios.isAxiosError(error) && error.response) {
+        throw new HttpException(
+          error.response.data ?? {
+            message: 'Error de importacion CSV',
+          },
+          error.response.status,
+        );
+      }
+
+      throw new HttpException(
+        'No se pudo contactar con ms-documentos',
+        HttpStatus.BAD_GATEWAY,
+      );
+    }
   }
 
   @ApiOperation({ summary: 'Mantenimiento contable de expedientes - crear' })

@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import type { CargaSeguraStorage } from '../carga-segura/carga-segura.storage';
 import { DeleteObjectCommand, GetObjectCommand, HeadObjectCommand, S3Client } from '@aws-sdk/client-s3';
-import type { ArchivadoR2 } from './archivado-move.service';
+import type { ArchivadoR2, ContenidoArchivado } from './archivado-move.service';
 import type { ArchivadoRow } from './archivado.repository';
 import { poseeExclusionFisica } from './archivado-exclusion';
 
@@ -24,7 +24,7 @@ export class ArchivadoR2Adapter implements ArchivadoR2 {
     if(!endpoint||endpoint.protocol!=='https:'||endpoint.hostname!==`${this.cuenta}.r2.cloudflarestorage.com`
       ||(endpoint.path!==undefined&&endpoint.path!=='/'))throw new Error('ARCHIVADO_R2_ENDPOINT_NO_ACREDITADO');
   }
-  private input(row: ArchivadoRow) {
+  private input(row: ContenidoArchivado) {
     if (row.r2_cuenta !== this.cuenta || row.r2_bucket !== this.bucket || !row.r2_key
       || row.r2_key.startsWith('documentos/tmp/')) throw new Error('ARCHIVADO_ENTORNO_NO_COINCIDE');
     return { Bucket: this.bucket, Key: row.r2_key };
@@ -40,12 +40,12 @@ export class ArchivadoR2Adapter implements ArchivadoR2 {
     if(await this.comprobar(row)==='PRESENTE')await this.transferencia.verifyExistingObject(input);
     else await this.transferencia.copyObject(input);
   }
-  async leer(row: ArchivadoRow): Promise<AsyncIterable<Uint8Array>> {
+  async leer(row: ContenidoArchivado): Promise<AsyncIterable<Uint8Array>> {
     const r = await this.client.send(new GetObjectCommand(this.input(row)), { abortSignal: AbortSignal.timeout(30000) });
     if (r.ContentLength !== Number(row.tamano_bytes) || !r.Body) throw new Error('ARCHIVADO_R2_TAMANO_NO_COINCIDE');
     return r.Body as AsyncIterable<Uint8Array>;
   }
-  async comprobar(row: ArchivadoRow): Promise<'PRESENTE' | 'AUSENTE'> {
+  async comprobar(row: ContenidoArchivado): Promise<'PRESENTE' | 'AUSENTE'> {
     try {
       const r = await this.client.send(new HeadObjectCommand(this.input(row)), { abortSignal: AbortSignal.timeout(15000) });
       if (r.ContentLength !== Number(row.tamano_bytes)) throw new Error('ARCHIVADO_R2_TAMANO_NO_COINCIDE');
@@ -72,7 +72,7 @@ export class ArchivadoR2Adapter implements ArchivadoR2 {
     if(bytes!==Number(row.tamano_bytes)||hash.digest('hex')!==row.sha256)throw new Error('ARCHIVADO_ORIGEN_INTEGRIDAD');
   }
   async eliminarOrigen(row:ArchivadoRow){return this.eliminarExacto(this.origen(row));}
-  async verificarParaEliminar(row:ArchivadoRow):Promise<{etag:string;sha256:string;bytes:number}>{
+  async verificarParaEliminar(row:ContenidoArchivado):Promise<{etag:string;sha256:string;bytes:number}>{
     this.pruebas.delete(row.r2_key);
     await this.verificarEndpointReal();
     const input=this.input(row);
@@ -88,7 +88,7 @@ export class ArchivadoR2Adapter implements ArchivadoR2 {
     this.pruebas.set(row.r2_key,{etag:r.ETag,fecha:r.LastModified.getTime(),bytes});
     return {etag:r.ETag,sha256:row.sha256,bytes};
   }
-  async eliminarExacto(row: ArchivadoRow) {
+  async eliminarExacto(row: ContenidoArchivado) {
     const input=this.input(row);
     let ifMatch:string|undefined;
     if(this.politica.exclusionRequerida){

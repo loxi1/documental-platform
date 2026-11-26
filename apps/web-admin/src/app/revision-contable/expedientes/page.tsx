@@ -15,9 +15,13 @@ import {
   RefreshCcw,
   Save,
   Search,
+  Upload,
 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
+import { ImportarCentrosCostoModal } from "@/components/expedientes/ImportarCentrosCostoModal";
+import { getAuthSession } from "@/lib/auth-storage";
+import type { AuthSession } from "@/types/auth";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -428,6 +432,11 @@ function AnnulPanel({
 
 export default function MantenimientoExpedientesPage() {
   const queryClient = useQueryClient();
+
+  const [importacionCsv, setImportacionCsv] = useState<{
+    sesion: AuthSession;
+    empresaNombre: string;
+  } | null>(null);
   const [q, setQ] = useState("");
   const [page, setPage] = useState(1);
   const pageSize = 50;
@@ -509,10 +518,51 @@ export default function MantenimientoExpedientesPage() {
 
   return (
     <main className="space-y-5">
-      <div>
-        <p className="text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground">Compras</p>
-        <h1 className="mt-1 text-2xl font-bold tracking-tight">Centro de costo</h1>
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground">Compras</p>
+          <h1 className="mt-1 text-2xl font-bold tracking-tight">Centro de costo</h1>
+        </div>
+
+        <Button
+          type="button"
+          onClick={() => {
+            const sesion = getAuthSession();
+            if (!sesion) return;
+
+            const contexto = sesion.contexto;
+
+            const registro = items.find((item) =>
+              String(
+                item.empresaCodigo ??
+                item.empresa_codigo ??
+                item.empresa ??
+                ""
+              ) === contexto.empresa &&
+              Number(item.clienteDestinoId) ===
+                Number(contexto.clienteDestinoId)
+            );
+
+            setImportacionCsv({
+              sesion,
+              empresaNombre:
+                registro?.clienteNombre || contexto.empresa,
+            });
+          }}
+        >
+          <Upload className="mr-2 h-4 w-4" />
+          Adjuntar CSV
+        </Button>
       </div>
+
+      {importacionCsv && (
+        <ImportarCentrosCostoModal
+          sesion={importacionCsv.sesion}
+          empresaNombre={importacionCsv.empresaNombre}
+          onClose={() => setImportacionCsv(null)}
+          onCompleted={invalidateMantenimiento}
+        />
+      )}
 
       <Card>
         <CardHeader>
