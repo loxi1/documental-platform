@@ -3260,3 +3260,156 @@ ONE_INTEGRATED_RELEASE=PRESERVED.
 
 G4 funcional productivo aceptado.
 Cierre documental y entrega institucional en curso.
+
+
+---
+
+## 2026-11-27 — Navegación de duplicados Compras y recuperación TEMP: consolidación SOURCE G3
+
+ACTION=BBTI_COMPRAS_DUPLICATE_NAVIGATION_UX_R1.
+
+MODE=NORMAL.
+GOVERNANCE=R1.
+ONE_INTEGRATED_RELEASE preservado.
+
+### Identidad y alcance autorizado
+
+SOURCE baseline:
+`3437e945a187c7a8dab98a2f549093b0a70a4448`.
+
+Rama funcional:
+`fix/compras-duplicate-navigation-ux-r1`.
+
+Árbol técnico congelado G2:
+`f43e648c691691fcec3f8cd097cfe447d0c14ba4`.
+
+Incremento técnico: 14 archivos modificados y 5 nuevos,
+total 19. Dos adendas documentales SOURCE autorizadas.
+
+G1=CLOSED_PASS.
+G2=CLOSED_PASS.
+PO_FUNCTIONAL_ACCEPTANCE=PASS.
+PO_VISUAL_ACCEPTANCE=PASS.
+
+Alcance funcional congelado.
+
+### Contrato funcional
+
+- Detección de duplicados documentales por hash.
+- Resolución exacta del principal vinculado a la factura.
+- Visualización PDF mediante modal.
+- Navegación hacia la OC/OS realmente vinculada.
+- Recuperación de facturas pendientes en su contexto original.
+- Reutilización idempotente de TEMP equivalentes entre pestañas.
+- Persistencia de aliases sin alterar identidad OCR ni vencimiento.
+- Aislamiento contextual entre órdenes de compra.
+- Recuperación OCR exacta para edición de documentos confirmados.
+- Corrección de metadata sin renombrar ni trasladar archivos existentes.
+- Ajustes UX focales de Compras y Almacén.
+
+Continuar registro dirige al contexto documental original;
+la recuperación utiliza el mecanismo existente de pendientes.
+
+Modal de validación con Cancelar y Guardar y confirmar,
+según aceptación PO.
+
+No nuevas migraciones SQL ni cambios de infraestructura.
+
+### Evidencia técnica y funcional DEV
+
+Regresión backend: 355/355 PASS, 21 suites.
+Pruebas focales frontend: PASS.
+TypeScript: PASS.
+Build ms-documentos: PASS.
+Build formal web-admin: PASS.
+Páginas estáticas: 22/22 PASS.
+Git diff check: PASS.
+Limpieza de .next: PASS.
+
+Reutilización TEMP en misma pestaña y entre pestañas: PASS.
+Concurrencia funcional DEV: PASS.
+Persistencia de aliases PostgreSQL: PASS.
+
+Testigo de confirmación DEV:
+TEMP 435, documento 596, archivo 602, OCR 570.
+Expediente 4, BBTEC, documento base 551, OC002952.
+Factura FF62-0001881.
+Grupo factura V2 169, principal operativo V2 178.
+
+Confirmación documental y conservación del alias: PASS.
+Visor NAS y archivado: PASS funcional PO.
+Navegación de duplicados confirmados: PASS PO.
+
+### Observaciones y límites de evidencia
+
+Replay del alias posterior a confirmación validado offline,
+no ejecutado en runtime DEV.
+
+Concurrencia funcional acreditada; no observación directa
+del solapamiento interno de bloqueos PostgreSQL.
+
+Existencia NAS y ausencia R2 confirmadas por PO.
+No comprobación SHA256 física independiente del archivo NAS
+durante esta prueba focal.
+
+No existe opción UX independiente de guardado de borrador
+en el modal aceptado por PO.
+
+El primer build web-admin falló por URLs locales en modo
+production. Segundo build PASS con URLs canónicas,
+sin modificar código ni desactivar protecciones.
+
+No ampliar el alcance funcional ni repetir campañas acreditadas.
+
+### Checkpoint definitivo y trazabilidad
+
+Expediente externo:
+`/home/loxi1/bbti-evidence/compras-duplicate-navigation-ux-r1/g2/`.
+
+Checkpoint:
+`final-increment/`.
+
+Snapshot técnico: 19/19.
+Checksums internos: 21/21.
+Reconstrucción exacta del árbol técnico: PASS.
+
+SHA256 inventory.json:
+`e7330ecb264d12cf360182af5f44bd898e58d0ff8533b75d15daba5362f1ae42`.
+
+SHA256 incremento-final.patch:
+`b21d6d69620675651a009a269fc9e32c40b6ee42eb1122330252427fc255f0ba`.
+
+SHA256 SHA256SUMS:
+`ac0352bc6b00b6ff26724404a9c1fe33242c68d4992e1a1a4f8f373ba674fb88`.
+
+SHA256 reporte final G2:
+`f5895bd16b115ac666582de4f3642d4984791c58fcbbdae188071f79e7c9f688`.
+
+### Autorización institucional y frontera G4
+
+Mandato MSE Actual del 27/11/2026.
+INSTITUTIONAL_AUTHORIZATION=APPROVED.
+PO_SOURCE_INTEGRATION_AUTHORIZATION=APPROVED.
+PO_SOURCE_PUBLICATION_AUTHORIZATION=APPROVED.
+
+Commit focal, integración fast-forward y publicación
+SOURCE main autorizados.
+
+Las identidades efectivas del commit, árbol final y publicación
+se acreditarán mediante recibo Git externo de G3.
+
+El release productivo precedente permanece vigente.
+Esta adenda no acredita una nueva promoción ni despliegue.
+
+ENTERPRISE_PROMOTION=NO.
+GHCR_BUILD=NO.
+EC2_INTERVENTION=NO.
+NEW_MIGRATIONS=NO.
+R3_UPDATE=NO.
+G4=NOT_STARTED.
+
+No cambios en RDS, R2, NAS ni configuración productiva.
+No nueva campaña de validación ni intervención Codex.
+
+Continuidad: recibo G3 a MSE 3.0 para aceptación técnica
+y posterior solicitud institucional G4.

@@ -826,6 +826,8 @@ export class DocumentosRepository {
   }
 
   async findOcrResultados(filters: {
+    documentoId?: number;
+    archivoId?: number;
     estado?: string;
     cliente?: string;
     limit?: number;
@@ -863,7 +865,9 @@ export class DocumentosRepository {
         ON d.id = o.documento_id
       LEFT JOIN documentos.documentos d_archivo
         ON d_archivo.id = da.documento_id
-      WHERE (${filters.estado ?? null}::text IS NULL OR o.estado = ${filters.estado ?? null})
+      WHERE (${filters.documentoId ?? null}::bigint IS NULL OR o.documento_id = ${filters.documentoId ?? null}::bigint)
+        AND (${filters.archivoId ?? null}::bigint IS NULL OR o.archivo_id = ${filters.archivoId ?? null}::bigint)
+        AND (${filters.estado ?? null}::text IS NULL OR o.estado = ${filters.estado ?? null})
         AND (${filters.cliente ?? null}::text IS NULL OR COALESCE(d.cliente_abreviatura, d_archivo.cliente_abreviatura) = ${filters.cliente ?? null})
         AND (
           ${filters.grupoFacturaId ?? null}::bigint IS NULL
@@ -2120,6 +2124,26 @@ export class DocumentosRepository {
         tipoDocumental,
         clienteAbreviatura,
       };
+
+      if (esCorreccionPostConfirmacion) {
+        // Preserve own-property absence and explicit null; correction audit fields remain editable.
+        const referencias = ['documentoBaseId', 'documentoPrincipalId', 'grupoFacturaId', 'resolucionDocumentoBase', 'expedienteId'];
+        const conservar = (destino: Record<string, any>, original: Record<string, any>, keys: string[]) => {
+          for (const key of keys) {
+            if (Object.prototype.hasOwnProperty.call(original, key)) destino[key] = original[key];
+            else delete destino[key];
+          }
+        };
+        conservar(metadataNueva, ocrMetadataActual, referencias);
+        for (const key of ['contextoCarga', 'contextoValidacion']) {
+          const original = ocrMetadataActual[key];
+          const corregido = metadataInput[key];
+          if ((original && typeof original === 'object') || (corregido && typeof corregido === 'object')) {
+            metadataNueva[key] = { ...(original ?? {}), ...(corregido ?? {}) };
+            conservar(metadataNueva[key], original ?? {}, [...referencias, 'expedienteId']);
+          }
+        }
+      }
 
       const claveDocumental =
         this.buildClaveDocumental(

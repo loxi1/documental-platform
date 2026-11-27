@@ -46,6 +46,9 @@ type DuplicadoRow = {
   expediente_id?: number | null;
   tipo_relacion?: string | null;
   es_principal?: boolean | null;
+  estado_documento?: string;
+  tipo_documental?: string;
+  principal_documento_id?: number | null;
 };
 
 function firstNonEmpty(...values: Array<string | undefined | null>) {
@@ -164,6 +167,16 @@ export class DocumentosUploadService {
       claveDocumental ? this.buscarDocumentoPorClave(claveDocumental) : Promise.resolve(null),
     ]);
 
+    // Detection is unchanged. Only expose a navigable association after validating its real scope.
+    await Promise.all(duplicados.map(async item => {
+      const valido = await this.asociacionNavegableValida(item.documento_id, item.id,
+        item.principal_documento_id, item.expediente_id, tenantEmpresaCodigo, expedienteInfo?.clienteDestinoId);
+      if (!valido) item.principal_documento_id = null;
+    }));
+    if (documentoExistente && !await this.asociacionNavegableValida(documentoExistente.id,
+      documentoExistente.archivoId, documentoExistente.principalDocumentoId, documentoExistente.expedienteId,
+      tenantEmpresaCodigo, expedienteInfo?.clienteDestinoId)) documentoExistente.principalDocumentoId = null;
+
     const documentoYaVinculado = documentoExistente?.expedienteId
       ? {
           expedienteId: documentoExistente.expedienteId,
@@ -216,6 +229,9 @@ export class DocumentosUploadService {
         expedienteId: item.expediente_id ?? null,
         tipoRelacion: item.tipo_relacion ?? null,
         esPrincipal: item.es_principal ?? null,
+        estadoDocumento: item.estado_documento ?? null,
+        tipoDocumental: item.tipo_documental ?? null,
+        principalDocumentoId: item.principal_documento_id ?? null,
       })),
       accionSugerida,
       motivo,
@@ -705,6 +721,45 @@ export class DocumentosUploadService {
     return documentoId;
   }
 
+  private async asociacionNavegableValida(documentoId: unknown, archivoId: unknown, principalId: unknown,
+    expedienteId: unknown, empresa: string | null, clienteId: unknown): Promise<boolean> {
+    if (!empresa || ![documentoId, archivoId, principalId, expedienteId, clienteId]
+      .every(id => id != null && Number.isSafeInteger(Number(id)) && Number(id) > 0)) return false;
+    const rows = await sql`
+      SELECT p.id
+      FROM documentos.documentos p
+      JOIN documentos.expedientes e ON e.id=${Number(expedienteId)}::bigint
+      JOIN documentos.documentos d ON d.id=${Number(documentoId)}::bigint
+      JOIN documentos.documentos_archivos a ON a.id=${Number(archivoId)}::bigint AND a.documento_id=d.id
+      WHERE p.id=${Number(principalId)}::bigint AND p.tipo_documental IN ('OC','OS') AND p.estado='confirmado'
+        AND d.estado<>'anulado' AND a.estado NOT IN ('anulado','duplicado_absorbido')
+        AND p.cliente_abreviatura=${empresa} AND d.cliente_abreviatura=${empresa}
+        AND e.empresa_codigo=${empresa} AND e.cliente_destino_id=${Number(clienteId)}::bigint
+        AND (a.expediente_id IS NULL OR a.expediente_id=e.id)
+        AND (a.empresa_codigo IS NULL OR a.empresa_codigo=e.empresa_codigo)
+        AND (a.cliente_destino_id IS NULL OR a.cliente_destino_id=e.cliente_destino_id)
+        AND NOT EXISTS (SELECT 1 FROM documentos.expediente_documentos ed
+          WHERE ed.documento_id IN (d.id,p.id) AND ed.expediente_id<>e.id)
+        AND (
+          EXISTS (SELECT 1 FROM documentos.expediente_documentos ed
+            WHERE ed.documento_id=p.id AND ed.expediente_id=e.id AND ed.es_principal=true
+              AND ed.tipo_relacion IN ('principal_oc','principal_os')
+              AND NOT EXISTS (SELECT 1 FROM documentos.documentos_operativos_principales registrado WHERE registrado.documento_id=p.id))
+          OR EXISTS (SELECT 1 FROM documentos.documentos_operativos_principales op
+            JOIN documentos.contenedores_operativos c ON c.id=op.contenedor_operativo_id
+            WHERE op.documento_id=p.id AND op.estado='activo' AND op.es_principal_activo=true
+              AND c.estado='activo' AND c.expediente_v1_id=e.id
+              AND c.empresa_codigo=e.empresa_codigo AND c.cliente_destino_id=e.cliente_destino_id)
+        )
+        AND NOT EXISTS (SELECT 1 FROM documentos.documentos_operativos_principales op
+          JOIN documentos.contenedores_operativos c ON c.id=op.contenedor_operativo_id
+          WHERE op.documento_id=p.id AND op.estado='activo' AND c.estado='activo'
+            AND (c.expediente_v1_id IS DISTINCT FROM e.id OR c.empresa_codigo IS DISTINCT FROM e.empresa_codigo
+              OR c.cliente_destino_id IS DISTINCT FROM e.cliente_destino_id))
+    `;
+    return rows.length === 1 && Number(rows[0].id) === Number(principalId);
+  }
+
   private async buscarDuplicadosPorHash(params: {
     sha256: string;
     documentoId: number | null;
@@ -717,9 +772,45 @@ export class DocumentosUploadService {
         da.documento_id,
         da.nombre_archivo,
         da.storage_key,
-        ed.expediente_id,
+        COALESCE(ed.expediente_id, da.expediente_id, (
+          SELECT CASE WHEN count(DISTINCT c.expediente_v1_id)=1 THEN min(c.expediente_v1_id) END
+          FROM documentos.documentos_operativos_principales p
+          JOIN documentos.contenedores_operativos c ON c.id=p.contenedor_operativo_id
+          WHERE p.estado='activo' AND c.estado='activo' AND (
+            p.documento_id=d.id OR EXISTS (
+              SELECT 1 FROM documentos.grupos_factura g
+              WHERE g.documento_operativo_principal_id=p.id AND g.estado<>'anulado'
+                AND (g.factura_documento_id=d.id OR EXISTS (
+                  SELECT 1 FROM documentos.grupo_factura_documentos r
+                  WHERE r.grupo_factura_id=g.id AND r.documento_id=d.id AND r.estado='activo'))
+            ))
+        )) AS expediente_id,
         ed.tipo_relacion,
-        ed.es_principal
+        ed.es_principal,
+        d.estado AS estado_documento,
+        d.tipo_documental,
+        CASE WHEN d.tipo_documental IN ('OC','OS') THEN d.id
+          ELSE (SELECT CASE WHEN count(DISTINCT candidate)=1 THEN min(candidate) END
+            FROM (
+              SELECT CASE WHEN value ~ '^[1-9][0-9]*$' THEN value::bigint END AS candidate
+              FROM (VALUES (da.metadata->>'documentoBaseId'),
+                (d.metadata->>'documentoBaseId'),
+                (d.metadata #>> '{ocr,metadata,documentoBaseId}'),
+                (d.metadata #>> '{ocr,contextoCarga,documentoBaseId}'),
+                (d.metadata #>> '{ocr,contextoValidacion,documentoBaseId}'),
+                (d.metadata #> '{ocr,audit}' -> -1 #>> '{cambios,metadata,documentoBaseId}'),
+                (d.metadata #> '{ocr,audit}' -> -1 #>> '{cambios,contextoValidacion,documentoBaseId}')) refs(value)
+              UNION ALL
+              SELECT p.documento_id FROM documentos.grupo_factura_documentos r
+              JOIN documentos.grupos_factura g ON g.id=r.grupo_factura_id
+              JOIN documentos.documentos_operativos_principales p ON p.id=g.documento_operativo_principal_id
+              WHERE r.documento_id=d.id AND r.estado='activo' AND g.estado<>'anulado'
+              UNION ALL
+              SELECT p.documento_id FROM documentos.grupos_factura g
+              JOIN documentos.documentos_operativos_principales p ON p.id=g.documento_operativo_principal_id
+              WHERE g.factura_documento_id=d.id AND g.estado<>'anulado'
+            ) candidates)
+        END AS principal_documento_id
       FROM documentos.documentos_archivos da
       JOIN documentos.documentos d
         ON d.id = da.documento_id
@@ -747,12 +838,49 @@ export class DocumentosUploadService {
         d.tipo_documental,
         d.serie,
         d.numero,
-        ed.expediente_id,
+        COALESCE(ed.expediente_id, da.expediente_id, (
+          SELECT CASE WHEN count(DISTINCT c.expediente_v1_id)=1 THEN min(c.expediente_v1_id) END
+          FROM documentos.documentos_operativos_principales p
+          JOIN documentos.contenedores_operativos c ON c.id=p.contenedor_operativo_id
+          WHERE p.estado='activo' AND c.estado='activo' AND (
+            p.documento_id=d.id OR EXISTS (
+              SELECT 1 FROM documentos.grupos_factura g
+              WHERE g.documento_operativo_principal_id=p.id AND g.estado<>'anulado'
+                AND (g.factura_documento_id=d.id OR EXISTS (
+                  SELECT 1 FROM documentos.grupo_factura_documentos r
+                  WHERE r.grupo_factura_id=g.id AND r.documento_id=d.id AND r.estado='activo'))
+            ))
+        )) AS expediente_id,
         ed.tipo_relacion,
-        ed.es_principal
+        ed.es_principal,
+        d.estado AS estado_documento,
+        da.id AS archivo_id,
+        CASE WHEN d.tipo_documental IN ('OC','OS') THEN d.id
+          ELSE (SELECT CASE WHEN count(DISTINCT candidate)=1 THEN min(candidate) END
+            FROM (
+              SELECT CASE WHEN value ~ '^[1-9][0-9]*$' THEN value::bigint END AS candidate
+              FROM (VALUES (da.metadata->>'documentoBaseId'),
+                (d.metadata->>'documentoBaseId'),
+                (d.metadata #>> '{ocr,metadata,documentoBaseId}'),
+                (d.metadata #>> '{ocr,contextoCarga,documentoBaseId}'),
+                (d.metadata #>> '{ocr,contextoValidacion,documentoBaseId}'),
+                (d.metadata #> '{ocr,audit}' -> -1 #>> '{cambios,metadata,documentoBaseId}'),
+                (d.metadata #> '{ocr,audit}' -> -1 #>> '{cambios,contextoValidacion,documentoBaseId}')) refs(value)
+              UNION ALL
+              SELECT p.documento_id FROM documentos.grupo_factura_documentos r
+              JOIN documentos.grupos_factura g ON g.id=r.grupo_factura_id
+              JOIN documentos.documentos_operativos_principales p ON p.id=g.documento_operativo_principal_id
+              WHERE r.documento_id=d.id AND r.estado='activo' AND g.estado<>'anulado'
+              UNION ALL
+              SELECT p.documento_id FROM documentos.grupos_factura g
+              JOIN documentos.documentos_operativos_principales p ON p.id=g.documento_operativo_principal_id
+              WHERE g.factura_documento_id=d.id AND g.estado<>'anulado'
+            ) candidates)
+        END AS principal_documento_id
       FROM documentos.documentos d
       LEFT JOIN documentos.expediente_documentos ed
         ON ed.documento_id = d.id
+      LEFT JOIN LATERAL (SELECT id, metadata, expediente_id FROM documentos.documentos_archivos WHERE documento_id=d.id AND estado<>'duplicado_absorbido' ORDER BY version DESC, id DESC LIMIT 1) da ON true
       WHERE d.clave_documental = ${claveDocumental}
       ORDER BY d.id DESC
       LIMIT 1
@@ -763,6 +891,9 @@ export class DocumentosUploadService {
 
     return {
       id: Number(row.id),
+      archivoId: row.archivo_id == null ? null : Number(row.archivo_id),
+      estadoDocumento: row.estado_documento ?? null,
+      principalDocumentoId: row.principal_documento_id == null ? null : Number(row.principal_documento_id),
       claveDocumental: row.clave_documental ?? null,
       tipoDocumental: row.tipo_documental ?? null,
       serie: row.serie ?? null,

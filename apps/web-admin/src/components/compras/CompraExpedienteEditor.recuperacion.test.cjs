@@ -48,7 +48,7 @@ function setup(override = {}) {
   return { context, calls };
 }
 const fila = { documentoId: 10, archivoId: 11, ocrResultadoId: 20, accionSugerida: 'VALIDAR_OCR', clasificacion: 'PENDIENTE_OCR' };
-for (const [accion, label] of [['VALIDAR_OCR', 'Editar'], ['VALIDAR_MANUAL', 'Editar'], ['AGREGAR_VERSION', 'Agregar versión']]) {
+for (const [accion, label] of [['VALIDAR_OCR', 'Continuar registro'], ['VALIDAR_MANUAL', 'Continuar registro'], ['AGREGAR_VERSION', 'Agregar versión']]) {
   test(`card ${accion}: Ver + ${label}`, () => {
     const { context } = setup();
     const buttons = elements(context.FacturaPendienteCard({ pendiente: { ...fila, accionSugerida: accion }, readOnly: false, loading: false })).filter(e => e.type === 'button');

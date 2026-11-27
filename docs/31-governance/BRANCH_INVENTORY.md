@@ -1758,3 +1758,103 @@ NEW_GATE=NO.
 NEW_LAB=NO.
 NEW_R4=NO.
 ONE_INTEGRATED_RELEASE=PRESERVED.
+
+
+---
+
+## 2026-11-27 — Inventario focal Compras, duplicados y TEMP
+
+ACTION=BBTI_COMPRAS_DUPLICATE_NAVIGATION_UX_R1.
+
+G1=CLOSED_PASS.
+G2=CLOSED_PASS.
+PO_FUNCTIONAL_ACCEPTANCE=PASS.
+
+### Identidades SOURCE autorizadas
+
+SOURCE baseline:
+`3437e945a187c7a8dab98a2f549093b0a70a4448`.
+
+Rama funcional:
+`fix/compras-duplicate-navigation-ux-r1`.
+
+Árbol técnico congelado:
+`f43e648c691691fcec3f8cd097cfe447d0c14ba4`.
+
+14 archivos modificados, 5 nuevos, total técnico 19.
+Dos rutas documentales adicionales.
+Delta SOURCE autorizado: 21 archivos.
+
+### Rutas técnicas modificadas (14)
+
+- `apps/ms-documentos/src/documentos/documentos-upload.service.ts`
+- `apps/ms-documentos/src/documentos/documentos.controller.ts`
+- `apps/ms-documentos/src/documentos/documentos.repository.correccion-confirmado.spec.ts`
+- `apps/ms-documentos/src/documentos/documentos.repository.ts`
+- `apps/ms-documentos/src/documentos/documentos.service.ts`
+- `apps/ms-documentos/src/documentos/tmp/tmp.overwrite-recovery-closure.spec.ts`
+- `apps/ms-documentos/src/documentos/tmp/tmp.repository.ts`
+- `apps/ms-documentos/src/documentos/tmp/tmp.service.ts`
+- `apps/web-admin/src/components/almacen/AlmacenExpedienteEditor.tsx`
+- `apps/web-admin/src/components/compras/CompraExpedienteEditor.recuperacion.test.cjs`
+- `apps/web-admin/src/components/compras/CompraExpedienteEditor.tsx`
+- `apps/web-admin/src/components/compras/NuevoExpedienteWizard.tsx`
+- `apps/web-admin/src/constants/documentos.ts`
+- `apps/web-admin/src/types/carga-guiada.ts`
+
+### Rutas técnicas nuevas (5)
+
+- `apps/ms-documentos/src/documentos/documentos-upload.duplicate-navigation.spec.ts`
+- `apps/ms-documentos/src/documentos/documentos.ocr-exacto.spec.ts`
+- `apps/ms-documentos/src/documentos/documentos.repository.ocr-exacto.spec.ts`
+- `apps/ms-documentos/src/documentos/tmp/tmp.cross-tab.spec.ts`
+- `apps/web-admin/src/components/compras/CompraExpedienteEditor.duplicate-navigation.test.cjs`
+
+### Rutas documentales autorizadas (2)
+
+- `docs/31-governance/RELEASE_MANIFEST.md`
+- `docs/31-governance/BRANCH_INVENTORY.md`
+
+Adendas exclusivamente aditivas.
+Preservar íntegramente los 19 archivos técnicos aceptados.
+
+Sin migraciones, cambios de dependencias, workflows,
+Compose ni configuración productiva.
+
+Excluir credenciales, .env, respaldos, evidencias externas,
+PDF de prueba, artefactos de build y scripts históricos.
+
+### Integración y publicación SOURCE
+
+Mandato institucional MSE Actual y autorización PO
+del 27/11/2026 acreditados.
+
+Stage explícito por rutas.
+No git add . ni git add -A.
+Verificación del árbol técnico antes de las adendas.
+Verificación de composición final: 19 + 2.
+
+Commit focal e integración fast-forward autorizados.
+Publicación SOURCE main autorizada.
+No force push.
+
+Identidades finales mediante recibo Git externo.
+Las observaciones técnicas aceptadas se preservan
+en la adenda contemporánea de RELEASE_MANIFEST.md.
+
+### Frontera institucional
+
+Enterprise conserva su historia independiente.
+Release productivo precedente preservado.
+
+ENTERPRISE_PROMOTION=NO.
+GHCR_BUILD=NO.
+EC2_INTERVENTION=NO.
+R3_UPDATE=NO.
+G4=NOT_STARTED.
+
+CODEX_REQUIRED=NO.
+NEW_GATE=NO.
+NEW_LAB=NO.
+NEW_R4=NO.
+ONE_INTEGRATED_RELEASE=PRESERVED.

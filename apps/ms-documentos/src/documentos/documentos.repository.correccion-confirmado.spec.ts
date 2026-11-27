@@ -336,4 +336,81 @@ describe('DocumentosRepository corrección post-confirmación', () => {
     expect(serialized).toContain('"numeroVisible":"00000255"');
     expect(serialized).toContain('"DOCUMENTO_CONFIRMADO_CORREGIDO"');
   });
+  it('preserva asociación original y rutas físicas al corregir fecha y metadata', async () => {
+    let updateValues: unknown[] = [];
+    const queries: string[] = [];
+
+    const tx = (strings: TemplateStringsArray, ...values: unknown[]) => {
+      const query = strings.join('?');
+      queries.push(query);
+
+      if (query.includes('FROM documentos.documentos') && query.includes('FOR UPDATE')) {
+        return Promise.resolve([{...documentoConfirmado,metadata:{documentoBaseId:551,ocr:{metadata:{documentoBaseId:551,contextoValidacion:{documentoBaseId:551,expedienteId:4}}}}}]);
+      }
+      if (query.includes('FROM documentos.ocr_resultados')) {
+        return Promise.resolve([{ id: 8, documento_id: 20, metadata: {} }]);
+      }
+      if (query.includes('WHERE clave_documental')) {
+        return Promise.resolve([]);
+      }
+      if (query.includes('UPDATE documentos.documentos')) {
+        updateValues = values;
+        return Promise.resolve([{ ...documentoConfirmado, serie: 'F002' }]);
+      }
+      return Promise.resolve([]);
+    };
+
+    sqlBeginMock.mockImplementation((callback) => callback(tx));
+
+    await new DocumentosRepository().actualizarDocumentoManual(
+      20,
+      {...inputValido,metadata:{...inputValido.metadata,documentoBaseId:999,contextoValidacion:{documentoBaseId:999,expedienteId:99}}},
+      1,
+    );
+
+    const serialized = updateValues
+      .filter((value): value is string => typeof value === 'string')
+      .find((value) => value.includes('"correccionDocumento"'));
+
+    const metadata=JSON.parse(serialized!);
+    expect(metadata.ocr.metadata.documentoBaseId).toBe(551);
+    expect(metadata.ocr.metadata.contextoValidacion).toMatchObject({documentoBaseId:551,expedienteId:4});
+    expect(metadata.ocr.audit[0].accion).toBe('DOCUMENTO_CONFIRMADO_CORREGIDO');
+    expect(queries.some(query => /(?:UPDATE|INSERT INTO|DELETE FROM) documentos\.documentos_archivos/.test(query))).toBe(false);
+    expect(queries.some(query => /(?:UPDATE|INSERT INTO|DELETE FROM) documentos\.(?:expediente_documentos|grupos_factura|grupo_factura_documentos)/.test(query))).toBe(false);
+  });
+
+  it.each(['ausente', 'nulo', 'contexto_ausente'])('preserva referencias originalmente %s sin bloquear auditoría', async modo => {
+    let metadata: any;
+    const refs = modo === 'nulo' ? {documentoBaseId:null, documentoPrincipalId:null, grupoFacturaId:null, resolucionDocumentoBase:null, expedienteId:null} : {};
+    const context = modo === 'nulo' ? {...refs, expedienteId:null} : {};
+    const original = {...documentoConfirmado,metadata:{ocr:{metadata:{...refs,...(modo==='contexto_ausente'?{}:{contextoCarga:{...context},contextoValidacion:{...context}})},audit:[]}}};
+    const tx = txFrom((query,values) => {
+      if (query.includes('FROM documentos.documentos') && query.includes('FOR UPDATE')) return [original];
+      if (query.includes('FROM documentos.ocr_resultados')) return [{id:8,documento_id:20,metadata:{}}];
+      if (query.includes('UPDATE documentos.documentos')) {
+        metadata=JSON.parse(values.find((v:any)=>typeof v==='string' && v.includes('"correccionDocumento"')) as string);
+        return [original];
+      }
+      return [];
+    });
+    sqlBeginMock.mockImplementation(cb=>cb(tx));
+    const injected={documentoBaseId:999,documentoPrincipalId:999,grupoFacturaId:99,resolucionDocumentoBase:'CAMBIADA',expedienteId:99,origen:'COMPRAS_EDITAR_DOCUMENTO'};
+    await new DocumentosRepository().actualizarDocumentoManual(20,{...inputValido,metadata:{...inputValido.metadata,...injected,contextoCarga:injected,contextoValidacion:injected}},1);
+    for (const target of [metadata.ocr.metadata,metadata.ocr.metadata.contextoCarga,metadata.ocr.metadata.contextoValidacion]) {
+      for (const key of Object.keys(injected).filter(k=>!['origen','expedienteId'].includes(k))) {
+        expect(Object.hasOwn(target,key)).toBe(modo==='nulo');
+        if(modo==='nulo') expect(target[key]).toBeNull();
+      }
+    }
+    expect(Object.hasOwn(metadata.ocr.metadata,'expedienteId')).toBe(modo==='nulo');
+    if(modo==='nulo') expect(metadata.ocr.metadata.expedienteId).toBeNull();
+    for(const key of ['contextoCarga','contextoValidacion']) {
+      expect(Object.hasOwn(metadata.ocr.metadata[key],'expedienteId')).toBe(modo==='nulo');
+      if(modo==='nulo') expect(metadata.ocr.metadata[key].expedienteId).toBeNull();
+      expect(metadata.ocr.metadata[key].origen).toBe('COMPRAS_EDITAR_DOCUMENTO');
+    }
+    expect(metadata.ocr.audit[0].usuarioId).toBe(1);
+  });
+
 });

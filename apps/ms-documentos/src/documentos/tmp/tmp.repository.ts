@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
 import { sql } from '@documental/database';
 import type { CargaSeguraHttpResolvedIdentity as Identity } from '../carga-segura/http/carga-segura-http.validation';
@@ -103,11 +104,49 @@ export class TmpRepository {
 
   async reserve(c: Connection, actor: Identity, file: { name: string; mime: string; size: number; hash: string }, fingerprint: string, bucket: string, context?: ComprasFacturaContext): Promise<TmpRow> {
     return this.transaction(c, async tx => {
+      const aliasKey = actor.idempotencyKey;
       const previous = await tx`SELECT * FROM documentos.carga_operaciones WHERE operacion_tipo='tmp'
-        AND workspace_id=${actor.workspaceId} AND empresa_codigo=${actor.empresaCodigo} AND idempotency_key=${actor.idempotencyKey}`;
+        AND workspace_id=${actor.workspaceId} AND empresa_codigo=${actor.empresaCodigo}
+        AND (idempotency_key=${aliasKey} OR (metadata->'comprasTempAliases') ? ${aliasKey}) FOR UPDATE`;
+      const equivalent = context ? this.comprasEquivalence(actor, file, bucket, context) : null;
       if (previous.length) {
-        if (previous[0].payload_fingerprint !== fingerprint) throw new ConflictException('TMP_IDEMPOTENCY_CONFLICT');
-        return previous[0];
+        if (previous.length !== 1) throw new ConflictException('TMP_IDEMPOTENCY_CONFLICT');
+        const row = previous[0];
+        if (row.idempotency_key === aliasKey) {
+          if (row.payload_fingerprint !== fingerprint || (context && !this.matchesCompras(row,actor,file,bucket,context)))
+            throw new ConflictException('TMP_IDEMPOTENCY_CONFLICT');
+        } else {
+          const alias = row.metadata?.comprasTempAliases?.[aliasKey];
+          if (!equivalent || alias?.fingerprint !== fingerprint || alias?.equivalence !== equivalent
+              || !this.matchesCompras(row, actor, file, bucket, context!))
+            throw new ConflictException('TMP_IDEMPOTENCY_CONFLICT');
+        }
+        return row;
+      }
+      if (context) {
+        await tx`SELECT pg_advisory_xact_lock(hashtextextended(${`tmp:compras-factura:${equivalent}`}, 0))`;
+        const candidates = await tx`SELECT * FROM documentos.carga_operaciones WHERE operacion_tipo='tmp'
+          AND actor_id=${actor.actorId} AND workspace_id=${actor.workspaceId} AND empresa_codigo=${actor.empresaCodigo}
+          AND cliente_destino_id=${actor.clienteDestinoId} AND hash_sha256=${file.hash}
+          AND content_type=${file.mime} AND tamano_bytes=${file.size} AND storage_provider='r2' AND storage_bucket=${bucket}
+          AND metadata->'comprasFactura'=${tx.json(JSON.stringify(context))}::jsonb
+          AND expira_en>now() ORDER BY id FOR UPDATE`;
+        if (candidates.length > 1) throw new ConflictException('TMP_COMPRAS_EQUIVALENCIA_AMBIGUA: utiliza Facturas pendientes de confirmar.');
+        if (candidates.length === 1) {
+          const row = candidates[0];
+          if (!this.matchesCompras(row, actor, file, bucket, context) || !['iniciada','almacenada'].includes(row.estado)
+              || row.promovida_en || row.documento_id || row.archivo_id || row.metadata?.integration
+              || row.metadata?.destinoReservado || row.metadata?.promocionIdentity || row.metadata?.regularizacionOp)
+            throw new ConflictException('TMP_COMPRAS_CONFIRMACION_RESERVADA: utiliza Facturas pendientes de confirmar.');
+          const alias = {fingerprint, equivalence: equivalent};
+          const updated = await tx`UPDATE documentos.carga_operaciones SET metadata=jsonb_set(metadata,
+            '{comprasTempAliases}', COALESCE(metadata->'comprasTempAliases','{}'::jsonb)
+              || ${tx.json(JSON.stringify({[aliasKey]:alias}))}::jsonb),actualizado_en=now()
+            WHERE id=${row.id} RETURNING *`;
+          if (updated.length !== 1) throw new ConflictException('TMP_IDEMPOTENCY_CONFLICT');
+          await this.audit(tx,row.id,actor,'TMP_COMPRAS_REUTILIZADO',{equivalence:equivalent});
+          return updated[0];
+        }
       }
       const [row] = await tx`INSERT INTO documentos.carga_operaciones
         (operacion_tipo,workspace_id,empresa_codigo,cliente_destino_id,actor_id,idempotency_key,
@@ -120,6 +159,22 @@ export class TmpRepository {
       await this.audit(tx, row.id, actor, 'TMP_RESERVADO', { storageKey: key, hash: file.hash, tamanoBytes: file.size });
       return { ...row, storage_key: key };
     });
+  }
+  private comprasEquivalence(actor: Identity, file: {mime:string;size:number;hash:string}, bucket:string, context:ComprasFacturaContext) {
+    if (context.origen !== 'COMPRAS' || context.tipoDocumental !== 'FACTURA' || context.tipoRelacion !== 'adjunto_factura'
+        || ![context.expedienteId,context.documentoBaseId].every(v=>Number.isSafeInteger(v)&&v>0))
+      throw new ConflictException('TMP_COMPRAS_CONTEXT_INVALID');
+    return createHash('sha256').update(JSON.stringify([actor.actorId,actor.workspaceId,actor.empresaCodigo,actor.clienteDestinoId,
+      context.origen,context.tipoDocumental,context.tipoRelacion,context.expedienteId,context.documentoBaseId,
+      file.hash,file.mime,file.size,bucket])).digest('hex');
+  }
+  private matchesCompras(row:TmpRow, actor:Identity, file:{mime:string;size:number;hash:string},bucket:string,context:ComprasFacturaContext) {
+    const saved=row.metadata?.comprasFactura;
+    return Number(row.actor_id)===actor.actorId && Number(row.workspace_id)===actor.workspaceId
+      && row.empresa_codigo===actor.empresaCodigo && Number(row.cliente_destino_id)===actor.clienteDestinoId
+      && row.hash_sha256===file.hash && row.content_type===file.mime && Number(row.tamano_bytes)===file.size
+      && row.storage_provider==='r2' && row.storage_bucket===bucket
+      && saved && Object.keys(context).every(key=>saved[key]===context[key as keyof ComprasFacturaContext]);
   }
   async own(c: Connection, id: number, actor: TmpActor): Promise<TmpRow> {
     const context = actor[COMPRAS_FACTURA_ACCESS];
@@ -186,7 +241,8 @@ export class TmpRepository {
       ORDER BY iniciada_en, id`;
   }
   async saveDocumentalMetadata(c: Connection, id: number, metadata: Record<string, any>) {
-    await c`UPDATE documentos.carga_operaciones SET metadata=${c.json(JSON.stringify(metadata))}::jsonb,
+    await c`UPDATE documentos.carga_operaciones SET metadata=${c.json(JSON.stringify(metadata))}::jsonb
+      || CASE WHEN metadata ? 'comprasTempAliases' THEN jsonb_build_object('comprasTempAliases',metadata->'comprasTempAliases') ELSE '{}'::jsonb END,
       actualizado_en=now() WHERE id=${id} AND operacion_tipo='tmp'`;
   }
   async assertDocumentalScope(c: Connection, row: TmpRow, input: any) {
@@ -265,7 +321,8 @@ export class TmpRepository {
           promovida_en = NULL,
           destino_storage_key = NULL,
           expira_en = now() + interval '24 hours',
-          metadata = ${JSON.stringify(metadata)}::text::jsonb,
+          metadata = ${JSON.stringify(metadata)}::text::jsonb
+            || CASE WHEN metadata ? 'comprasTempAliases' THEN jsonb_build_object('comprasTempAliases',metadata->'comprasTempAliases') ELSE '{}'::jsonb END,
           actualizado_en = now()
       WHERE id = ${row.id}
         AND operacion_tipo = 'tmp'
@@ -410,7 +467,8 @@ export class TmpRepository {
   }
   async bind(c: Connection, row: TmpRow, destination: string, identity: string) {
     const metadata = { ...row.metadata, destinoReservado: destination, promocionIdentity: identity };
-    await c`UPDATE documentos.carga_operaciones SET metadata=${c.json(JSON.stringify(metadata))}::jsonb, actualizado_en=now() WHERE id=${row.id}`;
+    await c`UPDATE documentos.carga_operaciones SET metadata=${c.json(JSON.stringify(metadata))}::jsonb
+      || CASE WHEN metadata ? 'comprasTempAliases' THEN jsonb_build_object('comprasTempAliases',metadata->'comprasTempAliases') ELSE '{}'::jsonb END, actualizado_en=now() WHERE id=${row.id}`;
   }
 
   async markPhysicalOwnership(c: Connection, row: TmpRow) {

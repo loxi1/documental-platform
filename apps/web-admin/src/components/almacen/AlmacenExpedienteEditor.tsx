@@ -2297,7 +2297,7 @@ const principalGrupoSeleccionado = grupoFacturaSeleccionado
         {grupoFacturaId !== null ? (
         <Card id="adjuntar-guia-ni" className="scroll-mt-6">
           <CardHeader className="pb-2">
-            <CardTitle>Adjuntar Guía escaneada / Nota de ingreso</CardTitle>
+            <CardTitle>Adjuntar Guía / Nota de ingreso</CardTitle>
             <p className="text-sm text-muted-foreground">
               La nueva carga quedará vinculada al grupo documental que seleccionaste para esta recepción.
             </p>
@@ -2370,7 +2370,7 @@ const principalGrupoSeleccionado = grupoFacturaSeleccionado
                       {procesando &&
                       accionActual?.tipoRelacionSugerida === item.tipoRelacionSugerida
                         ? "Subiendo/procesando..."
-                        : "Adjuntar Guía escaneada"}
+                        : "Adjuntar Guía"}
                     </Button>
                   ) : (documentosItem?.length ?? 0) === 0 &&
                     normalizeTipoDocumentalParaBackend(item.tipoEsperado) === "NOTA_INGRESO" ? (

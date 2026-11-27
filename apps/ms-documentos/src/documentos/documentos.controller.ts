@@ -178,6 +178,8 @@ export class DocumentosController {
 
   @Get('ocr-resultados')
   findOcrResultados(
+    @Query('documentoId') documentoId?: string,
+    @Query('archivoId') archivoId?: string,
     @Query('estado') estado?: string,
     @Query('cliente') cliente?: string,
     @Query('limit') limit?: string,
@@ -185,6 +187,11 @@ export class DocumentosController {
     @Query('soloNoVinculados') soloNoVinculados?: string,
     @Query('grupoFacturaId') grupoFacturaId?: string,
   ) {
+    for (const [key, value] of Object.entries({ documentoId, archivoId })) {
+      if (value !== undefined && (!/^[1-9]\d*$/.test(value) || !Number.isSafeInteger(Number(value)))) {
+        throw new BadRequestException(`${key} debe ser un entero positivo`);
+      }
+    }
     const grupoFacturaIdNumber =
       grupoFacturaId === undefined || grupoFacturaId === ''
         ? undefined
@@ -198,6 +205,8 @@ export class DocumentosController {
     }
 
     return this.service.findOcrResultados({
+      documentoId: documentoId === undefined ? undefined : Number(documentoId),
+      archivoId: archivoId === undefined ? undefined : Number(archivoId),
       estado,
       cliente,
       limit: limit ? Number(limit) : 20,

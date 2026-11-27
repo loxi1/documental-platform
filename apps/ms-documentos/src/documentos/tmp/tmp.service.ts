@@ -76,11 +76,30 @@ export class TmpService {
       // La reserva y promoción tienen el mismo bloqueo por tempId, incluso durante recuperación.
       return this.repository.locked(String(row.id), async locked => {
         const current = await this.repository.own(locked, Number(row.id), actor);
+        if (context && (current.hash_sha256!==hash || Number(current.tamano_bytes)!==file.buffer.length
+            || current.content_type!==mime || current.storage_bucket!==bucket || current.metadata?.regularizacionOp
+            || Object.keys(context).some(key=>current.metadata?.comprasFactura?.[key]!==context[key as keyof ComprasFacturaContext])))
+          throw new ConflictException('TMP_COMPRAS_CONTEXT_CONFLICT: utiliza Facturas pendientes de confirmar.');
+        if (context && !current.promovida_en && !current.metadata?.documentalResult) {
+          if (!current.expira_en || !Number.isFinite(new Date(current.expira_en).getTime()) || new Date(current.expira_en).getTime()<=Date.now())
+            throw new ConflictException('TMP_EXPIRADO: utiliza Facturas pendientes de confirmar.');
+          if (!['iniciada','almacenada'].includes(current.estado))
+            throw new ConflictException('TMP_COMPRAS_ESTADO_NO_ELEGIBLE: utiliza Facturas pendientes de confirmar.');
+          if (current.metadata?.integration || current.metadata?.destinoReservado || current.documento_id || current.archivo_id)
+            throw new ConflictException('TMP_COMPRAS_CONFIRMACION_RESERVADA: utiliza Facturas pendientes de confirmar.');
+        }
         if (current.estado === 'iniciada') {
-          const put = await this.storage.putObject({ ...this.source(current), body: file.buffer, contentType: mime, hashSha256: hash });
-          await this.verify(current, current.storage_key);
-          if (put?.kind === 'CREATED' && put.provider === 'r2' && put.bucket === current.storage_bucket && put.key === current.storage_key) await this.repository.markPhysicalOwnership(locked, current);
+          const existing = context ? await this.storage.statObject(this.source(current)) : null;
+          if (!existing?.exists) {
+            const put = await this.storage.putObject({ ...this.source(current), body: file.buffer, contentType: mime, hashSha256: hash });
+            await this.verify(current, current.storage_key);
+            if (put?.kind === 'CREATED' && put.provider === 'r2' && put.bucket === current.storage_bucket && put.key === current.storage_key) await this.repository.markPhysicalOwnership(locked, current);
+          } else await this.verify(current, current.storage_key);
           await this.repository.staged(locked, Number(row.id));
+        } else if (context && current.estado === 'almacenada' && !current.promovida_en && !current.metadata?.documentalResult) {
+          const stat=await this.storage.statObject(this.source(current));
+          if (!stat.exists) throw new ConflictException('TMP_COMPRAS_OBJETO_AUSENTE: utiliza Facturas pendientes de confirmar; no se ha reparado el TEMP.');
+          await this.verify(current,current.storage_key);
         }
         return this.result(await this.repository.own(locked, Number(row.id), actor));
       });

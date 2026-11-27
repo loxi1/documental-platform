@@ -82,7 +82,7 @@ export const DOCUMENTO_ALMACEN_ADJUNTO_OPTIONS = [
     confiabilidad: "fuerte",
   },
   {
-    label: "Guía escaneada",
+    label: "Guía",
     description: "",
     tipoEsperado: "GUIA",
     tipoRelacionSugerida: "adjunto_guia",

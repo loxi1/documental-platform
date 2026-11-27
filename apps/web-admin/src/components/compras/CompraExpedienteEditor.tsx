@@ -1,18 +1,18 @@
 "use client";
 import { cargarTemporalCompras, recuperarTemporalCompras, validarTemporalCompras, listarFacturasTempCompras, type ComprasTempResult } from "@/services/carga-segura";
 
-import { ArchivadoResumen } from "@/components/documentos/ArchivadoResumen";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { type ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, FilePlus2, History } from "lucide-react";
+import { ArrowLeft, FilePlus2, History, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Modal } from "@/components/ui/modal";
+import { PreviewDocumento } from "@/components/common/PreviewDocumento";
 import { OcrValidationModal, type OcrValidationFormState } from "@/components/ocr/OcrValidationModal";
 import { OcrProcessingDialog, type OcrProcessingStep } from "@/components/ocr/OcrProcessingDialog";
 import {
@@ -85,6 +85,9 @@ type PrevalidacionExistenteUI = {
   documentoId?: string | number | null;
   archivoId?: string | number | null;
   expedienteId?: string | number | null;
+  principalDocumentoId?: string | number | null;
+  tipoDocumental?: string;
+  estadoDocumento?: string;
 };
 
 type UploadYProcesarArgs = {
@@ -267,10 +270,7 @@ function prevalidacionCargaMessage(resultado: CargaGuiadaPrevalidacionResponse) 
   if (accion === "abrir_existente" || resultado.duplicadoArchivo || motivo.includes("DUPLICADO")) {
     return [
       "Este archivo ya fue cargado anteriormente. Puedes abrir el documento existente.",
-      duplicado?.documentoId ? `Documento existente: ${duplicado.documentoId}.` : null,
-      duplicado?.archivoId ? `Archivo existente: ${duplicado.archivoId}.` : null,
-      duplicado?.expedienteId ? `Centro de costo vinculado: ${duplicado.expedienteId}.` : null,
-      "No se volvió a subir a R2.",
+      "No es necesario volver a adjuntarlo.",
     ].filter(Boolean).join("\n");
   }
 
@@ -332,35 +332,37 @@ function toIdValue(value: unknown): string | number | null | undefined {
 function getPrevalidacionExistente(
   resultado: CargaGuiadaPrevalidacionResponse,
 ): PrevalidacionExistenteUI | null {
+  const identidades = new Set((resultado.duplicados ?? []).map(row => [row.documentoId, row.archivoId, row.expedienteId, row.principalDocumentoId].join(":")));
+  if (identidades.size > 1) return null;
   const duplicado = resultado.duplicados?.[0];
   const documentoExistente =
     resultado.documentoExistente as Record<string, unknown> | null | undefined;
-  const principalActivo =
-    resultado.principalActivo as Record<string, unknown> | null | undefined;
-
-  const documentoId =
-    toIdValue(duplicado?.documentoId) ??
-    toIdValue(documentoExistente?.documentoId) ??
-    toIdValue(documentoExistente?.documento_id) ??
-    toIdValue(documentoExistente?.id) ??
-    toIdValue(principalActivo?.documentoId) ??
-    toIdValue(principalActivo?.documento_id) ??
-    toIdValue(resultado.documentoId);
-
-  const archivoId =
-    toIdValue(duplicado?.archivoId) ??
-    toIdValue(documentoExistente?.archivoId) ??
-    toIdValue(documentoExistente?.archivo_id);
-
-  const expedienteId =
-    toIdValue(duplicado?.expedienteId) ??
-    toIdValue(documentoExistente?.expedienteId) ??
-    toIdValue(documentoExistente?.expediente_id) ??
-    toIdValue(resultado.expedienteId);
+  const identidad = duplicado ?? documentoExistente;
+  const documentoId = toIdValue(identidad?.documentoId ?? identidad?.documento_id ?? identidad?.id);
+  const archivoId = toIdValue(identidad?.archivoId ?? identidad?.archivo_id);
+  const expedienteId = toIdValue(identidad?.expedienteId ?? identidad?.expediente_id);
 
   if (!documentoId && !archivoId && !expedienteId) return null;
 
-  return { documentoId, archivoId, expedienteId };
+  const tipoDocumental = text(identidad?.tipoDocumental ?? identidad?.tipo_documental).toUpperCase();
+  const estadoDocumento = text(identidad?.estadoDocumento ?? identidad?.estado).toLowerCase();
+  const principalDocumentoId = identidad && Object.prototype.hasOwnProperty.call(identidad, "principalDocumentoId")
+    ? toIdValue(identidad.principalDocumentoId)
+    : (tipoDocumental === "OC" || tipoDocumental === "OS" ? documentoId : null);
+  return { documentoId, archivoId, expedienteId, tipoDocumental, estadoDocumento, principalDocumentoId };
+}
+
+function accionesDuplicadoCompras(existente: PrevalidacionExistenteUI | null, principalId: unknown) {
+  const factura = existente?.tipoDocumental === "FACTURA";
+  const mismaOrden = String(existente?.principalDocumentoId) === String(principalId);
+  const contextual = Boolean(existente?.expedienteId && existente?.principalDocumentoId);
+  return {
+    verPdf: Boolean(existente?.archivoId),
+    verOrden: contextual && (!factura || !mismaOrden),
+    continuar: Boolean(factura && ["pendiente_ocr", "pendiente_validacion"].includes(existente?.estadoDocumento ?? "") &&
+      contextual && existente.documentoId && existente.archivoId),
+    etiquetaVer: mismaOrden ? "Ver" : "Ver PDF",
+  };
 }
 
 class PrevalidacionDetuvoCarga extends Error {
@@ -684,7 +686,7 @@ function FacturaPendienteCard({ pendiente, readOnly, loading, onValidar, onVer, 
           <Button type="button" variant="outline" size="sm" disabled={loading} onClick={onVer}>Ver</Button>
           <Button type="button" variant="outline" size="sm" disabled={readOnly || loading}
             onClick={pendiente.accionSugerida === "AGREGAR_VERSION" ? onVersion : onValidar}>
-            {pendiente.accionSugerida === "AGREGAR_VERSION" ? "Agregar versión" : "Editar"}
+            {pendiente.accionSugerida === "AGREGAR_VERSION" ? "Agregar versión" : "Continuar registro"}
           </Button>
         </div>
         <p className="text-xs text-muted-foreground">
@@ -1226,6 +1228,7 @@ export function CompraExpedienteEditor({
   const ocrUploadRecoveryRef = useRef<OcrUploadRecovery | null>(null);
   const [versionesModal, setVersionesModal] = useState<VersionesDocumentoModalState | null>(null);
   const [versionesLoading, setVersionesLoading] = useState(false);
+  const [previewDuplicadoArchivoId, setPreviewDuplicadoArchivoId] = useState<number | string | null>(null);
   const [versionesError, setVersionesError] = useState<string | null>(null);
   const [edicionOcos, setEdicionOcos] = useState<{
     doc: DocumentoVinculado;
@@ -1417,11 +1420,7 @@ export function CompraExpedienteEditor({
   const seleccionPrincipalRequerida =
     documentosPrincipales.length > 1 && !principalSeleccionado;
 
-  const principalIdNavegacion =
-    principalIdSeleccionado ??
-    (documentosPrincipales.length === 1
-      ? getDocumentoId(documentosPrincipales[0])
-      : null);
+  const accionesDuplicado = accionesDuplicadoCompras(prevalidacionExistente, principalPendientesId);
 
   const principalActual = useMemo(() => {
     if (!principalSeleccionado) return null;
@@ -1559,7 +1558,8 @@ export function CompraExpedienteEditor({
       if (prevalidacion.accionSugerida !== "cargar_nuevo") {
         const existente = getPrevalidacionExistente(prevalidacion);
 
-        if (existente?.archivoId) {
+        if (existente?.archivoId && existente.tipoDocumental !== "FACTURA" &&
+            existente.estadoDocumento !== "confirmado" && String(existente.expedienteId) === String(id)) {
           const recovery: OcrUploadRecovery = {
             archivoId: String(existente.archivoId),
             documentoId:
@@ -1993,7 +1993,7 @@ export function CompraExpedienteEditor({
     archivoId: string,
     permitirSinOcr = false,
   ): Promise<string | null> {
-    const { data } = await api.get("/documentos/ocr-resultados");
+    const { data } = await api.get("/documentos/ocr-resultados", { params: { documentoId, archivoId } });
     const payload = data?.data ?? data;
     const rows = Array.isArray(payload) ? payload : [];
 
@@ -2271,6 +2271,7 @@ export function CompraExpedienteEditor({
         ? err.message
         : "No se pudo abrir la versión seleccionada.";
       setVersionesError(message);
+      setMensajeValidacion(message);
     }
   }
 
@@ -2955,20 +2956,7 @@ export function CompraExpedienteEditor({
         </div>
 
         {principalSelection.invalid && !documentosQuery.isLoading ? <p role="alert" className="rounded-xl border p-4 text-sm text-red-600">La OC/OS solicitada no pertenece a los documentos disponibles de este expediente. Selecciona una principal válida.</p> : null}
-        {documentosPrincipales.length > 0 && (!principalSeleccionado || documentosPrincipales.length > 1) ? (
-          <section aria-label="Seleccionar OC/OS principal" className="rounded-xl border p-4">
-            <p className="mb-3 text-sm font-medium">Selecciona la OC/OS para ver sus facturas y documentos asociados.</p>
-            <div className="flex flex-wrap gap-2">
-              {documentosPrincipales.map((doc) => (
-                <Button key={String(getDocumentoId(doc))} asChild variant={getDocumentoId(doc) === principalIdSeleccionado ? "default" : "outline"} size="sm">
-                  <Link href={principalHref(id, getDocumentoId(doc), modoSoloLectura ? "ver" : "editar", searchParams.toString()) ?? "/compras"}>
-                    {text(doc.tipo_documental ?? doc.tipoDocumental, "OC/OS")} {text(doc.numero, String(getDocumentoId(doc)))}
-                  </Link>
-                </Button>
-              ))}
-            </div>
-          </section>
-        ) : null}
+
 
         {mensajeValidacion ? (
           <div className="space-y-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-300">
@@ -2985,29 +2973,28 @@ export function CompraExpedienteEditor({
                   }
                   onClick={() => void reanudarOcrUploadPendiente()}
                 >
-                  Reanudar OCR
+                  Continuar registro
                 </Button>
               </div>
             ) : null}
             {prevalidacionExistente ? (
               <div className="flex flex-wrap gap-2">
-                {prevalidacionExistente.expedienteId ? (
-                  <>
-                    <Button asChild size="sm" variant="outline">
-                      <Link
-                        href={principalHref(prevalidacionExistente.expedienteId, principalIdNavegacion, "ver", searchParams.toString(), returnTo) ?? returnTo}
-                      >
-                        Ver
-                      </Link>
-                    </Button>
-                    <Button asChild size="sm" variant="outline">
-                      <Link
-                        href={principalHref(prevalidacionExistente.expedienteId, principalIdNavegacion, "editar", searchParams.toString(), returnTo) ?? returnTo}
-                      >
-                        Editar
-                      </Link>
-                    </Button>
-                  </>
+                {accionesDuplicado.verPdf ? (
+                  <Button type="button" size="sm" variant="outline" onClick={() => setPreviewDuplicadoArchivoId(prevalidacionExistente.archivoId ?? null)}>
+                    {accionesDuplicado.etiquetaVer}
+                  </Button>
+                ) : null}
+                {accionesDuplicado.verOrden ? (
+                  <Button asChild size="sm" variant="outline">
+                    <Link href={principalHref(prevalidacionExistente.expedienteId, prevalidacionExistente.principalDocumentoId, "ver", searchParams.toString(), returnTo)!}>
+                      {prevalidacionExistente.tipoDocumental === "FACTURA" ? "Ir a la orden vinculada" : "Ver en Compras"}
+                    </Link>
+                  </Button>
+                ) : null}
+                {accionesDuplicado.continuar ? (
+                  <Button asChild size="sm" variant="outline">
+                    <Link href={principalHref(prevalidacionExistente.expedienteId, prevalidacionExistente.principalDocumentoId, "editar", "", returnTo)!}>Continuar registro</Link>
+                  </Button>
                 ) : null}
               </div>
             ) : null}
@@ -3016,28 +3003,17 @@ export function CompraExpedienteEditor({
 
         <Card>
           <CardContent className="p-0">
-            <div className="grid lg:grid-cols-[minmax(0,0.36fr)_minmax(0,0.64fr)]">
+            <div className="grid lg:grid-cols-[minmax(0,0.64fr)_minmax(0,0.36fr)]">
               <section className="p-5 lg:border-r">
-                <div className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                  Centro de costo
-                </div>
-                <div className="mt-3 space-y-1">
-                  <div className="text-lg font-semibold text-foreground">
-                    {codigo || "—"}
-                  </div>
-                  {descripcion ? (
-                    <div
-                      className="line-clamp-2 break-words text-sm text-muted-foreground"
-                      title={descripcion}
-                    >
-                      {descripcion}
-                    </div>
-                  ) : null}
-                  {empresa ? (
-                    <div className="text-xs font-medium text-muted-foreground">
-                      {empresa}
-                    </div>
-                  ) : null}
+                <div className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">Órdenes de compra y servicio</div>
+                <div className="mt-3 flex flex-wrap items-start gap-2" aria-label="Seleccionar OC/OS principal">
+                  {documentosPrincipales.map((doc) => (
+                    <Button key={String(getDocumentoId(doc))} asChild variant={getDocumentoId(doc) === principalIdSeleccionado ? "default" : "outline"} size="sm">
+                      <Link href={principalHref(id, getDocumentoId(doc), modoSoloLectura ? "ver" : "editar", searchParams.toString()) ?? "/compras"}>
+                        {text(doc.tipo_documental ?? doc.tipoDocumental, "OC/OS")} {text(doc.numero)}
+                      </Link>
+                    </Button>
+                  ))}
                 </div>
               </section>
 
@@ -3089,7 +3065,7 @@ export function CompraExpedienteEditor({
               <CardTitle className="text-base uppercase tracking-wide">
                 Documentos de compra
               </CardTitle>
-              <ArchivadoResumen key={String(id)} expedienteId={Number(id)} readOnly={modoSoloLectura} />
+
 
               {!modoSoloLectura && facturaOption ? (
                 <Button
@@ -3127,15 +3103,15 @@ export function CompraExpedienteEditor({
                 </div>
                 {temporalesFacturaQuery.isPending ? <p className="text-sm text-muted-foreground">Consultando pendientes…</p> : null}
                 {temporalesFacturaQuery.isError ? <p role="alert" className="text-sm text-destructive">No se pudieron consultar las facturas pendientes.</p> : null}
-                {!temporalesFacturaQuery.isError && temporalesFacturaQuery.data?.length === 0 ? <p className="text-sm text-muted-foreground">No hay facturas TEMP pendientes en esta OC/OS.</p> : null}
+                {!temporalesFacturaQuery.isError && temporalesFacturaQuery.data?.length === 0 ? <p className="text-sm text-muted-foreground">No hay facturas pendientes de confirmar en esta OC/OS.</p> : null}
                 {!temporalesFacturaQuery.isError && temporalesFacturaQuery.data?.map(fila => (
                   <div key={fila.tempId} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border p-3">
                     <div className="text-sm">
                       <p className="font-medium">{fila.nombreOriginal}</p>
-                      <p className="text-xs text-muted-foreground">TEMP {fila.tempId} · Usuario que adjuntó: {fila.actorId} · {fila.creadoEn ? new Date(fila.creadoEn).toLocaleString() : ''}</p>
-                      <p className="text-xs text-muted-foreground">{fila.tieneBorrador ? 'Borrador guardado' : `OCR: ${fila.ocrEstado}`} {fila.reservada ? '· Confirmación iniciada' : ''}</p>
+                      <p className="text-xs text-muted-foreground">Fecha de carga: {fila.creadoEn ? new Date(fila.creadoEn).toLocaleString() : 'No disponible'}</p>
+                      <p className="text-xs text-muted-foreground">{fila.tieneBorrador ? 'Borrador guardado' : 'Pendiente de confirmar'} {fila.reservada ? '· Confirmación iniciada' : ''}</p>
                     </div>
-                    <Button type="button" variant="outline" disabled={procesando || abriendoPendiente} onClick={() => void abrirFacturaTemp(fila.tempId)}>Recuperar factura</Button>
+                    <Button type="button" variant="outline" disabled={procesando || abriendoPendiente} onClick={() => void abrirFacturaTemp(fila.tempId)}>Continuar registro</Button>
                   </div>
                 ))}
                 <Button type="button" variant="ghost" disabled={procesando || abriendoPendiente} onClick={() => void abrirFacturaTemp()}>Recuperar referencia histórica de esta sesión</Button>
@@ -3723,6 +3699,40 @@ export function CompraExpedienteEditor({
           </div>
         ) : null}
       </Modal>
+
+      {previewDuplicadoArchivoId !== null ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Vista previa del documento"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              setPreviewDuplicadoArchivoId(null);
+            }
+          }}
+        >
+          <div className="relative w-full max-w-6xl rounded-2xl bg-background p-4 pt-12 shadow-2xl">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="absolute right-3 top-2 z-20"
+              aria-label="Cerrar vista previa"
+              onClick={() => setPreviewDuplicadoArchivoId(null)}
+            >
+              <X className="h-5 w-5" />
+            </Button>
+
+            <PreviewDocumento
+              key={String(previewDuplicadoArchivoId)}
+              archivoId={previewDuplicadoArchivoId}
+              title="Vista previa del documento"
+              className="max-h-[80vh]"
+            />
+          </div>
+        </div>
+      ) : null}
 
       <VersionesDocumentoModal
         state={versionesModal}

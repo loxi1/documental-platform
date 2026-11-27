@@ -421,6 +421,8 @@ export class DocumentosService {
   }
 
   async findOcrResultados(filters: {
+    documentoId?: number;
+    archivoId?: number;
     estado?: string;
     cliente?: string;
     limit?: number;

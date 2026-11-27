@@ -25,7 +25,7 @@ describe('C2-03 promotion exclusive write and recovery closure', () => {
       estado: 'almacenada', metadata: {}, hash_sha256: hash, tamano_bytes: bytes.length,
       content_type: 'application/pdf', nombre_archivo_original: 'closure.pdf',
       storage_key: 'documentos/tmp/12/50', storage_bucket: 'synthetic', promovida_en: null };
-    adapter = new R2CargaSeguraStorage({} as any);
+    adapter = new R2CargaSeguraStorage({get: () => undefined} as any);
     (adapter as any).client = { send: jest.fn(async (cmd: any) => {
       const i = cmd.input;
       if (cmd instanceof GetObjectCommand || cmd instanceof HeadObjectCommand) {

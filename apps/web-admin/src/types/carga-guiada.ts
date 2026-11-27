@@ -83,6 +83,9 @@ export interface CargaGuiadaDuplicadoArchivo {
   expedienteId?: number | string | null;
   tipoRelacion?: string | null;
   esPrincipal?: boolean | null;
+  estadoDocumento?: string | null;
+  tipoDocumental?: string | null;
+  principalDocumentoId?: number | string | null;
   [key: string]: unknown;
 }
 

@@ -159,10 +159,7 @@ function prevalidacionMessage(resultado: CargaGuiadaPrevalidacionResponse) {
   if (accion === "abrir_existente" || resultado.duplicadoArchivo || motivo.includes("DUPLICADO")) {
     return [
       "Este archivo ya fue cargado anteriormente. Puedes abrir el documento existente.",
-      duplicado?.documentoId ? `Documento existente: ${duplicado.documentoId}.` : null,
-      duplicado?.archivoId ? `Archivo existente: ${duplicado.archivoId}.` : null,
-      duplicado?.expedienteId ? `Centro de costo vinculado: ${duplicado.expedienteId}.` : null,
-      "No se volvió a subir a R2.",
+      "No es necesario volver a adjuntarlo.",
     ].filter(Boolean).join("\n");
   }
 
@@ -203,30 +200,20 @@ function toIdValue(value: unknown): string | number | null | undefined {
 }
 
 function getPrevalidacionExistente(resultado: CargaGuiadaPrevalidacionResponse): PrevalidacionExistenteUI | null {
+  const identidades = new Set((resultado.duplicados ?? []).map(row => [row.documentoId, row.archivoId, row.expedienteId, row.principalDocumentoId].join(":")));
+  if (identidades.size > 1) return null;
   const duplicado = resultado.duplicados?.[0];
   const documentoExistente = resultado.documentoExistente as Record<string, unknown> | null | undefined;
-  const principalActivo = resultado.principalActivo as Record<string, unknown> | null | undefined;
+
   const raw = resultado as unknown as Record<string, unknown>;
 
-  const documentoId =
-    toIdValue(duplicado?.documentoId) ??
-    toIdValue(documentoExistente?.documentoId) ??
-    toIdValue(documentoExistente?.documento_id) ??
-    toIdValue(documentoExistente?.id) ??
-    toIdValue(resultado.documentoId);
-  const archivoId =
-    toIdValue(duplicado?.archivoId) ??
-    toIdValue(documentoExistente?.archivoId) ??
-    toIdValue(documentoExistente?.archivo_id) ??
-    toIdValue(resultado.archivoId);
-  const expedienteId =
-    toIdValue(duplicado?.expedienteId) ??
-    toIdValue(documentoExistente?.expedienteId) ??
-    toIdValue(documentoExistente?.expediente_id) ??
-    toIdValue(resultado.expedienteId);
-  const principalDocumentoId =
-    toIdValue(principalActivo?.documentoId) ??
-    toIdValue(principalActivo?.documento_id);
+  const identidad = duplicado ?? documentoExistente;
+  const documentoId = toIdValue(identidad?.documentoId ?? identidad?.documento_id ?? identidad?.id);
+  const archivoId = toIdValue(identidad?.archivoId ?? identidad?.archivo_id);
+  const expedienteId = toIdValue(identidad?.expedienteId ?? identidad?.expediente_id);
+  const principalDocumentoId = identidad && Object.prototype.hasOwnProperty.call(identidad, "principalDocumentoId")
+    ? toIdValue(identidad.principalDocumentoId)
+    : (["OC", "OS"].includes(text(identidad?.tipoDocumental ?? identidad?.tipo_documental).toUpperCase()) ? documentoId : null);
 
   if (!documentoId && !archivoId && !expedienteId && !principalDocumentoId) return null;
 
@@ -241,8 +228,8 @@ function getPrevalidacionExistente(resultado: CargaGuiadaPrevalidacionResponse):
     numero: text(documentoExistente?.numero, "") || null,
     codigoExpediente: text(raw.codigoExpedienteSeleccionado ?? raw.codigo_expediente_seleccionado, "") || null,
     principalDocumentoId,
-    principalTipoDocumental: text(principalActivo?.tipoDocumental ?? principalActivo?.tipo_documental ?? principalActivo?.tipo, "") || null,
-    principalNumero: text(principalActivo?.numero, "") || null,
+    principalTipoDocumental: text(documentoExistente?.principalTipoDocumental, "") || null,
+    principalNumero: text(documentoExistente?.principalNumero, "") || null,
   };
 }
 
@@ -1218,7 +1205,7 @@ export function NuevoExpedienteWizard() {
                         {prevalidacionExistente.principalTipoDocumental || prevalidacionExistente.principalNumero ? <p className="mt-1 text-sm text-muted-foreground">Documento principal: {[prevalidacionExistente.principalTipoDocumental, prevalidacionExistente.principalNumero].filter(Boolean).join(" ")}</p> : null}
                       </div>
                       <div className="flex flex-wrap gap-2">
-                        {prevalidacionExistente.expedienteId ? (
+                        {prevalidacionExistente.expedienteId && prevalidacionExistente.principalDocumentoId ? (
                           <Button asChild size="sm" variant="outline">
                             <Link href={prevalidacionExistente.principalDocumentoId ? `/compras/${prevalidacionExistente.expedienteId}/ver?principalId=${encodeURIComponent(String(prevalidacionExistente.principalDocumentoId))}` : `/compras/${prevalidacionExistente.expedienteId}/ver`}>Ver documento existente</Link>
                           </Button>
@@ -1229,7 +1216,7 @@ export function NuevoExpedienteWizard() {
                     </div>
                   ) : (
                     <div className="flex flex-wrap gap-2">
-                      {prevalidacionExistente.expedienteId ? <Button asChild size="sm" variant="outline"><Link href={`/compras/${prevalidacionExistente.expedienteId}/ver`}>Ver en Compras</Link></Button> : null}
+                      {prevalidacionExistente.expedienteId && prevalidacionExistente.principalDocumentoId ? <Button asChild size="sm" variant="outline"><Link href={`/compras/${prevalidacionExistente.expedienteId}/ver?principalId=${encodeURIComponent(String(prevalidacionExistente.principalDocumentoId))}`}>Ver en Compras</Link></Button> : null}
                     </div>
                   )
                 ) : null}
